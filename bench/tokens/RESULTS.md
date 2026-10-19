@@ -47,14 +47,16 @@ request.
 
 The second and the third request of the same prompt cost almost nothing new:
 
-| Run | Input | Output | Cache read | Total |
-| --- | --- | --- | --- | --- |
-| 1 | 2445 | 1 | 1158 | 3604 |
-| 2 | 1 | 1 | 3602 | 3604 |
-| 3 | 1 | 1 | 3602 | 3604 |
+| Run | Input | Output | Cache read | Total | Request | First token |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 11 | 1 | 3592 | 3604 | 68 ms | 313 ms |
+| 2 | 1 | 1 | 3602 | 3604 | 45 ms | 72 ms |
+| 3 | 1 | 1 | 3602 | 3604 | 40 ms | 70 ms |
 
 llama.cpp keeps the prefix of the prompt, so the system message is a cache read
-after the first request. The same holds for the providers with a prompt cache:
+after the first request. The first request also pays for the prefix that the
+server has to read: 313 ms to the first token, against 70 ms for the ones
+after it. The same holds for the providers with a prompt cache:
 the static part of the prompt is paid once, and every request after it pays the
 cache read.
 
