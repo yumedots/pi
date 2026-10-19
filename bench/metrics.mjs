@@ -127,9 +127,9 @@ export function metricsFor(profileName, options = {}) {
 	add({
 		name: "build.incremental",
 		group: "build",
-		command: "cd packages/agent && ../../node_modules/.bin/tsc -p tsconfig.build.json",
-		prepare: "touch packages/agent/src/index.ts",
-		note: "Rebuild of packages/agent after touching one source file.",
+		command: "cd packages/coding-agent && ../../node_modules/.bin/tsc -p tsconfig.build.json",
+		prepare: "touch packages/coding-agent/src/cli.ts",
+		note: "Rebuild of packages/coding-agent after touching one source file.",
 	});
 
 	// --- check ---------------------------------------------------------
