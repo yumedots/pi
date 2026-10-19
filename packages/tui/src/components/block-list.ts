@@ -1,6 +1,7 @@
 import { getKeybindings } from "../keybindings.ts";
 import type { Component, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 import { applyBackgroundToLine, truncateToWidth, visibleWidth } from "../utils.ts";
+import { applyHover, type HoverableList } from "./list-hover.ts";
 
 export interface BlockListTheme {
 	block: (text: string) => string;
@@ -22,7 +23,7 @@ const clamp = (value: number, min: number, max: number): number => Math.max(min,
  * Keyboard-driven list where every row is a full-width block and the right
  * column is a scrollbar that tracks the selection.
  */
-export class BlockList<T> implements Component {
+export class BlockList<T> implements Component, HoverableList {
 	private items: T[];
 	private selectedIndex = 0;
 	private scrollOffset = 0;
@@ -136,6 +137,11 @@ export class BlockList<T> implements Component {
 			this.move(event.wheelDelta < 0 ? -1 : 1);
 			return { handled: true, render: this.selectedIndex !== previousIndex };
 		}
+		// Hovering a row moves the keyboard highlight to it.
+		if (applyHover(event, this)) {
+			this.notifySelectionChange();
+			return { handled: true, render: true };
+		}
 		if (event.button !== "left" || (event.type !== "press" && event.type !== "click")) return undefined;
 
 		const index = this.scrollOffset + event.y;
@@ -159,6 +165,23 @@ export class BlockList<T> implements Component {
 		const item = this.getSelectedItem();
 		if (item !== null) this.onSelect?.(item);
 		return { handled: true };
+	}
+
+	/** Index of the item on the given row, or undefined when the row holds no item. */
+	indexAtRow(row: number): number | undefined {
+		if (row < 0 || row >= Math.min(this.maxVisible, this.items.length)) return undefined;
+		const index = this.scrollOffset + row;
+		return index < this.items.length ? index : undefined;
+	}
+
+	/**
+	 * Move the selection. The window keeps the selected row in view, which a
+	 * hover stays inside anyway, so the row under the pointer does not move.
+	 */
+	select(index: number): boolean {
+		if (index === this.selectedIndex) return false;
+		this.setSelectedIndex(index);
+		return true;
 	}
 
 	private ensureSelectedVisible(): void {

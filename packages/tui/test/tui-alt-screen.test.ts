@@ -5,6 +5,7 @@ import {
 	AltScreenSearchIndex,
 	findAltScreenSearchMatches,
 } from "../src/alt-screen-search.ts";
+import { Editor, type EditorTheme } from "../src/components/editor.ts";
 import { HStack } from "../src/components/h-stack.ts";
 import { Image } from "../src/components/image.ts";
 import { MouseRegion } from "../src/components/mouse-region.ts";
@@ -26,6 +27,17 @@ import { stripTerminalSequences, visibleWidth } from "../src/utils.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
+
+const editorTheme: EditorTheme = {
+	borderColor: (text) => text,
+	selectList: {
+		selectedPrefix: (text) => text,
+		selectedText: (text) => text,
+		description: (text) => text,
+		scrollInfo: (text) => text,
+		noMatch: (text) => text,
+	},
+};
 
 class InputOverlay {
 	focused = false;
@@ -331,6 +343,51 @@ describe("TuiAltScreen", () => {
 		terminal.sendInput("\x1b[<72;1;1M");
 		await terminal.waitForRender();
 		assert.strictEqual(tui.viewportTop, 3);
+		tui.stop();
+	});
+
+	it("moves the editor autocomplete highlight when the mouse hovers a row", async () => {
+		const terminal = new VirtualTerminal(40, 12);
+		const tui = new TuiAltScreen(terminal);
+		const editor = new Editor(tui, editorTheme);
+		const suggestions = [
+			{ value: "alpha", label: "alpha" },
+			{ value: "beta", label: "beta" },
+			{ value: "gamma", label: "gamma" },
+		];
+		editor.setAutocompleteProvider({
+			getSuggestions: async () => ({ prefix: "/", items: suggestions }),
+			applyCompletion: () => ({ lines: [""], cursorLine: 0, cursorCol: 0 }),
+		});
+
+		// Mirror the app layout: a transcript scroll view above an editor dock.
+		tui.setLayoutRoot(
+			new VStack([
+				{ component: new ScrollView(new Text("transcript", 0, 0), { follow: "end" }), basis: 0, grow: 1 },
+				{ component: editor, basis: "auto" },
+			]),
+		);
+		tui.setFocus(editor);
+		tui.start();
+		await terminal.waitForRender();
+
+		editor.handleInput("/");
+		await terminal.waitForRender();
+		await terminal.waitForRender();
+
+		const before = await terminal.flushAndGetViewport();
+		const autocompleteRow = before.findIndex((line) => line.includes("alpha"));
+		assert.ok(autocompleteRow > 0, "autocomplete list is visible");
+
+		// SGR motion with no button held: code 35 = 32 (motion) + 3 (no button).
+		terminal.sendInput(`\x1b[<35;3;${autocompleteRow + 1}M`);
+		await terminal.waitForRender();
+
+		const after = await terminal.flushAndGetViewport();
+		assert.ok(
+			after[autocompleteRow]?.includes("→ alpha"),
+			`expected the hovered row to be highlighted, got: ${after[autocompleteRow]}`,
+		);
 		tui.stop();
 	});
 

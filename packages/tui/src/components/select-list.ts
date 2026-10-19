@@ -1,6 +1,7 @@
 import { getKeybindings } from "../keybindings.ts";
 import type { Component, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 import { truncateToWidth, visibleWidth } from "../utils.ts";
+import { applyHover, type HoverableList } from "./list-hover.ts";
 
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
 const PRIMARY_COLUMN_GAP = 2;
@@ -37,10 +38,16 @@ export interface SelectListLayoutOptions {
 	truncatePrimary?: (context: SelectListTruncatePrimaryContext) => string;
 }
 
-export class SelectList implements Component {
+export class SelectList implements Component, HoverableList {
 	private items: SelectItem[] = [];
 	private filteredItems: SelectItem[] = [];
 	private selectedIndex: number = 0;
+	/**
+	 * Top of the visible window. Tracked separately from the selection so a
+	 * hover can move the selection without scrolling the list out from under
+	 * the pointer.
+	 */
+	private windowStart = 0;
 	private mousePressedIndex: number | undefined;
 	private maxVisible: number = 5;
 	private theme: SelectListTheme;
@@ -62,10 +69,12 @@ export class SelectList implements Component {
 		this.filteredItems = this.items.filter((item) => item.value.toLowerCase().startsWith(filter.toLowerCase()));
 		// Reset selection when filter changes
 		this.selectedIndex = 0;
+		this.windowStart = 0;
 	}
 
 	setSelectedIndex(index: number): void {
 		this.selectedIndex = Math.max(0, Math.min(index, this.filteredItems.length - 1));
+		this.scrollToSelection();
 	}
 
 	invalidate(): void {
@@ -112,10 +121,17 @@ export class SelectList implements Component {
 			const delta = event.wheelDelta < 0 ? -1 : 1;
 			const previousIndex = this.selectedIndex;
 			this.selectedIndex = Math.max(0, Math.min(this.filteredItems.length - 1, this.selectedIndex + delta));
-			if (this.selectedIndex !== previousIndex) this.notifySelectionChange();
+			if (this.selectedIndex !== previousIndex) {
+				this.scrollToSelection();
+				this.notifySelectionChange();
+			}
 			return { handled: true, render: this.selectedIndex !== previousIndex };
 		}
-		// Hover must not change selection: the visible range is centered on it.
+		// Hovering a row moves the keyboard highlight to it.
+		if (applyHover(event, this)) {
+			this.notifySelectionChange();
+			return { handled: true, render: true };
+		}
 		if (event.button !== "left" || (event.type !== "press" && event.type !== "click")) return undefined;
 		const { startIndex, endIndex } = this.getVisibleRange();
 		const itemIndex = startIndex + event.y;
@@ -142,16 +158,36 @@ export class SelectList implements Component {
 		return undefined;
 	}
 
+	/** Index of the item on the given row, or undefined when the row holds no item. */
+	indexAtRow(row: number): number | undefined {
+		const { startIndex, endIndex } = this.getVisibleRange();
+		const index = startIndex + row;
+		return index >= startIndex && index < endIndex ? index : undefined;
+	}
+
+	/**
+	 * Move the selection. The visible window stays put so a hover keeps the
+	 * row under the pointer; the window follows the selection on the next
+	 * keyboard move.
+	 */
+	select(index: number): boolean {
+		if (index === this.selectedIndex) return false;
+		this.selectedIndex = index;
+		return true;
+	}
+
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
 		// Up arrow - wrap to bottom when at top
 		if (kb.matches(keyData, "tui.select.up")) {
 			this.selectedIndex = this.selectedIndex === 0 ? this.filteredItems.length - 1 : this.selectedIndex - 1;
+			this.scrollToSelection();
 			this.notifySelectionChange();
 		}
 		// Down arrow - wrap to top when at bottom
 		else if (kb.matches(keyData, "tui.select.down")) {
 			this.selectedIndex = this.selectedIndex === this.filteredItems.length - 1 ? 0 : this.selectedIndex + 1;
+			this.scrollToSelection();
 			this.notifySelectionChange();
 		}
 		// Enter
@@ -172,12 +208,24 @@ export class SelectList implements Component {
 	private getVisibleRange(): { startIndex: number; endIndex: number } {
 		const startIndex = Math.max(
 			0,
-			Math.min(this.selectedIndex - Math.floor(this.maxVisible / 2), this.filteredItems.length - this.maxVisible),
+			Math.min(this.windowStart, Math.max(0, this.filteredItems.length - this.maxVisible)),
 		);
 		return {
 			startIndex,
 			endIndex: Math.min(startIndex + this.maxVisible, this.filteredItems.length),
 		};
+	}
+
+	/**
+	 * Center the window on the selection. Keyboard navigation calls this so
+	 * the selection stays in view; a hover does not, so the row under the
+	 * pointer stays under the pointer.
+	 */
+	private scrollToSelection(): void {
+		this.windowStart = Math.max(
+			0,
+			Math.min(this.selectedIndex - Math.floor(this.maxVisible / 2), this.filteredItems.length - this.maxVisible),
+		);
 	}
 
 	private renderItem(

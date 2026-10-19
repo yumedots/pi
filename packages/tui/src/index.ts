@@ -50,6 +50,7 @@ export {
 	setImageTranscoder,
 } from "./components/image.ts";
 export { Input } from "./components/input.ts";
+export { applyHover, type HoverableList } from "./components/list-hover.ts";
 export { Loader, type LoaderIndicatorOptions } from "./components/loader.ts";
 export { type DefaultTextStyle, Markdown, type MarkdownOptions, type MarkdownTheme } from "./components/markdown.ts";
 export { MouseRegion, type MouseRegionHandler } from "./components/mouse-region.ts";

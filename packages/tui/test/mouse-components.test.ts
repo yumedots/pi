@@ -1,5 +1,6 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import { BlockList, type BlockListTheme } from "../src/components/block-list.ts";
 import { Editor, type EditorTheme } from "../src/components/editor.ts";
 import { Input } from "../src/components/input.ts";
 import { SelectList, type SelectListTheme } from "../src/components/select-list.ts";
@@ -39,6 +40,13 @@ const settingsTheme: SettingsListTheme = {
 	description: (text) => text,
 	cursor: "> ",
 	hint: (text) => text,
+};
+
+const blockTheme: BlockListTheme = {
+	block: (text) => text,
+	selection: (text) => text,
+	track: (text) => text,
+	thumb: (text) => text,
 };
 
 const editorTheme: EditorTheme = {
@@ -136,8 +144,27 @@ describe("mouse-aware components", () => {
 		assert.deepStrictEqual(changes, [{ id: "third", value: "high" }]);
 	});
 
+	it("hovers block-list rows", () => {
+		const list = new BlockList(
+			[
+				{ value: "a", label: "A" },
+				{ value: "b", label: "B" },
+				{ value: "c", label: "C" },
+			],
+			3,
+			blockTheme,
+			{ draw: (item) => `  ${item.label}` },
+		);
+		const changes: string[] = [];
+		list.onSelectionChange = (item) => changes.push(item.value);
+
+		list.handleMouse(mouse("move", 1, 2, 40, 3));
+		assert.strictEqual(list.getSelectedItem()?.value, "c");
+		assert.deepStrictEqual(changes, ["c"]);
+	});
+
 	for (const row of [0, 4]) {
-		it(`ignores hover and clicks visible select-list row ${row} after scrolling`, () => {
+		it(`hovers and clicks visible select-list row ${row} after scrolling`, () => {
 			const list = new SelectList(
 				Array.from({ length: 12 }, (_, i) => ({ value: `item-${i}`, label: `Item ${i}` })),
 				5,
@@ -156,14 +183,15 @@ describe("mouse-aware components", () => {
 			const before = list.render(80);
 			assert.match(before[row], new RegExp(`Item ${4 + row}$`));
 
-			for (const y of [0, 1, 2, 3, 4, row]) {
-				assert.strictEqual(list.handleMouse({ ...mouse("move", 1, y), button: "none" }), undefined);
-				assert.deepStrictEqual(list.render(80), before);
-			}
-			assert.strictEqual(list.getSelectedItem()?.value, "item-6");
-			assert.deepStrictEqual(changes, ["item-6"]);
+			list.handleMouse({ ...mouse("move", 1, row), button: "none" });
+			assert.strictEqual(list.getSelectedItem()?.value, `item-${4 + row}`);
+			assert.deepStrictEqual(changes, ["item-6", `item-${4 + row}`]);
 			assert.strictEqual(selected, undefined);
 
+			// Hovering does not scroll the view, so the row stays under the pointer.
+			// Only the highlight marker and the scroll counter move.
+			const visibleItems = (lines: string[]) => lines.slice(0, 5).map((line) => line.replace("→", "").trim());
+			assert.deepStrictEqual(visibleItems(list.render(80)), visibleItems(before));
 			list.handleMouse(mouse("press", 1, row));
 			list.render(80);
 			list.handleMouse(mouse("click", 1, row));
@@ -171,7 +199,7 @@ describe("mouse-aware components", () => {
 			assert.deepStrictEqual(changes, ["item-6", `item-${4 + row}`]);
 		});
 
-		it(`ignores hover and clicks visible settings row ${row} after scrolling`, () => {
+		it(`hovers and clicks visible settings row ${row} after scrolling`, () => {
 			const changes: Array<{ id: string; value: string }> = [];
 			const list = new SettingsList(
 				Array.from({ length: 12 }, (_, i) => ({
@@ -193,10 +221,13 @@ describe("mouse-aware components", () => {
 			assert.match(before[4], /^> Item 6/);
 			assert.match(before[row + 2], new RegExp(`Item ${4 + row} `));
 
-			for (const y of [0, 1, 2, 3, 4, row]) {
-				assert.strictEqual(list.handleMouse({ ...mouse("move", 1, y + 2), button: "none" }), undefined);
-				assert.deepStrictEqual(list.render(80), before);
-			}
+			// The search input row and the blank row under it hold no item.
+			assert.strictEqual(list.handleMouse({ ...mouse("move", 1, 0), button: "none" }), undefined);
+			assert.strictEqual(list.handleMouse({ ...mouse("move", 1, 1), button: "none" }), undefined);
+			assert.deepStrictEqual(list.render(80), before);
+
+			list.handleMouse({ ...mouse("move", 1, row + 2), button: "none" });
+			assert.match(list.render(80)[row + 2], new RegExp(`Item ${4 + row} `));
 			assert.deepStrictEqual(changes, []);
 
 			list.handleMouse(mouse("press", 1, row + 2));
