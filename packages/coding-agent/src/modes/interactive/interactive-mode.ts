@@ -4744,6 +4744,11 @@ export class InteractiveMode {
 
 	private updatePendingMessagesDisplay(): void {
 		this.pendingMessagesContainer.clear();
+		// Running bash commands live in the same container. Dropping them here would hide
+		// their output until the next flush and resize the dock, which slides the transcript.
+		for (const component of this.pendingBashComponents) {
+			this.pendingMessagesContainer.addChild(component);
+		}
 		const { steering: steeringMessages, followUp: followUpMessages } = this.getAllQueuedMessages();
 		if (steeringMessages.length > 0 || followUpMessages.length > 0) {
 			this.pendingMessagesContainer.addChild(new Spacer(1));

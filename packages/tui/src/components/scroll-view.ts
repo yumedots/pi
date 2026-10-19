@@ -33,6 +33,7 @@ export class ScrollView extends Container {
 	private currentViewportHeight = 0;
 	private followingEnd: boolean;
 	private followSuppressedAtEnd = false;
+	private pendingEndJump = false;
 	private requestRenderCallback: (() => void) | undefined;
 	private transientScrollbarVisible = false;
 	private scrollbarActive = false;
@@ -180,6 +181,8 @@ export class ScrollView extends Container {
 		this.currentScrollTop = next;
 		this.followingEnd = this.followEnd;
 		this.followSuppressedAtEnd = false;
+		// The next layout pins the exact end, even if the content or viewport changed since.
+		this.pendingEndJump = true;
 		if (changed) {
 			this.markScrollbarActivity();
 			this.requestRenderCallback?.();
@@ -187,12 +190,24 @@ export class ScrollView extends Container {
 	}
 
 	updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
+		const contentChanged = contentHeight !== this.contentHeight;
 		this.contentHeight = Math.max(0, Math.floor(contentHeight));
 		this.currentViewportHeight = Math.max(0, Math.floor(viewportHeight));
 		this.requestRenderCallback = requestRender;
 		const maxScrollTop = Math.max(0, this.contentHeight - this.currentViewportHeight);
-		if (this.followingEnd) this.currentScrollTop = maxScrollTop;
-		else this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
+		if (this.pendingEndJump) {
+			// An explicit jump to the end: land on the exact end.
+			this.pendingEndJump = false;
+			this.currentScrollTop = maxScrollTop;
+		} else if (this.followingEnd && !contentChanged) {
+			// Only the viewport resized (the dock next to the transcript changed height): keep
+			// the content where it is, so the transcript does not slide up and back down.
+			this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
+		} else if (this.followingEnd) {
+			this.currentScrollTop = maxScrollTop;
+		} else {
+			this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
+		}
 		if (this.currentScrollTop < maxScrollTop) this.followSuppressedAtEnd = false;
 		if (this.followEnd && this.currentScrollTop === maxScrollTop && !this.followSuppressedAtEnd) {
 			this.followingEnd = true;

@@ -171,6 +171,46 @@ describe("viewport layout", () => {
 		assert.deepStrictEqual(visibleLines(frame.lines), ["shown"]);
 	});
 
+	it("keeps the content in place when the viewport resizes while following the end", () => {
+		const content = new Text(Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0);
+		const scrollView = new ScrollView(content, {
+			follow: "end",
+			primary: true,
+		});
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 35);
+
+		// The dock next to the transcript grew (the editor opened its autocomplete list): the
+		// viewport shrank. The content must not slide, so the offset stays where it was.
+		renderLayoutFrame(scrollView, 10, 3, () => {});
+		assert.strictEqual(scrollView.scrollTop, 35);
+
+		// The dock shrank back: the content still did not slide, and the end is visible again.
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 35);
+
+		// New content still pulls the view to the end.
+		content.setText(`${Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n")}\nline 41`);
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 36);
+	});
+
+	it("pins an explicit jump to the end even when the viewport changed since", () => {
+		const content = new Text(Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0);
+		const scrollView = new ScrollView(content, {
+			follow: "end",
+			primary: true,
+		});
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 35);
+
+		// The dock grew, so the end moved further down.
+		renderLayoutFrame(scrollView, 10, 3, () => {});
+		scrollView.scrollToEnd();
+		renderLayoutFrame(scrollView, 10, 3, () => {});
+		assert.strictEqual(scrollView.scrollTop, 37);
+	});
+
 	it("tracks follow-end state and returns unused scroll delta", () => {
 		const scrollView = new ScrollView(new Text("1\n2\n3\n4\n5\n6", 0, 0), {
 			follow: "end",

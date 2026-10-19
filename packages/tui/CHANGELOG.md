@@ -17,6 +17,7 @@
 
 ### Fixed
 
+- Fixed a scroll view sliding its content up and back down when only the viewport height changed. The scroll offset now stays where it is, so a transcript next to a resizing dock no longer bounces
 - Fixed the select and settings lists re-centering their visible window on the selection, which made a hovered row slide out from under the pointer
 
 ## [1.3.0] - 2026-10-15
