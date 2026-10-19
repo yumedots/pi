@@ -9,8 +9,10 @@ how to go back.
 | Area | Before | After |
 | --- | --- | --- |
 | Install | `npm ci --ignore-scripts` | `bun install --frozen-lockfile --ignore-scripts` |
-| Script runner | `npm run X` | `bun run X` (66 ms against npm's 291 ms) |
+| Script runner | `npm run X` | `bun run X` (98 ms against npm's 247 ms for the same trivial script) |
 | Package build | a hand-written `cd packages/X && npm run build` chain | `scripts/build-workspaces.mjs`, which builds the dependency levels and runs the packages inside a level at the same time |
+| Type checks | `typescript/unstable/sync` on Node | `typescript/unstable/async`, on Bun and Node |
+| Run from source | `node --import source-resolver` | `bun` (Bun reads the tsconfig paths itself) |
 | Bundler for the published package | esbuild | esbuild, unchanged (see below) |
 | Standalone binary | `bun build --compile` | `bun build --compile`, unchanged flags (see below) |
 | CI | `actions/setup-node` + `cache: npm` | `oven-sh/setup-bun` + a cache of `~/.bun/install/cache` |
@@ -18,6 +20,52 @@ how to go back.
 `bun.lock` is generated from `package-lock.json` with `bun pm migrate`, so both
 lockfiles describe one dependency tree. `bun run check:lockfiles` fails when
 they resolve different versions.
+
+## The measured results
+
+Apple M3 Pro, 11 cores, 18 GiB, macOS 27.0.1. Node 26.10.0, npm 11.19.1, Bun
+1.4.3, hyperfine 2.0.0. Every number is the mean of 5 runs after 1 warmup.
+The full tables, including the variance, are in `bench/compare.md`.
+
+Before the migration against after it:
+
+| | npm + Node | Bun | |
+| --- | --- | --- | --- |
+| Install, warm cache | 3.13 s | 384 ms | 8.2x |
+| One script invocation | 464 ms | 98 ms | 4.7x |
+| Full build | 8.06 s | 4.30 s | 1.9x |
+| Check | 17.32 s | 12.12 s | 1.4x |
+| Full test suite | 134.02 s | 115.30 s | 1.2x |
+| Install, cold cache | 7.42 s | 5.75 s | 1.3x |
+| Build the compiled binary | 9.41 s | 8.07 s | 1.2x |
+
+The toolchain on its own, both columns running the migrated code:
+
+| | npm + Node | Bun | |
+| --- | --- | --- | --- |
+| Install, warm cache | 2.99 s | 384 ms | 7.8x |
+| One script invocation | 247 ms | 98 ms | 2.5x |
+| Full build, sequential chain | 6.90 s | 5.25 s | 1.3x |
+| Full build | 4.96 s | 4.30 s | 1.2x |
+| Check | 13.17 s | 12.12 s | 1.1x |
+| Install, cold cache | 7.19 s | 5.75 s | 1.3x |
+| Full test suite | 114.02 s | 115.30 s | 1.0x |
+| Build the compiled binary | 7.59 s | 8.07 s | 0.9x |
+
+What did not get faster, and why:
+
+- The test suite is a wash. It runs vitest on Node in both setups, and the
+  test runner is the same.
+- The binary build is 6% slower with Bun. The `bun build --compile` step is
+  the same; the difference is the runner overhead in the four `bun run
+  --filter` calls the script makes, which the npm version paid too.
+- The CLI startup rows are the same in both columns, because they run the same
+  command. They are the noise floor of this measurement.
+
+The install numbers are network-bound on a cold cache and vary by more than a
+second between runs. On the Linux sandbox the numbers looked the other way
+around (npm 17 s, Bun 4.2 s cold), so the cold install depends on the network
+and the registry as much as on the package manager.
 
 ## What stayed on npm or Node, and why
 
