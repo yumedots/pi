@@ -4,6 +4,7 @@
 
 ### Breaking Changes
 
+- Removed the `enableInstallTelemetry` and `enableAnalytics` settings, the `PI_TELEMETRY` environment variable, the anonymous install/update ping to `pi.dev`, and the provider attribution headers they gated. The first-run setup no longer asks about usage data sharing
 - `parseSkillBlock()` is replaced by `parseSkillMessage()`. It returns the skill blocks of a message and the request that came with them, so a message can now carry more than one skill
 
 ### Added

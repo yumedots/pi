@@ -352,12 +352,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			maxRetries: options.maxRetries ?? providerRetrySettings.maxRetries,
 			maxRetryDelayMs: options.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
 			transformHeaders: async (requestHeaders) => {
-				const headers = mergeProviderAttributionHeaders(
-					requestModel,
-					settingsManager,
-					options.sessionId,
-					requestHeaders,
-				);
+				const headers = mergeProviderAttributionHeaders(requestModel, options.sessionId, requestHeaders);
 				return headerRunner?.hasHandlers("before_provider_headers")
 					? headerRunner.emitBeforeProviderHeaders(headers ?? {})
 					: (headers ?? {});
