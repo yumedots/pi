@@ -16,6 +16,7 @@
 
 ### Changed
 
+- Thinking blocks now start collapsed. The transcript shows an animated braille sign in front of the `Thinking...` label while the model thinks, and a `+Thought · 3.7s` summary once it is done. Running tool calls show the same spinning sign. Set `hideThinkingBlock` to `false`, or press `Ctrl+T`, to show the thinking again
 - A skill invocation and the request typed alongside it now render as one message. The request appears on the same line as the mention
 - Skills can be picked with `@` in the editor. The mention loads the skill, and the transcript shows it as `@name` instead of `[skill] name`
 - An `@name` mention loads the skill wherever it appears in the message, so `extract report.pdf with @pdf-tools` works too. The mention is consumed by the skill and does not repeat in the request
@@ -34,9 +35,13 @@
 - The settings menu no longer lists the fullscreen exit output while it holds its default value
 - The footer now shows the cwd and the stats on a single line, with the model info right-aligned on the same line
 - Sent messages now share one gray card background, instead of a blue card for regular messages and a purple card for skill invocations
+- The input box is now a card in the same gray as the sent messages, instead of a box framed by horizontal rules
+- The input box is now one text line tall by default, and shows a `>` prompt in front of the text, like a shell prompt
+- Starting a new session with `/new` no longer adds a "New session started" line to the transcript
 
 ### Fixed
 
+- Fixed the delay between pressing Enter and the message showing up in the transcript. The submitted message now appears right away, instead of after the run is prepared (extension hooks, compaction checks, session writes)
 - Fixed the fullscreen transcript bouncing after jumping to the latest message. The transcript now keeps its position when the editor or footer changes height, instead of sliding up and back down
 - Fixed the input box growing with the prompt, which resized the transcript above it. The input area now has a fixed height and longer prompts scroll inside it, so the conversation stays put while typing
 - The mouse wheel now scrolls one line per event in fullscreen mode by default. `fullscreenWheelScrollLines: "auto"` restores the accelerating scroll

@@ -19,6 +19,7 @@ import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "
 import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
 import { keyHint } from "./keybinding-hints.ts";
+import { SignedRow } from "./spinner-sign.ts";
 
 const FALLBACK_PREVIEW_LINES = 10;
 
@@ -167,6 +168,17 @@ export class ToolExecutionComponent extends Container {
 		});
 	}
 
+	/**
+	 * The call row, with a spinning sign in front of it while the tool runs. The sign is drawn
+	 * from the clock, so it advances on every redraw without rewriting the call text.
+	 */
+	private createCallRegion(component: Component): Component {
+		if (this.result !== undefined && !this.isPartial) {
+			return this.createResultRegion(component);
+		}
+		return this.createResultRegion(new SignedRow(component));
+	}
+
 	updateArgs(args: any): void {
 		this.args = args;
 		this.updateDisplay();
@@ -286,17 +298,17 @@ export class ToolExecutionComponent extends Container {
 
 			const callRenderer = this.getCallRenderer();
 			if (!callRenderer) {
-				renderContainer.addChild(this.createResultRegion(this.createCallFallback()));
+				renderContainer.addChild(this.createCallRegion(this.createCallFallback()));
 				hasContent = true;
 			} else {
 				try {
 					const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
 					this.callRendererComponent = component;
-					renderContainer.addChild(this.createResultRegion(component));
+					renderContainer.addChild(this.createCallRegion(component));
 					hasContent = true;
 				} catch {
 					this.callRendererComponent = undefined;
-					renderContainer.addChild(this.createResultRegion(this.createCallFallback()));
+					renderContainer.addChild(this.createCallRegion(this.createCallFallback()));
 					hasContent = true;
 				}
 			}

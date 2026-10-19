@@ -1114,6 +1114,9 @@ export function getEditorTheme(): EditorTheme {
 	return {
 		borderColor: (text: string) => theme.fg("borderMuted", text),
 		selectList: getSelectListTheme(),
+		// The input box is a card in the same color as the sent messages.
+		backgroundColor: (text: string) => theme.bg("userMessageBg", text),
+		promptColor: (text: string) => theme.fg("accent", text),
 	};
 }
 

@@ -372,7 +372,7 @@ const AUTH_TYPE_ORDER = { oauth: 0, api_key: 1 } satisfies Record<AuthSelectorPr
  * Text lines the input area always shows. Keeping the input box a fixed height stops the
  * transcript above it from resizing (and sliding) while a prompt is typed.
  */
-const EDITOR_CONTENT_HEIGHT = 3;
+const EDITOR_CONTENT_HEIGHT = 1;
 
 function createFuzzyAutocompleteItems<T>(
 	items: T[],
@@ -480,6 +480,12 @@ export class InteractiveMode {
 	private isInitialized = false;
 	private onInputCallback?: (text: string) => void;
 	private pendingUserInputs: string[] = [];
+	/**
+	 * User messages echoed into the chat the moment they are submitted, waiting for the run's own
+	 * user message. The echo keeps the UI responsive while the run is prepared (extension hooks,
+	 * compaction checks, session writes) before the request goes out.
+	 */
+	private pendingUserMessageEchoes: Array<{ text: string; component: UserMessageComponent; spacer?: Spacer }> = [];
 	private activeStatusIndicator: StatusIndicator | undefined = undefined;
 	private activeWorkingIndicatorEmbedded = false;
 	private readonly idleStatus = new IdleStatus();
@@ -1216,8 +1222,17 @@ export class InteractiveMode {
 		while (true) {
 			const userInput = await this.getUserInput();
 			try {
-				await this.session.prompt(userInput);
+				await this.session.prompt(userInput, {
+					preflightResult: (disposition) => {
+						// "handled" means an extension took the prompt, so it never becomes a
+						// user message and the echo of it has to go.
+						if (disposition === "handled") {
+							this.discardUserMessageEcho(userInput);
+						}
+					},
+				});
 			} catch (error: unknown) {
+				this.discardUserMessageEcho(userInput);
 				const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
 				this.showError(errorMessage);
 			}
@@ -1612,6 +1627,7 @@ export class InteractiveMode {
 					}
 
 					this.chatContainer.clear();
+					this.pendingUserMessageEchoes = [];
 					this.renderInitialMessages();
 					if (result.editorText && !this.editor.getText().trim()) {
 						this.editor.setText(result.editorText);
@@ -1817,6 +1833,7 @@ export class InteractiveMode {
 		this.chatContainer.clear();
 		this.pendingMessagesContainer.clear();
 		this.compactionQueuedMessages = [];
+		this.pendingUserMessageEchoes = [];
 		this.streamingComponent = undefined;
 		this.streamingMessage = undefined;
 		this.pendingTools.clear();
@@ -3019,6 +3036,9 @@ export class InteractiveMode {
 			// First, move any pending bash components to chat
 			this.flushPendingBashComponents();
 
+			// Show the message right away: the run is prepared in the background, and the user
+			// should not wait for extension hooks or session writes to see their own prompt.
+			this.echoUserMessage(text);
 			if (this.onInputCallback) {
 				this.onInputCallback(text);
 			} else {
@@ -3026,6 +3046,62 @@ export class InteractiveMode {
 			}
 			this.editor.addToHistory?.(text);
 		};
+	}
+
+	/**
+	 * Render the submitted message in the chat immediately. The run's own user message replaces
+	 * this echo once it arrives (or the echo is dropped when the prompt never reaches the model).
+	 */
+	private echoUserMessage(text: string): void {
+		const spacer = this.chatContainer.children.length > 0 ? new Spacer(1) : undefined;
+		if (spacer) this.chatContainer.addChild(spacer);
+		const component = new UserMessageComponent(
+			text,
+			this.getMarkdownThemeWithSettings(),
+			this.outputPad,
+			this.getMarkdownTransformers(),
+		);
+		this.chatContainer.addChild(component);
+		this.pendingUserMessageEchoes.push({ text, component, spacer });
+		if (this.workingVisible) {
+			this.showWorkingStatusIndicator();
+		}
+		this.ui.requestRender();
+	}
+
+	/** Remove an echoed message from the chat. */
+	private removeUserMessageEcho(echo: { component: UserMessageComponent; spacer?: Spacer }): void {
+		this.chatContainer.removeChild(echo.component);
+		if (echo.spacer) this.chatContainer.removeChild(echo.spacer);
+	}
+
+	/** Drop the echo of a prompt that never reached the model (handled by an extension, or failed). */
+	private discardUserMessageEcho(text: string): void {
+		const index = this.pendingUserMessageEchoes.findIndex((echo) => echo.text === text);
+		if (index === -1) return;
+		const [echo] = this.pendingUserMessageEchoes.splice(index, 1);
+		this.removeUserMessageEcho(echo);
+		this.clearStatusIndicator("working");
+		this.ui.requestRender();
+	}
+
+	/**
+	 * Render a user message from the run. The echoed copy of the same text is kept as is; a
+	 * different message (skill or prompt template expansion, attachments) replaces the echo.
+	 */
+	private renderUserMessage(message: Extract<AgentMessage, { role: "user" }>): void {
+		const textContent = this.getUserMessageText(message);
+		const isTextOnly = typeof message.content === "string" || message.content.every((block) => block.type === "text");
+		if (textContent && isTextOnly) {
+			const echoIndex = this.pendingUserMessageEchoes.findIndex((echo) => echo.text === textContent);
+			if (echoIndex >= 0) {
+				this.pendingUserMessageEchoes.splice(echoIndex, 1);
+				return;
+			}
+		}
+		const stale = this.pendingUserMessageEchoes.shift();
+		if (stale) this.removeUserMessageEcho(stale);
+		this.addMessageToChat(message);
 	}
 
 	private subscribeToAgent(): void {
@@ -3095,6 +3171,7 @@ export class InteractiveMode {
 					const entries = this.sessionManager.buildContextEntries();
 					if (entries[0]?.id !== event.entry.id) break;
 					this.chatContainer.clear();
+					this.pendingUserMessageEchoes = [];
 					const branch = this.sessionManager.getBranch();
 					const compactionIndex = branch.findIndex((entry) => entry.id === event.entry.id);
 					const entriesAfterCompaction = new Set(branch.slice(compactionIndex + 1).map((entry) => entry.id));
@@ -3133,7 +3210,7 @@ export class InteractiveMode {
 					this.addMessageToChat(event.message);
 					this.ui.requestRender();
 				} else if (event.message.role === "user") {
-					this.addMessageToChat(event.message);
+					this.renderUserMessage(event.message);
 					this.updatePendingMessagesDisplay();
 					this.ui.requestRender();
 				} else if (event.message.role === "assistant") {
@@ -3341,6 +3418,7 @@ export class InteractiveMode {
 						throw new Error("Completed compaction is missing from the session context");
 					}
 					this.chatContainer.clear();
+					this.pendingUserMessageEchoes = [];
 					// The latest compaction is prepended for model context; append it below at its chronological position.
 					this.renderSessionEntries(entries.slice(1));
 					this.addMessageToChat(
@@ -3893,6 +3971,7 @@ export class InteractiveMode {
 
 	private rebuildChatFromMessages(): void {
 		this.chatContainer.clear();
+		this.pendingUserMessageEchoes = [];
 		this.renderSessionEntries(this.sessionManager.buildContextEntries());
 	}
 
@@ -5343,6 +5422,7 @@ export class InteractiveMode {
 
 						// Update UI
 						this.chatContainer.clear();
+						this.pendingUserMessageEchoes = [];
 						this.renderInitialMessages();
 						if (result.editorText && !this.editor.getText().trim()) {
 							this.editor.setText(result.editorText);
@@ -6708,9 +6788,6 @@ export class InteractiveMode {
 			if (result.cancelled) {
 				return;
 			}
-			this.chatContainer.addChild(new Spacer(1));
-			this.chatContainer.addChild(new ThemedText(() => theme.fg("accent", "✓ New session started"), 1, 1));
-			this.ui.requestRender();
 		} catch (error: unknown) {
 			await this.handleFatalRuntimeError("Failed to create session", error);
 		}

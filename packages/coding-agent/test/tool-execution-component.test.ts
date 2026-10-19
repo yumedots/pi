@@ -485,6 +485,26 @@ describe("ToolExecutionComponent parity", () => {
 		expect(expandedLines[textLine + 1]).toMatch(/^\s+ {4}line two$/);
 	});
 
+	test("puts a spinning sign in front of a running call and drops it when the result arrives", () => {
+		const component = new ToolExecutionComponent(
+			"custom_tool",
+			"tool-spinner",
+			{ query: "pi" },
+			{},
+			createBaseToolDefinition(),
+			createFakeTui(),
+			process.cwd(),
+		);
+
+		const running = stripAnsi(component.render(120).join("\n"));
+		expect(running).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] custom_tool/);
+
+		component.updateResult({ content: [{ type: "text", text: "ok" }], details: {}, isError: false }, false);
+		const finished = stripAnsi(component.render(120).join("\n"));
+		expect(finished).toContain("custom_tool");
+		expect(finished).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] custom_tool/);
+	});
+
 	test("collapses fallback results until expanded", () => {
 		const toolDefinition: ToolDefinition = {
 			...createBaseToolDefinition(),

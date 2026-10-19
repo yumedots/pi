@@ -157,6 +157,58 @@ describe("FooterComponent width handling", () => {
 		}
 	});
 
+	it("puts the cwd and the stats on one line", () => {
+		const session = createSession({
+			sessionName: "",
+			modelId: "glm-5.1",
+			reasoning: true,
+			thinkingLevel: "medium",
+		});
+		const footer = new FooterComponent(session, createFooterData(1));
+
+		const lines = footer.render(120);
+		expect(lines).toHaveLength(1);
+		const line = stripAnsi(lines[0]);
+		expect(line).toContain("/tmp/project (main) • 12.3%/200k (auto)");
+		expect(line).toContain("glm-5.1 • medium");
+	});
+
+	it("keeps the context percentage and the model on a narrow line", () => {
+		const session = createSession({
+			sessionName: "",
+			modelId: "glm-5.1",
+			reasoning: true,
+			thinkingLevel: "medium",
+		});
+		const footer = new FooterComponent(session, createFooterData(1));
+
+		const line = stripAnsi(footer.render(40)[0]);
+		expect(visibleWidth(line)).toBeLessThanOrEqual(40);
+		expect(line).toContain("12.3%/200k (auto)");
+		expect(line).toContain("glm-5.1 • medium");
+	});
+
+	it("drops the detail stats before the cwd on a narrow line", () => {
+		const session = createSession({
+			sessionName: "",
+			modelId: "glm-5.1",
+			usage: {
+				input: 12_345,
+				output: 6_789,
+				cacheRead: 0,
+				cacheWrite: 0,
+				cost: { total: 1.234 },
+			},
+		});
+		const footer = new FooterComponent(session, createFooterData(1));
+
+		const line = stripAnsi(footer.render(60)[0]);
+		expect(visibleWidth(line)).toBeLessThanOrEqual(60);
+		expect(line).toContain("/tmp/project (main)");
+		expect(line).toContain("12.3%/200k (auto)");
+		expect(line).not.toContain("↑12k");
+	});
+
 	it("shows the physical model a virtual model routed to", () => {
 		const session = createSession({
 			sessionName: "",
@@ -167,7 +219,7 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		const statsLine = stripAnsi(footer.render(120)[1]);
+		const statsLine = stripAnsi(footer.render(120)[0]);
 
 		expect(statsLine).toContain("auto \u2022 high \u2192 gpt-5.6-luna \u2022 medium");
 	});
@@ -206,7 +258,7 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		const statsLine = stripAnsi(footer.render(120)[1]);
+		const statsLine = stripAnsi(footer.render(120)[0]);
 		expect(statsLine).toContain("$1.250");
 	});
 
@@ -214,10 +266,10 @@ describe("FooterComponent width handling", () => {
 		const usage = { input: 10, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.5 } };
 		const session = createSession({ sessionName: "", usage });
 		const footer = new FooterComponent(session, createFooterData(1));
-		expect(stripAnsi(footer.render(120)[1])).toContain("$0.500");
+		expect(stripAnsi(footer.render(120)[0])).toContain("$0.500");
 
 		session.sessionManager.getEntries().push({ type: "message", message: { role: "assistant", usage } } as never);
-		expect(stripAnsi(footer.render(120)[1])).toContain("$1.000");
+		expect(stripAnsi(footer.render(120)[0])).toContain("$1.000");
 	});
 
 	it("shows the latest cache hit rate when cache usage is present", () => {
@@ -233,7 +285,7 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		const statsLine = stripAnsi(footer.render(120)[1]);
+		const statsLine = stripAnsi(footer.render(120)[0]);
 		expect(statsLine).toContain("CH25.0%");
 	});
 
@@ -251,14 +303,14 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		expect(stripAnsi(footer.render(120)[1])).toContain("$1.234 (sub)");
+		expect(stripAnsi(footer.render(120)[0])).toContain("$1.234 (sub)");
 	});
 
 	it("marks explicitly identified subscription auth", () => {
 		const session = createSession({ sessionName: "", provider: "anthropic", usingSubscription: true });
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		expect(stripAnsi(footer.render(120)[1])).toContain("$0.000 (sub)");
+		expect(stripAnsi(footer.render(120)[0])).toContain("$0.000 (sub)");
 	});
 
 	it("does not mark generic OAuth sign-in as a subscription", () => {
@@ -274,7 +326,7 @@ describe("FooterComponent width handling", () => {
 			},
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
-		const stats = stripAnsi(footer.render(120)[1]);
+		const stats = stripAnsi(footer.render(120)[0]);
 
 		expect(stats).toContain("$1.234");
 		expect(stats).not.toContain("(sub)");

@@ -7,6 +7,9 @@ export type CustomEditorOptions = EditorOptions & {
 	embedWorkingStatus?: boolean;
 };
 
+/** Marker drawn in front of the input, like a shell prompt. */
+const DEFAULT_PROMPT = "> ";
+
 /**
  * Custom editor that handles app-level keybindings for coding-agent.
  */
@@ -24,7 +27,7 @@ export class CustomEditor extends Editor {
 	public onExtensionShortcut?: (data: string) => boolean;
 
 	constructor(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager, options?: CustomEditorOptions) {
-		super(tui, theme, options);
+		super(tui, theme, { ...options, prompt: options?.prompt ?? DEFAULT_PROMPT });
 		this.keybindings = keybindings;
 		this.embedWorkingStatus = options?.embedWorkingStatus ?? false;
 	}
@@ -41,6 +44,12 @@ export class CustomEditor extends Editor {
 		let status = this.workingStatusIndicator.renderInBorder(Math.max(1, width - 5));
 		let statusWidth = visibleWidth(status);
 		if (statusWidth === 0) return super.renderTopBorder(width, hiddenLineCount);
+
+		if (this.filledBox) {
+			// The box itself is the frame, so the status sits on the filled top row, without a rule.
+			const overflow = hiddenLineCount > 0 ? this.borderColor(` ↑ ${hiddenLineCount} more`) : "";
+			return `${status}${overflow}`;
+		}
 
 		const overflowLabel = hiddenLineCount > 0 ? ` ↑ ${hiddenLineCount} more ` : undefined;
 		const overflowLabelWidth = overflowLabel ? visibleWidth(overflowLabel) : 0;

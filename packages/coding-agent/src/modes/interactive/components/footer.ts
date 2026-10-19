@@ -44,6 +44,122 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
 	return relativeToHome === "" ? "~" : `~${sep}${relativeToHome}`;
 }
 
+/** Separator between the cwd group and the stats group on the footer line. */
+const GROUP_SEPARATOR = " • ";
+/** Minimum spaces between the left group and the right-aligned model info. */
+const MIN_PADDING = 2;
+
+/**
+ * Shorten a path from the left so the tail (the project folder) stays visible.
+ */
+function truncateCwd(cwd: string, maxWidth: number): string {
+	if (maxWidth <= 0) return "";
+	if (visibleWidth(cwd) <= maxWidth) return cwd;
+	const segments = cwd.split(/[/\\]/).filter((segment) => segment.length > 0);
+	for (let i = 1; i < segments.length; i++) {
+		const candidate = `…/${segments.slice(i).join("/")}`;
+		if (visibleWidth(candidate) <= maxWidth) return candidate;
+	}
+	return truncateToWidth(cwd, maxWidth, "…");
+}
+
+interface FooterFit {
+	left: string;
+	right: string;
+}
+
+/**
+ * Fit the footer parts on one line.
+ *
+ * Shrink order: drop the detail stats (token counts, cache, cost) one by one, then shorten the
+ * cwd from the left so its tail stays visible, then drop the cwd, then shorten the model info.
+ * The context percentage keeps its content as long as possible.
+ */
+function fitFooterLine(
+	cwd: string,
+	cwdSuffixes: string[],
+	detailParts: string[],
+	coreParts: string[],
+	rightCandidates: string[],
+	width: number,
+): FooterFit {
+	let best: FooterFit = { left: "", right: "" };
+	for (const right of rightCandidates) {
+		const fit = fitFooterLineWithRight(cwd, cwdSuffixes, detailParts, coreParts, right, width);
+		best = fit;
+		// The model info was cut, try the shorter candidate before giving up on it.
+		if (!fit.truncated) break;
+	}
+	return best;
+}
+
+function fitFooterLineWithRight(
+	cwd: string,
+	cwdSuffixes: string[],
+	detailParts: string[],
+	coreParts: string[],
+	right: string,
+	width: number,
+): FooterFit & { truncated: boolean } {
+	const core = coreParts.join(" ");
+	const rightWidth = visibleWidth(right);
+	const details = [...detailParts];
+	const suffixes = [...cwdSuffixes];
+
+	const buildLeft = (path: string): string => {
+		const cwdGroup = [path, ...suffixes].filter((part) => part.length > 0).join(" ");
+		const stats = [...details, core].filter((part) => part.length > 0).join(" ");
+		if (!cwdGroup) return stats;
+		return stats ? `${cwdGroup}${GROUP_SEPARATOR}${stats}` : cwdGroup;
+	};
+
+	const fits = (left: string): boolean => visibleWidth(left) + MIN_PADDING + rightWidth <= width;
+
+	let path = cwd;
+	let left = buildLeft(path);
+
+	// Drop the detail stats until the line fits.
+	while (details.length > 0 && !fits(left)) {
+		details.shift();
+		left = buildLeft(path);
+	}
+
+	// Shorten the cwd from the left so the project folder stays visible.
+	if (!fits(left)) {
+		const stats = [...details, core].filter((part) => part.length > 0).join(" ");
+		const statsWidth = stats ? visibleWidth(GROUP_SEPARATOR) + visibleWidth(stats) : 0;
+		const suffixWidth = visibleWidth(suffixes.join(" "));
+		path = truncateCwd(cwd, width - MIN_PADDING - rightWidth - statsWidth - suffixWidth - 1);
+		left = buildLeft(path);
+	}
+
+	// Drop the cwd, then the branch and session name, before cutting the model info.
+	if (!fits(left)) {
+		path = "";
+		left = buildLeft(path);
+	}
+	if (!fits(left)) {
+		suffixes.length = 0;
+		left = buildLeft(path);
+	}
+
+	// Shorten the model info.
+	let fittedRight = right;
+	let truncated = false;
+	if (!fits(left)) {
+		truncated = true;
+		const available = width - visibleWidth(left) - MIN_PADDING;
+		fittedRight = available > 0 ? truncateToWidth(right, available, "") : "";
+	}
+
+	// The stats alone do not fit either.
+	if (visibleWidth(left) > width) {
+		left = truncateToWidth(left, width, "…");
+	}
+
+	return { left, right: fittedRight, truncated };
+}
+
 interface SessionStats {
 	session: AgentSession;
 	sessionId: string;
@@ -162,28 +278,27 @@ export class FooterComponent implements Component {
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
 
 		// Replace home directory with ~
-		let pwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);
+		const cwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);
 
-		// Add git branch if available
+		// Git branch and session name stay visible when the path has to be shortened.
+		const cwdSuffixes: string[] = [];
 		const branch = this.footerData.getGitBranch();
 		if (branch) {
-			pwd = `${pwd} (${branch})`;
+			cwdSuffixes.push(`(${branch})`);
 		}
-
-		// Add session name if set
 		const sessionName = this.session.sessionManager.getSessionName();
 		if (sessionName) {
-			pwd = `${pwd} • ${sessionName}`;
+			cwdSuffixes.push(`• ${sessionName}`);
 		}
 
-		// Build stats line
-		const statsParts = [];
-		if (usageTotals.input) statsParts.push(`↑${formatTokens(usageTotals.input)}`);
-		if (usageTotals.output) statsParts.push(`↓${formatTokens(usageTotals.output)}`);
-		if (usageTotals.cacheRead) statsParts.push(`R${formatTokens(usageTotals.cacheRead)}`);
-		if (usageTotals.cacheWrite) statsParts.push(`W${formatTokens(usageTotals.cacheWrite)}`);
+		// Detail stats, dropped from the front when the line does not fit.
+		const detailParts: string[] = [];
+		if (usageTotals.input) detailParts.push(`↑${formatTokens(usageTotals.input)}`);
+		if (usageTotals.output) detailParts.push(`↓${formatTokens(usageTotals.output)}`);
+		if (usageTotals.cacheRead) detailParts.push(`R${formatTokens(usageTotals.cacheRead)}`);
+		if (usageTotals.cacheWrite) detailParts.push(`W${formatTokens(usageTotals.cacheWrite)}`);
 		if ((usageTotals.cacheRead > 0 || usageTotals.cacheWrite > 0) && latestCacheHitRate !== undefined) {
-			statsParts.push(`CH${latestCacheHitRate.toFixed(1)}%`);
+			detailParts.push(`CH${latestCacheHitRate.toFixed(1)}%`);
 		}
 
 		// Kimi Coding is subscription-backed despite using API-key authentication.
@@ -192,7 +307,7 @@ export class FooterComponent implements Component {
 			: false;
 		if (usageTotals.cost || usingSubscription) {
 			const costStr = `$${usageTotals.cost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`;
-			statsParts.push(costStr);
+			detailParts.push(costStr);
 		}
 
 		// Colorize context percentage based on usage
@@ -209,28 +324,13 @@ export class FooterComponent implements Component {
 		} else {
 			contextPercentStr = contextPercentDisplay;
 		}
-		statsParts.push(contextPercentStr);
+		const coreParts = [contextPercentStr];
 		if (areExperimentalFeaturesEnabled()) {
-			statsParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
+			coreParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
 		}
-
-		let statsLeft = statsParts.join(" ");
 
 		// Add model name on the right side, plus thinking level if model supports it
 		const modelName = state.model?.id || "no-model";
-
-		let statsLeftWidth = visibleWidth(statsLeft);
-
-		// If statsLeft is too wide, truncate it
-		if (statsLeftWidth > width) {
-			statsLeft = truncateToWidth(statsLeft, width, "...");
-			statsLeftWidth = visibleWidth(statsLeft);
-		}
-
-		// Calculate available space for padding (minimum 2 spaces between stats and model)
-		const minPadding = 2;
-
-		// Add thinking level indicator if model supports reasoning
 		let rightSideWithoutProvider = modelName;
 		if (state.model?.reasoning) {
 			const thinkingLevel = state.thinkingLevel || "off";
@@ -244,47 +344,22 @@ export class FooterComponent implements Component {
 			rightSideWithoutProvider += ` → ${routed.model.id}${level}`;
 		}
 
-		// Prepend the provider in parentheses if there are multiple providers and there's enough room
-		let rightSide = rightSideWithoutProvider;
-		if (this.footerData.getAvailableProviderCount() > 1 && state.model) {
-			rightSide = `(${state.model!.provider}) ${rightSideWithoutProvider}`;
-			if (statsLeftWidth + minPadding + visibleWidth(rightSide) > width) {
-				// Too wide, fall back
-				rightSide = rightSideWithoutProvider;
-			}
-		}
+		// The provider is only shown when several providers are available. The plain model name is
+		// the fallback when the provider prefix does not fit.
+		const rightCandidates =
+			this.footerData.getAvailableProviderCount() > 1 && state.model
+				? [`(${state.model.provider}) ${rightSideWithoutProvider}`, rightSideWithoutProvider]
+				: [rightSideWithoutProvider];
 
-		const rightSideWidth = visibleWidth(rightSide);
-		const totalNeeded = statsLeftWidth + minPadding + rightSideWidth;
+		const { left, right } = fitFooterLine(cwd, cwdSuffixes, detailParts, coreParts, rightCandidates, width);
 
-		let statsLine: string;
-		if (totalNeeded <= width) {
-			// Both fit - add padding to right-align model
-			const padding = " ".repeat(width - statsLeftWidth - rightSideWidth);
-			statsLine = statsLeft + padding + rightSide;
-		} else {
-			// Need to truncate right side
-			const availableForRight = width - statsLeftWidth - minPadding;
-			if (availableForRight > 0) {
-				const truncatedRight = truncateToWidth(rightSide, availableForRight, "");
-				const truncatedRightWidth = visibleWidth(truncatedRight);
-				const padding = " ".repeat(Math.max(0, width - statsLeftWidth - truncatedRightWidth));
-				statsLine = statsLeft + padding + truncatedRight;
-			} else {
-				// Not enough space for right side at all
-				statsLine = statsLeft;
-			}
-		}
-
-		// Apply dim to each part separately. statsLeft may contain color codes (for context %)
-		// that end with a reset, which would clear an outer dim wrapper. So we dim the parts
-		// before and after the colored section independently.
-		const dimStatsLeft = theme.fg("dim", statsLeft);
-		const remainder = statsLine.slice(statsLeft.length); // padding + rightSide
-		const dimRemainder = theme.fg("dim", remainder);
-
-		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
-		const lines = [pwdLine, dimStatsLeft + dimRemainder];
+		// Dim the groups separately. The left group may contain color codes (for context %)
+		// that end with a reset, which would clear an outer dim wrapper.
+		const gap = Math.max(0, width - visibleWidth(left) - visibleWidth(right));
+		const footerLine = right
+			? `${theme.fg("dim", left)}${" ".repeat(gap)}${theme.fg("dim", right)}`
+			: theme.fg("dim", left);
+		const lines = [footerLine];
 
 		// Add extension statuses on a single line, sorted by key alphabetically
 		const extensionStatuses = this.footerData.getExtensionStatuses();

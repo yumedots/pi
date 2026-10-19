@@ -70,7 +70,7 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = component.render(80).join("\n");
 
-		expect(rendered).toContain("Thinking...");
+		expect(stripAnsi(rendered)).toContain("+Thought");
 		expect(rendered).toContain("Response was truncated before completion.");
 	});
 
@@ -88,8 +88,49 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = stripAnsi(component.render(80).join("\n"));
 
-		expect(rendered.match(/Thinking\.\.\./g)).toHaveLength(1);
+		expect(rendered.match(/\+Thought/g)).toHaveLength(1);
 		expect(rendered).toContain("answer");
+	});
+
+	test("puts a braille sign in front of the hidden thinking label while it streams", () => {
+		initTheme("dark");
+
+		const component = new AssistantMessageComponent(
+			createAssistantMessage([{ type: "thinking", thinking: "private reasoning" }]),
+			true,
+		);
+		component.updateContent(createAssistantMessage([{ type: "thinking", thinking: "private reasoning" }]), true);
+		const rendered = stripAnsi(component.render(80).join("\n"));
+
+		expect(rendered).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking\.\.\./);
+		expect(rendered).not.toContain("private reasoning");
+	});
+
+	test("summarizes a finished thinking run", () => {
+		initTheme("dark");
+
+		const message = createAssistantMessage([{ type: "thinking", thinking: "private reasoning" }]);
+		const component = new AssistantMessageComponent(message, true);
+		component.updateContent(message, true);
+		component.updateContent(message, false);
+		const rendered = stripAnsi(component.render(80).join("\n"));
+
+		expect(rendered).toContain("+Thought");
+		expect(rendered).toMatch(/\+Thought · \d+\.\d+s/);
+		expect(rendered).not.toContain("private reasoning");
+	});
+
+	test("summarizes a restored thinking run without a duration", () => {
+		initTheme("dark");
+
+		const component = new AssistantMessageComponent(
+			createAssistantMessage([{ type: "thinking", thinking: "private reasoning" }]),
+			true,
+		);
+		const rendered = stripAnsi(component.render(80).join("\n"));
+
+		expect(rendered).toContain("+Thought");
+		expect(rendered).not.toMatch(/\+Thought · /);
 	});
 
 	test("collapses individual thinking runs when clicked", () => {
@@ -123,7 +164,7 @@ describe("AssistantMessageComponent", () => {
 
 		const collapsed = stripAnsi(component.render(width).join("\n"));
 		expect(collapsed).not.toContain("first reasoning");
-		expect(collapsed).toContain("Thinking...");
+		expect(collapsed).toContain("+Thought");
 		expect(collapsed).toContain("second reasoning");
 	});
 

@@ -387,6 +387,15 @@ describe("SettingsManager", () => {
 		});
 	});
 
+	describe("hideThinkingBlock", () => {
+		it("defaults to hidden and can be turned off again", () => {
+			expect(SettingsManager.create(projectDir, agentDir).getHideThinkingBlock()).toBe(true);
+
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ hideThinkingBlock: false }));
+			expect(SettingsManager.create(projectDir, agentDir).getHideThinkingBlock()).toBe(false);
+		});
+	});
+
 	describe("httpIdleTimeoutMs", () => {
 		it("should default to 5 minutes", () => {
 			const manager = SettingsManager.create(projectDir, agentDir);

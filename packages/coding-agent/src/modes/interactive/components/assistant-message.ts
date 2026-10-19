@@ -1,8 +1,10 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+import { formatToolDuration } from "../../../core/tools/render-utils.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
+import { ThinkingIndicator } from "./thinking-indicator.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
@@ -22,6 +24,8 @@ export class AssistantMessageComponent extends Container {
 	private hasToolCalls = false;
 	private isStreaming = false;
 	private thinkingVisibilityOverrides = new Map<number, boolean>();
+	/** Timing of each collapsed thinking run, used for the summary line. */
+	private thinkingRunTimings: Array<{ text?: string; startedAt?: number; endedAt?: number }> = [];
 
 	constructor(
 		message?: AssistantMessage,
@@ -88,6 +92,30 @@ export class AssistantMessageComponent extends Container {
 		return lines;
 	}
 
+	/**
+	 * Record when a thinking run's content last changed, so the collapsed summary can show how
+	 * long the thinking took. The clock starts with the first chunk and stops with the last one.
+	 * Only live streams are timed: a message restored from a session has no run time to show.
+	 */
+	private trackThinkingRun(runIndex: number, text: string): void {
+		if (!this.isStreaming) return;
+		const timing = this.thinkingRunTimings[runIndex] ?? {};
+		this.thinkingRunTimings[runIndex] = timing;
+		if (timing.text === text) return;
+		timing.text = text;
+		timing.startedAt ??= Date.now();
+		timing.endedAt = Date.now();
+	}
+
+	/** The summary line of a finished thinking run: `+Thought · 3.7s`. */
+	private formatThoughtSummary(runIndex: number): string {
+		const timing = this.thinkingRunTimings[runIndex];
+		const summary = `${theme.fg("accent", "+")}${theme.fg("thinkingText", "Thought")}`;
+		if (!timing?.startedAt) return summary;
+		const duration = (timing.endedAt ?? timing.startedAt) - timing.startedAt;
+		return `${summary}${theme.fg("muted", ` · ${formatToolDuration(duration)}`)}`;
+	}
+
 	updateContent(message: AssistantMessage, isStreaming = this.isStreaming): void {
 		this.lastMessage = message;
 		this.isStreaming = isStreaming;
@@ -140,9 +168,12 @@ export class AssistantMessageComponent extends Container {
 					.some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
 
 				const runIndex = thinkingRunIndex++;
+				this.trackThinkingRun(runIndex, thinkingBlocks.join("\n\n"));
 				const hidden = this.thinkingVisibilityOverrides.get(runIndex) ?? this.hideThinkingBlock;
 				const thinkingComponent = hidden
-					? new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0)
+					? this.isStreaming
+						? new ThinkingIndicator(this.hiddenThinkingLabel, this.outputPad, this.isStreaming)
+						: new Text(this.formatThoughtSummary(runIndex), this.outputPad, 0)
 					: new Markdown(
 							thinkingBlocks.join("\n\n"),
 							this.outputPad,
