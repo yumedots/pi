@@ -1647,18 +1647,17 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		if (!clip || clip.width <= 0 || clip.height <= 0) return screen;
 		const row = clip.y + clip.height - 1;
 		if (row >= screen.length || isImageLine(screen[row] ?? "")) return screen;
-		const scrollbarColumn = box ? getScrollbarGeometry(box)?.column : undefined;
-		const label = truncateToWidth(this.scrollToEndIndicator(), clip.width, "");
-		const labelWidth = visibleWidth(label);
-		const column = clip.x + Math.floor((clip.width - labelWidth) / 2);
+		// Anchor the label to the right edge, reserving the scrollbar column even while the
+		// auto scrollbar is hidden so the label does not move when the scrollbar appears.
+		const scrollbarColumn = box ? getScrollbarGeometry(box, true)?.column : undefined;
 		const rightEdge = scrollbarColumn ?? clip.x + clip.width;
-		const availableWidth = Math.max(0, rightEdge - column);
-		const text = truncateToWidth(label, availableWidth, "");
-		const textWidth = visibleWidth(text);
-		if (textWidth === 0) return screen;
+		const label = truncateToWidth(this.scrollToEndIndicator(), rightEdge - clip.x, "");
+		const labelWidth = visibleWidth(label);
+		if (labelWidth === 0) return screen;
+		const column = rightEdge - labelWidth;
 		const result = [...screen];
-		result[row] = compositeTuiLine(result[row] ?? "", text, column, textWidth, width);
-		this.scrollToEndIndicatorRect = { row, column, width: textWidth };
+		result[row] = compositeTuiLine(result[row] ?? "", label, column, labelWidth, width);
+		this.scrollToEndIndicatorRect = { row, column, width: labelWidth };
 		return result;
 	}
 

@@ -206,7 +206,9 @@ export const TUI_KEYBINDINGS = {
 		description: "Close transcript search",
 	},
 	"tui.altScreen.top": { defaultKeys: "ctrl+home", description: "Scroll viewport to top" },
-	"tui.altScreen.bottom": { defaultKeys: "ctrl+end", description: "Scroll viewport to bottom" },
+	// Ctrl+E shadows the editor's cursor-to-line-end binding in fullscreen mode, like the
+	// other alt-screen viewport keys.
+	"tui.altScreen.bottom": { defaultKeys: "ctrl+e", description: "Scroll viewport to bottom" },
 } as const satisfies KeybindingDefinitions;
 
 export interface KeybindingConflict {

@@ -118,17 +118,17 @@ describe("TuiAltScreen", () => {
 		terminal.sendInput("\x1b[<64;1;1M");
 		await terminal.waitForRender();
 		assert.strictEqual(transcript.isFollowingEnd, false);
-		assert.strictEqual(terminal.getViewport()[3], "line 7  ↓ Jump to end         ");
+		assert.strictEqual(terminal.getViewport()[3], `line 7${" ".repeat(9)} ↓ Jump to end `);
 		assert.strictEqual(terminal.getViewport()[4]?.trimEnd(), "editor");
 
 		// Pressing next to the label starts a selection instead of jumping.
-		terminal.sendInput("\x1b[<0;2;4M");
-		terminal.sendInput("\x1b[<0;2;4m");
+		terminal.sendInput("\x1b[<0;15;4M");
+		terminal.sendInput("\x1b[<0;15;4m");
 		await terminal.waitForRender();
 		assert.strictEqual(transcript.isFollowingEnd, false);
 
-		terminal.sendInput("\x1b[<0;15;4M");
-		terminal.sendInput("\x1b[<0;15;4m");
+		terminal.sendInput("\x1b[<0;20;4M");
+		terminal.sendInput("\x1b[<0;20;4m");
 		await terminal.waitForRender();
 		assert.strictEqual(transcript.isFollowingEnd, true);
 		assert.deepStrictEqual(
@@ -138,7 +138,7 @@ describe("TuiAltScreen", () => {
 		tui.stop();
 	});
 
-	it("keeps the jump-to-end indicator centered as the auto scrollbar hides and reappears", async () => {
+	it("keeps the jump-to-end indicator at the right edge as the auto scrollbar hides and reappears", async () => {
 		// Regression test for #9136: auto scrollbar visibility must not move the indicator.
 		const terminal = new VirtualTerminal(80, 6);
 		const label = " ↓ Jump to latest message · End ";
@@ -175,7 +175,7 @@ describe("TuiAltScreen", () => {
 			assert.strictEqual(transcript.scrollTop, scrollTop);
 			const revealedColumn = terminal.getViewport()[5].indexOf(label);
 
-			assert.deepStrictEqual([visibleColumn, hiddenColumn, revealedColumn], [24, 24, 24]);
+			assert.deepStrictEqual([visibleColumn, hiddenColumn, revealedColumn], [47, 47, 47]);
 		} finally {
 			tui.stop();
 		}
@@ -583,7 +583,7 @@ describe("TuiAltScreen", () => {
 			["line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8"],
 		);
 
-		terminal.sendInput("\x1b[8^");
+		terminal.sendInput("\x05");
 		await terminal.waitForRender();
 		assert.deepStrictEqual(
 			terminal.getViewport().map((line) => line.trimEnd()),
@@ -898,7 +898,7 @@ describe("TuiAltScreen", () => {
 		}
 	});
 
-	it("routes Home and End to the focused component and Ctrl+Home/End to the transcript", async () => {
+	it("routes Home and End to the focused component and Ctrl+Home/Ctrl+E to the transcript", async () => {
 		const terminal = new VirtualTerminal(20, 6);
 		const tui = new TuiAltScreen(terminal);
 		const transcript = new ScrollView(
@@ -936,7 +936,7 @@ describe("TuiAltScreen", () => {
 		await terminal.waitForRender();
 		assert.strictEqual(transcript.scrollTop, 0);
 
-		terminal.sendInput("\x1b[1;5F");
+		terminal.sendInput("\x05");
 		await terminal.waitForRender();
 		assert.strictEqual(transcript.scrollTop, bottom);
 		assert.strictEqual(transcript.isFollowingEnd, true);
