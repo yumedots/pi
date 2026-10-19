@@ -1,0 +1,1658 @@
+{
+  "machine": {
+    "platform": "darwin arm64",
+    "cpus": 11,
+    "cpuModel": "Apple M3 Pro",
+    "totalMemoryBytes": 19327352832,
+    "node": "v26.10.0"
+  },
+  "date": "2026-10-19T22:01:35.417Z",
+  "options": {
+    "runs": 5,
+    "warmup": 1,
+    "prompt": "Say hello in three words"
+  },
+  "disk": {
+    "node_modules": 504931260,
+    "coding-agent dist": 18761446,
+    "tui dist": 2179738,
+    "ai dist": 4091579
+  },
+  "scenarios": {
+    "runtime-floor": {
+      "description": "The runtime itself, without the agent.",
+      "runtimes": {
+        "node": {
+          "summary": {
+            "wallMs": {
+              "min": 92.13633299999998,
+              "max": 96.83862499999998,
+              "avg": 94.990775,
+              "median": 95.686417
+            },
+            "peakRssBytes": {
+              "min": 39288832,
+              "max": 39387136,
+              "avg": 39351091.2,
+              "median": 39354368
+            },
+            "userSeconds": {
+              "min": 0.07,
+              "max": 0.08,
+              "avg": 0.07400000000000001,
+              "median": 0.07
+            },
+            "sysSeconds": {
+              "min": 0.01,
+              "max": 0.01,
+              "avg": 0.01,
+              "median": 0.01
+            }
+          },
+          "runs": [
+            {
+              "wallMs": 96.83862499999998,
+              "peakRssBytes": 39387136,
+              "userSeconds": 0.08,
+              "sysSeconds": 0.01,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 92.13633299999998,
+              "peakRssBytes": 39354368,
+              "userSeconds": 0.07,
+              "sysSeconds": 0.01,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 95.88083400000005,
+              "peakRssBytes": 39387136,
+              "userSeconds": 0.08,
+              "sysSeconds": 0.01,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 94.41166599999997,
+              "peakRssBytes": 39288832,
+              "userSeconds": 0.07,
+              "sysSeconds": 0.01,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 95.686417,
+              "peakRssBytes": 39337984,
+              "userSeconds": 0.07,
+              "sysSeconds": 0.01,
+              "startupTimings": {}
+            }
+          ]
+        },
+        "bun": {
+          "summary": {
+            "wallMs": {
+              "min": 7.682166999999936,
+              "max": 9.09133399999996,
+              "avg": 8.338533399999983,
+              "median": 8.332042000000001
+            },
+            "peakRssBytes": {
+              "min": 18186240,
+              "max": 18186240,
+              "avg": 18186240,
+              "median": 18186240
+            },
+            "userSeconds": {
+              "min": 0,
+              "max": 0,
+              "avg": 0,
+              "median": 0
+            },
+            "sysSeconds": {
+              "min": 0,
+              "max": 0,
+              "avg": 0,
+              "median": 0
+            }
+          },
+          "runs": [
+            {
+              "wallMs": 8.53616599999998,
+              "peakRssBytes": 18186240,
+              "userSeconds": 0,
+              "sysSeconds": 0,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 9.09133399999996,
+              "peakRssBytes": 18186240,
+              "userSeconds": 0,
+              "sysSeconds": 0,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 8.332042000000001,
+              "peakRssBytes": 18186240,
+              "userSeconds": 0,
+              "sysSeconds": 0,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 7.682166999999936,
+              "peakRssBytes": 18186240,
+              "userSeconds": 0,
+              "sysSeconds": 0,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 8.050958000000037,
+              "peakRssBytes": 18186240,
+              "userSeconds": 0,
+              "sysSeconds": 0,
+              "startupTimings": {}
+            }
+          ]
+        }
+      }
+    },
+    "cli-version": {
+      "description": "The agent starts and prints its version.",
+      "runtimes": {
+        "node": {
+          "summary": {
+            "wallMs": {
+              "min": 398.172417,
+              "max": 460.4228330000001,
+              "avg": 424.8082833999999,
+              "median": 418.52170799999976
+            },
+            "peakRssBytes": {
+              "min": 137641984,
+              "max": 138346496,
+              "avg": 138028646.4,
+              "median": 138084352
+            },
+            "userSeconds": {
+              "min": 0.37,
+              "max": 0.39,
+              "avg": 0.38000000000000006,
+              "median": 0.38
+            },
+            "sysSeconds": {
+              "min": 0.08,
+              "max": 0.08,
+              "avg": 0.08,
+              "median": 0.08
+            }
+          },
+          "runs": [
+            {
+              "wallMs": 429.3087499999999,
+              "peakRssBytes": 137969664,
+              "userSeconds": 0.37,
+              "sysSeconds": 0.08,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 398.172417,
+              "peakRssBytes": 137641984,
+              "userSeconds": 0.37,
+              "sysSeconds": 0.08,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 418.52170799999976,
+              "peakRssBytes": 138084352,
+              "userSeconds": 0.38,
+              "sysSeconds": 0.08,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 460.4228330000001,
+              "peakRssBytes": 138100736,
+              "userSeconds": 0.39,
+              "sysSeconds": 0.08,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 417.6157089999997,
+              "peakRssBytes": 138346496,
+              "userSeconds": 0.39,
+              "sysSeconds": 0.08,
+              "startupTimings": {}
+            }
+          ]
+        },
+        "bun": {
+          "summary": {
+            "wallMs": {
+              "min": 165.10775000000012,
+              "max": 169.08199999999943,
+              "avg": 166.54171679999982,
+              "median": 166.07291699999996
+            },
+            "peakRssBytes": {
+              "min": 92995584,
+              "max": 95485952,
+              "avg": 94260428.8,
+              "median": 94011392
+            },
+            "userSeconds": {
+              "min": 0.19,
+              "max": 0.2,
+              "avg": 0.198,
+              "median": 0.2
+            },
+            "sysSeconds": {
+              "min": 0.19,
+              "max": 0.22,
+              "avg": 0.21000000000000002,
+              "median": 0.21
+            }
+          },
+          "runs": [
+            {
+              "wallMs": 167.25383399999964,
+              "peakRssBytes": 94011392,
+              "userSeconds": 0.2,
+              "sysSeconds": 0.21,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 166.07291699999996,
+              "peakRssBytes": 95485952,
+              "userSeconds": 0.2,
+              "sysSeconds": 0.19,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 165.10775000000012,
+              "peakRssBytes": 93454336,
+              "userSeconds": 0.19,
+              "sysSeconds": 0.22,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 165.1920829999999,
+              "peakRssBytes": 92995584,
+              "userSeconds": 0.2,
+              "sysSeconds": 0.21,
+              "startupTimings": {}
+            },
+            {
+              "wallMs": 169.08199999999943,
+              "peakRssBytes": 95354880,
+              "userSeconds": 0.2,
+              "sysSeconds": 0.22,
+              "startupTimings": {}
+            }
+          ]
+        }
+      }
+    },
+    "tui-first-screen": {
+      "description": "The interactive mode reaches its first screen.",
+      "runtimes": {
+        "node": {
+          "summary": {
+            "wallMs": {
+              "min": 627.6566249999996,
+              "max": 686.5212500000007,
+              "avg": 650.3070750000003,
+              "median": 630.3014999999996
+            },
+            "peakRssBytes": {
+              "min": 150028288,
+              "max": 151371776,
+              "avg": 150447718.4,
+              "median": 150224896
+            },
+            "userSeconds": {
+              "min": 0.47,
+              "max": 0.52,
+              "avg": 0.48599999999999993,
+              "median": 0.48
+            },
+            "sysSeconds": {
+              "min": 0.08,
+              "max": 0.11,
+              "avg": 0.092,
+              "median": 0.09
+            },
+            "startupTimings": {
+              "parseArgs": {
+                "min": 2,
+                "max": 3,
+                "avg": 2.2,
+                "median": 2
+              },
+              "runMigrations": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "createSessionManager": {
+                "min": 1,
+                "max": 2,
+                "avg": 1.2,
+                "median": 1
+              },
+              "createRuntime": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "createAgentSessionRuntime": {
+                "min": 44,
+                "max": 49,
+                "avg": 45.8,
+                "median": 45
+              },
+              "readPipedStdin": {
+                "min": 0,
+                "max": 1,
+                "avg": 0.2,
+                "median": 0
+              },
+              "prepareInitialMessage": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "initTheme": {
+                "min": 11,
+                "max": 15,
+                "avg": 12.4,
+                "median": 12
+              },
+              "resolveModelScope": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "createAgentSession": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "interactiveMode.init": {
+                "min": 22,
+                "max": 27,
+                "avg": 23.8,
+                "median": 23
+              },
+              "TOTAL": {
+                "min": 81,
+                "max": 95,
+                "avg": 85.6,
+                "median": 84
+              }
+            }
+          },
+          "runs": [
+            {
+              "wallMs": 686.5212500000007,
+              "peakRssBytes": 151371776,
+              "userSeconds": 0.52,
+              "sysSeconds": 0.11,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 0,
+                "createSessionManager": 2,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 49,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 15,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "interactiveMode.init": 27,
+                "TOTAL": 95
+              }
+            },
+            {
+              "wallMs": 679.2082920000003,
+              "peakRssBytes": 150028288,
+              "userSeconds": 0.49,
+              "sysSeconds": 0.09,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 0,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 45,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 12,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "interactiveMode.init": 23,
+                "TOTAL": 83
+              }
+            },
+            {
+              "wallMs": 627.6566249999996,
+              "peakRssBytes": 150224896,
+              "userSeconds": 0.47,
+              "sysSeconds": 0.09,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 0,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 46,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 12,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "interactiveMode.init": 23,
+                "TOTAL": 84
+              }
+            },
+            {
+              "wallMs": 630.3014999999996,
+              "peakRssBytes": 150093824,
+              "userSeconds": 0.47,
+              "sysSeconds": 0.08,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 0,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 44,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 12,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "interactiveMode.init": 22,
+                "TOTAL": 81
+              }
+            },
+            {
+              "wallMs": 627.8477080000011,
+              "peakRssBytes": 150519808,
+              "userSeconds": 0.48,
+              "sysSeconds": 0.09,
+              "startupTimings": {
+                "parseArgs": 3,
+                "runMigrations": 0,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 45,
+                "readPipedStdin": 1,
+                "prepareInitialMessage": 0,
+                "initTheme": 11,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "interactiveMode.init": 24,
+                "TOTAL": 85
+              }
+            }
+          ]
+        },
+        "bun": {
+          "summary": {
+            "wallMs": {
+              "min": 421.4902920000004,
+              "max": 424.05925000000025,
+              "avg": 422.96906660000025,
+              "median": 423.11329099999966
+            },
+            "peakRssBytes": {
+              "min": 141279232,
+              "max": 144506880,
+              "avg": 142940569.6,
+              "median": 143015936
+            },
+            "userSeconds": {
+              "min": 0.3,
+              "max": 0.32,
+              "avg": 0.31,
+              "median": 0.31
+            },
+            "sysSeconds": {
+              "min": 0.26,
+              "max": 0.29,
+              "avg": 0.278,
+              "median": 0.28
+            },
+            "startupTimings": {
+              "parseArgs": {
+                "min": 2,
+                "max": 3,
+                "avg": 2.2,
+                "median": 2
+              },
+              "runMigrations": {
+                "min": 1,
+                "max": 1,
+                "avg": 1,
+                "median": 1
+              },
+              "createSessionManager": {
+                "min": 0,
+                "max": 1,
+                "avg": 0.8,
+                "median": 1
+              },
+              "createRuntime": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "createAgentSessionRuntime": {
+                "min": 49,
+                "max": 50,
+                "avg": 49.6,
+                "median": 50
+              },
+              "readPipedStdin": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "prepareInitialMessage": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "initTheme": {
+                "min": 9,
+                "max": 10,
+                "avg": 9.6,
+                "median": 10
+              },
+              "resolveModelScope": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "createAgentSession": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "interactiveMode.init": {
+                "min": 22,
+                "max": 23,
+                "avg": 22.6,
+                "median": 23
+              },
+              "TOTAL": {
+                "min": 85,
+                "max": 87,
+                "avg": 85.8,
+                "median": 86
+              }
+            }
+          },
+          "runs": [
+            {
+              "wallMs": 424.05925000000025,
+              "peakRssBytes": 142671872,
+              "userSeconds": 0.31,
+              "sysSeconds": 0.26,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 50,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 10,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "interactiveMode.init": 22,
+                "TOTAL": 86
+              }
+            },
+            {
+              "wallMs": 423.18925000000127,
+              "peakRssBytes": 141279232,
+              "userSeconds": 0.31,
+              "sysSeconds": 0.29,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 49,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 10,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "interactiveMode.init": 23,
+                "TOTAL": 86
+              }
+            },
+            {
+              "wallMs": 422.99324999999953,
+              "peakRssBytes": 143228928,
+              "userSeconds": 0.3,
+              "sysSeconds": 0.27,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 49,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 9,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "interactiveMode.init": 23,
+                "TOTAL": 85
+              }
+            },
+            {
+              "wallMs": 421.4902920000004,
+              "peakRssBytes": 144506880,
+              "userSeconds": 0.32,
+              "sysSeconds": 0.28,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 50,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 9,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "interactiveMode.init": 22,
+                "TOTAL": 85
+              }
+            },
+            {
+              "wallMs": 423.11329099999966,
+              "peakRssBytes": 143015936,
+              "userSeconds": 0.31,
+              "sysSeconds": 0.29,
+              "startupTimings": {
+                "parseArgs": 3,
+                "runMigrations": 1,
+                "createSessionManager": 0,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 50,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 10,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "interactiveMode.init": 23,
+                "TOTAL": 87
+              }
+            }
+          ]
+        }
+      }
+    },
+    "rpc-first-screen": {
+      "description": "The rpc mode answers the first state request.",
+      "runtimes": {
+        "node": {
+          "summary": {
+            "wallMs": {
+              "min": 406.75774999999885,
+              "max": 418.15958300000057,
+              "avg": 411.4443916,
+              "median": 410.8448750000007
+            },
+            "peakRssBytes": {
+              "min": 144326656,
+              "max": 145719296,
+              "avg": 144831283.2,
+              "median": 144408576
+            },
+            "userSeconds": {
+              "min": 0.42,
+              "max": 0.43,
+              "avg": 0.426,
+              "median": 0.43
+            },
+            "sysSeconds": {
+              "min": 0.07,
+              "max": 0.07,
+              "avg": 0.07,
+              "median": 0.07
+            },
+            "firstScreenMs": {
+              "min": 406.75774999999885,
+              "max": 418.15958300000057,
+              "avg": 411.4443916,
+              "median": 410.8448750000007
+            },
+            "startupTimings": {
+              "parseArgs": {
+                "min": 2,
+                "max": 3,
+                "avg": 2.2,
+                "median": 2
+              },
+              "runMigrations": {
+                "min": 0,
+                "max": 1,
+                "avg": 0.2,
+                "median": 0
+              },
+              "createSessionManager": {
+                "min": 0,
+                "max": 1,
+                "avg": 0.8,
+                "median": 1
+              },
+              "createRuntime": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "createAgentSessionRuntime": {
+                "min": 43,
+                "max": 46,
+                "avg": 44,
+                "median": 43
+              },
+              "readPipedStdin": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "prepareInitialMessage": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "initTheme": {
+                "min": 2,
+                "max": 4,
+                "avg": 3.2,
+                "median": 4
+              },
+              "resolveModelScope": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "createAgentSession": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "TOTAL": {
+                "min": 50,
+                "max": 51,
+                "avg": 50.4,
+                "median": 50
+              }
+            }
+          },
+          "runs": [
+            {
+              "wallMs": 406.75774999999885,
+              "peakRssBytes": 144326656,
+              "userSeconds": 0.42,
+              "sysSeconds": 0.07,
+              "firstScreenMs": 406.75774999999885,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 0,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 43,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 4,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 50
+              }
+            },
+            {
+              "wallMs": 409.407333000001,
+              "peakRssBytes": 144359424,
+              "userSeconds": 0.42,
+              "sysSeconds": 0.07,
+              "firstScreenMs": 409.407333000001,
+              "startupTimings": {
+                "parseArgs": 3,
+                "runMigrations": 0,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 45,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 2,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 51
+              }
+            },
+            {
+              "wallMs": 418.15958300000057,
+              "peakRssBytes": 145342464,
+              "userSeconds": 0.43,
+              "sysSeconds": 0.07,
+              "firstScreenMs": 418.15958300000057,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 0,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 43,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 4,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 50
+              }
+            },
+            {
+              "wallMs": 410.8448750000007,
+              "peakRssBytes": 144408576,
+              "userSeconds": 0.43,
+              "sysSeconds": 0.07,
+              "firstScreenMs": 410.8448750000007,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 0,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 46,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 2,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 51
+              }
+            },
+            {
+              "wallMs": 412.05241699999897,
+              "peakRssBytes": 145719296,
+              "userSeconds": 0.43,
+              "sysSeconds": 0.07,
+              "firstScreenMs": 412.05241699999897,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 0,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 43,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 4,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 50
+              }
+            }
+          ]
+        },
+        "bun": {
+          "summary": {
+            "wallMs": {
+              "min": 203.9193749999995,
+              "max": 213.75858400000106,
+              "avg": 208.26178340000078,
+              "median": 208.53250000000116
+            },
+            "peakRssBytes": {
+              "min": 115245056,
+              "max": 119619584,
+              "avg": 117302886.4,
+              "median": 117489664
+            },
+            "userSeconds": {
+              "min": 0.26,
+              "max": 0.27,
+              "avg": 0.264,
+              "median": 0.26
+            },
+            "sysSeconds": {
+              "min": 0.22,
+              "max": 0.27,
+              "avg": 0.244,
+              "median": 0.25
+            },
+            "firstScreenMs": {
+              "min": 203.9193749999995,
+              "max": 213.75858400000106,
+              "avg": 208.26178340000078,
+              "median": 208.53250000000116
+            },
+            "startupTimings": {
+              "parseArgs": {
+                "min": 2,
+                "max": 3,
+                "avg": 2.8,
+                "median": 3
+              },
+              "runMigrations": {
+                "min": 1,
+                "max": 1,
+                "avg": 1,
+                "median": 1
+              },
+              "createSessionManager": {
+                "min": 0,
+                "max": 1,
+                "avg": 0.2,
+                "median": 0
+              },
+              "createRuntime": {
+                "min": 0,
+                "max": 1,
+                "avg": 0.2,
+                "median": 0
+              },
+              "createAgentSessionRuntime": {
+                "min": 50,
+                "max": 55,
+                "avg": 52.6,
+                "median": 53
+              },
+              "readPipedStdin": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "prepareInitialMessage": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "initTheme": {
+                "min": 1,
+                "max": 2,
+                "avg": 1.2,
+                "median": 1
+              },
+              "resolveModelScope": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "createAgentSession": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "TOTAL": {
+                "min": 56,
+                "max": 61,
+                "avg": 58,
+                "median": 58
+              }
+            }
+          },
+          "runs": [
+            {
+              "wallMs": 204.7061250000006,
+              "peakRssBytes": 115245056,
+              "userSeconds": 0.26,
+              "sysSeconds": 0.22,
+              "firstScreenMs": 204.7061250000006,
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 51,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 1,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 56
+              }
+            },
+            {
+              "wallMs": 203.9193749999995,
+              "peakRssBytes": 119619584,
+              "userSeconds": 0.26,
+              "sysSeconds": 0.25,
+              "firstScreenMs": 203.9193749999995,
+              "startupTimings": {
+                "parseArgs": 3,
+                "runMigrations": 1,
+                "createSessionManager": 0,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 50,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 2,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 56
+              }
+            },
+            {
+              "wallMs": 210.3923330000016,
+              "peakRssBytes": 117489664,
+              "userSeconds": 0.27,
+              "sysSeconds": 0.25,
+              "firstScreenMs": 210.3923330000016,
+              "startupTimings": {
+                "parseArgs": 3,
+                "runMigrations": 1,
+                "createSessionManager": 0,
+                "createRuntime": 1,
+                "createAgentSessionRuntime": 55,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 1,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 61
+              }
+            },
+            {
+              "wallMs": 208.53250000000116,
+              "peakRssBytes": 115851264,
+              "userSeconds": 0.26,
+              "sysSeconds": 0.23,
+              "firstScreenMs": 208.53250000000116,
+              "startupTimings": {
+                "parseArgs": 3,
+                "runMigrations": 1,
+                "createSessionManager": 0,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 54,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 1,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 59
+              }
+            },
+            {
+              "wallMs": 213.75858400000106,
+              "peakRssBytes": 118308864,
+              "userSeconds": 0.27,
+              "sysSeconds": 0.27,
+              "firstScreenMs": 213.75858400000106,
+              "startupTimings": {
+                "parseArgs": 3,
+                "runMigrations": 1,
+                "createSessionManager": 0,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 53,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 1,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 58
+              }
+            }
+          ]
+        }
+      }
+    },
+    "rpc-turn": {
+      "description": "A message is sent and the answer comes back.",
+      "runtimes": {
+        "node": {
+          "summary": {
+            "wallMs": {
+              "min": 408.1672920000019,
+              "max": 615.8634170000005,
+              "avg": 456.9300668000011,
+              "median": 413.50724999999875
+            },
+            "peakRssBytes": {
+              "min": 168116224,
+              "max": 169230336,
+              "avg": 168683110.4,
+              "median": 168574976
+            },
+            "userSeconds": {
+              "min": 0.52,
+              "max": 0.53,
+              "avg": 0.524,
+              "median": 0.52
+            },
+            "sysSeconds": {
+              "min": 0.08,
+              "max": 0.1,
+              "avg": 0.088,
+              "median": 0.09
+            },
+            "firstScreenMs": {
+              "min": 408.1672920000019,
+              "max": 615.8634170000005,
+              "avg": 456.9300668000011,
+              "median": 413.50724999999875
+            },
+            "firstTokenMs": {
+              "min": 685.7690000000002,
+              "max": 13074.479208,
+              "avg": 3806.5817084,
+              "median": 1188.239125
+            },
+            "turnMs": {
+              "min": 833.879832999999,
+              "max": 13101.634374999998,
+              "avg": 3889.100566600002,
+              "median": 1243.2821250000052
+            },
+            "startupTimings": {
+              "parseArgs": {
+                "min": 2,
+                "max": 2,
+                "avg": 2,
+                "median": 2
+              },
+              "runMigrations": {
+                "min": 0,
+                "max": 1,
+                "avg": 0.8,
+                "median": 1
+              },
+              "createSessionManager": {
+                "min": 0,
+                "max": 1,
+                "avg": 0.4,
+                "median": 0
+              },
+              "createRuntime": {
+                "min": 0,
+                "max": 1,
+                "avg": 0.4,
+                "median": 0
+              },
+              "createAgentSessionRuntime": {
+                "min": 43,
+                "max": 50,
+                "avg": 45.6,
+                "median": 44
+              },
+              "readPipedStdin": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "prepareInitialMessage": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "initTheme": {
+                "min": 2,
+                "max": 4,
+                "avg": 3.6,
+                "median": 4
+              },
+              "resolveModelScope": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "createAgentSession": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "TOTAL": {
+                "min": 50,
+                "max": 56,
+                "avg": 52.8,
+                "median": 51
+              }
+            },
+            "usageTotal": {
+              "min": 4669,
+              "max": 4690,
+              "avg": 4677.8,
+              "median": 4671
+            }
+          },
+          "runs": [
+            {
+              "wallMs": 413.50724999999875,
+              "peakRssBytes": 169066496,
+              "userSeconds": 0.52,
+              "sysSeconds": 0.08,
+              "firstScreenMs": 413.50724999999875,
+              "firstTokenMs": 685.7690000000002,
+              "turnMs": 833.879832999999,
+              "usage": {
+                "input": 4536,
+                "output": 5,
+                "cacheRead": 128,
+                "cacheWrite": 0,
+                "total": 4669
+              },
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 0,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 43,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 4,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 50
+              }
+            },
+            {
+              "wallMs": 408.1672920000019,
+              "peakRssBytes": 169230336,
+              "userSeconds": 0.52,
+              "sysSeconds": 0.08,
+              "firstScreenMs": 408.1672920000019,
+              "firstTokenMs": 965.476917,
+              "turnMs": 1087.5705000000016,
+              "usage": {
+                "input": 12,
+                "output": 4,
+                "cacheRead": 4672,
+                "cacheWrite": 0,
+                "total": 4688
+              },
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 0,
+                "createRuntime": 1,
+                "createAgentSessionRuntime": 43,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 4,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 51
+              }
+            },
+            {
+              "wallMs": 435.88108400000056,
+              "peakRssBytes": 168116224,
+              "userSeconds": 0.53,
+              "sysSeconds": 0.09,
+              "firstScreenMs": 435.88108400000056,
+              "firstTokenMs": 13074.479208,
+              "turnMs": 13101.634374999998,
+              "usage": {
+                "input": 1,
+                "output": 7,
+                "cacheRead": 4663,
+                "cacheWrite": 0,
+                "total": 4671
+              },
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 0,
+                "createRuntime": 1,
+                "createAgentSessionRuntime": 48,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 4,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 56
+              }
+            },
+            {
+              "wallMs": 615.8634170000005,
+              "peakRssBytes": 168427520,
+              "userSeconds": 0.52,
+              "sysSeconds": 0.1,
+              "firstScreenMs": 615.8634170000005,
+              "firstTokenMs": 1188.239125,
+              "turnMs": 1243.2821250000052,
+              "usage": {
+                "input": 2,
+                "output": 6,
+                "cacheRead": 4682,
+                "cacheWrite": 0,
+                "total": 4690
+              },
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 50,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 2,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 56
+              }
+            },
+            {
+              "wallMs": 411.2312910000037,
+              "peakRssBytes": 168574976,
+              "userSeconds": 0.53,
+              "sysSeconds": 0.09,
+              "firstScreenMs": 411.2312910000037,
+              "firstTokenMs": 3118.944292,
+              "turnMs": 3179.136000000006,
+              "usage": {
+                "input": 1,
+                "output": 7,
+                "cacheRead": 4663,
+                "cacheWrite": 0,
+                "total": 4671
+              },
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 0,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 44,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 4,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 51
+              }
+            }
+          ]
+        },
+        "bun": {
+          "summary": {
+            "wallMs": {
+              "min": 207.38854100000026,
+              "max": 225.68795800000225,
+              "avg": 218.76099160000012,
+              "median": 220.92391700000007
+            },
+            "peakRssBytes": {
+              "min": 126877696,
+              "max": 131514368,
+              "avg": 129112473.6,
+              "median": 129105920
+            },
+            "userSeconds": {
+              "min": 0.33,
+              "max": 0.36,
+              "avg": 0.344,
+              "median": 0.34
+            },
+            "sysSeconds": {
+              "min": 0.26,
+              "max": 0.33,
+              "avg": 0.30200000000000005,
+              "median": 0.31
+            },
+            "firstScreenMs": {
+              "min": 207.38854100000026,
+              "max": 225.68795800000225,
+              "avg": 218.76099160000012,
+              "median": 220.92391700000007
+            },
+            "firstTokenMs": {
+              "min": 994.3719590000037,
+              "max": 4671.9852910000045,
+              "avg": 1937.7290670000016,
+              "median": 1055.072208999998
+            },
+            "turnMs": {
+              "min": 1054.6033749999988,
+              "max": 5029.760083000001,
+              "avg": 2042.0095752000009,
+              "median": 1101.705458999997
+            },
+            "startupTimings": {
+              "parseArgs": {
+                "min": 2,
+                "max": 3,
+                "avg": 2.2,
+                "median": 2
+              },
+              "runMigrations": {
+                "min": 1,
+                "max": 1,
+                "avg": 1,
+                "median": 1
+              },
+              "createSessionManager": {
+                "min": 1,
+                "max": 1,
+                "avg": 1,
+                "median": 1
+              },
+              "createRuntime": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "createAgentSessionRuntime": {
+                "min": 51,
+                "max": 54,
+                "avg": 52.4,
+                "median": 52
+              },
+              "readPipedStdin": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "prepareInitialMessage": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "initTheme": {
+                "min": 1,
+                "max": 2,
+                "avg": 1.4,
+                "median": 1
+              },
+              "resolveModelScope": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "createAgentSession": {
+                "min": 0,
+                "max": 0,
+                "avg": 0,
+                "median": 0
+              },
+              "TOTAL": {
+                "min": 56,
+                "max": 60,
+                "avg": 58,
+                "median": 58
+              }
+            },
+            "usageTotal": {
+              "min": 4669,
+              "max": 4691,
+              "avg": 4678.4,
+              "median": 4671
+            }
+          },
+          "runs": [
+            {
+              "wallMs": 220.92391700000007,
+              "peakRssBytes": 126877696,
+              "userSeconds": 0.35,
+              "sysSeconds": 0.3,
+              "firstScreenMs": 220.92391700000007,
+              "firstTokenMs": 1055.072208999998,
+              "turnMs": 1101.705458999997,
+              "usage": {
+                "input": 1311,
+                "output": 7,
+                "cacheRead": 3373,
+                "cacheWrite": 0,
+                "total": 4691
+              },
+              "startupTimings": {
+                "parseArgs": 3,
+                "runMigrations": 1,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 52,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 1,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 58
+              }
+            },
+            {
+              "wallMs": 217.52904200000194,
+              "peakRssBytes": 127549440,
+              "userSeconds": 0.33,
+              "sysSeconds": 0.33,
+              "firstScreenMs": 217.52904200000194,
+              "firstTokenMs": 994.3719590000037,
+              "turnMs": 1072.6536250000063,
+              "usage": {
+                "input": 4476,
+                "output": 7,
+                "cacheRead": 188,
+                "cacheWrite": 0,
+                "total": 4671
+              },
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 51,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 1,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 56
+              }
+            },
+            {
+              "wallMs": 225.68795800000225,
+              "peakRssBytes": 129105920,
+              "userSeconds": 0.34,
+              "sysSeconds": 0.26,
+              "firstScreenMs": 225.68795800000225,
+              "firstTokenMs": 1035.0772090000028,
+              "turnMs": 1054.6033749999988,
+              "usage": {
+                "input": 2,
+                "output": 6,
+                "cacheRead": 4682,
+                "cacheWrite": 0,
+                "total": 4690
+              },
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 54,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 2,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 60
+              }
+            },
+            {
+              "wallMs": 207.38854100000026,
+              "peakRssBytes": 131514368,
+              "userSeconds": 0.34,
+              "sysSeconds": 0.31,
+              "firstScreenMs": 207.38854100000026,
+              "firstTokenMs": 4671.9852910000045,
+              "turnMs": 5029.760083000001,
+              "usage": {
+                "input": 1,
+                "output": 5,
+                "cacheRead": 4663,
+                "cacheWrite": 0,
+                "total": 4669
+              },
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 52,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 1,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 57
+              }
+            },
+            {
+              "wallMs": 222.2754999999961,
+              "peakRssBytes": 130514944,
+              "userSeconds": 0.36,
+              "sysSeconds": 0.31,
+              "firstScreenMs": 222.2754999999961,
+              "firstTokenMs": 1932.1386669999993,
+              "turnMs": 1951.325334000001,
+              "usage": {
+                "input": 1,
+                "output": 7,
+                "cacheRead": 4663,
+                "cacheWrite": 0,
+                "total": 4671
+              },
+              "startupTimings": {
+                "parseArgs": 2,
+                "runMigrations": 1,
+                "createSessionManager": 1,
+                "createRuntime": 0,
+                "createAgentSessionRuntime": 53,
+                "readPipedStdin": 0,
+                "prepareInitialMessage": 0,
+                "initTheme": 2,
+                "resolveModelScope": 0,
+                "createAgentSession": 0,
+                "TOTAL": 59
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-19T22:11:10.130Z",
+  "prompt": "Say hello in three words",
+  "model": {
+    "provider": "local",
+    "id": "smollm2-1.7b-instruct"
+  },
+  "runs": [
+    {
+      "input": 2445,
+      "output": 1,
+      "cacheRead": 1158,
+      "cacheWrite": 0,
+      "total": 3604,
+      "firstTokenMs": 3196.3703750000004
+    },
+    {
+      "input": 1,
+      "output": 1,
+      "cacheRead": 3602,
+      "cacheWrite": 0,
+      "total": 3604,
+      "firstTokenMs": 453.40441599999986
+    },
+    {
+      "input": 1,
+      "output": 1,
+      "cacheRead": 3602,
+      "cacheWrite": 0,
+      "total": 3604,
+      "firstTokenMs": 453.7512079999997
+    }
+  ],
+  "breakdown": [
+    {
+      "label": "message:system",
+      "chars": 13879,
+      "tokens": 3584
+    },
+    {
+      "label": "message:user",
+      "chars": 51,
+      "tokens": 15
+    },
+    {
+      "label": "tool:read",
+      "chars": 684,
+      "tokens": 174
+    },
+    {
+      "label": "tool:bash",
+      "chars": 543,
+      "tokens": 128
+    },
+    {
+      "label": "tool:edit",
+      "chars": 1179,
+      "tokens": 264
+    },
+    {
+      "label": "tool:write",
+      "chars": 430,
+      "tokens": 101
+    }
+  ]
+}
