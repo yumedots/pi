@@ -17,10 +17,10 @@ help:
 	  'make clean    Remove build output'
 
 build:
-	npm run build
+	@npm run build
 
 run:
-	./pi-test.sh $(ARGS)
+	@./pi-test.sh $(ARGS)
 
 app:
 	npm --prefix packages/coding-agent run build:binary
