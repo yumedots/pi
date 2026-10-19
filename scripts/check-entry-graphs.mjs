@@ -24,7 +24,6 @@ const WORKSPACE = {
 	"@earendil-works/pi-durable": "packages/durable/src",
 	"@earendil-works/pi-agent-core": "packages/agent/src",
 	"@earendil-works/pi-codemode": "packages/codemode/src",
-	"@earendil-works/pi-telemetry": "packages/telemetry/src",
 	"@earendil-works/pi-mcp": "packages/mcp/src",
 	"@earendil-works/pi-tui": "packages/tui/src",
 };
@@ -59,8 +58,7 @@ const BUDGETS = {
 		".": {
 			// Tool argument validation reaches TypeBox; provider-session creation reaches pi-ai's lean UUID utility; the
 			// memory and SQLite storages share scan order and cursor handling. Values from Chord's root (copyJson,
-			// replicatedState) reach its host runtime through the root barrel. Chord's context reaches pi-telemetry's root
-			// (index, noop, metrics, memory) for its NOOP telemetry default.
+			// replicatedState) reach its host runtime through the root barrel.
 			maxFiles: 70,
 			forbid: [
 				"packages/ai/src/index.ts",
