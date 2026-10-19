@@ -9,6 +9,7 @@
 
 ### Changed
 
+- Renamed the `/session` command to `/stats`. It still shows the session file, ID, message counts, token usage, and cost
 - Slash-command autocomplete descriptions no longer carry the `[u:npm:...]` resource source tag
 - The session picker renders full-width block rows with a scrollbar instead of a `(n/m)` counter
 - `generateSummary()` and `generateSummaryWithUsage()` now ignore their `reserveTokens` parameter. Summary requests use the model's output limit instead.

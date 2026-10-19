@@ -3212,8 +3212,8 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
-			if (text === "/session") {
-				this.handleSessionCommand();
+			if (text === "/stats") {
+				this.handleStatsCommand();
 				this.editor.setText("");
 				return;
 			}
@@ -6734,7 +6734,7 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	private handleSessionCommand(): void {
+	private handleStatsCommand(): void {
 		const stats = this.session.getSessionStats();
 		const sessionName = this.sessionManager.getSessionName();
 		const entries = this.sessionManager.getEntries();
@@ -6751,7 +6751,7 @@ export class InteractiveMode {
 		const model = this.session.model;
 		const selectedModelKey = `${model?.provider}/${model?.id}`;
 		const renderInfo = (): string => {
-			let info = `${theme.bold("Session Info")}\n\n`;
+			let info = `${theme.bold("Session Stats")}\n\n`;
 			if (sessionName) {
 				info += `${theme.fg("dim", "Name:")} ${sessionName}\n`;
 			}

@@ -339,7 +339,7 @@ export interface ModelCycleResult {
 	isScoped: boolean;
 }
 
-/** Session statistics for /session command */
+/** Session statistics for /stats command */
 export interface SessionStats {
 	sessionFile: string | undefined;
 	sessionId: string;

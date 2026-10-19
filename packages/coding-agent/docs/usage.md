@@ -59,7 +59,7 @@ Pi saves sessions automatically unless session persistence is disabled.
 - `/new` starts a new session.
 - `/resume` opens another saved session.
 - `/name` gives the current session a recognizable name.
-- `/session` shows its file, ID, message count, token usage, and cost.
+- `/stats` shows its file, ID, message count, token usage, and cost.
 
 Use `/tree`, `/fork`, or `/clone` when you want to explore another approach without losing existing work. Use `/compact` to reduce the conversation history sent to the model. See [Sessions and Context](sessions.md) for these workflows.
 
