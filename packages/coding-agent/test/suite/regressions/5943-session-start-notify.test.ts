@@ -6,20 +6,15 @@ import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode
 import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
 import { createHarness, createTestUiContext } from "../harness.ts";
 
-type LoadedResourcesResult<T> = { [K in keyof T]: T[K] } & { diagnostics: [] };
+type LoadedResourcesResult<T> = { [K in keyof T]: T[K] } & {
+	diagnostics: Array<{ type: "warning" | "error" | "collision"; message: string }>;
+};
 
 type LoadedResourcesContext = {
-	loadedResourcesContainer: Container;
+	resourceDiagnosticsContainer: Container;
 	chatContainer: Container;
-	options: { verbose?: boolean };
-	settingsManager: { getQuietStartup: () => boolean };
-	sessionManager: { getCwd: () => string };
 	session: {
-		promptTemplates: [];
 		resourceLoader: {
-			getAgentsFiles: () => LoadedResourcesResult<{ agentsFiles: Array<{ path: string }> }>;
-			getSystemPromptSource: () => { path: string } | undefined;
-			getAppendSystemPromptSources: () => Array<{ path: string }>;
 			getSkills: () => LoadedResourcesResult<{ skills: [] }>;
 			getPrompts: () => LoadedResourcesResult<{ prompts: [] }>;
 			getThemes: () => LoadedResourcesResult<{ themes: [] }>;
@@ -31,13 +26,9 @@ type LoadedResourcesContext = {
 			getRegisteredCommands: () => [];
 		};
 	};
-	getStartupExpansionState: () => boolean;
-	shouldShowStartupDetails: () => boolean;
-	formatDisplayPath: (resourcePath: string) => string;
-	formatContextPath: (resourcePath: string) => string;
+	formatDiagnostics: () => string;
 	getBuiltInCommandConflictDiagnostics: (extensionRunner: LoadedResourcesContext["session"]["extensionRunner"]) => [];
 };
-
 type RebindContext = {
 	unsubscribe?: () => void;
 	applyRuntimeSettings: () => void;
@@ -86,7 +77,7 @@ type ReloadCommandContext = {
 	rebuildChatFromMessages: () => void;
 	setupAutocompleteProvider: () => void;
 	setupExtensionShortcuts: (runner: unknown) => void;
-	showLoadedResources: (options: unknown) => void;
+	showResourceDiagnostics: () => void;
 	maybeSaveImplicitProjectTrustAfterReload: () => boolean;
 	showStatus: (message: string) => void;
 	showWarning: (message: string) => void;
@@ -94,10 +85,7 @@ type ReloadCommandContext = {
 };
 
 type InteractiveModePrototype = {
-	showLoadedResources(
-		this: LoadedResourcesContext,
-		options?: { extensions?: Array<{ path: string }>; force?: boolean; showDiagnosticsWhenQuiet?: boolean },
-	): void;
+	showResourceDiagnostics(this: LoadedResourcesContext): void;
 	rebindCurrentSession(this: RebindContext, options?: { renderBeforeBind?: boolean }): Promise<void>;
 	handleReloadCommand(this: ReloadCommandContext): Promise<void>;
 };
@@ -160,7 +148,7 @@ function createReloadCommandContext(overrides: ReloadCommandContextOverrides = {
 		rebuildChatFromMessages: overrides.rebuildChatFromMessages ?? (() => {}),
 		setupAutocompleteProvider: overrides.setupAutocompleteProvider ?? (() => {}),
 		setupExtensionShortcuts: overrides.setupExtensionShortcuts ?? (() => {}),
-		showLoadedResources: overrides.showLoadedResources ?? (() => {}),
+		showResourceDiagnostics: overrides.showResourceDiagnostics ?? (() => {}),
 		maybeSaveImplicitProjectTrustAfterReload: overrides.maybeSaveImplicitProjectTrustAfterReload ?? (() => false),
 		showStatus: overrides.showStatus ?? (() => {}),
 		showWarning: overrides.showWarning ?? (() => {}),
@@ -187,18 +175,11 @@ function getMessageText(event: MessageEvent): string {
 
 function createLoadedResourcesContext(): LoadedResourcesContext {
 	return {
-		loadedResourcesContainer: new Container(),
+		resourceDiagnosticsContainer: new Container(),
 		chatContainer: new Container(),
-		options: { verbose: true },
-		settingsManager: { getQuietStartup: () => false },
-		sessionManager: { getCwd: () => "/repo" },
 		session: {
-			promptTemplates: [],
 			resourceLoader: {
-				getAgentsFiles: () => ({ agentsFiles: [{ path: "/repo/AGENTS.md" }], diagnostics: [] }),
-				getSystemPromptSource: () => undefined,
-				getAppendSystemPromptSources: () => [],
-				getSkills: () => ({ skills: [], diagnostics: [] }),
+				getSkills: () => ({ skills: [], diagnostics: [{ type: "warning" as const, message: "duplicate skill" }] }),
 				getPrompts: () => ({ prompts: [], diagnostics: [] }),
 				getThemes: () => ({ themes: [], diagnostics: [] }),
 				getExtensions: () => ({ extensions: [], errors: [] }),
@@ -209,33 +190,31 @@ function createLoadedResourcesContext(): LoadedResourcesContext {
 				getRegisteredCommands: () => [],
 			},
 		},
-		getStartupExpansionState: () => false,
-		shouldShowStartupDetails: () => true,
-		formatDisplayPath: (resourcePath) => resourcePath,
-		formatContextPath: (resourcePath) => resourcePath.replace("/repo/", ""),
+		formatDiagnostics: () => "diagnostics",
 		getBuiltInCommandConflictDiagnostics: () => [],
 	};
 }
 
 describe("regression #5943: session_start transient UI", () => {
-	it("renders loaded resources before restored messages without stale entries", () => {
+	it("renders resource diagnostics before restored messages without stale entries", () => {
 		initTheme("dark", false);
 		const context = createLoadedResourcesContext();
 		const root = new Container();
-		root.addChild(context.loadedResourcesContainer);
+		root.addChild(context.resourceDiagnosticsContainer);
 		root.addChild(context.chatContainer);
-		context.loadedResourcesContainer.addChild(new Text("stale resources", 0, 0));
+		context.resourceDiagnosticsContainer.addChild(new Text("stale resources", 0, 0));
 		context.chatContainer.addChild(new Text("restored message", 0, 0));
 
-		interactiveModePrototype.showLoadedResources.call(context);
+		interactiveModePrototype.showResourceDiagnostics.call(context);
 
 		const chatRendered = context.chatContainer.render(80).join("\n");
 		expect(chatRendered).toContain("restored message");
-		expect(chatRendered).not.toContain("[Context]");
+		expect(chatRendered).not.toContain("[Skill conflicts]");
 
 		const rendered = root.render(80).join("\n");
 		expect(rendered).not.toContain("stale resources");
-		expect(rendered.indexOf("[Context]")).toBeLessThan(rendered.indexOf("restored message"));
+		expect(rendered).toContain("[Skill conflicts]");
+		expect(rendered.indexOf("[Skill conflicts]")).toBeLessThan(rendered.indexOf("restored message"));
 	});
 
 	it("renders replacement session state before session_start handlers can notify", async () => {
