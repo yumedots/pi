@@ -11,6 +11,8 @@ packages/*/dist-firefox/
 packages/ai/src/providers/data/
 packages/ai/src/providers/.model-generation-*/
 *.cpuprofile
+# Bun's binary lockfile. The repository uses the text lockfile (bun.lock).
+bun.lockb
 
 # Environment
 .env
