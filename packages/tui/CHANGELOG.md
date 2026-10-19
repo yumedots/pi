@@ -6,12 +6,18 @@
 
 - Added `BlockList`, a keyboard-driven list that draws every row as a full-width block and keeps a scrollbar thumb on the selected row
 - `BlockList` now applies the row background across the scrollbar gutter as well
+- Added a shared hover primitive, and used it in the select, block, and settings lists, so the keyboard highlight follows the mouse pointer in every menu
 
 ### Changed
 
 - Changed the `tui.altScreen.bottom` default from `ctrl+end` to `ctrl+e`, and moved the jump-to-end indicator from the center of the transcript to its right edge
 - Removed the `tui.editor.cursorLineEnd` keybinding, so the editor no longer has a shortcut that moves the cursor to the end of the line
 - `tui.altScreen.top` is unbound by default, so `ctrl+home` no longer scrolls the transcript to the top
+- Fullscreen mode now always requests all-motion mouse tracking, including under tmux, Zellij, and GNU Screen. Button-motion tracking sends nothing for a free pointer move, so menus could not highlight the entry under the cursor
+
+### Fixed
+
+- Fixed the select and settings lists re-centering their visible window on the selection, which made a hovered row slide out from under the pointer
 
 ## [1.3.0] - 2026-10-15
 

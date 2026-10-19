@@ -428,22 +428,10 @@ describe("TuiAltScreen", () => {
 		tui.stop();
 	});
 
-	it("uses button-motion tracking inside terminal multiplexers", () => {
+	it("uses all-motion tracking so menus can highlight the entry under the cursor", () => {
 		const environmentKeys = ["TMUX", "ZELLIJ", "STY", "TERM"] as const;
 		const previousEnvironment = new Map(environmentKeys.map((key) => [key, process.env[key]]));
 		try {
-			for (const key of environmentKeys) delete process.env[key];
-			process.env.TERM = "xterm-256color";
-			const directTerminal = new RecordingTerminal();
-			const directTui = new TuiAltScreen(directTerminal);
-			directTui.start();
-			const directWrites = directTerminal.events
-				.filter((event): event is { type: "write"; data: string } => event.type === "write")
-				.map((event) => event.data)
-				.join("");
-			assert.ok(directWrites.includes("\x1b[?1003h"));
-			directTui.stop();
-
 			const multiplexers = [
 				{ name: "tmux environment", environment: { TMUX: "/tmp/tmux/default,1,0" } },
 				{ name: "tmux TERM", environment: { TERM: "tmux-256color" } },
@@ -462,7 +450,7 @@ describe("TuiAltScreen", () => {
 					.map((event) => event.data)
 					.join("");
 				assert.ok(writes.includes("\x1b[?1002h"), `${name} should enable button-motion tracking`);
-				assert.ok(!writes.includes("\x1b[?1003h"), `${name} should not enable all-motion tracking`);
+				assert.ok(writes.includes("\x1b[?1003h"), `${name} should enable all-motion tracking`);
 				assert.ok(writes.includes("\x1b[?1006h"), `${name} should enable SGR mouse encoding`);
 				tui.stop();
 			}
