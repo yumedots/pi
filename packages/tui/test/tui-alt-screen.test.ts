@@ -1970,11 +1970,52 @@ describe("TuiAltScreen", () => {
 		assert.strictEqual(transcript.scrollTop, bottom);
 		assert.strictEqual(transcript.isFollowingEnd, true);
 
-		// After a pause the gesture is over, so scrolling works again.
-		await new Promise((resolve) => setTimeout(resolve, 250));
+		// The cancellation is bounded: scrolling works again shortly after the jump, and
+		// the jump itself can be repeated.
+		await new Promise((resolve) => setTimeout(resolve, 300));
 		terminal.sendInput("\x1b[<64;5;3M");
 		await terminal.waitForRender();
 		assert.ok(transcript.scrollTop < bottom);
+
+		terminal.sendInput("\x05");
+		await terminal.waitForRender();
+		assert.strictEqual(transcript.scrollTop, bottom);
+		assert.strictEqual(transcript.isFollowingEnd, true);
+		tui.stop();
+	});
+
+	it("keeps a jump to the end cancelable only for the gesture in progress", async () => {
+		const terminal = new VirtualTerminal(20, 6);
+		const tui = new TuiAltScreen(terminal);
+		const transcript = new ScrollView(
+			new Text(Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0),
+			{ follow: "end", primary: true },
+		);
+		tui.setLayoutRoot(transcript);
+		tui.start();
+		await terminal.waitForRender();
+		const bottom = transcript.scrollTop;
+
+		// Jump without any wheel gesture in progress: the very next wheel event scrolls,
+		// because it starts a new gesture.
+		terminal.sendInput("\x05");
+		await terminal.waitForRender();
+		terminal.sendInput("\x1b[<64;5;3M");
+		await terminal.waitForRender();
+		assert.ok(transcript.scrollTop < bottom);
+
+		// Repeated jumps keep working, and scrolling resumes right after the short
+		// cancellation window even if the wheel gesture never paused.
+		for (let index = 0; index < 3; index++) {
+			terminal.sendInput("\x05");
+			await terminal.waitForRender();
+			assert.strictEqual(transcript.scrollTop, bottom);
+			assert.strictEqual(transcript.isFollowingEnd, true);
+			await new Promise((resolve) => setTimeout(resolve, 300));
+			terminal.sendInput("\x1b[<64;5;3M");
+			await terminal.waitForRender();
+			assert.ok(transcript.scrollTop < bottom, `scrolling should work after jump ${index + 1}`);
+		}
 		tui.stop();
 	});
 
