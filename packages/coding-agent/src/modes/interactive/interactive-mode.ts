@@ -944,7 +944,8 @@ export class InteractiveMode {
 			this.footerContainer,
 		]);
 		// Accept text while startup completes, but only enable interrupt, exit, and submission feedback.
-		this.defaultEditor.onAction("app.clear", () => this.handleCtrlC());
+		this.defaultEditor.onAction("app.clear", () => this.handleClear());
+		this.defaultEditor.onAction("app.quit", () => this.handleQuit());
 		this.defaultEditor.onCtrlD = () => this.handleCtrlD();
 		this.defaultEditor.onSubmit = (text) => this.handleStartupSubmit(text);
 		this.ui.setFocus(this.editor);
@@ -980,7 +981,7 @@ export class InteractiveMode {
 				[
 					hint("app.interrupt", "to interrupt"),
 					hint("app.clear", "to clear"),
-					rawKeyHint(`${keyText("app.clear")} twice`, "to exit"),
+					rawKeyHint(`${keyText("app.quit")} twice`, "to exit"),
 					hint("app.exit", "to exit (empty)"),
 					hint("app.suspend", "to suspend"),
 					keyHint("tui.editor.deleteToLineEnd", "to delete to end"),
@@ -1004,7 +1005,8 @@ export class InteractiveMode {
 			const compactInstructions = () =>
 				[
 					hint("app.interrupt", "interrupt"),
-					rawKeyHint(`${keyText("app.clear")}/${keyText("app.exit")}`, "clear/exit"),
+					hint("app.clear", "clear"),
+					rawKeyHint(`${keyText("app.quit")} twice`, "to exit"),
 					rawKeyHint("/", "commands"),
 					rawKeyHint("!", "bash"),
 					hint("app.tools.expand", "more"),
@@ -3053,7 +3055,8 @@ export class InteractiveMode {
 		};
 
 		// Register app action handlers
-		this.defaultEditor.onAction("app.clear", () => this.handleCtrlC());
+		this.defaultEditor.onAction("app.clear", () => this.handleClear());
+		this.defaultEditor.onAction("app.quit", () => this.handleQuit());
 		this.defaultEditor.onCtrlD = () => this.handleCtrlD();
 		this.defaultEditor.onAction("app.suspend", () => this.handleCtrlZ());
 		this.defaultEditor.onAction("app.thinking.cycle", () => this.cycleThinkingLevel());
@@ -4250,15 +4253,25 @@ export class InteractiveMode {
 	// Key handlers
 	// =========================================================================
 
-	private handleCtrlC(): void {
+	/**
+	 * Clear the editor. Never exits: the quit key is bound to `app.quit`.
+	 */
+	private handleClear(): void {
+		this.clearEditor();
+	}
+
+	/**
+	 * Quit on a double press. Never touches the editor content.
+	 */
+	private handleQuit(): void {
 		const now = Date.now();
 		if (now - this.lastSigintTime < 500) {
 			void this.shutdown();
-		} else {
-			this.clearEditor();
-			this.showWarningBanner("Press ^C again to exit");
-			this.lastSigintTime = now;
+			return;
 		}
+		this.lastSigintTime = now;
+		const quitKey = keyDisplayText("app.quit");
+		this.showWarningBanner(quitKey ? `Press ${quitKey} again to exit` : "Press again to exit");
 	}
 
 	private handleCtrlD(): void {
@@ -6949,6 +6962,7 @@ export class InteractiveMode {
 		// App keybindings
 		const interrupt = this.getAppKeyDisplay("app.interrupt");
 		const clear = this.getAppKeyDisplay("app.clear");
+		const quit = this.getAppKeyDisplay("app.quit");
 		const exit = this.getAppKeyDisplay("app.exit");
 		const suspend = this.getAppKeyDisplay("app.suspend");
 		const cycleThinkingLevel = this.getAppKeyDisplay("app.thinking.cycle");
@@ -6992,7 +7006,8 @@ export class InteractiveMode {
 |-----|--------|
 | \`${tab}\` | Path completion / accept autocomplete |
 | \`${interrupt}\` | Cancel autocomplete / abort streaming |
-| \`${clear}\` | Clear editor (first) / exit (second) |
+| \`${clear}\` | Clear editor |
+| \`${quit}\` | Exit (press twice) |
 | \`${exit}\` | Exit (when editor is empty) |
 | \`${suspend}\` | Suspend to background |
 | \`${cycleThinkingLevel}\` | Cycle thinking level |

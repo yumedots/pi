@@ -18,6 +18,7 @@
 - Slash-command autocomplete descriptions no longer carry the `[u:npm:...]` resource source tag
 - The session picker renders full-width block rows with a scrollbar instead of a `(n/m)` counter
 - `generateSummary()` and `generateSummaryWithUsage()` now ignore their `reserveTokens` parameter. Summary requests use the model's output limit instead.
+- `Ctrl+C` no longer clears the editor. It only exits when pressed twice, and clearing the editor moved to `Alt+C` (`app.clear`). The exit shortcut is the new `app.quit` action
 
 ### Fixed
 

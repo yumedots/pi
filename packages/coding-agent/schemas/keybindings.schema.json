@@ -199,6 +199,10 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Clear editor"
     },
+    "app.quit": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Exit (press twice)"
+    },
     "app.exit": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Exit when editor is empty"
