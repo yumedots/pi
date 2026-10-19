@@ -236,3 +236,40 @@ describe("buildSystemPrompt", () => {
 		});
 	});
 });
+
+describe("project context limit", () => {
+	const contextFile = { path: "/tmp/AGENTS.md", content: "line one\nline two\nline three\nline four" };
+
+	test("keeps the whole context without a limit", () => {
+		const prompt = buildSystemPrompt({ cwd: "/tmp", contextFiles: [contextFile], skills: [] });
+
+		expect(prompt).toContain("line four");
+		expect(prompt).not.toContain("more characters omitted");
+	});
+
+	test("cuts the context at the limit and says what was left out", () => {
+		const prompt = buildSystemPrompt({
+			cwd: "/tmp",
+			contextFiles: [contextFile],
+			skills: [],
+			projectContextMaxChars: 20,
+		});
+
+		expect(prompt).toContain("line one\nline two");
+		expect(prompt).not.toContain("line three");
+		expect(prompt).toContain("more characters omitted");
+		expect(prompt).toContain("read the file for the rest");
+	});
+
+	test("keeps a context that fits the limit", () => {
+		const prompt = buildSystemPrompt({
+			cwd: "/tmp",
+			contextFiles: [contextFile],
+			skills: [],
+			projectContextMaxChars: 1000,
+		});
+
+		expect(prompt).toContain("line four");
+		expect(prompt).not.toContain("more characters omitted");
+	});
+});

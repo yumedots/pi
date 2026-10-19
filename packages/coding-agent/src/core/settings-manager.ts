@@ -916,6 +916,16 @@ export class SettingsManager {
 		return parseTimeoutSetting(this.settings.httpIdleTimeoutMs, "httpIdleTimeoutMs") ?? DEFAULT_HTTP_IDLE_TIMEOUT_MS;
 	}
 
+	/** Maximum number of characters of the project context in the system prompt. 0 keeps all of it. */
+	getProjectContextMaxChars(): number {
+		const value = this.settings.projectContextMaxChars;
+		if (value === undefined) return SETTINGS_DEFAULTS.projectContextMaxChars;
+		if (!Number.isFinite(value) || value < 0) {
+			throw new Error(`Invalid projectContextMaxChars setting: ${String(value)}`);
+		}
+		return Math.floor(value);
+	}
+
 	setHttpIdleTimeoutMs(timeoutMs: number): void {
 		if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
 			throw new Error(`Invalid httpIdleTimeoutMs setting: ${String(timeoutMs)}`);

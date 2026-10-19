@@ -65,6 +65,7 @@ CLI tool options override this setting for one invocation. `--tools` with only `
 |---|---|---|---|
 | `sessionDir` | string | Agent session directory | Session storage directory. Relative paths resolve from the working directory. `PI_CODING_AGENT_SESSION_DIR` and `--session-dir` override this setting. |
 | `sessionShareDestination` | `"auto" \| "gist" \| "radius"` | `"auto"` | Destination used by `/share`. `auto` uses Radius when authenticated and otherwise creates a GitHub gist. `gist` always uses a gist. `radius` requires Radius authentication and never falls back to a gist. |
+| `projectContextMaxChars` | number | `0` | Maximum number of characters of the project context (`AGENTS.md` and friends) in the system prompt. `0` keeps all of it. The context is sent with every request, so it is the largest part of the prompt. A cut context says how much was left out, and the model can read the file for the rest. |
 
 ### Compaction
 

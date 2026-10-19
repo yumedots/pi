@@ -390,6 +390,14 @@ export const SettingsSchema = Type.Object(
 				description: 'HTTP header or body idle timeout in milliseconds; 0 or "disabled" disables it.',
 			}),
 		),
+		projectContextMaxChars: Type.Optional(
+			Type.Number({
+				minimum: 0,
+				description:
+					"Maximum number of characters of the project context (AGENTS.md and friends) in the system prompt. 0 keeps all of it. The context is sent with every request, so it is the largest part of the prompt.",
+				default: SETTINGS_DEFAULTS.projectContextMaxChars,
+			}),
+		),
 		cacheWarming: Type.Optional(
 			Type.Union([Type.Literal("off"), Type.Literal("streaming"), Type.Literal("idle")], {
 				description:

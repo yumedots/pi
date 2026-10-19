@@ -32,6 +32,12 @@ export interface BuildSystemPromptOptions {
 	cwd: string;
 	/** Pre-loaded context files. */
 	contextFiles?: Array<{ path: string; content: string }>;
+	/**
+	 * Maximum number of characters of the project context in the prompt. 0 keeps every
+	 * character. The context is sent with every request, so a long context file is the
+	 * largest part of the prompt.
+	 */
+	projectContextMaxChars?: number;
 	/** Pre-loaded skills. */
 	skills?: Skill[];
 }
@@ -45,6 +51,7 @@ export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
 	appendSystemPrompt: string;
 	sections: Record<string, string>;
 	contextFiles: Array<{ path: string; content: string }>;
+	projectContextMaxChars: number;
 	skills: Skill[];
 };
 
@@ -72,17 +79,34 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 		sections: { ...(input.sections ?? {}) },
 		cwd: input.cwd,
 		contextFiles: (input.contextFiles ?? []).map((file) => ({ ...file })),
+		projectContextMaxChars: Math.max(0, Math.floor(input.projectContextMaxChars ?? 0)),
 		skills: (input.skills ?? []).map((skill) => ({ ...skill })),
 	};
 }
 
-function renderProjectContext(contextFiles: Array<{ path: string; content: string }>): string {
+function renderProjectContext(contextFiles: Array<{ path: string; content: string }>, maxChars: number): string {
 	return [
 		"Project-specific instructions and guidelines:",
-		...contextFiles.map(
-			({ path, content }) => `<project_instructions path="${path}">\n${content}\n</project_instructions>`,
-		),
+		...contextFiles.map(({ path, content }) => {
+			const text = maxChars > 0 ? truncateContext(content, maxChars) : content;
+			return `<project_instructions path="${path}">\n${text}\n</project_instructions>`;
+		}),
 	].join("\n\n");
+}
+
+/**
+ * Cuts a context file at the given number of characters.
+ *
+ * The cut lands on a line boundary, and the marker tells the model that the rest of the
+ * file was left out, so it can read the file when it needs the missing part.
+ */
+function truncateContext(content: string, maxChars: number): string {
+	if (content.length <= maxChars) return content;
+	const kept = content.slice(0, maxChars);
+	const lastNewline = kept.lastIndexOf("\n");
+	const head = lastNewline > 0 ? kept.slice(0, lastNewline) : kept;
+	const omitted = content.length - head.length;
+	return `${head}\n[... ${omitted} more characters omitted; read the file for the rest ...]`;
 }
 
 function buildRules(
@@ -170,7 +194,9 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	}
 
 	if (appendSystemPrompt) promptSections.addendum = appendSystemPrompt;
-	if (contextFiles.length > 0) promptSections.project_context = renderProjectContext(contextFiles);
+	if (contextFiles.length > 0) {
+		promptSections.project_context = renderProjectContext(contextFiles, options.projectContextMaxChars);
+	}
 	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
 	const readers = ["read", "bash"] as const;
 	const skillFileReadTool =
