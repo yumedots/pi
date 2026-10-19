@@ -572,6 +572,8 @@ export class InteractiveMode {
 	private extensionWidgetsBelow = new Map<string, Component & { dispose?(): void }>();
 	private widgetContainerAbove!: Container;
 	private widgetContainerBelow!: Container;
+	private warningContainer!: Container;
+	private warningText: ThemedText | undefined = undefined;
 
 	// Custom footer from extension (undefined = use built-in footer)
 	private customFooter: (Component & { dispose?(): void }) | undefined = undefined;
@@ -642,6 +644,7 @@ export class InteractiveMode {
 		this.statusContainer = new Container();
 		this.widgetContainerAbove = new Container();
 		this.widgetContainerBelow = new Container();
+		this.warningContainer = new Container();
 		this.keybindings = KeybindingsManager.create();
 		setKeybindings(this.keybindings);
 		const editorPaddingX = this.settingsManager.getEditorPaddingX();
@@ -937,6 +940,7 @@ export class InteractiveMode {
 			pendingMessages: this.pendingMessagesContainer,
 			status: this.statusContainer,
 			widgetsAbove: this.widgetContainerAbove,
+			warning: this.warningContainer,
 			editor: this.editorContainer,
 			widgetsBelow: this.widgetContainerBelow,
 			footer: this.footerContainer,
@@ -951,6 +955,7 @@ export class InteractiveMode {
 			this.pendingMessagesContainer,
 			this.statusContainer,
 			this.widgetContainerAbove,
+			this.warningContainer,
 			this.editorContainer,
 			this.widgetContainerBelow,
 			this.footerContainer,
@@ -4258,6 +4263,7 @@ export class InteractiveMode {
 			void this.shutdown();
 		} else {
 			this.clearEditor();
+			this.showWarningBanner("Press ^C again to exit");
 			this.lastSigintTime = now;
 		}
 	}
@@ -4507,6 +4513,7 @@ export class InteractiveMode {
 			this.editor.borderColor = theme.getThinkingBorderColor(level);
 		}
 		this.activeStatusIndicator?.invalidate();
+		if (this.warningText) this.clearWarningBanner();
 		this.ui.requestRender();
 	}
 
@@ -4603,6 +4610,29 @@ export class InteractiveMode {
 
 	clearEditor(): void {
 		this.editor.setText("");
+		this.ui.requestRender();
+	}
+
+	private warningBannerTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+
+	showWarningBanner(message: string): void {
+		if (this.warningBannerTimer) clearTimeout(this.warningBannerTimer);
+		this.warningContainer.clear();
+		this.warningText = new ThemedText(() => theme.fg("warning", message), 1, 0);
+		this.warningContainer.addChild(this.warningText);
+		this.ui.requestRender();
+		this.warningBannerTimer = setTimeout(() => {
+			this.warningContainer.clear();
+			this.warningText = undefined;
+			this.ui.requestRender();
+		}, 3000);
+	}
+
+	clearWarningBanner(): void {
+		if (this.warningBannerTimer) clearTimeout(this.warningBannerTimer);
+		this.warningBannerTimer = undefined;
+		this.warningContainer.clear();
+		this.warningText = undefined;
 		this.ui.requestRender();
 	}
 
