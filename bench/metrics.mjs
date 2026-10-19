@@ -38,6 +38,9 @@ export const profiles = {
 		// The type checker and bundler are the same in both profiles; only the
 		// package manager and script runner change.
 		tsc: "./node_modules/.bin/tsc",
+		// The repository's test runner isolates the environment. PI_TEST_PACKAGE_MANAGER
+		// selects which package manager drives the suite.
+		test: "./test.sh",
 	},
 	bun: {
 		label: "Bun",
@@ -46,6 +49,9 @@ export const profiles = {
 		installColdPrepare: "rm -rf node_modules && rm -rf ~/.bun/install/cache",
 		installWarmPrepare: "rm -rf node_modules",
 		tsc: "./node_modules/.bin/tsc",
+		// The repository's test runner isolates the environment. PI_TEST_PACKAGE_MANAGER
+		// selects which package manager drives the suite.
+		test: "PI_TEST_PACKAGE_MANAGER=bun ./test.sh",
 	},
 };
 
@@ -138,7 +144,7 @@ export function metricsFor(profileName, options = {}) {
 	add({
 		name: "test.full",
 		group: "test",
-		command: "./test.sh",
+		command: profile.test,
 		note: "Full suite through the repository's isolated test runner.",
 	});
 	add({

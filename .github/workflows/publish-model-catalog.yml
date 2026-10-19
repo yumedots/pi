@@ -52,25 +52,36 @@ jobs:
           # The compatibility check reads the latest release's source from its git tag.
           fetch-depth: 0
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+
+      - name: Cache Bun packages
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
-          cache: npm
 
       - name: Install dependencies
-        run: npm ci --ignore-scripts
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Generate model catalog JSON
-        run: npm run generate:model-catalog
+        run: bun run generate:model-catalog
 
       - name: Validate model catalog JSON
-        run: npm run check:model-catalog
+        run: bun run check:model-catalog
 
       # pi.dev serves the catalog to released pi >= MINIMUM_PI_VERSION. Fail before
       # publishing if the latest release's code cannot handle it.
       - name: Check the model catalog against the latest release
-        run: npm run check:model-catalog-compat
+        run: bun run check:model-catalog-compat
 
       - name: Upload model catalog JSON
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

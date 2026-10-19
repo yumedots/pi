@@ -113,7 +113,7 @@
 	"scripts": {
 		"clean": "shx rm -rf dist",
 		"build": "tsc -p tsconfig.build.json",
-		"test": "vitest --run && PI_DURABLE_DOCUMENT_RETENTION_MS=0 vitest --run && npm run test:workers",
+		"test": "vitest --run && PI_DURABLE_DOCUMENT_RETENTION_MS=0 vitest --run && bun run test:workers",
 		"test:workers": "vitest --run --config test-workers/vitest.config.ts",
 		"bench:storage": "vitest bench --config vitest.benchmark.config.ts",
 		"bench:storage:memory": "node --conditions=source --experimental-strip-types test/storage-memory.ts",
@@ -125,7 +125,7 @@
 		"bench:document-cache": "node --conditions=source --experimental-strip-types test/session-document-cache-bench.ts",
 		"bench:document-append": "node --conditions=source --experimental-strip-types test/document-append-bench.ts",
 		"bench:codemode": "node --conditions=source --experimental-strip-types test/codemode-bench.ts",
-		"prepublishOnly": "npm run clean && npm run build"
+		"prepublishOnly": "bun run clean && bun run build"
 	},
 	"keywords": [
 		"durable-execution",
