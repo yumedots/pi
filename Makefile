@@ -145,5 +145,6 @@ install-app: build-binary
 	@printf 'installed %s -> %s (%s)\n' "$(BIN_DIR)/pi" "$(LIB_DIR)/pi" "$$($(BIN_DIR)/pi --version)"
 	@found="$$(command -v pi || true)"; \
 	if [ -n "$$found" ] && [ "$$found" != "$(BIN_DIR)/pi" ]; then \
-	  printf 'warning: %s takes precedence on PATH\n' "$$found"; \
+	  printf 'warning: %s takes precedence on PATH, so `pi` still runs that one.\n' "$$found"; \
+	  printf '         run the fork with %s, or put %s first on your PATH.\n' "$(BIN_DIR)/pi" "$(BIN_DIR)"; \
 	fi

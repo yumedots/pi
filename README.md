@@ -114,6 +114,11 @@ bun run check         # Lint, format, and type check
 The `make` targets wrap the same commands: `make install`, `make build`,
 `make build-offline`, `make check`, `make test` and `make test-one FILE=...`.
 
+`make install` installs the dependencies. `make install-app` is the one that
+installs the compiled binary into `~/.local/bin/pi`; `make dev` runs the fork
+from source. If a globally installed `pi` comes first on your PATH, `make
+install-app` says so, because `pi` would keep running that one.
+
 ### Using local packages outside the monorepo
 
 Build every public package into one coherent local artifact set:
