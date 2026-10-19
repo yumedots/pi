@@ -243,6 +243,12 @@ export interface EditorTheme {
 export interface EditorOptions {
 	paddingX?: number;
 	autocompleteMaxVisible?: number;
+	/**
+	 * Number of text lines the editor always shows. The editor keeps this height even when
+	 * the text is shorter or longer, scrolling longer text inside the box, so that views
+	 * next to the editor do not resize while typing.
+	 */
+	contentHeight?: number;
 }
 
 const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
@@ -328,6 +334,7 @@ export class Editor implements Component, Focusable {
 	private autocompleteState: "regular" | "force" | null = null;
 	private autocompletePrefix: string = "";
 	private autocompleteMaxVisible: number = 5;
+	private fixedContentHeight: number | undefined;
 	private autocompleteAbort?: AbortController;
 	private autocompleteDebounceTimer?: ReturnType<typeof setTimeout>;
 	private autocompleteRequestTask: Promise<void> = Promise.resolve();
@@ -379,6 +386,11 @@ export class Editor implements Component, Focusable {
 		this.paddingX = Number.isFinite(paddingX) ? Math.max(0, Math.floor(paddingX)) : 0;
 		const maxVisible = options.autocompleteMaxVisible ?? 5;
 		this.autocompleteMaxVisible = Number.isFinite(maxVisible) ? Math.max(3, Math.min(20, Math.floor(maxVisible))) : 5;
+		const contentHeight = options.contentHeight;
+		this.fixedContentHeight =
+			contentHeight !== undefined && Number.isFinite(contentHeight)
+				? Math.max(1, Math.floor(contentHeight))
+				: undefined;
 	}
 
 	/** Set of currently valid paste IDs, for marker-aware segmentation. */
@@ -533,9 +545,10 @@ export class Editor implements Component, Focusable {
 		// Layout the text
 		const layoutLines = this.layoutText(layoutWidth);
 
-		// Calculate max visible lines: 30% of terminal height, minimum 5 lines
+		// Calculate max visible lines: 30% of terminal height, minimum 5 lines, unless the
+		// editor was given a fixed content height.
 		const terminalRows = this.tui.terminal.rows;
-		const maxVisibleLines = Math.max(5, Math.floor(terminalRows * 0.3));
+		const maxVisibleLines = this.fixedContentHeight ?? Math.max(5, Math.floor(terminalRows * 0.3));
 
 		// Find the cursor line index in layoutLines
 		let cursorLineIndex = layoutLines.findIndex((line) => line.hasCursor);
@@ -611,27 +624,46 @@ export class Editor implements Component, Focusable {
 			result.push(`${leftPadding}${displayText}${padding}${lineRightPadding}`);
 		}
 
+		// Keep the box height constant when the text is shorter than the content height,
+		// so neighbouring views do not resize while typing.
+		if (this.fixedContentHeight !== undefined) {
+			for (let pad = visibleLines.length; pad < maxVisibleLines; pad++) {
+				result.push(`${leftPadding}${" ".repeat(contentWidth)}${rightPadding}`);
+			}
+		}
+
 		// Render bottom border (with scroll indicator if more content below)
 		const linesBelow = layoutLines.length - (this.scrollOffset + visibleLines.length);
 		result.push(this.renderBottomBorder(width, linesBelow));
 
-		// Add autocomplete list if active
-		this.renderedAutocompleteHeight = 0;
-		if (this.autocompleteState && this.autocompleteList) {
-			const autocompleteResult = this.autocompleteList.render(contentWidth);
-			this.renderedAutocompleteHeight = autocompleteResult.length;
-			for (const line of autocompleteResult) {
-				const lineWidth = visibleWidth(line);
-				const linePadding = " ".repeat(Math.max(0, contentWidth - lineWidth));
-				result.push(`${leftPadding}${line}${linePadding}${rightPadding}`);
-			}
-		}
-
 		return result;
 	}
 
+	/**
+	 * The autocomplete list floats above the editor instead of below it, so opening it does
+	 * not resize the editor (and with it the view above).
+	 */
+	renderOverlayAbove(width: number): string[] {
+		this.renderedAutocompleteHeight = 0;
+		if (!this.autocompleteState || !this.autocompleteList) return [];
+		const maxPadding = Math.max(0, Math.floor((width - 1) / 2));
+		const paddingX = Math.min(this.paddingX, maxPadding);
+		const contentWidth = Math.max(1, width - paddingX * 2);
+		const autocompleteResult = this.autocompleteList.render(contentWidth);
+		this.renderedAutocompleteHeight = autocompleteResult.length;
+		const leftPadding = " ".repeat(paddingX);
+		const rightPadding = leftPadding;
+		return autocompleteResult.map((line) => {
+			const lineWidth = visibleWidth(line);
+			const linePadding = " ".repeat(Math.max(0, contentWidth - lineWidth));
+			return `${leftPadding}${line}${linePadding}${rightPadding}`;
+		});
+	}
+
 	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-		const autocompleteStartRow = this.renderedVisibleLineCount + 2;
+		// The autocomplete list is painted above the editor, so its rows are above the
+		// editor's own box.
+		const autocompleteStartRow = -this.renderedAutocompleteHeight;
 		if (
 			this.autocompleteState &&
 			this.autocompleteList &&

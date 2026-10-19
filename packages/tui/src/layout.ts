@@ -30,6 +30,10 @@ export interface LayoutBox {
 	lineOffset?: number;
 	scrollView?: ScrollView;
 	scrollContentLines?: readonly string[];
+	/** Lines painted directly above the box, overlapping the content above it. */
+	overlayLines?: readonly string[];
+	/** Region covered by the overlay lines, in screen coordinates. */
+	overlayRect?: LayoutRect;
 	layer: number;
 }
 
@@ -122,6 +126,7 @@ function layoutComponent(
 			const cursorLine = lines.findIndex((line) => line.includes(CURSOR_MARKER));
 			if (cursorLine >= allocatedHeight) lineOffset = cursorLine - allocatedHeight + 1;
 		}
+		const overlayLines = component.renderOverlayAbove?.(safeWidth) ?? [];
 		return {
 			component,
 			rect: { x, y, width: safeWidth, height: allocatedHeight },
@@ -129,6 +134,12 @@ function layoutComponent(
 			children: [],
 			lines,
 			lineOffset,
+			...(overlayLines.length > 0
+				? {
+						overlayLines,
+						overlayRect: { x, y: y - overlayLines.length, width: safeWidth, height: overlayLines.length },
+					}
+				: {}),
 			layer: 0,
 		};
 	}
@@ -306,6 +317,28 @@ export function getScrollbarGeometry(box: LayoutBox, includeHiddenAuto = false):
 	};
 }
 
+/**
+ * Paint the overlay lines of every box, after the regular boxes, so an overlay floats
+ * above the content it covers instead of being hidden by it.
+ */
+function paintOverlays(box: LayoutBox, screen: string[], totalWidth: number): void {
+	const overlay = box.overlayLines;
+	if (overlay && overlay.length > 0) {
+		const top = box.overlayRect?.y ?? box.rect.y - overlay.length;
+		for (let index = 0; index < overlay.length; index++) {
+			const row = top + index;
+			if (row < 0 || row >= screen.length) continue;
+			const line = (overlay[index] ?? "").replace(OSC133_ZONE_PREFIX, "");
+			if (box.rect.x === 0 && box.rect.width >= totalWidth && !screen[row]) {
+				screen[row] = line;
+			} else {
+				screen[row] = compositeTuiLine(screen[row] ?? "", line, box.rect.x, box.rect.width, totalWidth);
+			}
+		}
+	}
+	for (const child of box.children) paintOverlays(child, screen, totalWidth);
+}
+
 function paintScrollbar(box: LayoutBox, screen: string[], totalWidth: number): void {
 	const geometry = getScrollbarGeometry(box);
 	if (!geometry || !box.scrollView) return;
@@ -398,6 +431,7 @@ export function renderLayoutFrame(
 	});
 	const lines = Array.from({ length: safeHeight }, () => "");
 	paintBox(rootBox, lines, safeWidth);
+	paintOverlays(rootBox, lines, safeWidth);
 	return {
 		root: rootBox,
 		width: safeWidth,
@@ -415,7 +449,9 @@ function containsPoint(rect: LayoutRect, x: number, y: number): boolean {
 export function getLayoutBoxesAt(frame: LayoutFrame, x: number, y: number): LayoutBox[] {
 	const result: Array<{ box: LayoutBox; depth: number }> = [];
 	const visit = (box: LayoutBox, depth: number): void => {
-		if (!containsPoint(box.clip, x, y)) return;
+		const inClip = containsPoint(box.clip, x, y);
+		const inOverlay = box.overlayRect !== undefined && containsPoint(box.overlayRect, x, y);
+		if (!inClip && !inOverlay) return;
 		result.push({ box, depth });
 		for (const child of box.children) visit(child, depth + 1);
 	};

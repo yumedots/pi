@@ -373,6 +373,12 @@ const RADIUS_LOGIN_INTRO = "Radius is a service crafted for Pi by the builders o
 
 const AUTH_TYPE_ORDER = { oauth: 0, api_key: 1 } satisfies Record<AuthSelectorProvider["authType"], number>;
 
+/**
+ * Text lines the input area always shows. Keeping the input box a fixed height stops the
+ * transcript above it from resizing (and sliding) while a prompt is typed.
+ */
+const EDITOR_CONTENT_HEIGHT = 3;
+
 function createFuzzyAutocompleteItems<T>(
 	items: T[],
 	prefix: string,
@@ -650,6 +656,7 @@ export class InteractiveMode {
 			paddingX: editorPaddingX,
 			autocompleteMaxVisible,
 			embedWorkingStatus: true,
+			contentHeight: EDITOR_CONTENT_HEIGHT,
 		});
 		this.editor = this.defaultEditor;
 		this.editorContainer = new Container();

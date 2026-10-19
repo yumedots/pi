@@ -13,6 +13,32 @@ function visibleLines(lines: string[]): string[] {
 }
 
 describe("viewport layout", () => {
+	it("paints overlay lines above their box without taking up layout height", () => {
+		const overlay = {
+			render: () => ["box"],
+			renderOverlayAbove: () => ["overlay line"],
+			invalidate: () => {},
+		};
+		const frame = renderLayoutFrame(
+			new VStack([
+				{ component: new Text("top", 0, 0), basis: 1, shrink: 0 },
+				{ component: overlay, basis: 1, shrink: 0 },
+			]),
+			10,
+			4,
+			() => {},
+		);
+
+		// The overlay does not push the box down.
+		assert.deepStrictEqual(
+			frame.root.children.map((child) => child.rect.height),
+			[1, 1],
+		);
+		// The box keeps its own line; the overlay is painted on the row above it, over
+		// whatever was there.
+		assert.deepStrictEqual(visibleLines(frame.lines), ["overlay li", "box", "", ""]);
+	});
+
 	it("allocates vertical grow space deterministically", () => {
 		const frame = renderLayoutFrame(
 			new VStack([

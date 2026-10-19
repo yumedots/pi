@@ -122,6 +122,14 @@ export interface Component {
 	 */
 	render(width: number): string[];
 
+	/**
+	 * Optional lines painted directly above the component's box, overlapping whatever is
+	 * above it. They take up no layout height, so showing them does not resize
+	 * neighbouring views. Used for the editor's autocomplete list, which floats over the
+	 * transcript instead of pushing it around.
+	 */
+	renderOverlayAbove?(width: number): string[];
+
 	/** Optional handler for keyboard input when component has focus. */
 	handleInput?(data: string): void;
 

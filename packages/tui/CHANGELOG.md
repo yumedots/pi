@@ -7,6 +7,8 @@
 - Added `BlockList`, a keyboard-driven list that draws every row as a full-width block and keeps a scrollbar thumb on the selected row
 - `BlockList` now applies the row background across the scrollbar gutter as well
 - Added a shared hover primitive, and used it in the select, block, and settings lists, so the keyboard highlight follows the mouse pointer in every menu
+- Added a `contentHeight` option to the editor, so the input box can keep a fixed height while longer text scrolls inside it
+- Added `Component.renderOverlayAbove()`, so a component can paint lines over the content above it without taking up layout height
 
 ### Changed
 

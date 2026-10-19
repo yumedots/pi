@@ -2521,6 +2521,76 @@ describe("Editor component", () => {
 			assert.strictEqual(editor.isShowingAutocomplete(), true);
 		});
 
+		it("keeps a fixed content height for short and long text", () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme, { contentHeight: 3 });
+			editor.setText("short");
+			const short = editor.render(40);
+			// top border + 3 content lines + bottom border
+			assert.strictEqual(short.length, 5);
+
+			editor.setText("a".repeat(400));
+			const long = editor.render(40);
+			assert.strictEqual(long.length, 5);
+			// The text scrolls inside the box, so the cursor line stays visible.
+			assert.ok(stripVTControlCharacters(long[3] ?? "").includes("a"));
+		});
+
+		it("renders the autocomplete list as an overlay above the editor", async () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme, { contentHeight: 3 });
+			const mockProvider: AutocompleteProvider = {
+				getSuggestions: async (lines, _cursorLine, cursorCol) => {
+					const before = (lines[0] || "").slice(0, cursorCol);
+					if (!before.startsWith("/")) return null;
+					return { items: [{ value: "cmd", label: "cmd" }], prefix: before };
+				},
+				applyCompletion,
+			};
+			editor.setAutocompleteProvider(mockProvider);
+
+			editor.handleInput("/");
+			await flushAutocomplete();
+
+			// The editor's own lines do not grow with the picker.
+			assert.strictEqual(editor.render(40).length, 5);
+			const overlay = editor.renderOverlayAbove(40);
+			assert.ok(overlay.length > 0);
+			assert.ok(stripVTControlCharacters(overlay[0] ?? "").includes("cmd"));
+		});
+
+		it("routes mouse events on the overlay above the editor to the picker", async () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme, { contentHeight: 3 });
+			const mockProvider: AutocompleteProvider = {
+				getSuggestions: async (lines, _cursorLine, cursorCol) => {
+					const before = (lines[0] || "").slice(0, cursorCol);
+					if (!before.startsWith("/")) return null;
+					return { items: [{ value: "cmd", label: "cmd" }], prefix: before };
+				},
+				applyCompletion,
+			};
+			editor.setAutocompleteProvider(mockProvider);
+
+			editor.handleInput("/");
+			await flushAutocomplete();
+
+			const overlayHeight = editor.renderOverlayAbove(40).length;
+			assert.ok(overlayHeight > 0);
+			// The picker floats above the editor, so its rows are at negative offsets.
+			const result = editor.handleMouse({
+				type: "press",
+				button: "left",
+				x: 1,
+				y: -overlayHeight,
+				screenX: 1,
+				screenY: 0,
+				width: 40,
+				height: overlayHeight,
+				shift: false,
+				alt: false,
+				ctrl: false,
+			});
+			assert.ok(result, "the picker should handle clicks on its overlay rows");
+		});
+
 		it("re-queries the autocomplete picker when the cursor moves back into the command name", async () => {
 			// Regression for earendil-works/pi#5496: arrowing left out of a slash
 			// command's argument region must re-query the picker, not leave the
@@ -2560,8 +2630,9 @@ describe("Editor component", () => {
 			}
 			assert.strictEqual(editor.getText(), "/cmd ");
 			assert.strictEqual(editor.isShowingAutocomplete(), true);
+			// The picker floats above the editor, so it is not part of the editor's own lines.
 			const atArg = editor
-				.render(80)
+				.renderOverlayAbove(80)
 				.map((l) => stripVTControlCharacters(l))
 				.join("\n");
 			assert.ok(atArg.includes("repo"), "argument menu should be visible at `/cmd `");
@@ -2573,7 +2644,7 @@ describe("Editor component", () => {
 			// The picker must have re-queried: the stale argument items are gone
 			// (replaced by the command-name suggestion, or the picker closed).
 			const afterMove = editor
-				.render(80)
+				.renderOverlayAbove(80)
 				.map((l) => stripVTControlCharacters(l))
 				.join("\n");
 			assert.ok(!afterMove.includes("repo"), "stale argument menu must not survive the cursor move");
