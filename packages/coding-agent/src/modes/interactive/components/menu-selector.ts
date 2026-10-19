@@ -84,9 +84,13 @@ export class MenuSelectorComponent<T> extends Container implements Focusable {
 		});
 		this.blockList.onSelect = (item) => this.onSelectCallback(item.value);
 		this.blockList.onCancel = () => this.onCancelCallback();
+		this.blockList.onSelectionChange = (item) => this.onSelectionChange?.(item.value);
 
 		this.renderPanel();
 	}
+
+	/** Called when the highlighted row changes. */
+	onSelectionChange?: (value: T) => void;
 
 	/** Render a single row. Subclasses override to customize the layout. */
 	protected drawItem(item: MenuItem<T>, selected: boolean, _width: number): string {

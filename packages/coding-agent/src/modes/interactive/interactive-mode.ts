@@ -3294,6 +3294,16 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
+			if (text === "/theme" || text.startsWith("/theme ")) {
+				const argument = text.slice("/theme".length).trim();
+				if (argument) {
+					this.applyThemeArgument(argument);
+				} else {
+					this.showThemeSelector();
+				}
+				this.editor.setText("");
+				return;
+			}
 			if (text === "/resume" || text === "/history") {
 				this.showSessionSelector();
 				this.editor.setText("");
@@ -5727,6 +5737,66 @@ export class InteractiveMode {
 	}
 
 	private activeMenuOverlay: OverlayHandle | undefined;
+
+	private showThemeSelector(): void {
+		const current = this.themeController.getThemeSelection() || SYSTEM_THEME_NAME;
+		const items: MenuItem<string>[] = getAvailableThemes().map((name) => ({
+			title: name,
+			description: name === current ? "(current)" : undefined,
+			value: name,
+		}));
+
+		this.activeMenuOverlay?.hide();
+		const selector = new MenuSelectorComponent<string>(
+			{ title: "Theme", items },
+			(themeName) => {
+				this.activeMenuOverlay?.hide();
+				this.activeMenuOverlay = undefined;
+				this.ui.setFocus(this.editor);
+				this.applyTheme(themeName);
+			},
+			() => {
+				this.activeMenuOverlay?.hide();
+				this.activeMenuOverlay = undefined;
+				this.ui.setFocus(this.editor);
+				// Restore the theme that was active before the preview.
+				this.themeController.preview(current);
+				this.ui.requestRender();
+			},
+		);
+		// Preview the theme under the cursor so the choice is visible before confirming.
+		selector.onSelectionChange = (themeName) => this.themeController.preview(themeName);
+		this.activeMenuOverlay = this.ui.showOverlay(selector, {
+			anchor: "center",
+			width: 50,
+			maxHeight: 20,
+		});
+		this.ui.setFocus(selector);
+		this.ui.requestRender();
+	}
+
+	private applyTheme(themeName: string): void {
+		const result = this.themeController.setThemeName(themeName);
+		if (!result.success) {
+			this.showError(result.error ?? `Failed to apply theme "${themeName}"`);
+			return;
+		}
+		if (this.settingsManager.getTheme() !== themeName) {
+			this.settingsManager.setTheme(themeName);
+		}
+		this.ui.invalidate();
+		this.ui.requestRender();
+	}
+
+	private applyThemeArgument(argument: string): void {
+		const themes = getAvailableThemes();
+		const match = themes.find((name) => name.toLowerCase() === argument.toLowerCase());
+		if (!match) {
+			this.showError(`Unknown theme "${argument}". Available: ${themes.join(", ")}`);
+			return;
+		}
+		this.applyTheme(match);
+	}
 
 	private showMenu<T>(title: string, items: MenuItem<T>[], onSelect: (value: T) => void): void {
 		this.activeMenuOverlay?.hide();

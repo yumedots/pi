@@ -83,6 +83,21 @@ describe("generateSystemThemeColors", () => {
 		expect(Math.abs(hue(resolved(DRACULA, "error")) - hue(DRACULA.palette![1]))).toBeLessThan(8);
 	});
 
+	it("keeps the panel background gray whatever the terminal palette looks like", () => {
+		// A warm palette: slot 8 is a brown, which used to tint the panel.
+		const warm: SystemThemeInput = {
+			background: rgb("#1c1917"),
+			foreground: rgb("#e7e5e4"),
+			palette: ["#292524", "#dc2626", "#65a30d", "#d97706", "#2563eb", "#9333ea", "#0d9488", "#a8a29e"]
+				.concat(["#57534e", "#f87171", "#84cc16", "#fbbf24", "#3b82f6", "#c084fc", "#2dd4bf", "#d6d3d1"])
+				.map(rgb),
+		};
+		const panel = resolved(warm, "panelBg");
+		// The panel reads as gray, not brown: every channel is the same.
+		expect(panel.r).toBe(panel.g);
+		expect(panel.g).toBe(panel.b);
+	});
+
 	// https://github.com/earendil-works/pi/issues/10255
 	it("keeps pastel palette colors pastel at other lightnesses", () => {
 		const frappe: SystemThemeInput = {

@@ -5,6 +5,7 @@
 ### Added
 
 - Added `BlockList`, a keyboard-driven list that draws every row as a full-width block and keeps a scrollbar thumb on the selected row
+- `BlockList` now applies the row background across the scrollbar gutter as well
 
 ## [1.3.0] - 2026-10-15
 

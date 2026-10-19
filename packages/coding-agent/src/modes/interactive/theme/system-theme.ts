@@ -48,6 +48,8 @@ interface Family {
 
 const FAMILIES = {
 	neutral: { hue: 231.49, saturation: { min: 0.02, max: 0.08 }, slot: 8 },
+	/** A surface that stays gray whatever the terminal's palette looks like. */
+	panel: { hue: 231.49, saturation: { min: 0, max: 0 }, slot: 8 },
 	blue: { hue: 231.49, saturation: { min: 0.1, max: 0.68 }, slot: 4 },
 	green: { hue: 158.68, saturation: { min: 0.1, max: 0.76 }, slot: 2 },
 	red: { hue: 20, saturation: { min: 0.1, max: 0.92 }, slot: 1 },
@@ -67,7 +69,7 @@ type FamilyName = keyof typeof FAMILIES;
 
 const TOKEN_FAMILIES: Record<ThemeToken, FamilyName> = {
 	selectedBg: "blue",
-	panelBg: "neutral",
+	panelBg: "panel",
 	searchMatchBg: "orange",
 	userMessageBg: "blue",
 	customMessageBg: "violet",
@@ -130,6 +132,12 @@ const TOKEN_FAMILIES: Record<ThemeToken, FamilyName> = {
 
 /** Palette slots for tokens that would otherwise share a hue with a similar token. */
 const TOKEN_SLOTS: Partial<Record<ThemeToken, number>> = { syntaxString: 2, syntaxNumber: 5, searchMatchBg: 3 };
+
+/**
+ * Tokens that keep their family's own hue instead of taking it from the terminal palette.
+ * Large surfaces read as a tint of the palette color, so a panel picks up a warm palette as brown.
+ */
+const ACHROMATIC_TOKENS = new Set<ThemeToken>(["panelBg"]);
 
 // ============================================================================
 // Contrast levels and rules
@@ -491,7 +499,7 @@ export function generateSystemThemeColors(input: SystemThemeInput): SystemThemeC
 	const paint = (token: ThemeToken, oklabL: number): RgbColor => {
 		const lightness = oklabToOkhslLightness(oklabL);
 		const family: Family = FAMILIES[TOKEN_FAMILIES[token]];
-		if (!palette) {
+		if (!palette || ACHROMATIC_TOKENS.has(token)) {
 			const { min, max } = family.saturation;
 			return okhslColor(family.hue, (min + (max - min) * bellWeight(lightness)) * saturation, lightness);
 		}

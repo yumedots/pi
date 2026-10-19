@@ -25,7 +25,7 @@ Pi asks the terminal for its colors when it starts. Terminals usually answer wit
 
 ## Choose a theme
 
-Open `/settings` and select **Theme**. You can use one theme for every terminal appearance or choose separate themes for light and dark terminals.
+Open `/theme` to pick a theme; it previews each one as you move through the list. You can also use `/settings` and select **Theme**. You can use one theme for every terminal appearance or choose separate themes for light and dark terminals.
 
 The selection is saved as the `theme` [setting](settings.md#terminal-and-display):
 
