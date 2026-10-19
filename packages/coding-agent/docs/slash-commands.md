@@ -21,7 +21,7 @@ Extensions, prompt templates, and skills can add commands. The command menu in P
 | Command | Description |
 |---|---|
 | `/new` | Start a new session |
-| `/resume` | Switch to another saved session |
+| `/resume`, `/history` | Switch to another saved session |
 | `/name [name]` | Set the session display name, or show the current name when omitted |
 | `/session` | Show current session information and statistics |
 | `/tree` | Navigate the session tree |
@@ -46,6 +46,7 @@ Review a session before exporting or sharing it. Sessions can contain prompts, t
 | Command | Description |
 |---|---|
 | `/trust` | Save a project trust decision for future Pi processes |
+| `/skills` | Browse and run a skill |
 | `/reload` | Reload keybindings, extensions, skills, templates, themes, and context files |
 | `/hotkeys` | Show active keyboard shortcuts |
 | `/changelog` | Show changelog entries |
@@ -55,6 +56,6 @@ Review a session before exporting or sharing it. Sessions can contain prompts, t
 
 - Extensions can register commands with their own arguments and completion behavior.
 - Each prompt template is available under its template name.
-- Skills are available as `/skill:name` when skill commands are enabled.
+- Skills are available as `/skill:name` when skill commands are enabled, and through `/skills` in every session.
 
 Use `/reload` after adding or changing a discovered command resource. See [Extensions](extensions.md), [Prompt Templates](prompt-templates.md), and [Skills](skills.md) for their loading and naming rules.

@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
+	type BlockListTheme,
 	backgroundAnsi,
 	type Color,
 	colorToHex,
@@ -1065,6 +1066,15 @@ export function getSelectListTheme(): SelectListTheme {
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
 		noMatch: (text: string) => theme.fg("muted", text),
+	};
+}
+
+export function getBlockListTheme(): BlockListTheme {
+	return {
+		block: (text: string) => theme.bg("toolPendingBg", text),
+		selection: (text: string) => theme.bg("selectedBg", text),
+		track: (text: string) => theme.fg("scrollbarTrack", text),
+		thumb: (text: string) => theme.fg("scrollbarThumb", text),
 	};
 }
 

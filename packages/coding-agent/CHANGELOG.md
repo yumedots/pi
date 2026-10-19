@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added `/skills` to browse the loaded skills and run one from a picker. `/resume` also answers to `/history`
 - Added a Models Configuration reference generated from the `models.json` schema, listing all provider, model, model override, and compatibility fields ([#10790](https://github.com/earendil-works/pi/issues/10790))
 
 ### Changed

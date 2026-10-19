@@ -166,6 +166,7 @@ import { ScopedModelsSelectorComponent } from "./components/scoped-models-select
 import { SessionSelectorComponent } from "./components/session-selector.ts";
 import { SettingsSelectorComponent } from "./components/settings-selector.ts";
 import { SkillInvocationMessageComponent } from "./components/skill-invocation-message.ts";
+import { SkillsSelectorComponent } from "./components/skills-selector.ts";
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
@@ -3334,7 +3335,12 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
-			if (text === "/resume") {
+			if (text === "/skills") {
+				this.showSkillsSelector();
+				this.editor.setText("");
+				return;
+			}
+			if (text === "/resume" || text === "/history") {
 				this.showSessionSelector();
 				this.editor.setText("");
 				return;
@@ -5719,6 +5725,29 @@ export class InteractiveMode {
 					this.showError(error instanceof Error ? error.message : String(error));
 				}
 			};
+			return { component: selector, focus: selector };
+		});
+	}
+
+	private showSkillsSelector(): void {
+		const skills = this.session.resourceLoader.getSkills().skills;
+		if (skills.length === 0) {
+			this.showWarning("No skills available");
+			return;
+		}
+
+		this.showSelector((done) => {
+			const selector = new SkillsSelectorComponent(
+				skills,
+				(skill) => {
+					done();
+					void this.editor.onSubmit?.(`/skill:${skill.name}`);
+				},
+				() => {
+					done();
+					this.ui.requestRender();
+				},
+			);
 			return { component: selector, focus: selector };
 		});
 	}
