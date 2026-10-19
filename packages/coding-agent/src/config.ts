@@ -1,10 +1,9 @@
 import { accessSync, constants, existsSync, readFileSync, realpathSync } from "fs";
 import { createRequire } from "module";
-import { homedir } from "os";
 import { basename, dirname, join, resolve, sep, win32 } from "path";
 import { fileURLToPath } from "url";
 import { spawnProcessSync } from "./utils/child-process.ts";
-import { normalizePath } from "./utils/paths.ts";
+import { getHomeDirectory, normalizePath } from "./utils/paths.ts";
 import { stripBom } from "./utils/text.ts";
 
 // =============================================================================
@@ -230,7 +229,7 @@ function getGlobalPackageRoots(method: InstallMethod, _packageName: string, npmC
 				const bunBin = readCommandOutput(command, [...npmArgs, "pm", "bin", "-g"], {
 					requireSuccess: true,
 				});
-				const roots = [join(homedir(), ".bun", "install", "global", "node_modules")];
+				const roots = [join(getHomeDirectory(), ".bun", "install", "global", "node_modules")];
 				if (bunBin) {
 					roots.push(join(dirname(bunBin), "install", "global", "node_modules"));
 				}
@@ -254,7 +253,7 @@ function getGlobalPackageRoots(method: InstallMethod, _packageName: string, npmC
 		}
 		case "bun": {
 			const bunBin = readCommandOutput("bun", ["pm", "bin", "-g"]);
-			const roots = [join(homedir(), ".bun", "install", "global", "node_modules")];
+			const roots = [join(getHomeDirectory(), ".bun", "install", "global", "node_modules")];
 			if (bunBin) {
 				roots.push(join(dirname(bunBin), "install", "global", "node_modules"));
 			}
@@ -616,7 +615,7 @@ export function getAgentDir(): string {
 	if (envDir) {
 		return expandTildePath(envDir);
 	}
-	return join(homedir(), CONFIG_DIR_NAME, "agent");
+	return join(getHomeDirectory(), CONFIG_DIR_NAME, "agent");
 }
 
 /** Get path to user's custom themes directory */
