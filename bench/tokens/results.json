@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-19T22:11:10.130Z",
+  "date": "2026-10-19T22:22:28.207Z",
   "prompt": "Say hello in three words",
   "model": {
     "provider": "local",
@@ -7,12 +7,13 @@
   },
   "runs": [
     {
-      "input": 2445,
+      "input": 1,
       "output": 1,
-      "cacheRead": 1158,
+      "cacheRead": 3602,
       "cacheWrite": 0,
       "total": 3604,
-      "firstTokenMs": 3196.3703750000004
+      "requestMs": 39.140916000000004,
+      "firstTokenMs": 73.63491600000003
     },
     {
       "input": 1,
@@ -20,7 +21,8 @@
       "cacheRead": 3602,
       "cacheWrite": 0,
       "total": 3604,
-      "firstTokenMs": 453.40441599999986
+      "requestMs": 38.73474999999996,
+      "firstTokenMs": 70.46016599999996
     },
     {
       "input": 1,
@@ -28,7 +30,8 @@
       "cacheRead": 3602,
       "cacheWrite": 0,
       "total": 3604,
-      "firstTokenMs": 453.7512079999997
+      "requestMs": 38.23620800000003,
+      "firstTokenMs": 69.2818749999999
     }
   ],
   "breakdown": [

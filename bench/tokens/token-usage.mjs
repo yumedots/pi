@@ -58,7 +58,7 @@ function startCaptureProxy(port) {
 		request.on("end", () => {
 			const body = Buffer.concat(chunks);
 			if (request.method === "POST" && request.url?.includes("chat/completions")) {
-				captured.push(body.toString("utf8"));
+				captured.push({ body: body.toString("utf8"), at: performance.now() });
 			}
 			const target = new URL(request.url ?? "/", UPSTREAM);
 			const forwarded = httpRequest(
@@ -109,6 +109,7 @@ function runTurn(runtime, agentDir, prompt) {
 		const usage = [];
 		let sentAt = 0;
 		let firstTokenMs;
+		let ready = false;
 		child.stdout.setEncoding("utf8");
 		child.stdout.on("data", (chunk) => {
 			buffer += chunk;
@@ -123,6 +124,14 @@ function runTurn(runtime, agentDir, prompt) {
 				} catch {
 					continue;
 				}
+				if (event.type === "response" && event.command === "get_state" && !ready) {
+					// The session is up. The prompt goes out now, so the measurement
+					// does not include the startup of the agent.
+					ready = true;
+					sentAt = performance.now();
+					child.stdin.write(`${JSON.stringify({ id: "p", type: "prompt", message: prompt })}\n`);
+					continue;
+				}
 				if (event.type === "message_update" && firstTokenMs === undefined) {
 					firstTokenMs = performance.now() - sentAt;
 				}
@@ -131,13 +140,12 @@ function runTurn(runtime, agentDir, prompt) {
 				}
 				if (event.type === "agent_settled") {
 					child.stdin.end();
-					resolvePromise({ usage: usage.at(-1), firstTokenMs });
+					resolvePromise({ usage: usage.at(-1), firstTokenMs, sentAt });
 				}
 			}
 		});
 		child.once("error", reject);
-		child.stdin.write(`${JSON.stringify({ id: "p", type: "prompt", message: prompt })}\n`);
-		sentAt = performance.now();
+		child.stdin.write(`${JSON.stringify({ id: "s", type: "get_state" })}\n`);
 	});
 }
 
@@ -166,10 +174,16 @@ async function main() {
 	const runs = [];
 	try {
 		for (let index = 0; index < options.runs; index++) {
+			const capturedBefore = captured.length;
 			const run = await runTurn(options.runtime, agentDir, options.prompt);
+			// The time from the prompt leaving the agent to the request reaching the model.
+			const request = captured[capturedBefore];
+			if (request && run.sentAt) {
+				run.requestMs = request.at - run.sentAt;
+			}
 			runs.push(run);
 			process.stdout.write(
-				`run ${index + 1}: input=${run.usage?.input} output=${run.usage?.output} cacheRead=${run.usage?.cacheRead} firstToken=${run.firstTokenMs?.toFixed(0)}ms\n`,
+				`run ${index + 1}: input=${run.usage?.input} output=${run.usage?.output} cacheRead=${run.usage?.cacheRead} request=${run.requestMs?.toFixed(0)}ms firstToken=${run.firstTokenMs?.toFixed(0)}ms\n`,
 			);
 		}
 	} finally {
@@ -179,7 +193,7 @@ async function main() {
 
 	const breakdown = [];
 	if (captured.length > 0) {
-		const payload = JSON.parse(captured.at(-1));
+		const payload = JSON.parse(captured.at(-1).body);
 		for (const message of payload.messages ?? []) {
 			const text = typeof message.content === "string" ? message.content : JSON.stringify(message.content);
 			breakdown.push({
@@ -208,6 +222,7 @@ async function main() {
 			cacheRead: run.usage?.cacheRead,
 			cacheWrite: run.usage?.cacheWrite,
 			total: run.usage?.totalTokens,
+			requestMs: run.requestMs,
 			firstTokenMs: run.firstTokenMs,
 		})),
 		breakdown,

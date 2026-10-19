@@ -11,6 +11,18 @@ much of that can be cut.
 - The counts come from the tokenizer of the model itself (`/tokenize`), not
   from an estimate
 
+## The time of a message
+
+| | Request reaches the model | First token | Whole turn |
+| --- | --- | --- | --- |
+| node | 39 ms | 69 ms | 1347 ms |
+| bun | 38 ms | 70 ms | 1196 ms |
+
+The request reaches the model 38 ms after the message leaves the agent. That
+is the agent's own work: the preflight, the system prompt, the tool
+declarations and the request itself. The first token follows 30 ms later, on
+the model.
+
 ## Where the tokens go
 
 | Part | Characters | Tokens | Share |

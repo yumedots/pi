@@ -87,6 +87,13 @@ function availableRuntimes() {
 			available: hasBun(),
 		},
 		{
+			name: "bun-smol",
+			command: "bun",
+			args: ["--smol", SRC_CLI],
+			floorArgs: ["--smol", "-e", "0"],
+			available: hasBun(),
+		},
+		{
 			name: "binary",
 			command: BINARY,
 			args: [],
@@ -100,8 +107,56 @@ function availableRuntimes() {
 	});
 }
 
+/**
+ * The runtimes that only have a floor, because the agent does not run on them.
+ *
+ * Deno resolves the workspace through the package exports, not the path aliases
+ * of the tsconfig, so the agent does not start on it without a resolver. Its
+ * floor still decides whether it could ever be the runtime of a harness.
+ */
+function floorCandidates() {
+	const candidates = [
+		{ name: "node", command: process.execPath, args: ["-e", ""] },
+		{ name: "bun", command: "bun", args: ["-e", "0"] },
+		{ name: "bun-smol", command: "bun", args: ["--smol", "-e", "0"] },
+		{ name: "deno", command: "deno", args: ["eval", "console.log(1)"] },
+		{ name: "native", command: "/usr/bin/true", args: [] },
+	];
+	return candidates.filter((candidate) => {
+		if (candidate.name === "deno" && spawnSync("deno", ["--version"], { encoding: "utf8" }).status !== 0) {
+			return false;
+		}
+		if (candidate.name === "bun" && !hasBun()) return false;
+		return true;
+	});
+}
+
 function hasBun() {
 	return spawnSync("bun", ["--version"], { encoding: "utf8" }).status === 0;
+}
+
+/**
+ * The charge of the battery, or undefined on a machine without one.
+ *
+ * The battery is the other side of the cpu time: a run that burns cpu time
+ * burns battery. The charge before and after a run shows the drain of the run.
+ * The percentage is too coarse for a run of a few seconds, so the charge in
+ * milliamp hours is measured as well.
+ */
+function batteryCharge() {
+	const result = spawnSync("ioreg", ["-rn", "AppleSmartBattery"], { encoding: "utf8" });
+	if (result.status !== 0) return undefined;
+	const percent = result.stdout.match(/"CurrentCapacity" = (\d+)/);
+	const mah = result.stdout.match(/"RemainingCapacity"=(\d+)/);
+	if (!percent && !mah) return undefined;
+	return {
+		percent: percent ? Number.parseInt(percent[1], 10) : undefined,
+		mah: mah ? Number.parseInt(mah[1], 10) : undefined,
+	};
+}
+
+function batteryCapacity() {
+	return batteryCharge()?.percent;
 }
 
 /** The report of `/usr/bin/time -l`, parsed out of the stderr of the child. */
@@ -169,6 +224,28 @@ function runUnderTime(command, args, { env = {}, cwd = REPO_ROOT, onChild, timeo
 		});
 		if (onChild) onChild(child);
 	});
+}
+
+/**
+ * A scenario that builds the workspace from source.
+ *
+ * The build is the pipeline of the repository: every package is compiled with
+ * tsc and the coding agent is bundled. The size of the output is part of the
+ * measurement, because the build decides what ships.
+ */
+async function measureBuild() {
+	const startedAt = performance.now();
+	const result = await runUnderTime("npm", ["run", "build:offline"], {
+		cwd: REPO_ROOT,
+		timeoutMs: 600_000,
+	});
+	const wallMs = performance.now() - startedAt;
+	return {
+		wallMs,
+		...result.report,
+		distBytes: sizeOf(join(PACKAGE_DIR, "dist")),
+		exitCode: result.code,
+	};
 }
 
 /** A scenario that only starts the agent and waits for it to finish. */
@@ -287,8 +364,15 @@ function rpcScript({ prompt, model, agentDir }) {
 		const now = performance.now();
 		if (event.type === "response" && event.command === "get_state" && state.measurements.firstScreenMs === undefined) {
 			state.measurements.firstScreenMs = now - state.startedAt;
-			// The rpc mode exits when its input ends.
-			if (!prompt) childRef?.stdin.end();
+			if (prompt) {
+				// The session is up. The message goes out now, so the round trip does not
+				// include the startup of the agent.
+				state.promptSentAt = now;
+				childRef?.stdin.write(`${JSON.stringify({ id: "prompt", type: "prompt", message: prompt })}\n`);
+			} else {
+				// The rpc mode exits when its input ends.
+				childRef?.stdin.end();
+			}
 		}
 		if (event.type === "message_update" && state.measurements.firstTokenMs === undefined) {
 			state.measurements.firstTokenMs = now - state.promptSentAt;
@@ -327,12 +411,6 @@ function rpcScript({ prompt, model, agentDir }) {
 				}
 			});
 			child.stdin.write(`${JSON.stringify({ id: "state", type: "get_state" })}\n`);
-			if (prompt) {
-				setTimeout(() => {
-					state.promptSentAt = performance.now();
-					child.stdin.write(`${JSON.stringify({ id: "prompt", type: "prompt", message: prompt })}\n`);
-				}, 500);
-			}
 		},
 	};
 }
@@ -363,6 +441,8 @@ function summarizeRuns(runs) {
 	summary.firstScreenMs = numeric(runs, "firstScreenMs");
 	summary.firstTokenMs = numeric(runs, "firstTokenMs");
 	summary.turnMs = numeric(runs, "turnMs");
+	summary.batteryDrainPercent = numeric(runs, "batteryDrainPercent");
+	summary.distBytes = numeric(runs, "distBytes");
 	const startup = {};
 	for (const run of runs) {
 		for (const [label, value] of Object.entries(run.startupTimings ?? {})) {
@@ -436,8 +516,9 @@ async function main() {
 		{
 			name: "runtime-floor",
 			description: "The runtime itself, without the agent.",
-			run: (runtime) =>
-				measureSpawn({ ...runtime, args: runtime.floorArgs }, [], {}),
+			// The floor of every runtime, not only of the ones the agent runs on.
+			floors: true,
+			run: (runtime) => measureSpawn({ ...runtime, args: runtime.floorArgs ?? runtime.args }, [], {}),
 		},
 		{
 			name: "cli-version",
@@ -468,6 +549,13 @@ async function main() {
 					},
 				]
 			: []),
+		{
+			name: "build",
+			description: "The whole workspace is built from source.",
+			// The build belongs to the toolchain, not to a runtime, so it runs once.
+			once: true,
+			run: () => measureBuild(),
+		},
 	];
 
 	const results = {
@@ -475,16 +563,47 @@ async function main() {
 		date: new Date().toISOString(),
 		options: { runs: options.runs, warmup: options.warmup, prompt },
 		disk: diskUsage(),
+		battery: { before: batteryCharge() },
 		scenarios: {},
 	};
 
 	for (const scenario of scenarios) {
 		if (options.only.length > 0 && !options.only.includes(scenario.name)) continue;
 		results.scenarios[scenario.name] = { description: scenario.description, runtimes: {} };
-		for (const runtime of runtimes) {
+		// The floor scenario measures the runtimes themselves, not the agent.
+		const scenarioRuntimes = scenario.floors ? floorCandidates() : runtimes;
+		if (scenario.once) {
+			const batteryBefore = batteryCapacity();
+			const run = await scenario.run();
+			const batteryAfter = batteryCapacity();
+			if (batteryBefore !== undefined && batteryAfter !== undefined) {
+				run.batteryDrainPercent = batteryBefore - batteryAfter;
+			}
+			results.scenarios[scenario.name].runtimes.toolchain = {
+				summary: summarizeRuns([run]),
+				runs: [
+					{
+						wallMs: run.wallMs,
+						peakRssBytes: run.peakRssBytes,
+						userSeconds: run.userSeconds,
+						sysSeconds: run.sysSeconds,
+						batteryDrainPercent: run.batteryDrainPercent,
+						distBytes: run.distBytes,
+					},
+				],
+			};
+			process.stdout.write(`${scenario.name} / toolchain: done\n`);
+			continue;
+		}
+		for (const runtime of scenarioRuntimes) {
 			const runs = [];
 			for (let index = 0; index < options.warmup + options.runs; index++) {
+				const batteryBefore = batteryCapacity();
 				const run = await scenario.run(runtime);
+				const batteryAfter = batteryCapacity();
+				if (batteryBefore !== undefined && batteryAfter !== undefined) {
+					run.batteryDrainPercent = batteryBefore - batteryAfter;
+				}
 				if (index >= options.warmup) runs.push(run);
 			}
 			results.scenarios[scenario.name].runtimes[runtime.name] = {
@@ -497,6 +616,8 @@ async function main() {
 					firstScreenMs: run.firstScreenMs,
 					firstTokenMs: run.firstTokenMs,
 					turnMs: run.turnMs,
+					batteryDrainPercent: run.batteryDrainPercent,
+					distBytes: run.distBytes,
 					usage: run.usage,
 					startupTimings: run.startupTimings,
 				})),
@@ -506,6 +627,10 @@ async function main() {
 	}
 
 	mkdirSync(dirname(options.out), { recursive: true });
+	results.battery.after = batteryCharge();
+	if (results.battery.before !== undefined && results.battery.after !== undefined) {
+		results.battery.drainPercent = results.battery.before.percent - results.battery.after.percent;
+	}
 	writeFileSync(options.out, `${JSON.stringify(results, null, 2)}\n`);
 	process.stdout.write(`\nWrote ${options.out}\n`);
 	if (options.markdown) {
@@ -522,14 +647,15 @@ function renderMarkdown(results) {
 	lines.push(`- Node: ${results.machine.node}`);
 	lines.push(`- Date: ${results.date}`);
 	lines.push("");
-	lines.push("| Scenario | Runtime | Wall | Peak RSS | CPU (user+sys) | First screen | First token | Turn | Tokens |");
-	lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+	lines.push("| Scenario | Runtime | Wall | Peak RSS | CPU (user+sys) | Battery | First screen | First token | Turn | Tokens |");
+	lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
 	for (const [name, scenario] of Object.entries(results.scenarios)) {
 		for (const [runtime, entry] of Object.entries(scenario.runtimes)) {
 			const s = entry.summary;
 			const cpu = s.userSeconds && s.sysSeconds ? `${(s.userSeconds.avg + s.sysSeconds.avg).toFixed(2)} s` : "-";
+			const battery = s.batteryDrainPercent ? `${s.batteryDrainPercent.avg.toFixed(2)}%` : "-";
 			lines.push(
-				`| ${name} | ${runtime} | ${formatMs(s.wallMs?.avg)} | ${s.peakRssBytes ? formatMb(s.peakRssBytes.avg) : "-"} | ${cpu} | ${formatMs(s.firstScreenMs?.avg)} | ${formatMs(s.firstTokenMs?.avg)} | ${formatMs(s.turnMs?.avg)} | ${s.usageTotal ? Math.round(s.usageTotal.avg) : "-"} |`,
+				`| ${name} | ${runtime} | ${formatMs(s.wallMs?.avg)} | ${s.peakRssBytes ? formatMb(s.peakRssBytes.avg) : "-"} | ${cpu} | ${battery} | ${formatMs(s.firstScreenMs?.avg)} | ${formatMs(s.firstTokenMs?.avg)} | ${formatMs(s.turnMs?.avg)} | ${s.usageTotal ? Math.round(s.usageTotal.avg) : "-"} |`,
 			);
 		}
 	}
@@ -542,6 +668,18 @@ function renderMarkdown(results) {
 		lines.push(`| ${name} | ${formatMb(size)} |`);
 	}
 	lines.push("");
+	if (results.battery?.before !== undefined) {
+		const before = results.battery.before;
+		const after = results.battery.after;
+		lines.push("## Battery");
+		lines.push("");
+		lines.push(`- Charge before the run: ${before.percent}% (${before.mah} mAh)`);
+		lines.push(`- Charge after the run: ${after?.percent}% (${after?.mah} mAh)`);
+		if (before.mah !== undefined && after?.mah !== undefined) {
+			lines.push(`- Drain of the run: ${before.mah - after.mah} mAh (${results.battery.drainPercent ?? 0}%)`);
+		}
+		lines.push("");
+	}
 	return lines.join("\n");
 }
 

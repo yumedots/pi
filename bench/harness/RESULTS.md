@@ -1,71 +1,111 @@
 # Harness benchmark
 
-What the coding agent costs in memory, cpu time, disk and time, on Node and on
-Bun, measured on this machine.
+What the coding agent costs in memory, cpu time, battery, disk and time, on
+every runtime that can run it.
 
 - Machine: Apple M3 Pro, 11 cores, 18 GiB, macOS 27.0.1
-- Node 26.10.0, Bun 1.4.3
+- Node 26.10.0, Bun 1.4.3, Deno 2.9.7
 - Model: SmolLM2 1.7B Instruct (Q4_K_M) on llama.cpp, so the round trip needs no
   network and no key
 - Every number is the mean of 5 runs after 1 warmup. The raw results are in
-  `results.json`.
+  `results.json`, the table below is `RESULTS-auto.md`.
 
-## The numbers
+## The runtime floor comes first
+
+The floor is what an empty program costs on that runtime. Nothing the agent
+does can go below it.
+
+| Runtime | Empty program | Start |
+| --- | --- | --- |
+| Bun 1.4 | **17.3 MB** | 8.0 ms |
+| Bun 1.4 `--smol` | 17.3 MB | 8.0 ms |
+| Node 26 | 37.5 MB | 94 ms |
+| Deno 2.9 | 39.5 MB | 35 ms |
+| a native binary | 1.1 MB | 3 ms |
+
+**Bun is the best of the JavaScript runtimes by a factor of two**, and Deno is
+worse than Node. `bun --smol` (less memory, more garbage collection) does not
+lower the floor: it only changes the collector.
+
+Two native reference points from this repository: the Rust daemon of the
+`env` package serves requests in **9.6 MB**, and an empty native process
+starts in 1.1 MB.
+
+## The agent
 
 | Scenario | Runtime | Wall | Peak RSS | CPU (user+sys) | First screen | First token | Turn | Tokens |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| runtime-floor | node | 94.2 ms | 37.6 MB | 0.08 s | - | - | - | - |
-| runtime-floor | bun | 8.1 ms | 17.3 MB | 0.00 s | - | - | - | - |
-| cli-version | node | 353.3 ms | 119.3 MB | 0.39 s | - | - | - | - |
-| cli-version | bun | 156.2 ms | 89.5 MB | 0.42 s | - | - | - | - |
-| tui-first-screen | node | 671.1 ms | 140.2 MB | 0.58 s | - | - | - | - |
-| tui-first-screen | bun | 436.8 ms | 135.3 MB | 0.59 s | - | - | - | - |
-| rpc-first-screen | node | 418.3 ms | 135.6 MB | 0.50 s | 418.3 ms | - | - | - |
-| rpc-first-screen | bun | 210.8 ms | 111.8 MB | 0.52 s | 210.8 ms | - | - | - |
-| rpc-turn | node | 420.0 ms | 159.2 MB | 0.61 s | 420.0 ms | 1398.1 ms | 1628.1 ms | 4703 |
-| rpc-turn | bun | 237.2 ms | 122.9 MB | 0.69 s | 237.2 ms | 2969.8 ms | 3238.8 ms | 4671 |
+| runtime-floor | node | 98.0 ms | 37.5 MB | 0.08 s | - | - | - | - |
+| runtime-floor | bun | 9.2 ms | 17.3 MB | 0.00 s | - | - | - | - |
+| runtime-floor | bun-smol | 8.0 ms | 17.3 MB | 0.00 s | - | - | - | - |
+| runtime-floor | deno | 34.8 ms | 39.5 MB | 0.02 s | - | - | - | - |
+| runtime-floor | native | 2.9 ms | 1.1 MB | 0.00 s | - | - | - | - |
+| cli-version | node | 350.2 ms | 119.6 MB | 0.39 s | - | - | - | - |
+| cli-version | bun | 155.4 ms | 90.0 MB | 0.42 s | - | - | - | - |
+| cli-version | bun-smol | 169.5 ms | 91.5 MB | 0.45 s | - | - | - | - |
+| tui-first-screen | node | 638 ms | 139.9 MB | 0.58 s | 638 ms | - | - | - |
+| tui-first-screen | bun | 421 ms | 136.3 MB | 0.59 s | 421 ms | - | - | - |
+| tui-first-screen | bun-smol | 453 ms | 136.7 MB | 0.63 s | 453 ms | - | - | - |
+| rpc-first-screen | node | 441.9 ms | 135.3 MB | 0.52 s | 441.9 ms | - | - | - |
+| rpc-first-screen | bun | 213.3 ms | 111.8 MB | 0.55 s | 213.3 ms | - | - | - |
+| rpc-first-screen | bun-smol | 229.6 ms | 113.3 MB | 0.57 s | 229.6 ms | - | - | - |
+| rpc-turn | node | 421.6 ms | 159.2 MB | 0.61 s | 421.6 ms | 1263 ms | 1347 ms | 4685 |
+| rpc-turn | bun | 210.1 ms | 125.8 MB | 0.60 s | 210.1 ms | 1105 ms | 1196 ms | 4677 |
+| rpc-turn | bun-smol | 230.8 ms | 125.8 MB | 0.64 s | 230.8 ms | 967 ms | 1051 ms | 4671 |
+| build | toolchain | 7751 ms | 1066.8 MB | 18.7 s | - | - | - | - |
 
-- `runtime-floor` is the runtime alone: `node -e ""` and `bun -e "0"`. It is the
-  part of the memory that no change to the agent can touch.
 - `tui-first-screen` measures the interactive mode until it draws its first
-  screen, in a terminal, through `PI_STARTUP_BENCHMARK=1`. The agent reports its
-  own phases: 102 ms on Node and 82 ms on Bun from the first line of `main` to
-  the first screen.
+  screen, in a terminal, through `PI_STARTUP_BENCHMARK=1`. The agent reports
+  its own phases: 102 ms on Node and 82 ms on Bun from the first line of
+  `main` to the first screen.
 - `rpc-first-screen` measures the headless mode until it answers the first
   state request.
-- `rpc-turn` sends one message and waits for the answer. The first token is the
-  time from the prompt to the first token of the answer, the turn is the time to
-  the end of the turn.
-- Disk: `node_modules` 481.5 MB, the published `dist` of the coding agent
-  17.9 MB, the tui 2.1 MB, the ai package 3.9 MB. The compiled binary adds
-  about 60 MB on top of the dist it contains.
+- `rpc-turn` sends one message and waits for the answer. The message goes out
+  after the session is up, so the round trip does not include the startup.
+- `build` is the whole workspace built from source: every package compiled
+  with tsc and the coding agent bundled. It takes 7.8 s of wall time, 18.7 s
+  of cpu time and 1.07 GB of memory at its peak, and it leaves 17.9 MB of
+  `dist`.
+
+### The two halves of a message
+
+The time from the message leaving the agent to the request reaching the model,
+and from there to the first token of the answer:
+
+| | Request reaches the model | First token | Whole turn |
+| --- | --- | --- | --- |
+| node | 39 ms | 69 ms | 1347 ms |
+| bun | 38 ms | 70 ms | 1196 ms |
+
+The 38 ms is the agent's own work: the preflight, the system prompt, the tool
+declarations and the request. The rest is the model.
+
+### The battery
+
+A full run of the matrix takes 57 s and the charge of the battery does not
+move: macOS reports the charge in whole percent, and the milliamp hour
+reading is not refreshed during a run of a minute. The drain of a benchmark
+run is below what the system reports, so the cpu time is the honest proxy for
+it: the interactive mode burns 0.58 s of cpu per start, and the build burns
+18.7 s.
 
 ## Under 10 MB is not reachable on a JavaScript runtime
 
 The goal was a harness under 10 MB of ram. The runtime is the floor, and the
 floor is above the goal:
 
-| | Peak RSS of an empty program |
-| --- | --- |
-| Node 26 | 37.6 MB |
-| Bun 1.4 | 17.3 MB |
-| a native binary (`/usr/bin/true`) | 1.1 MB |
+- Node: 37.5 MB before the agent loads a single module.
+- Bun: 17.3 MB.
+- The best of the two, with the agent on top: 136.3 MB for the interactive
+  mode.
 
-An empty Node program already uses 2.5x the budget. So the agent cannot get
-under 10 MB while it runs on Node, and it cannot get under 10 MB on Bun
-either, because the runtime alone is 17.3 MB. The agent's own work is what can
-be cut, and that is what this branch cuts.
+So the agent's own work is what can be cut, and that is what this branch cuts.
+The gap to the goal on Bun is 126 MB, of which 58 MB is the agent's own code
+and 17.3 MB the runtime.
 
-What the numbers say about the goal:
-
-- The gap to close on Node is 129 MB (140.2 MB measured, 10 MB wanted) and on
-  Bun 125 MB (135.3 MB measured, 10 MB wanted).
-- The part of the footprint that is not the runtime is 58 MB on Bun and 81 MB
-  on Node (peak RSS minus the runtime floor).
-- Getting the *whole* agent under 10 MB needs a runtime that starts in a
-  megabyte or two, which means a native implementation. The repository already
-  has one: the `pi-env` daemon is Rust. A native harness is a rewrite of the
-  agent loop, not an optimization of it.
+Under 10 MB needs a runtime that starts in a megabyte or two. The repository
+already has one: the Rust daemon of the `env` package serves in 9.6 MB. A
+native harness is a rewrite of the agent loop, not an optimization of it.
 
 ## Where the memory goes
 
@@ -108,10 +148,10 @@ same pattern the repository already uses for `pi mcp`.
 
 | Scenario | Node before | Node after | Bun before | Bun after |
 | --- | --- | --- | --- | --- |
-| cli-version | 131.6 MB | 119.3 MB | 89.9 MB | 89.5 MB |
-| tui-first-screen | 143.5 MB | 140.2 MB | 136.3 MB | 135.3 MB |
-| rpc-first-screen | 138.1 MB | 135.6 MB | 111.9 MB | 111.8 MB |
-| rpc-turn | 160.9 MB | 159.2 MB | 123.1 MB | 122.9 MB |
+| cli-version | 131.6 MB | 119.6 MB | 89.9 MB | 90.0 MB |
+| tui-first-screen | 143.5 MB | 139.9 MB | 136.3 MB | 136.3 MB |
+| rpc-first-screen | 138.1 MB | 135.3 MB | 111.9 MB | 111.8 MB |
+| rpc-turn | 160.9 MB | 159.2 MB | 123.1 MB | 125.8 MB |
 
 The other modes pay less; the interactive mode needs the interface anyway.
 
@@ -134,3 +174,6 @@ setting cuts the project context, which is the largest part of the prompt.
   first message instead of removing it.
 - **The model catalog was not deferred.** It is small (the data is a few
   hundred kilobytes of JSON) and the model list is needed to show the model.
+- **Deno was not made to run the agent.** It resolves the workspace through the
+  package exports, not the path aliases of the tsconfig. Its floor is worse
+  than Node's, so there is nothing to gain from it.
