@@ -2,7 +2,8 @@ import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extension
 import { formatBytes, LlamaClient, type LlamaModelInfo, normalizeLlamaServerUrl } from "./client.ts";
 import { findHuggingFaceToken, HuggingFaceClient } from "./huggingface.ts";
 import { createLlamaProvider, LLAMA_PROVIDER_ID } from "./provider.ts";
-import { type LlamaUi, runWithProgress, showLlamaUi } from "./ui.ts";
+import { loadLlamaUi } from "./ui.lazy.ts";
+import type { LlamaUi } from "./ui.ts";
 
 function modelIsLoaded(model: LlamaModelInfo): boolean {
 	return model.status.value === "loaded" || model.status.value === "sleeping";
@@ -92,6 +93,7 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 		}
 
 		try {
+			const { runWithProgress } = await loadLlamaUi();
 			const result = await runWithProgress(ui, {
 				title: "Loading model",
 				model: target.id,
@@ -166,6 +168,7 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 			if (!quantization) return;
 		}
 		const model = quantization ? `${details.id}:${quantization}` : details.id;
+		const { runWithProgress } = await loadLlamaUi();
 		const result = await runWithProgress(ui, {
 			title: "Downloading model",
 			model,
@@ -189,6 +192,7 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 			}
 			const client = await configuredClient(ctx);
 			if (!client) return;
+			const { showLlamaUi } = await loadLlamaUi();
 			await showLlamaUi(ctx, async (ui) => {
 				const readCatalog = async (): Promise<LlamaModelInfo[] | undefined> => {
 					while (true) {

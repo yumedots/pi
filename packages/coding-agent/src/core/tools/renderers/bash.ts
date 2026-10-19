@@ -6,7 +6,9 @@
  * tool definition, so the tool's public shape is unchanged.
  */
 
-import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { Spacer } from "@earendil-works/pi-tui/components/spacer";
+import { Text } from "@earendil-works/pi-tui/components/text";
+import { Container } from "@earendil-works/pi-tui/tui";
 import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
 import { VisualLinePreview } from "../../../modes/interactive/components/visual-truncate.ts";
 import { theme } from "../../../modes/interactive/theme/theme.ts";

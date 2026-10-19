@@ -4,17 +4,13 @@
 
 import { homedir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
-import {
-	type Component,
-	Container,
-	type Focusable,
-	getKeybindings,
-	Input,
-	matchesKey,
-	Spacer,
-	truncateToWidth,
-	visibleWidth,
-} from "@earendil-works/pi-tui";
+import type { Component, Focusable } from "@earendil-works/pi-tui";
+import { Input } from "@earendil-works/pi-tui/components/input";
+import { Spacer } from "@earendil-works/pi-tui/components/spacer";
+import { getKeybindings } from "@earendil-works/pi-tui/keybindings";
+import { matchesKey } from "@earendil-works/pi-tui/keys";
+import { Container } from "@earendil-works/pi-tui/tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui/utils";
 import { CONFIG_DIR_NAME } from "../../../config.ts";
 import type { PathMetadata, ResolvedPaths, ResolvedResource } from "../../../core/package-manager.ts";
 import type { PackageSource, SettingsManager } from "../../../core/settings-manager.ts";

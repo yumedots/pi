@@ -1,4 +1,7 @@
-import { Container, getKeybindings, Spacer, Text } from "@earendil-works/pi-tui";
+import { Spacer } from "@earendil-works/pi-tui/components/spacer";
+import { Text } from "@earendil-works/pi-tui/components/text";
+import { getKeybindings } from "@earendil-works/pi-tui/keybindings";
+import { Container } from "@earendil-works/pi-tui/tui";
 import { APP_NAME } from "../../../config.ts";
 import { SYSTEM_THEME_NAME, theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";

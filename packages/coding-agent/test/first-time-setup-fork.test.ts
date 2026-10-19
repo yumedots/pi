@@ -11,7 +11,7 @@ vi.mock("../src/config.ts", async (importOriginal) => {
 	};
 });
 
-import { shouldRunFirstTimeSetup } from "../src/cli/startup-ui.ts";
+import { shouldRunFirstTimeSetup } from "../src/cli/first-time-setup.ts";
 
 describe("shouldRunFirstTimeSetup in forked distributions", () => {
 	const originalPiExperimental = process.env.PI_EXPERIMENTAL;

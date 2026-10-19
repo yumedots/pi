@@ -2,10 +2,10 @@ import {
 	type Keybinding,
 	type KeybindingDefinitions,
 	type KeybindingsConfig,
-	type KeyId,
 	TUI_KEYBINDINGS,
 	KeybindingsManager as TuiKeybindingsManager,
-} from "@earendil-works/pi-tui";
+} from "@earendil-works/pi-tui/keybindings";
+import type { KeyId } from "@earendil-works/pi-tui/keys";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { Compile } from "typebox/compile";

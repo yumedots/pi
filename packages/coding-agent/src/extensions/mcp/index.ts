@@ -62,7 +62,8 @@ import { loadMcpRuntime } from "./runtime.lazy.ts";
 import type * as McpRuntime from "./runtime.ts";
 import type { McpServerConnection, McpServerLog, McpTransportFactory } from "./runtime.ts";
 import { createMcpToolDefinition, createMcpToolName, createMcpToolRenderers, type McpToolDetails } from "./tools.ts";
-import { type McpMenu, type McpUi, showMcpManager } from "./ui.ts";
+import { loadMcpUi } from "./ui.lazy.ts";
+import type { McpMenu, McpUi } from "./ui.ts";
 
 export type { McpTransportFactory } from "./runtime.ts";
 
@@ -1084,6 +1085,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			const { signal } = session;
 			let failure: string | undefined;
 			if (ctx.mode === "tui") {
+				const { showMcpManager } = await loadMcpUi();
 				await showMcpManager(ctx, async (ui) => {
 					failure = await signInWithUi(ui, server);
 				});
@@ -1283,8 +1285,10 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			handler: async (args, ctx) => {
 				const [action, name, ...extra] = args.trim().split(/\s+/).filter(Boolean);
 				if (action === undefined) {
-					if (ctx.mode === "tui") await showMcpManager(ctx, (ui) => manage(ui, ctx));
-					else {
+					if (ctx.mode === "tui") {
+						const { showMcpManager } = await loadMcpUi();
+						await showMcpManager(ctx, (ui) => manage(ui, ctx));
+					} else {
 						await pending;
 						ctx.ui.notify(formatStatus(), "info");
 					}

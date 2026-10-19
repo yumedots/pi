@@ -20,7 +20,9 @@ import {
 	type Tool as McpTool,
 	toLlmContent,
 } from "@earendil-works/pi-mcp";
-import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { Spacer } from "@earendil-works/pi-tui/components/spacer";
+import { Text } from "@earendil-works/pi-tui/components/text";
+import { Container } from "@earendil-works/pi-tui/tui";
 import type { TSchema } from "typebox";
 import type {
 	ToolAnnotations,

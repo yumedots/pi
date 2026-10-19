@@ -1,28 +1,33 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type {
+	BlockListTheme,
+	EditorTheme,
+	MarkdownTheme,
+	RgbColor,
+	SelectListTheme,
+	SettingsListTheme,
+	TerminalColors,
+} from "@earendil-works/pi-tui";
+// The colors come from the narrow entry of the terminal interface. The barrel of that
+// package carries the editor, the markdown renderer and the syntax highlighter, which
+// the headless modes never use.
 import {
-	type BlockListTheme,
 	backgroundAnsi,
 	type Color,
 	colorToHex,
 	colorToOklch,
-	type EditorTheme,
 	foregroundAnsi,
-	getTerminalColorMode,
 	indexedColor,
-	type MarkdownTheme,
 	mixColors,
 	parseColor,
-	type RgbColor,
 	rgbColor,
-	type SelectListTheme,
-	type SettingsListTheme,
 	styleTextWithAnsi,
 	type TerminalColorMode,
-	type TerminalColors,
 	type TextAttributes,
-} from "@earendil-works/pi-tui";
+} from "@earendil-works/pi-tui/colors";
+import { getTerminalColorMode } from "@earendil-works/pi-tui/terminal-capabilities";
 import chalk from "chalk";
 import { getCustomThemesDir, getThemesDir } from "../../../config.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";

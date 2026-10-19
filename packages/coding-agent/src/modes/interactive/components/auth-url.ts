@@ -1,4 +1,7 @@
-import { Container, hyperlink, Text, type TUI } from "@earendil-works/pi-tui";
+import type { TUI } from "@earendil-works/pi-tui";
+import { Text } from "@earendil-works/pi-tui/components/text";
+import { hyperlink } from "@earendil-works/pi-tui/terminal-image";
+import { Container } from "@earendil-works/pi-tui/tui";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { theme } from "../theme/theme.ts";
 import { keyHint } from "./keybinding-hints.ts";
