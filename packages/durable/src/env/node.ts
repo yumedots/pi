@@ -1188,6 +1188,16 @@ export class NodeExecutionEnv implements ExecutionEnv {
 			await rm(resolved, { recursive: options?.recursive ?? false, force: options?.force ?? false });
 			return ok(undefined);
 		} catch (error) {
+			// Bun reports a path whose parent is not a directory as EFAULT. The stat below
+			// produces the error the other runtimes report, so the code of a failed
+			// removal is the same everywhere.
+			if (process.versions.bun && (error as NodeJS.ErrnoException).code === "EFAULT") {
+				try {
+					await lstat(resolved);
+				} catch (statError) {
+					return err(toFileError(statError, resolved));
+				}
+			}
 			return err(toFileError(error, resolved));
 		}
 	}

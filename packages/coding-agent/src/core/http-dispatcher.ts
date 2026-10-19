@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import * as undici from "undici";
+import { isBunRuntime } from "../config.ts";
 
 export const DEFAULT_HTTP_IDLE_TIMEOUT_MS = 300_000;
 // Node's 250ms default can terminate valid connection attempts on high-latency routes.
@@ -82,6 +83,12 @@ export function configureHttpDispatcher(timeoutMs: number = DEFAULT_HTTP_IDLE_TI
 	const normalizedTimeoutMs = parseHttpIdleTimeoutMs(timeoutMs);
 	if (normalizedTimeoutMs === undefined) {
 		throw new Error(`Invalid HTTP idle timeout: ${String(timeoutMs)}`);
+	}
+	if (isBunRuntime()) {
+		// Bun ships a stub for the undici package: its Client has no dispatch and no close,
+		// so a dispatcher built from it cannot carry a request. Bun's own fetch reads the
+		// proxy environment variables, so the global dispatcher is left alone there.
+		return;
 	}
 	const dispatcher = withUndiciErrorListener(
 		new undici.EnvHttpProxyAgent({

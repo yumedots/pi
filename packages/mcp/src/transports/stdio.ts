@@ -10,6 +10,20 @@ const DEFAULT_CLOSE_TIMEOUT_MS = 2_000;
 const STDIN_CLOSE_GRACE_MS = 500;
 const USE_PROCESS_GROUPS = process.platform !== "win32";
 
+/**
+ * The message of a failed spawn.
+ *
+ * Node reports a missing executable as "spawn <command> ENOENT", Bun as
+ * "Executable not found in $PATH: ...". The message reaches the user through the MCP
+ * server status, so it has to read the same on every runtime.
+ */
+function spawnErrorMessage(error: Error, command: string): string {
+	if ((error as NodeJS.ErrnoException).code === "ENOENT" && !error.message.startsWith("spawn ")) {
+		return `spawn ${command} ENOENT`;
+	}
+	return error.message;
+}
+
 /** Process groups of running servers, killed if the host exits without closing them. */
 const liveProcessGroups = new Set<number>();
 let exitHookInstalled = false;
@@ -130,7 +144,9 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 			};
 			const onError = (error: Error) => {
 				child.off("spawn", onSpawn);
-				reject(error);
+				const failure: NodeJS.ErrnoException = new Error(spawnErrorMessage(error, this.options.command));
+				failure.code = (error as NodeJS.ErrnoException).code;
+				reject(failure);
 			};
 			child.once("spawn", onSpawn);
 			child.once("error", onError);

@@ -20,7 +20,11 @@ export function watchWithErrorHandler(
 	onError: () => void,
 ): FSWatcher | null {
 	try {
-		const watcher = watch(path, listener);
+		// The listener is registered on the emitter instead of passed to watch(), so the
+		// watcher behaves the same on every runtime: Node hands the listener to watch()
+		// and keeps it out of the emitter's listener list, Bun does the opposite.
+		const watcher = watch(path);
+		watcher.on("change", listener);
 		watcher.on("error", onError);
 		return watcher;
 	} catch {
