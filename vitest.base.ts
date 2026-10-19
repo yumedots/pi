@@ -21,6 +21,9 @@ export const workspaceSourcePaths = {
 	codemodeSource: fileURLToPath(new URL("./packages/codemode/src/source.ts", import.meta.url)),
 	codingAgentIndex: fileURLToPath(new URL("./packages/coding-agent/src/index.ts", import.meta.url)),
 	tuiIndex: fileURLToPath(new URL("./packages/tui/src/index.ts", import.meta.url)),
+	tuiColors: fileURLToPath(new URL("./packages/tui/src/colors.ts", import.meta.url)),
+	tuiTerminalCapabilities: fileURLToPath(new URL("./packages/tui/src/terminal-capabilities.ts", import.meta.url)),
+	tuiSrc: fileURLToPath(new URL("./packages/tui/src", import.meta.url)),
 } as const;
 
 export default defineConfig({
@@ -53,6 +56,14 @@ export default defineConfig({
 			{ find: /^@earendil-works\/pi-codemode\/declarations$/, replacement: workspaceSourcePaths.codemodeDeclarations },
 			{ find: /^@earendil-works\/pi-codemode\/source$/, replacement: workspaceSourcePaths.codemodeSource },
 			{ find: /^@earendil-works\/pi-tui$/, replacement: workspaceSourcePaths.tuiIndex },
+			{ find: /^@earendil-works\/pi-tui\/colors$/, replacement: workspaceSourcePaths.tuiColors },
+			{
+				find: /^@earendil-works\/pi-tui\/terminal-capabilities$/,
+				replacement: workspaceSourcePaths.tuiTerminalCapabilities,
+			},
+			// The narrow entries of the terminal interface, so a module that needs a
+			// component does not pull the whole barrel with it.
+			{ find: /^@earendil-works\/pi-tui\/(components\/[\w-]+|[\w-]+)$/, replacement: `${workspaceSourcePaths.tuiSrc}/$1.ts` },
 		],
 	},
 });

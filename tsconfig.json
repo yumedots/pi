@@ -40,7 +40,9 @@
 			"@earendil-works/pi-coding-agent/*": ["./packages/coding-agent/src/*"],
 			"typebox": ["./node_modules/typebox"],
 			"@earendil-works/pi-tui": ["./packages/tui/src/index.ts"],
-			"@earendil-works/pi-tui/*": ["./packages/tui/src/*"],
+			"@earendil-works/pi-tui/colors": ["./packages/tui/src/colors.ts"],
+			"@earendil-works/pi-tui/terminal-capabilities": ["./packages/tui/src/terminal-capabilities.ts"],
+			"@earendil-works/pi-tui/*": ["./packages/tui/src/*.ts", "./packages/tui/src/*"],
 			"@earendil-works/pi-agent-old": ["./packages/agent-old/src/index.ts"],
 			"@earendil-works/pi-agent-old/*": ["./packages/agent-old/src/*"]
 		}
