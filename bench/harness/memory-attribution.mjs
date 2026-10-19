@@ -26,6 +26,7 @@ const steps = [
 	["yaml (the config parser)", "yaml"],
 	["the model catalog", `${AI}/dist/models.js`],
 	["the pi-ai package", `${AI}/dist/index.js`],
+	["the durable harness (the agent library)", `${join(REPO_ROOT, "packages/durable/dist/index.js")}`],
 	["the terminal interface", `${join(REPO_ROOT, "packages/tui/dist/index.js")}`],
 	["the tools and their schemas", `${PKG}/dist/core/tools/index.js`],
 	["the settings", `${PKG}/dist/core/settings-manager.js`],

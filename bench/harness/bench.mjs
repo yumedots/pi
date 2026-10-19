@@ -262,6 +262,32 @@ async function measureSpawn(runtime, args, env) {
 }
 
 /**
+ * The resident set size of a running process, in bytes.
+ *
+ * The peak of `/usr/bin/time` counts the transient of the startup, which is
+ * not what a running agent holds. This is the memory it keeps.
+ */
+function residentSetSize(pid) {
+	const result = spawnSync("ps", ["-o", "rss=", "-p", String(pid)], { encoding: "utf8" });
+	const kilobytes = Number.parseInt(result.stdout.trim(), 10);
+	return Number.isFinite(kilobytes) ? kilobytes * 1024 : undefined;
+}
+
+/**
+ * The resident set size of the agent, not of the wrapper around it.
+ *
+ * The measured process is `/usr/bin/time`, which runs the agent as its child.
+ */
+function agentResidentSetSize(pid) {
+	if (!pid) return undefined;
+	const children = spawnSync("pgrep", ["-P", String(pid)], { encoding: "utf8" })
+		.stdout.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0);
+	return residentSetSize(children[0] ?? pid);
+}
+
+/**
  * A scenario that runs the interactive mode in a terminal.
  *
  * The interactive mode needs a terminal, so it runs in a tmux session. The agent
@@ -364,6 +390,8 @@ function rpcScript({ prompt, model, agentDir }) {
 		const now = performance.now();
 		if (event.type === "response" && event.command === "get_state" && state.measurements.firstScreenMs === undefined) {
 			state.measurements.firstScreenMs = now - state.startedAt;
+			// The memory the agent holds once it is up, without the transient of the startup.
+			state.measurements.settledRssBytes = agentResidentSetSize(childRef?.pid);
 			if (prompt) {
 				// The session is up. The message goes out now, so the round trip does not
 				// include the startup of the agent.
@@ -443,6 +471,7 @@ function summarizeRuns(runs) {
 	summary.turnMs = numeric(runs, "turnMs");
 	summary.batteryDrainPercent = numeric(runs, "batteryDrainPercent");
 	summary.distBytes = numeric(runs, "distBytes");
+	summary.settledRssBytes = numeric(runs, "settledRssBytes");
 	const startup = {};
 	for (const run of runs) {
 		for (const [label, value] of Object.entries(run.startupTimings ?? {})) {
@@ -616,6 +645,7 @@ async function main() {
 					firstScreenMs: run.firstScreenMs,
 					firstTokenMs: run.firstTokenMs,
 					turnMs: run.turnMs,
+					settledRssBytes: run.settledRssBytes,
 					batteryDrainPercent: run.batteryDrainPercent,
 					distBytes: run.distBytes,
 					usage: run.usage,
@@ -647,15 +677,15 @@ function renderMarkdown(results) {
 	lines.push(`- Node: ${results.machine.node}`);
 	lines.push(`- Date: ${results.date}`);
 	lines.push("");
-	lines.push("| Scenario | Runtime | Wall | Peak RSS | CPU (user+sys) | Battery | First screen | First token | Turn | Tokens |");
-	lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+	lines.push("| Scenario | Runtime | Wall | Peak RSS | Settled RSS | CPU (user+sys) | Battery | First screen | First token | Turn | Tokens |");
+	lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
 	for (const [name, scenario] of Object.entries(results.scenarios)) {
 		for (const [runtime, entry] of Object.entries(scenario.runtimes)) {
 			const s = entry.summary;
 			const cpu = s.userSeconds && s.sysSeconds ? `${(s.userSeconds.avg + s.sysSeconds.avg).toFixed(2)} s` : "-";
 			const battery = s.batteryDrainPercent ? `${s.batteryDrainPercent.avg.toFixed(2)}%` : "-";
 			lines.push(
-				`| ${name} | ${runtime} | ${formatMs(s.wallMs?.avg)} | ${s.peakRssBytes ? formatMb(s.peakRssBytes.avg) : "-"} | ${cpu} | ${battery} | ${formatMs(s.firstScreenMs?.avg)} | ${formatMs(s.firstTokenMs?.avg)} | ${formatMs(s.turnMs?.avg)} | ${s.usageTotal ? Math.round(s.usageTotal.avg) : "-"} |`,
+				`| ${name} | ${runtime} | ${formatMs(s.wallMs?.avg)} | ${s.peakRssBytes ? formatMb(s.peakRssBytes.avg) : "-"} | ${s.settledRssBytes ? formatMb(s.settledRssBytes.avg) : "-"} | ${cpu} | ${battery} | ${formatMs(s.firstScreenMs?.avg)} | ${formatMs(s.firstTokenMs?.avg)} | ${formatMs(s.turnMs?.avg)} | ${s.usageTotal ? Math.round(s.usageTotal.avg) : "-"} |`,
 			);
 		}
 	}
