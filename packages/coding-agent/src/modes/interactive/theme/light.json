@@ -10,7 +10,8 @@
 		"green": "okhsl(159 75% 46%)",
 		"red": "okhsl(20 91% 47%)",
 		"yellow": "okhsl(83 99% 47%)",
-		"blueBg": "okhsl(235 19% 91%)"
+		"blueBg": "okhsl(235 19% 91%)",
+		"grayBg": "okhsl(240 3% 89%)"
 	},
 	"colors": {
 		"accent": "violet",
@@ -31,9 +32,9 @@
 		"scrollbarThumb": "okhsl(226 7% 65%)",
 		"searchMatchBg": "okhsl(56 22% 91%)",
 		"searchMatchText": "muted",
-		"userMessageBg": "blueBg",
+		"userMessageBg": "grayBg",
 		"userMessageText": "text",
-		"customMessageBg": "okhsl(295 25% 91%)",
+		"customMessageBg": "grayBg",
 		"customMessageText": "muted",
 		"customMessageLabel": "violet",
 		"toolPendingBg": "okhsl(248 3% 91%)",

@@ -9,27 +9,28 @@ describe("export HTML skill block rendering", () => {
 		//   <skill name="..." location="...">\n...\n</skill>\n\nactual prompt
 		// The export renderer must detect that wrapper and render only the user-visible prompt,
 		// not the Pi-generated <skill>...</skill> XML tags.
-		expect(templateJs).toMatch(/parseSkillBlock/);
-		expect(templateJs).toMatch(/skillBlock\.userMessage/);
+		expect(templateJs).toMatch(/parseSkillMessage/);
+		expect(templateJs).toMatch(/skillMessage\.userMessage/);
 	});
 
-	it("renders skill invocation and user message as separate sibling blocks", () => {
-		// The skill block and user message should render as separate entry-level elements,
-		// matching the TUI layout where SkillInvocationMessageComponent and
-		// UserMessageComponent are siblings, not nested.
-		expect(templateJs).toMatch(/skill-invocation/);
+	it("renders the request that came with a skill inside the skill block", () => {
+		// The skill invocation and the request typed alongside it are one message, so the
+		// request must render inside the skill-invocation div instead of as a separate
+		// block after it, matching the TUI layout where the request is part of
+		// SkillInvocationMessageComponent.
+		expect(templateJs).toMatch(/skill-user-request/);
+		expect(templateJs).not.toMatch(/hasUserContent/);
+	});
 
-		// When a skill block has a userMessage, the user-message div must be emitted
-		// as a separate block after the skill-invocation div, containing the user-authored text.
-		// Verify the code checks hasUserContent so the user-message div is only omitted
-		// when the skill block has no user prompt and no images.
-		expect(templateJs).toMatch(/hasUserContent/);
+	it("labels the skill invocation with an @ mention", () => {
+		// The invocation is shown as "@name" so it matches what the user typed.
+		expect(templateJs).toMatch(/skill-invocation-label">\$\{escapeHtml\(names\)\}/);
 	});
 
 	it("renders skill content as markdown, not raw text", () => {
 		// The skill block body is markdown (from the SKILL.md file).
 		// It should be rendered through safeMarkedParse, not escaped as raw text.
-		expect(templateJs).toMatch(/safeMarkedParse\(skillBlock\.content\)/);
+		expect(templateJs).toMatch(/safeMarkedParse\(block\.content\)/);
 	});
 
 	it("shows skill name and user message in the sidebar tree", () => {

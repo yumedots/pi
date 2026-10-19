@@ -263,20 +263,6 @@
       "description": "Show the condensed changelog after update; use /changelog for the full changelog.",
       "default": false
     },
-    "enableInstallTelemetry": {
-      "type": "boolean",
-      "description": "Send an anonymous version and update ping after changelog-detected updates.",
-      "default": true
-    },
-    "enableAnalytics": {
-      "type": "boolean",
-      "description": "Opt in to analytics data sharing.",
-      "default": false
-    },
-    "trackingId": {
-      "type": "string",
-      "description": "Analytics tracking identifier, generated when analytics is enabled."
-    },
     "packages": {
       "type": "array",
       "items": {
@@ -567,6 +553,20 @@
       "description": "Maximum visible items in the autocomplete dropdown.",
       "default": 5
     },
+    "autocompletePosition": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "above"
+        },
+        {
+          "type": "string",
+          "const": "below"
+        }
+      ],
+      "description": "Where the autocomplete list appears: above the input or below it.",
+      "default": "above"
+    },
     "showHardwareCursor": {
       "type": "boolean",
       "description": "Show the terminal cursor while still positioning it for IME."
@@ -744,7 +744,7 @@
         }
       ],
       "description": "Lines scrolled per wheel event in fullscreen mode; numeric values are clamped from 1 to 100.",
-      "default": "auto"
+      "default": 1
     },
     "queueMode": {
       "anyOf": [

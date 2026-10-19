@@ -42,15 +42,29 @@ Use relative paths from the skill directory when referring to bundled files. Pi 
 
 At startup, Pi scans configured skill locations and adds each skill’s name, description, and path to the system prompt. It does not add the full instructions.
 
-When a task matches, the model reads `SKILL.md` and follows its instructions. This keeps detailed guidance out of context until it is needed. A model might fail to load a relevant skill, so use `/skill:name` when you need to force it.
+When a task matches, the model reads `SKILL.md` and follows its instructions. This keeps detailed guidance out of context until it is needed. A model might fail to load a relevant skill, so you can name the skill yourself when you need to force it.
 
-Arguments after `/skill:name` are appended to the loaded instructions as a user request:
+Type `@` in the editor to search the loaded skills, pick one, and keep typing your request on the same line. The mention and the request are sent as one message:
+
+```text
+@pdf-tools extract report.pdf
+```
+
+A mention loads the skill wherever it appears in the message, so the request can also come first:
+
+```text
+extract report.pdf with @pdf-tools
+```
+
+`/skill:name` does the same and can be typed directly:
 
 ```text
 /skill:pdf-tools extract report.pdf
 ```
 
-Set `disable-model-invocation: true` in frontmatter when a skill should be available only through its explicit command. The `enableSkillCommands` [setting](settings.md) controls whether `/skill:name` commands are expanded; skills are always available through `/skills`.
+The rest of the message is appended to the loaded instructions as a user request. A mention is consumed by the skill it names, so it does not repeat in the request.
+
+Set `disable-model-invocation: true` in frontmatter when a skill should be available only through its explicit command. The `enableSkillCommands` [setting](settings.md) controls whether `/skill:name` commands are expanded; skills are always available through `/skills` and the `@` mention.
 
 <a id="choose-where-it-loads"></a>
 

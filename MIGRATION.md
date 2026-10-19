@@ -131,8 +131,8 @@ with Bun, which changes what the native binary is told about the runtime.
 is slower than Node's runner (5.4 s against 3.8 s for `scripts/`, 11.6 s
 against 6.5 s for `packages/tui`), so Node's runner stays.
 
-vitest on Bun passes every test in `packages/telemetry`, `packages/mcp` and
-`packages/agent`. It fails in the rest:
+vitest on Bun passes every test in `packages/mcp` and `packages/agent`. It
+fails in the rest:
 
 | Package | Failing files | Cause |
 | --- | --- | --- |

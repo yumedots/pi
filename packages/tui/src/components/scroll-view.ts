@@ -33,6 +33,8 @@ export class ScrollView extends Container {
 	private currentViewportHeight = 0;
 	private followingEnd: boolean;
 	private followSuppressedAtEnd = false;
+	private pendingEndJump = false;
+	private keepOffsetPending = false;
 	private requestRenderCallback: (() => void) | undefined;
 	private transientScrollbarVisible = false;
 	private scrollbarActive = false;
@@ -180,10 +182,20 @@ export class ScrollView extends Container {
 		this.currentScrollTop = next;
 		this.followingEnd = this.followEnd;
 		this.followSuppressedAtEnd = false;
+		// The next layout pins the exact end, even if the content or viewport changed since.
+		this.pendingEndJump = true;
 		if (changed) {
 			this.markScrollbarActivity();
 			this.requestRenderCallback?.();
 		}
+	}
+
+	/**
+	 * Keep the current offset when the content grows, so the content in view stays where it
+	 * is. Used when a card in the transcript expands or collapses.
+	 */
+	keepOffsetOnNextLayout(): void {
+		this.keepOffsetPending = true;
 	}
 
 	updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
@@ -191,8 +203,20 @@ export class ScrollView extends Container {
 		this.currentViewportHeight = Math.max(0, Math.floor(viewportHeight));
 		this.requestRenderCallback = requestRender;
 		const maxScrollTop = Math.max(0, this.contentHeight - this.currentViewportHeight);
-		if (this.followingEnd) this.currentScrollTop = maxScrollTop;
-		else this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
+		if (this.pendingEndJump) {
+			// An explicit jump to the end: land on the exact end.
+			this.pendingEndJump = false;
+			this.currentScrollTop = maxScrollTop;
+		} else if (this.followingEnd && this.keepOffsetPending) {
+			// A card in the transcript expanded or collapsed: keep the content in place, so the
+			// card does not move out from under the pointer that toggled it.
+			this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
+		} else if (this.followingEnd) {
+			this.currentScrollTop = maxScrollTop;
+		} else {
+			this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
+		}
+		this.keepOffsetPending = false;
 		if (this.currentScrollTop < maxScrollTop) this.followSuppressedAtEnd = false;
 		if (this.followEnd && this.currentScrollTop === maxScrollTop && !this.followSuppressedAtEnd) {
 			this.followingEnd = true;

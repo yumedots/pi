@@ -13,6 +13,32 @@ function visibleLines(lines: string[]): string[] {
 }
 
 describe("viewport layout", () => {
+	it("paints overlay lines above their box without taking up layout height", () => {
+		const overlay = {
+			render: () => ["box"],
+			renderOverlayAbove: () => ["overlay line"],
+			invalidate: () => {},
+		};
+		const frame = renderLayoutFrame(
+			new VStack([
+				{ component: new Text("top", 0, 0), basis: 1, shrink: 0 },
+				{ component: overlay, basis: 1, shrink: 0 },
+			]),
+			10,
+			4,
+			() => {},
+		);
+
+		// The overlay does not push the box down.
+		assert.deepStrictEqual(
+			frame.root.children.map((child) => child.rect.height),
+			[1, 1],
+		);
+		// The box keeps its own line; the overlay is painted on the row above it, over
+		// whatever was there.
+		assert.deepStrictEqual(visibleLines(frame.lines), ["overlay li", "box", "", ""]);
+	});
+
 	it("allocates vertical grow space deterministically", () => {
 		const frame = renderLayoutFrame(
 			new VStack([
@@ -169,6 +195,69 @@ describe("viewport layout", () => {
 			() => {},
 		);
 		assert.deepStrictEqual(visibleLines(frame.lines), ["shown"]);
+	});
+
+	it("follows the end line by line when the viewport resizes", () => {
+		const content = new Text(Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0);
+		const scrollView = new ScrollView(content, {
+			follow: "end",
+			primary: true,
+		});
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 35);
+
+		// The dock next to the transcript grew (the editor opened its autocomplete list): the
+		// viewport shrank, so the end moved down and the view follows it.
+		renderLayoutFrame(scrollView, 10, 3, () => {});
+		assert.strictEqual(scrollView.scrollTop, 37);
+
+		// The dock shrank back: the end moved up again.
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 35);
+
+		// New content still pulls the view to the end.
+		content.setText(`${Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n")}\nline 41`);
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 36);
+	});
+
+	it("keeps the content in place when a card expands while following the end", () => {
+		const lines = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n");
+		const content = new Text(lines(40), 0, 0);
+		const scrollView = new ScrollView(content, {
+			follow: "end",
+			primary: true,
+		});
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 35);
+
+		// A card in view expanded: the content grows, but the transcript must not move, so the
+		// card stays under the pointer that toggled it.
+		scrollView.keepOffsetOnNextLayout();
+		content.setText(lines(41));
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 35);
+
+		// The next content change follows the end again.
+		content.setText(lines(42));
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 37);
+	});
+
+	it("pins an explicit jump to the end even when the viewport changed since", () => {
+		const content = new Text(Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0);
+		const scrollView = new ScrollView(content, {
+			follow: "end",
+			primary: true,
+		});
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 35);
+
+		// The dock grew, so the end moved further down.
+		renderLayoutFrame(scrollView, 10, 3, () => {});
+		scrollView.scrollToEnd();
+		renderLayoutFrame(scrollView, 10, 3, () => {});
+		assert.strictEqual(scrollView.scrollTop, 37);
 	});
 
 	it("tracks follow-end state and returns unused scroll delta", () => {

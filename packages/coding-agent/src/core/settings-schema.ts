@@ -284,21 +284,6 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.collapseChangelog,
 			}),
 		),
-		enableInstallTelemetry: Type.Optional(
-			Type.Boolean({
-				description: "Send an anonymous version and update ping after changelog-detected updates.",
-				default: SETTINGS_DEFAULTS.enableInstallTelemetry,
-			}),
-		),
-		enableAnalytics: Type.Optional(
-			Type.Boolean({
-				description: "Opt in to analytics data sharing.",
-				default: SETTINGS_DEFAULTS.enableAnalytics,
-			}),
-		),
-		trackingId: Type.Optional(
-			Type.String({ description: "Analytics tracking identifier, generated when analytics is enabled." }),
-		),
 		packages: Type.Optional(
 			Type.Array(PackageSourceSchema, {
 				description: "npm or git package sources, as strings or objects with resource filtering.",
@@ -378,6 +363,12 @@ export const SettingsSchema = Type.Object(
 			Type.Number({
 				description: "Maximum visible items in the autocomplete dropdown.",
 				default: SETTINGS_DEFAULTS.autocompleteMaxVisible,
+			}),
+		),
+		autocompletePosition: Type.Optional(
+			Type.Union([Type.Literal("above"), Type.Literal("below")], {
+				description: "Where the autocomplete list appears: above the input or below it.",
+				default: SETTINGS_DEFAULTS.autocompletePosition,
 			}),
 		),
 		showHardwareCursor: Type.Optional(

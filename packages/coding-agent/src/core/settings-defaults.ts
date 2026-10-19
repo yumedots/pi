@@ -29,8 +29,6 @@ export const SETTINGS_DEFAULTS = {
 	quietStartup: false,
 	defaultProjectTrust: "ask",
 	collapseChangelog: false,
-	enableInstallTelemetry: true,
-	enableAnalytics: false,
 	enableSkillCommands: true,
 	terminal: {
 		showImages: true,
@@ -47,6 +45,7 @@ export const SETTINGS_DEFAULTS = {
 	editorPaddingX: 0,
 	outputPad: 1,
 	autocompleteMaxVisible: 5,
+	autocompletePosition: "above",
 	markdown: {
 		codeBlockIndent: "  ",
 		mermaid: "streaming",
@@ -63,5 +62,5 @@ export const SETTINGS_DEFAULTS = {
 	fullscreenExitOutput: "transcript",
 	fullscreenScrollbar: "auto",
 	fullscreenCopyOnSelect: true,
-	fullscreenWheelScrollLines: "auto",
+	fullscreenWheelScrollLines: 1,
 } as const;

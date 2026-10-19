@@ -4,8 +4,8 @@
 //
 // The root `build` and `build:offline` scripts used to be a hand-written
 // `cd packages/X && npm run build` chain. That chain is correct but serial:
-// packages/tui, packages/codemode, packages/mcp and packages/telemetry do not
-// depend on each other, so there is no reason to wait for them one by one.
+// packages/tui, packages/codemode and packages/mcp do not depend on each
+// other, and neither do durable/agent or env/coding-agent.
 //
 // Usage:
 //   bun scripts/build-workspaces.mjs [--offline] [--package-manager <npm|bun>]

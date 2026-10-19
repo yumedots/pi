@@ -2,7 +2,15 @@ import { homedir } from "os";
 import { join, resolve } from "path";
 import { describe, expect, it } from "vitest";
 import type { ResourceDiagnostic } from "../src/core/diagnostics.ts";
-import { formatSkillsForPrompt, loadSkills, loadSkillsFromDir, type Skill } from "../src/core/skills.ts";
+import {
+	findSkillMentions,
+	formatSkillsForPrompt,
+	loadSkills,
+	loadSkillsFromDir,
+	parseSkillCommand,
+	removeSkillMentions,
+	type Skill,
+} from "../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
 
 const fixturesDir = resolve(__dirname, "fixtures/skills");
@@ -427,6 +435,66 @@ describe("skills", () => {
 			expect(skillMap.get("calendar")?.sourceInfo.source).toBe("first");
 			expect(collisionWarnings).toHaveLength(1);
 			expect(collisionWarnings[0].message).toContain("name collision");
+		});
+	});
+
+	describe("parseSkillCommand", () => {
+		it("parses a skill command", () => {
+			expect(parseSkillCommand("/skill:pdf-tools extract report.pdf")).toEqual({
+				name: "pdf-tools",
+				args: "extract report.pdf",
+			});
+		});
+
+		it("parses a skill command without arguments", () => {
+			expect(parseSkillCommand("/skill:pdf-tools")).toEqual({ name: "pdf-tools", args: "" });
+		});
+
+		it("ignores text that is not a skill command", () => {
+			expect(parseSkillCommand("hello world")).toBeNull();
+			expect(parseSkillCommand("")).toBeNull();
+		});
+	});
+
+	describe("findSkillMentions", () => {
+		it("finds a mention at the start of a message", () => {
+			expect(findSkillMentions("@pdf-tools extract report.pdf")).toEqual([{ name: "pdf-tools", start: 0, end: 10 }]);
+		});
+
+		it("finds a mention in the middle of a message", () => {
+			const mentions = findSkillMentions("check @pdf-tools now");
+			expect(mentions).toHaveLength(1);
+			expect(mentions[0]?.name).toBe("pdf-tools");
+			expect("check @pdf-tools now".slice(mentions[0]!.start, mentions[0]!.end)).toBe("@pdf-tools");
+		});
+
+		it("finds several mentions", () => {
+			expect(findSkillMentions("@a and @b").map((mention) => mention.name)).toEqual(["a", "b"]);
+		});
+
+		it("ignores mentions that are part of a word", () => {
+			expect(findSkillMentions("user@example.com")).toEqual([]);
+			expect(findSkillMentions("email@host")).toEqual([]);
+		});
+	});
+
+	describe("removeSkillMentions", () => {
+		it("removes the mention and keeps the request", () => {
+			const text = "check @pdf-tools now";
+			const mentions = findSkillMentions(text);
+			expect(removeSkillMentions(text, mentions)).toBe("check now");
+		});
+
+		it("removes a leading mention", () => {
+			const text = "@pdf-tools extract report.pdf";
+			const mentions = findSkillMentions(text);
+			expect(removeSkillMentions(text, mentions)).toBe("extract report.pdf");
+		});
+
+		it("removes several mentions", () => {
+			const text = "compare @a and @b now";
+			const mentions = findSkillMentions(text);
+			expect(removeSkillMentions(text, mentions)).toBe("compare and now");
 		});
 	});
 });

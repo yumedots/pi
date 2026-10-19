@@ -7,22 +7,11 @@ import { join } from "node:path";
 import { repoRoot } from "./lib.mjs";
 
 // Dependency order used by the repository's root build script.
-export const buildOrder = [
-	"telemetry",
-	"chord",
-	"tui",
-	"codemode",
-	"mcp",
-	"ai",
-	"durable",
-	"env",
-	"agent",
-	"coding-agent",
-];
+export const buildOrder = ["chord", "tui", "codemode", "mcp", "ai", "durable", "env", "agent", "coding-agent"];
 
 // Independent packages per dependency level. Used to build in parallel.
 export const buildLevels = [
-	["telemetry", "tui", "codemode", "mcp"],
+	["tui", "codemode", "mcp"],
 	["chord", "ai"],
 	["durable", "agent"],
 	["env", "coding-agent"],

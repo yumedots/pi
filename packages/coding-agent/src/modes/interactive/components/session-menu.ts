@@ -232,7 +232,7 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 			? theme.fg("accent", truncated)
 			: hasSessionName(session)
 				? theme.fg("warning", truncated)
-				: truncated;
+				: theme.fg("text", truncated);
 		if (selected) {
 			styled = theme.bold(styled);
 		}

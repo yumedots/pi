@@ -87,6 +87,14 @@ describe("theme styles", () => {
 		expect(paletteOnly.appearance).toBe("light");
 	});
 
+	it("gives sent messages one card background", () => {
+		// Regular messages and skill invocations are both sent messages, so they share one color.
+		for (const base of ["dark", "light"] as const) {
+			const theme = loadTheme(base);
+			expect(colorToHex(theme.colors.userMessageBg)).toBe(colorToHex(theme.colors.customMessageBg));
+		}
+	});
+
 	it("renders empty tokens as terminal defaults and reports concrete colors for them", () => {
 		const theme = loadTheme("dark", (json) => {
 			json.colors.text = "";

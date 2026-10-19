@@ -3,9 +3,9 @@ import type { SettingsManager } from "../../../core/settings-manager.ts";
 import {
 	getTerminalTheme,
 	initTheme,
-	NEUTRAL_THEME_NAME,
 	parseAutoThemeSetting,
 	resolveThemeSetting,
+	SYSTEM_THEME_NAME,
 	setTerminalColorScheme,
 	setTerminalColors,
 	setTheme,
@@ -95,12 +95,12 @@ export class InteractiveThemeController {
 
 	/**
 	 * Apply the theme setting now and query the terminal's colors, which update the theme when they arrive.
-	 * Theme pairs and the neutral theme follow terminal appearance changes.
+	 * Theme pairs and the system theme follow terminal appearance changes.
 	 */
 	applyFromSettings(): void {
 		const themeSetting = this.getThemeSetting();
 		const themeName = this.resolveThemeName();
-		this.setAutoSync(parseAutoThemeSetting(themeSetting) !== undefined || themeName === NEUTRAL_THEME_NAME);
+		this.setAutoSync(parseAutoThemeSetting(themeSetting) !== undefined || themeName === SYSTEM_THEME_NAME);
 		this.applyThemeName(themeName, themeSetting !== undefined);
 		this.queryTerminalColors();
 	}
@@ -119,7 +119,7 @@ export class InteractiveThemeController {
 	}
 
 	setThemeName(themeName: string, showError = false): ThemeResult {
-		this.setAutoSync(themeName === NEUTRAL_THEME_NAME);
+		this.setAutoSync(themeName === SYSTEM_THEME_NAME);
 		const result = this.applyThemeName(themeName, showError);
 		if (result.success) {
 			this.currentThemeSetting = themeName;
@@ -167,17 +167,17 @@ export class InteractiveThemeController {
 		return this.currentThemeSetting ?? this.getSettingsManager().getThemeSetting();
 	}
 
-	/** The theme for the current setting and terminal appearance. Without a setting, pi uses the neutral theme. */
+	/** The theme for the current setting and terminal appearance. Without a setting, pi uses the system theme. */
 	private resolveThemeName(): string {
-		return resolveThemeSetting(this.getThemeSetting(), getTerminalTheme()) ?? NEUTRAL_THEME_NAME;
+		return resolveThemeSetting(this.getThemeSetting(), getTerminalTheme()) ?? SYSTEM_THEME_NAME;
 	}
 
 	private applyThemeName(themeName: string, showError = false): ThemeResult {
 		const result = setTheme(themeName, true);
-		this.activeThemeName = result.success ? themeName : NEUTRAL_THEME_NAME;
+		this.activeThemeName = result.success ? themeName : SYSTEM_THEME_NAME;
 		this.notifyChanged();
 		if (!result.success && showError) {
-			this.showError(`Failed to load theme "${themeName}": ${result.error}\nFell back to the neutral theme.`);
+			this.showError(`Failed to load theme "${themeName}": ${result.error}\nFell back to the system theme.`);
 		}
 		return result;
 	}
@@ -208,14 +208,14 @@ export class InteractiveThemeController {
 	}
 
 	/**
-	 * Re-apply the setting after the terminal's colors or appearance changed: pick the neutral theme's
+	 * Re-apply the setting after the terminal's colors or appearance changed: pick the system theme's
 	 * light or dark variant, or switch the theme of a pair. Themes set through extensions or previews
 	 * are left alone.
 	 */
 	private reapplyForTerminal(): void {
 		if (this.activeThemeName === "<in-memory>") return;
 		const themeName = this.resolveThemeName();
-		if (themeName === NEUTRAL_THEME_NAME || themeName !== this.activeThemeName) {
+		if (themeName === SYSTEM_THEME_NAME || themeName !== this.activeThemeName) {
 			this.applyThemeName(themeName);
 		}
 	}

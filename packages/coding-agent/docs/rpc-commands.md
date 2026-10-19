@@ -30,7 +30,7 @@ If the agent is streaming and no `streamingBehavior` is specified, the command r
 
 **Extension commands**: If the message is an extension command (e.g., `/mycommand`), it executes immediately even during streaming. Extension commands manage their own LLM interaction via `pi.sendMessage()`.
 
-**Input expansion**: Skill commands (`/skill:name`) and prompt templates (`/template`) are expanded before sending/queueing.
+**Input expansion**: Skill commands (`/skill:name`), skill mentions (`@name`) and prompt templates (`/template`) are expanded before sending/queueing.
 
 Response:
 ```json

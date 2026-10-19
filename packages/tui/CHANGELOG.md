@@ -6,12 +6,26 @@
 
 - Added `BlockList`, a keyboard-driven list that draws every row as a full-width block and keeps a scrollbar thumb on the selected row
 - `BlockList` now applies the row background across the scrollbar gutter as well
+- Added a shared hover primitive, and used it in the select, block, and settings lists, so the keyboard highlight follows the mouse pointer in every menu
+- Added mention items to the `@` autocomplete, so a provider can list entries such as skills next to the file completions
+- Added `ScrollView.keepOffsetOnNextLayout()`, which keeps the content in place when it grows, so a card that expands or collapses does not move
+- Added an `autocompletePosition` option to the editor, so the autocomplete list can float above the input or sit under it
+- Added a `contentHeight` option to the editor, so the input box can keep a fixed height while longer text scrolls inside it
+- Added `Component.renderOverlayAbove()`, so a component can paint lines over the content above it without taking up layout height
 
 ### Changed
 
 - Changed the `tui.altScreen.bottom` default from `ctrl+end` to `ctrl+e`, and moved the jump-to-end indicator from the center of the transcript to its right edge
 - Removed the `tui.editor.cursorLineEnd` keybinding, so the editor no longer has a shortcut that moves the cursor to the end of the line
 - `tui.altScreen.top` is unbound by default, so `ctrl+home` no longer scrolls the transcript to the top
+- Fullscreen mode now always requests all-motion mouse tracking, including under tmux, Zellij, and GNU Screen. Button-motion tracking sends nothing for a free pointer move, so menus could not highlight the entry under the cursor
+
+### Fixed
+
+- Fixed the second click of a double click never reaching the components under the cursor. The click was compared against the selection anchor, which a double click moves to the start of the selected word
+- Fixed a trackpad's momentum wheel events scrolling the view off the end right after a jump to it. The jump now drops the wheel gesture that was in progress, until the next gesture starts
+- Fixed the select and settings lists re-centering their visible window on the selection, which made a hovered row slide out from under the pointer
+- Fixed the overlay of a component inside a container never being painted, so a list that floats above its box stayed invisible. Containers now forward the overlay of their children, and the regular renderer paints it
 
 ## [1.3.0] - 2026-10-15
 

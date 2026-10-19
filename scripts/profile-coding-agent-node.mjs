@@ -297,10 +297,6 @@ async function runBuild(bundle) {
 			args: ["run", "--filter", "@earendil-works/pi-tui", "build"],
 		},
 		{
-			label: "Telemetry build",
-			args: ["run", "--filter", "@earendil-works/pi-telemetry", "build"],
-		},
-		{
 			label: "AI build",
 			args: ["run", "--filter", "@earendil-works/pi-ai", "build"],
 		},

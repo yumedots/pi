@@ -127,7 +127,7 @@ describe("InteractiveThemeController", () => {
 		expect(theme.name).toBe("dark");
 	});
 
-	it("picks the light or dark theme for the neutral theme", async () => {
+	it("picks the light or dark theme for the system theme", async () => {
 		vi.stubEnv("COLORFGBG", "");
 		const { ui, queryTerminalColors, emitTerminalColorScheme } = createUi();
 		queryTerminalColors.mockResolvedValue(LIGHT);

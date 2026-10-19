@@ -14,7 +14,6 @@ import type {
 	Usage,
 	UserMessage,
 } from "@earendil-works/pi-ai";
-import type { TelemetryContext, TelemetryMetrics, TelemetryPropagation } from "@earendil-works/pi-telemetry";
 import type { ExecutionEnv, ShellOutputSkip, ShellOutputWindow } from "../env/index.ts";
 import type {
 	ConversationId,
@@ -606,8 +605,6 @@ export type EnvTarget = {
 };
 
 export type HarnessOptions<Tool extends ToolRegistration = ToolRegistration> = {
-	/** Host-owned adapter; propagation and metrics are optional. Durable instrumentation is not yet emitted. */
-	readonly telemetry?: TelemetryContext & Partial<TelemetryPropagation & TelemetryMetrics>;
 	/**
 	 * pi-ai model access used by generation, compaction, hooks and tools: a `Models`, or a function returning the current
 	 * one, called at each use, so a host can replace its model configuration without reopening the Harness.

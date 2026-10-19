@@ -428,22 +428,10 @@ describe("TuiAltScreen", () => {
 		tui.stop();
 	});
 
-	it("uses button-motion tracking inside terminal multiplexers", () => {
+	it("uses all-motion tracking so menus can highlight the entry under the cursor", () => {
 		const environmentKeys = ["TMUX", "ZELLIJ", "STY", "TERM"] as const;
 		const previousEnvironment = new Map(environmentKeys.map((key) => [key, process.env[key]]));
 		try {
-			for (const key of environmentKeys) delete process.env[key];
-			process.env.TERM = "xterm-256color";
-			const directTerminal = new RecordingTerminal();
-			const directTui = new TuiAltScreen(directTerminal);
-			directTui.start();
-			const directWrites = directTerminal.events
-				.filter((event): event is { type: "write"; data: string } => event.type === "write")
-				.map((event) => event.data)
-				.join("");
-			assert.ok(directWrites.includes("\x1b[?1003h"));
-			directTui.stop();
-
 			const multiplexers = [
 				{ name: "tmux environment", environment: { TMUX: "/tmp/tmux/default,1,0" } },
 				{ name: "tmux TERM", environment: { TERM: "tmux-256color" } },
@@ -462,7 +450,7 @@ describe("TuiAltScreen", () => {
 					.map((event) => event.data)
 					.join("");
 				assert.ok(writes.includes("\x1b[?1002h"), `${name} should enable button-motion tracking`);
-				assert.ok(!writes.includes("\x1b[?1003h"), `${name} should not enable all-motion tracking`);
+				assert.ok(writes.includes("\x1b[?1003h"), `${name} should enable all-motion tracking`);
 				assert.ok(writes.includes("\x1b[?1006h"), `${name} should enable SGR mouse encoding`);
 				tui.stop();
 			}
@@ -1952,6 +1940,68 @@ describe("TuiAltScreen", () => {
 		await terminal.waitForRender();
 		assert.ok(tui.viewportTop < topBefore);
 		assert.deepStrictEqual(overlay.inputs, []);
+		tui.stop();
+	});
+
+	it("drops wheel events from the gesture in progress when the user jumps to the end", async () => {
+		const terminal = new VirtualTerminal(20, 6);
+		const tui = new TuiAltScreen(terminal);
+		const transcript = new ScrollView(
+			new Text(Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0),
+			{ follow: "end", primary: true },
+		);
+		tui.setLayoutRoot(transcript);
+		tui.start();
+		await terminal.waitForRender();
+		const bottom = transcript.scrollTop;
+
+		// A trackpad gesture: scroll up, then press Ctrl+E while the wheel is still firing.
+		terminal.sendInput("\x1b[<64;5;3M");
+		await terminal.waitForRender();
+		assert.ok(transcript.scrollTop < bottom);
+
+		terminal.sendInput("\x05");
+		await terminal.waitForRender();
+		assert.strictEqual(transcript.scrollTop, bottom);
+
+		// Momentum events from the same gesture must not pull the view off the end.
+		terminal.sendInput("\x1b[<64;5;3M");
+		await terminal.waitForRender();
+		assert.strictEqual(transcript.scrollTop, bottom);
+		assert.strictEqual(transcript.isFollowingEnd, true);
+
+		// The next gesture scrolls again.
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		terminal.sendInput("\x1b[<64;5;3M");
+		await terminal.waitForRender();
+		assert.ok(transcript.scrollTop < bottom);
+		tui.stop();
+	});
+
+	it("keeps repeated jumps to the end working", async () => {
+		const terminal = new VirtualTerminal(20, 6);
+		const tui = new TuiAltScreen(terminal);
+		const transcript = new ScrollView(
+			new Text(Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0),
+			{ follow: "end", primary: true },
+		);
+		tui.setLayoutRoot(transcript);
+		tui.start();
+		await terminal.waitForRender();
+		const bottom = transcript.scrollTop;
+
+		for (let index = 0; index < 3; index++) {
+			// Scroll away, then jump back to the end.
+			await new Promise((resolve) => setTimeout(resolve, 250));
+			terminal.sendInput("\x1b[<64;5;3M");
+			await terminal.waitForRender();
+			assert.ok(transcript.scrollTop < bottom, `should scroll away in round ${index + 1}`);
+
+			terminal.sendInput("\x05");
+			await terminal.waitForRender();
+			assert.strictEqual(transcript.scrollTop, bottom, `should jump to the end in round ${index + 1}`);
+			assert.strictEqual(transcript.isFollowingEnd, true);
+		}
 		tui.stop();
 	});
 

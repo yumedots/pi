@@ -5,7 +5,7 @@ export type WheelScrollLines = number | "auto";
 // or come from a high-resolution source. They move one line each and do not accelerate.
 const BURST_GAP_MS = 5;
 // A pause longer than this ends a scroll gesture.
-const GESTURE_GAP_MS = 200;
+export const WHEEL_GESTURE_GAP_MS = 200;
 // Average event gap that maps to one line per event. Faster events scale up proportionally.
 const REFERENCE_GAP_MS = 100;
 const MAX_AUTO_LINES = 6;
@@ -56,7 +56,7 @@ export class WheelScrollAccelerator {
 		if (!this.accelerate) return 1;
 
 		const gap = now - this.lastTime;
-		const sameGesture = direction === this.lastDirection && gap <= GESTURE_GAP_MS;
+		const sameGesture = direction === this.lastDirection && gap <= WHEEL_GESTURE_GAP_MS;
 		this.lastTime = now;
 		this.lastDirection = direction;
 		if (!sameGesture) {

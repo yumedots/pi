@@ -27,8 +27,8 @@ import {
 } from "../../../core/settings-manager.ts";
 import {
 	getSettingsListTheme,
-	NEUTRAL_THEME_NAME,
 	parseAutoThemeSetting,
+	SYSTEM_THEME_NAME,
 	type TerminalTheme,
 	theme,
 } from "../theme/theme.ts";
@@ -84,13 +84,13 @@ export interface SettingsConfig {
 	mermaidRenderingMode: MermaidRenderingMode;
 	showCacheMissNotices: boolean;
 	collapseChangelog: boolean;
-	enableInstallTelemetry: boolean;
 	doubleEscapeAction: "fork" | "tree" | "none";
 	treeFilterMode: "default" | "no-tools" | "user-only" | "labeled-only" | "all";
 	showHardwareCursor: boolean;
 	editorPaddingX: number;
 	outputPad: 0 | 1;
 	autocompleteMaxVisible: number;
+	autocompletePosition: "above" | "below";
 	quietStartup: QuietStartup;
 	defaultProjectTrust: DefaultProjectTrust;
 	clearOnShrink: boolean;
@@ -124,13 +124,13 @@ export interface SettingsCallbacks {
 	onMermaidRenderingModeChange: (mode: MermaidRenderingMode) => void;
 	onShowCacheMissNoticesChange: (shown: boolean) => void;
 	onCollapseChangelogChange: (collapsed: boolean) => void;
-	onEnableInstallTelemetryChange: (enabled: boolean) => void;
 	onDoubleEscapeActionChange: (action: "fork" | "tree" | "none") => void;
 	onTreeFilterModeChange: (mode: "default" | "no-tools" | "user-only" | "labeled-only" | "all") => void;
 	onShowHardwareCursorChange: (enabled: boolean) => void;
 	onEditorPaddingXChange: (padding: number) => void;
 	onOutputPadChange: (padding: 0 | 1) => void;
 	onAutocompleteMaxVisibleChange: (maxVisible: number) => void;
+	onAutocompletePositionChange: (position: "above" | "below") => void;
 	onQuietStartupChange: (quiet: QuietStartup) => void;
 	onDefaultProjectTrustChange: (defaultProjectTrust: DefaultProjectTrust) => void;
 	onClearOnShrinkChange: (enabled: boolean) => void;
@@ -214,16 +214,16 @@ function themeItems(availableThemes: string[], currentTheme: string): SelectItem
 	return availableThemes.map((name) => ({
 		value: name,
 		label: `${name === currentTheme ? "✓ " : "  "}${name}`,
-		...(name === NEUTRAL_THEME_NAME ? { description: "Follows the terminal's light or dark mode" } : {}),
+		...(name === SYSTEM_THEME_NAME ? { description: "Follows the terminal's light or dark mode" } : {}),
 	}));
 }
 
 const AUTOMATIC_THEME_VALUE = "/";
 
-/** The neutral theme comes first, then automatic mode, then the remaining themes. */
+/** The system theme comes first, then automatic mode, then the remaining themes. */
 function singleModeThemeItems(availableThemes: string[], currentTheme: string): SelectItem[] {
 	const items = themeItems(availableThemes, currentTheme);
-	const systemIndex = items.findIndex((item) => item.value === NEUTRAL_THEME_NAME);
+	const systemIndex = items.findIndex((item) => item.value === SYSTEM_THEME_NAME);
 	const system = systemIndex === -1 ? [] : items.splice(systemIndex, 1);
 	return [
 		...system,
@@ -250,7 +250,7 @@ function defaultAutomaticThemes(
 	if (autoTheme) return autoTheme;
 
 	const currentFixedTheme = currentThemeSetting.includes("/") ? undefined : currentThemeSetting;
-	const themeName = preferredTheme(availableThemes, currentFixedTheme, NEUTRAL_THEME_NAME);
+	const themeName = preferredTheme(availableThemes, currentFixedTheme, SYSTEM_THEME_NAME);
 	return { lightTheme: themeName, darkTheme: themeName };
 }
 
@@ -288,7 +288,7 @@ class ThemeSubmenu extends Container {
 		this.singleTheme = preferredTheme(
 			availableThemes,
 			fixedTheme ?? (autoTheme ? this.getActiveAutomaticTheme() : undefined),
-			NEUTRAL_THEME_NAME,
+			SYSTEM_THEME_NAME,
 		);
 
 		if (this.mode === "automatic") {
@@ -572,13 +572,6 @@ export class SettingsSelectorComponent extends Container {
 				values: ["true", "header", "false"],
 			},
 			{
-				id: "install-telemetry",
-				label: "Install telemetry",
-				description: "Send an anonymous version/update ping after changelog-detected updates",
-				currentValue: config.enableInstallTelemetry ? "true" : "false",
-				values: ["true", "false"],
-			},
-			{
 				id: "default-project-trust",
 				label: "Default project trust",
 				description: "Fallback behavior when no extension or saved trust decision decides project trust",
@@ -767,6 +760,13 @@ export class SettingsSelectorComponent extends Container {
 			},
 		];
 
+		// The exit output only matters for people who changed it, so keep the row out of
+		// the menu until it differs from the default.
+		if (config.fullscreenExitOutput === SETTINGS_DEFAULTS.fullscreenExitOutput) {
+			const exitOutputIndex = items.findIndex((item) => item.id === "fullscreen-exit-output");
+			if (exitOutputIndex !== -1) items.splice(exitOutputIndex, 1);
+		}
+
 		// Only show image toggle if terminal supports it
 		if (supportsImages) {
 			// Insert after autocompact
@@ -855,9 +855,19 @@ export class SettingsSelectorComponent extends Container {
 			values: ["3", "5", "7", "10", "15", "20"],
 		});
 
-		// Clear on shrink toggle (insert after autocomplete-max-visible)
+		// Autocomplete position toggle (insert after autocomplete-max-visible)
 		const autocompleteIndex = items.findIndex((item) => item.id === "autocomplete-max-visible");
 		items.splice(autocompleteIndex + 1, 0, {
+			id: "autocomplete-position",
+			label: "Autocomplete position",
+			description: "Show the autocomplete list above or below the input",
+			currentValue: config.autocompletePosition,
+			values: ["above", "below"],
+		});
+
+		// Clear on shrink toggle (insert after autocomplete-position)
+		const autocompletePositionIndex = items.findIndex((item) => item.id === "autocomplete-position");
+		items.splice(autocompletePositionIndex + 1, 0, {
 			id: "clear-on-shrink",
 			label: "Clear on shrink",
 			description: "Clear empty rows when content shrinks (may cause flicker)",
@@ -939,9 +949,6 @@ export class SettingsSelectorComponent extends Container {
 					case "quiet-startup":
 						callbacks.onQuietStartupChange(newValue === "header" ? "header" : newValue === "true");
 						break;
-					case "install-telemetry":
-						callbacks.onEnableInstallTelemetryChange(newValue === "true");
-						break;
 					case "default-project-trust": {
 						const defaultProjectTrust = DEFAULT_PROJECT_TRUST_BY_LABEL.get(newValue);
 						if (defaultProjectTrust) {
@@ -968,6 +975,9 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					case "autocomplete-max-visible":
 						callbacks.onAutocompleteMaxVisibleChange(parseInt(newValue, 10));
+						break;
+					case "autocomplete-position":
+						callbacks.onAutocompletePositionChange(newValue === "below" ? "below" : "above");
 						break;
 					case "clear-on-shrink":
 						callbacks.onClearOnShrinkChange(newValue === "true");

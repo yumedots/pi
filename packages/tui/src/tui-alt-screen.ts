@@ -58,13 +58,12 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "./utils.ts";
-import { WheelScrollAccelerator, type WheelScrollLines } from "./wheel-scroll.ts";
+import { WHEEL_GESTURE_GAP_MS, WheelScrollAccelerator, type WheelScrollLines } from "./wheel-scroll.ts";
 
 const ENTER_ALT_SCREEN = "\x1b[?1049h";
 const EXIT_ALT_SCREEN = "\x1b[?1049l";
 const DISABLE_AUTOWRAP = "\x1b[?7l";
 const ENABLE_AUTOWRAP = "\x1b[?7h";
-const ENABLE_BUTTON_MOTION_MOUSE = "\x1b[?1000h\x1b[?1002h\x1b[?1004h\x1b[?1006h";
 const ENABLE_ALL_MOTION_MOUSE = "\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1004h\x1b[?1006h";
 const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1004l\x1b[?1003l\x1b[?1002l\x1b[?1000l";
 const FOCUS_IN = "\x1b[I";
@@ -224,6 +223,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private selectionAutoScrollDirection: -1 | 0 | 1 = 0;
 	private selectionAutoScrollTimer?: NodeJS.Timeout;
 	private selectionPressActive = false;
+	/** Where the current mouse press started, to tell a click from a drag. */
+	private selectionPressPoint?: SelectionPoint;
 	private scrollbarDrag?: ScrollbarDrag;
 	private scrollbarHover?: ScrollView;
 	private scrollToEndIndicatorRect?: ScrollToEndIndicatorRect;
@@ -242,6 +243,14 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		y: number;
 	};
 	private readonly wheelScroll: WheelScrollAccelerator;
+	/** Timestamp of the last wheel event, to tell apart one scroll gesture from the next. */
+	private lastWheelAt = Number.NEGATIVE_INFINITY;
+	/**
+	 * Set by an explicit jump to the end: wheel events that continue the gesture in progress
+	 * are dropped, so a trackpad's momentum cannot undo the jump. It stays set until the
+	 * gesture ends, which is the next wheel event after a pause.
+	 */
+	private cancelWheelGesture = false;
 	private readonly mouseEnabled: boolean;
 	private readonly searchMatchStyle: (text: string) => string;
 	private readonly searchCurrentMatchStyle: (text: string) => string;
@@ -369,19 +378,12 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.clearComponentMouseGesture();
 		this.lastComponentClick = undefined;
 		this.resetRenderState();
-		const term = process.env.TERM?.toLowerCase() ?? "";
-		// Multiplexers can lag when every pointer movement is forwarded. Button-motion
-		// tracking preserves clicks, wheel events, selections, and scrollbar dragging.
-		const mouseSequence =
-			process.env.TMUX !== undefined ||
-			process.env.ZELLIJ !== undefined ||
-			process.env.STY !== undefined ||
-			term.startsWith("tmux") ||
-			term.startsWith("screen")
-				? ENABLE_BUTTON_MOTION_MOUSE
-				: ENABLE_ALL_MOTION_MOUSE;
+		// All-motion tracking reports the pointer whenever it moves, not just while a
+		// button is held. Button-motion tracking (1002) is cheaper on the wire, but
+		// the terminal then sends nothing for a free pointer move, so menus cannot
+		// highlight the entry under the cursor.
 		this.terminal.write(
-			`${ENTER_ALT_SCREEN}${DISABLE_AUTOWRAP}${this.mouseEnabled ? mouseSequence : ""}\x1b[2J\x1b[H\x1b[?25l`,
+			`${ENTER_ALT_SCREEN}${DISABLE_AUTOWRAP}${this.mouseEnabled ? ENABLE_ALL_MOTION_MOUSE : ""}\x1b[2J\x1b[H\x1b[?25l`,
 		);
 	}
 
@@ -500,7 +502,19 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 	scrollToBottom(): void {
 		this.getPrimaryScrollView().scrollToEnd();
+		// A trackpad keeps sending wheel events after the fingers lift (momentum). Without
+		// this, those events would immediately scroll the view back off the end the user
+		// just jumped to. The gesture in progress is dropped; the next one scrolls again.
+		this.cancelWheelGesture = true;
 		this.requestRender();
+	}
+
+	/**
+	 * Keep the transcript content in place across the next layout, so a card that expands or
+	 * collapses does not move out from under the pointer that toggled it.
+	 */
+	keepScrollPosition(): void {
+		this.getPrimaryScrollView().keepOffsetOnNextLayout();
 	}
 
 	private scrollToPrompt(direction: -1 | 1): void {
@@ -704,7 +718,14 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 		const wheelEvent = this.parseWheelEvent(data);
 		if (wheelEvent) {
-			const lines = this.wheelScroll.next(wheelEvent.direction, performance.now());
+			const now = performance.now();
+			const continuesGesture = now - this.lastWheelAt <= WHEEL_GESTURE_GAP_MS;
+			this.lastWheelAt = now;
+			if (this.cancelWheelGesture) {
+				if (continuesGesture) return { consume: true };
+				this.cancelWheelGesture = false;
+			}
+			const lines = this.wheelScroll.next(wheelEvent.direction, now);
 			// SGR mouse button codes use bit 3 (value 8) for the Alt modifier.
 			const wheelDelta =
 				wheelEvent.direction * ((wheelEvent.button & 8) !== 0 ? lines * ALT_WHEEL_SCROLL_MULTIPLIER : lines);
@@ -890,6 +911,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private clearTextSelection(): void {
 		this.stopSelectionAutoScroll();
 		this.selectionPressActive = false;
+		this.selectionPressPoint = undefined;
 		this.selectionAnchor = undefined;
 		this.selectionFocus = undefined;
 		this.selectionGranularity = "character";
@@ -1329,11 +1351,17 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			this.stopSelectionAutoScroll();
 			if (!this.selectionAnchor) return;
 			this.updateSelectionFocus(point);
+			// A click is a press and release at the same spot. Compare with the press
+			// position, not the selection anchor: a double click moves the anchor to the
+			// start of the selected word, which would swallow the second click.
+			const pressPoint = this.selectionPressPoint;
+			this.selectionPressPoint = undefined;
 			const isClick =
 				!this.selectionDragged &&
-				this.selectionAnchor.scrollView === point.scrollView &&
-				this.selectionAnchor.row === point.row &&
-				this.selectionAnchor.col === point.col;
+				pressPoint !== undefined &&
+				pressPoint.scrollView === point.scrollView &&
+				pressPoint.row === point.row &&
+				pressPoint.col === point.col;
 			const clickedUrl = isClick ? this.pressedUrl : undefined;
 			this.pressedUrl = undefined;
 			if (clickedUrl && this.openUrl) {
@@ -1388,6 +1416,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.selectionInitialRange = range;
 		this.selectionAnchor = range?.start ?? anchor;
 		this.selectionFocus = range?.end ?? anchor;
+		this.selectionPressPoint = anchor;
 		this.selectionDragged = false;
 		this.pressedUrl = range
 			? undefined

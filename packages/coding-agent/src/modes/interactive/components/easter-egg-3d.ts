@@ -933,7 +933,13 @@ export class EasterEgg3dAnimation implements Component {
 
 	handleInput(data: string): void {
 		const keybindings = getKeybindings();
-		if (keybindings.matches(data, "tui.select.cancel") || keybindings.matches(data, "app.clear")) this.close();
+		if (
+			keybindings.matches(data, "tui.select.cancel") ||
+			keybindings.matches(data, "app.clear") ||
+			keybindings.matches(data, "app.quit")
+		) {
+			this.close();
+		}
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseEventResult {
