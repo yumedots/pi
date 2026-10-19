@@ -240,7 +240,7 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 	}
 
 	protected override getTitle(): string {
-		return this.scope === "current" ? "Sessions (Current Folder)" : "Sessions (All)";
+		return "Sessions";
 	}
 
 	protected override renderPanel(): void {
@@ -299,7 +299,11 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 		}
 		const sep = theme.fg("muted", " · ");
 		const pathState = this.showPath ? "(on)" : "(off)";
-		const hint1 = keyHint("tui.input.tab", "scope") + sep + theme.fg("muted", 're:<pattern> regex · "phrase" exact');
+		const scopeLabel = this.scope === "current" ? "current" : "all";
+		const hint1 =
+			keyHint("tui.input.tab", `scope: ${scopeLabel}`) +
+			sep +
+			theme.fg("muted", 're:<pattern> regex · "phrase" exact');
 		const hint2Parts = [
 			keyHint("app.session.toggleSort", "sort"),
 			keyHint("app.session.toggleNamedFilter", "named"),
@@ -423,20 +427,33 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 	private async loadScope(scope: SessionScope): Promise<void> {
 		this.scope = scope;
 		this.setLoading(true);
+		this.options.onRequestRender?.();
 		const loader = scope === "current" ? this.options.currentLoad : this.options.allLoad;
-		try {
-			const sessions = await loader(undefined, this.abortController.signal);
-			if (this.abortController.signal.aborted) return;
+		const store = (sessions: SessionInfo[]): void => {
 			if (scope === "current") {
 				this.currentSessions = sessions;
 			} else {
 				this.allSessions = sessions;
 			}
+		};
+		try {
+			const sessions = await loader((loaded, total, partial) => {
+				if (this.abortController.signal.aborted || !partial) return;
+				// Show sessions as they are discovered instead of waiting for the full scan.
+				store([...partial]);
+				this.refreshItems();
+				this.setFooterText(`loaded ${loaded} of ${total}`);
+				this.options.onRequestRender?.();
+			}, this.abortController.signal);
+			if (this.abortController.signal.aborted) return;
+			store(sessions);
 			this.refreshItems();
+			this.setFooterText(undefined);
 		} catch {
 			if (this.abortController.signal.aborted) return;
 			this.setItems([]);
 		}
+		this.options.onRequestRender?.();
 	}
 
 	private refreshItems(): void {

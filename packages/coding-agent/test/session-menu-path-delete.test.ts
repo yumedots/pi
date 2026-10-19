@@ -181,8 +181,8 @@ describe("session menu path/delete interactions", () => {
 
 		expect(allLoadCalls).toBe(1);
 		const output = stripAnsi(selector.render(120).join("\n"));
-		expect(output).toContain("Current Folder");
-		expect(output).not.toContain("(All)");
+		expect(output).toContain("scope: current");
+		expect(output).not.toContain("scope: all");
 	});
 
 	it("does not truncate the session text to the minimum width", async () => {
