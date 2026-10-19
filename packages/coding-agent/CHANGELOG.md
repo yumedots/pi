@@ -30,12 +30,12 @@
 - `generateSummary()` and `generateSummaryWithUsage()` now ignore their `reserveTokens` parameter. Summary requests use the model's output limit instead.
 - `Ctrl+C` no longer clears the editor. It only exits when pressed twice, and clearing the editor moved to `Alt+C` (`app.clear`). The exit shortcut is the new `app.quit` action
 - The startup listing of loaded context files, skills, prompt templates, and extensions is gone. Resource conflicts and load errors still show as warnings on startup
+- The settings menu no longer lists the fullscreen exit output while it holds its default value
 
 ### Fixed
 
 - Fixed the fullscreen transcript bouncing after jumping to the latest message. The transcript now keeps its position when the editor or footer changes height, instead of sliding up and back down
 - Fixed the input box growing with the prompt, which resized the transcript above it. The input area now has a fixed height and longer prompts scroll inside it, so the conversation stays put while typing
-- Fixed Ctrl+E not sticking when a trackpad was still sending wheel events: the jump now cancels the scroll gesture that was in progress, instead of being immediately scrolled back
 - Fixed a running bash command's output disappearing from the pending area when the queued messages were updated
 - Fixed compaction and branch summaries failing with "generation hit the token cap" when reasoning used most of the fixed summary output limit. Summaries now use the model's output limit, and `compaction.reserveTokens` only controls when compaction starts ([#9512](https://github.com/earendil-works/pi/issues/9512), [#9075](https://github.com/earendil-works/pi/issues/9075)).
 - Fixed `models.schema.json` missing descriptions for provider and model fields, so editors showed no hints for them ([#10790](https://github.com/earendil-works/pi/issues/10790))

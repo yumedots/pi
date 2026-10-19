@@ -28,7 +28,8 @@ describe("SettingsSelectorComponent", () => {
 		const onCopyOnSelectChange = vi.fn();
 		const onWheelScrollLinesChange = vi.fn();
 		const config = {
-			fullscreenExitOutput: "transcript",
+			// Not the default, so the row is in the menu.
+			fullscreenExitOutput: "resume-hint",
 			fullscreenScrollbar: "auto",
 			fullscreenCopyOnSelect: true,
 			fullscreenWheelScrollLines: 7,
@@ -53,7 +54,7 @@ describe("SettingsSelectorComponent", () => {
 		};
 
 		cycle("Fullscreen exit output", 2);
-		expect(onExitOutputChange.mock.calls.flat()).toEqual(["resume-hint", "transcript"]);
+		expect(onExitOutputChange.mock.calls.flat()).toEqual(["transcript", "resume-hint"]);
 		cycle("Fullscreen scrollbar", 3);
 		expect(onScrollbarChange.mock.calls.flat()).toEqual(["always", "hidden", "auto"]);
 		cycle("Fullscreen copy on select", 2);
@@ -61,6 +62,25 @@ describe("SettingsSelectorComponent", () => {
 		// #9758: custom values from settings.json stay in the cycle.
 		cycle("Fullscreen wheel scrolling", 3);
 		expect(onWheelScrollLinesChange.mock.calls.flat()).toEqual([10, "auto", 1]);
+	});
+
+	it("hides the fullscreen exit output while it holds the default", () => {
+		const config = {
+			fullscreenExitOutput: "transcript",
+			warnings: {},
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			availableThinkingLevels: [],
+			modelThinkingLevels: {},
+			availableThemes: [],
+		} as unknown as SettingsConfig;
+		const callbacks = { onFullscreenExitOutputChange: vi.fn() } as unknown as SettingsCallbacks;
+
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+		for (const character of "Fullscreen exit output") list.handleInput(character);
+		const output = stripAnsi(list.render(120).join("\n"));
+		expect(output).toContain("No matching settings");
+		expect(output).not.toContain("Print the transcript or only a session resume hint");
 	});
 
 	it("cycles through share destinations", () => {
