@@ -127,6 +127,7 @@ function layoutComponent(
 			if (cursorLine >= allocatedHeight) lineOffset = cursorLine - allocatedHeight + 1;
 		}
 		const overlayLines = component.renderOverlayAbove?.(safeWidth) ?? [];
+		const overlayRow = component.getOverlayRow?.() ?? 0;
 		return {
 			component,
 			rect: { x, y, width: safeWidth, height: allocatedHeight },
@@ -137,7 +138,12 @@ function layoutComponent(
 			...(overlayLines.length > 0
 				? {
 						overlayLines,
-						overlayRect: { x, y: y - overlayLines.length, width: safeWidth, height: overlayLines.length },
+						overlayRect: {
+							x,
+							y: y + overlayRow - overlayLines.length,
+							width: safeWidth,
+							height: overlayLines.length,
+						},
 					}
 				: {}),
 			layer: 0,
@@ -318,6 +324,26 @@ export function getScrollbarGeometry(box: LayoutBox, includeHiddenAuto = false):
 }
 
 /**
+ * Paint overlay lines over the rows directly above the anchor row, e.g. a list that
+ * floats above the box of the component that owns it.
+ */
+export function paintOverlayAbove(
+	lines: string[],
+	overlay: readonly string[],
+	anchorRow: number,
+	totalWidth: number,
+): string[] {
+	const result = [...lines];
+	const start = anchorRow - overlay.length;
+	for (let index = 0; index < overlay.length; index++) {
+		const row = start + index;
+		if (row < 0 || row >= result.length) continue;
+		result[row] = compositeTuiLine(result[row] ?? "", overlay[index] ?? "", 0, totalWidth, totalWidth);
+	}
+	return result;
+}
+
+/**
  * Paint the overlay lines of every box, after the regular boxes, so an overlay floats
  * above the content it covers instead of being hidden by it.
  */
@@ -388,7 +414,6 @@ function paintBox(box: LayoutBox, screen: string[], totalWidth: number): void {
 		}
 	}
 	for (const child of box.children) paintBox(child, screen, totalWidth);
-
 	if (box.scrollView && box.scrollContentLines && box.scrollView.scrollTop > 0 && box.rect.height > 0) {
 		for (let imageRow = box.scrollView.scrollTop - 1; imageRow >= 0; imageRow--) {
 			const imageLine = box.scrollContentLines[imageRow] ?? "";

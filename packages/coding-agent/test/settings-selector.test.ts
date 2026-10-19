@@ -85,6 +85,28 @@ describe("SettingsSelectorComponent", () => {
 		expect(onSessionShareDestinationChange.mock.calls.flat()).toEqual(["gist", "radius", "auto"]);
 	});
 
+	it("cycles the autocomplete position", () => {
+		const onAutocompletePositionChange = vi.fn();
+		const config = {
+			autocompletePosition: "above",
+			warnings: {},
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			availableThinkingLevels: [],
+			modelThinkingLevels: {},
+			availableThemes: [],
+		} as unknown as SettingsConfig;
+		const callbacks = {
+			onAutocompletePositionChange,
+		} as unknown as SettingsCallbacks;
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+		list.selectItem("autocomplete-position");
+
+		for (let i = 0; i < 3; i++) list.handleInput("\r");
+
+		expect(onAutocompletePositionChange.mock.calls.flat()).toEqual(["below", "above", "below"]);
+	});
+
 	it("keeps the configured fixed theme marked while browsing", () => {
 		const config = {
 			defaultModel: "not set",

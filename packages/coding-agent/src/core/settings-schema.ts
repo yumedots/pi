@@ -380,6 +380,12 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.autocompleteMaxVisible,
 			}),
 		),
+		autocompletePosition: Type.Optional(
+			Type.Union([Type.Literal("above"), Type.Literal("below")], {
+				description: "Where the autocomplete list appears: above the input or below it.",
+				default: SETTINGS_DEFAULTS.autocompletePosition,
+			}),
+		),
 		showHardwareCursor: Type.Optional(
 			Type.Boolean({ description: "Show the terminal cursor while still positioning it for IME." }),
 		),

@@ -567,6 +567,20 @@
       "description": "Maximum visible items in the autocomplete dropdown.",
       "default": 5
     },
+    "autocompletePosition": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "above"
+        },
+        {
+          "type": "string",
+          "const": "below"
+        }
+      ],
+      "description": "Where the autocomplete list appears: above the input or below it.",
+      "default": "above"
+    },
     "showHardwareCursor": {
       "type": "boolean",
       "description": "Show the terminal cursor while still positioning it for IME."

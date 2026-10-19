@@ -1415,6 +1415,16 @@ export class SettingsManager {
 		this.save();
 	}
 
+	getAutocompletePosition(): "above" | "below" {
+		return this.settings.autocompletePosition === "below" ? "below" : SETTINGS_DEFAULTS.autocompletePosition;
+	}
+
+	setAutocompletePosition(position: "above" | "below"): void {
+		this.globalSettings.autocompletePosition = position === "below" ? "below" : "above";
+		this.markModified("autocompletePosition");
+		this.save();
+	}
+
 	getCodeBlockIndent(): string {
 		return this.settings.markdown?.codeBlockIndent ?? SETTINGS_DEFAULTS.markdown.codeBlockIndent;
 	}

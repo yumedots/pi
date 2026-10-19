@@ -1,4 +1,5 @@
 import type { AutocompleteProvider } from "./autocomplete.ts";
+import type { AutocompletePosition } from "./components/editor.ts";
 import type { Component } from "./tui.ts";
 
 /**
@@ -71,4 +72,7 @@ export interface EditorComponent extends Component {
 
 	/** Set max visible items in autocomplete dropdown */
 	setAutocompleteMaxVisible?(maxVisible: number): void;
+
+	/** Set where the autocomplete list appears: above the input or below it */
+	setAutocompletePosition?(position: AutocompletePosition): void;
 }

@@ -655,6 +655,7 @@ export class InteractiveMode {
 		this.defaultEditor = new CustomEditor(this.ui, getEditorTheme(), this.keybindings, {
 			paddingX: editorPaddingX,
 			autocompleteMaxVisible,
+			autocompletePosition: this.settingsManager.getAutocompletePosition(),
 			embedWorkingStatus: true,
 			contentHeight: EDITOR_CONTENT_HEIGHT,
 		});
@@ -2051,11 +2052,14 @@ export class InteractiveMode {
 		}
 		const editorPaddingX = this.settingsManager.getEditorPaddingX();
 		const autocompleteMaxVisible = this.settingsManager.getAutocompleteMaxVisible();
+		const autocompletePosition = this.settingsManager.getAutocompletePosition();
 		this.defaultEditor.setPaddingX(editorPaddingX);
 		this.defaultEditor.setAutocompleteMaxVisible(autocompleteMaxVisible);
+		this.defaultEditor.setAutocompletePosition(autocompletePosition);
 		if (this.editor !== this.defaultEditor) {
 			this.editor.setPaddingX?.(editorPaddingX);
 			this.editor.setAutocompleteMaxVisible?.(autocompleteMaxVisible);
+			this.editor.setAutocompletePosition?.(autocompletePosition);
 		}
 	}
 
@@ -4988,6 +4992,7 @@ export class InteractiveMode {
 					editorPaddingX: this.settingsManager.getEditorPaddingX(),
 					outputPad: this.settingsManager.getOutputPad(),
 					autocompleteMaxVisible: this.settingsManager.getAutocompleteMaxVisible(),
+					autocompletePosition: this.settingsManager.getAutocompletePosition(),
 					quietStartup: this.settingsManager.getQuietStartup(),
 					clearOnShrink: this.settingsManager.getClearOnShrink(),
 					showTerminalProgress: this.settingsManager.getShowTerminalProgress(),
@@ -5137,6 +5142,13 @@ export class InteractiveMode {
 						this.defaultEditor.setAutocompleteMaxVisible(maxVisible);
 						if (this.editor !== this.defaultEditor && this.editor.setAutocompleteMaxVisible !== undefined) {
 							this.editor.setAutocompleteMaxVisible(maxVisible);
+						}
+					},
+					onAutocompletePositionChange: (position) => {
+						this.settingsManager.setAutocompletePosition(position);
+						this.defaultEditor.setAutocompletePosition(position);
+						if (this.editor !== this.defaultEditor && this.editor.setAutocompletePosition !== undefined) {
+							this.editor.setAutocompletePosition(position);
 						}
 					},
 					onClearOnShrinkChange: (enabled) => {

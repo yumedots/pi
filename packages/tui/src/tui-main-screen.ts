@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { paintOverlayAbove } from "./layout.ts";
 import { deleteKittyImage, isImageLine } from "./terminal-image.ts";
 import { type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
 import { visibleWidth } from "./utils.ts";
@@ -263,6 +264,13 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		// Render all components to get new lines
 		// Resolve fake cursors before compositing so overlays and line slicing see plain SGR codes
 		let newLines = this.resolveFakeCursors(this.render(width));
+
+		// A child can float above its own box, e.g. the editor's autocomplete list. The
+		// regular renderer has no layout frame, so it paints the overlay itself.
+		const childOverlay = this.renderOverlayAbove(width);
+		if (childOverlay.length > 0) {
+			newLines = paintOverlayAbove(newLines, childOverlay, this.getOverlayRow(), width);
+		}
 
 		// Composite overlays into the rendered lines (before differential compare)
 		if (this.hasOverlayEntries) {

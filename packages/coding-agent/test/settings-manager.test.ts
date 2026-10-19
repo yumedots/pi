@@ -717,6 +717,29 @@ describe("SettingsManager", () => {
 		});
 	});
 
+	describe("getAutocompletePosition", () => {
+		it("should default to above", () => {
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getAutocompletePosition()).toBe("above");
+		});
+
+		it("should read the configured position", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ autocompletePosition: "below" }));
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getAutocompletePosition()).toBe("below");
+		});
+
+		it("should persist a changed position", async () => {
+			const manager = SettingsManager.create(projectDir, agentDir);
+			manager.setAutocompletePosition("below");
+			await manager.flush();
+
+			const saved = JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8"));
+			expect(saved.autocompletePosition).toBe("below");
+			expect(manager.getAutocompletePosition()).toBe("below");
+		});
+	});
+
 	describe("getShellPath", () => {
 		it("should return undefined when not set", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ theme: "dark" }));

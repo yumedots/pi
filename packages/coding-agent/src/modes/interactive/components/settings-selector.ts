@@ -91,6 +91,7 @@ export interface SettingsConfig {
 	editorPaddingX: number;
 	outputPad: 0 | 1;
 	autocompleteMaxVisible: number;
+	autocompletePosition: "above" | "below";
 	quietStartup: QuietStartup;
 	defaultProjectTrust: DefaultProjectTrust;
 	clearOnShrink: boolean;
@@ -131,6 +132,7 @@ export interface SettingsCallbacks {
 	onEditorPaddingXChange: (padding: number) => void;
 	onOutputPadChange: (padding: 0 | 1) => void;
 	onAutocompleteMaxVisibleChange: (maxVisible: number) => void;
+	onAutocompletePositionChange: (position: "above" | "below") => void;
 	onQuietStartupChange: (quiet: QuietStartup) => void;
 	onDefaultProjectTrustChange: (defaultProjectTrust: DefaultProjectTrust) => void;
 	onClearOnShrinkChange: (enabled: boolean) => void;
@@ -855,9 +857,19 @@ export class SettingsSelectorComponent extends Container {
 			values: ["3", "5", "7", "10", "15", "20"],
 		});
 
-		// Clear on shrink toggle (insert after autocomplete-max-visible)
+		// Autocomplete position toggle (insert after autocomplete-max-visible)
 		const autocompleteIndex = items.findIndex((item) => item.id === "autocomplete-max-visible");
 		items.splice(autocompleteIndex + 1, 0, {
+			id: "autocomplete-position",
+			label: "Autocomplete position",
+			description: "Show the autocomplete list above or below the input",
+			currentValue: config.autocompletePosition,
+			values: ["above", "below"],
+		});
+
+		// Clear on shrink toggle (insert after autocomplete-position)
+		const autocompletePositionIndex = items.findIndex((item) => item.id === "autocomplete-position");
+		items.splice(autocompletePositionIndex + 1, 0, {
 			id: "clear-on-shrink",
 			label: "Clear on shrink",
 			description: "Clear empty rows when content shrinks (may cause flicker)",
@@ -968,6 +980,9 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					case "autocomplete-max-visible":
 						callbacks.onAutocompleteMaxVisibleChange(parseInt(newValue, 10));
+						break;
+					case "autocomplete-position":
+						callbacks.onAutocompletePositionChange(newValue === "below" ? "below" : "above");
 						break;
 					case "clear-on-shrink":
 						callbacks.onClearOnShrinkChange(newValue === "true");
