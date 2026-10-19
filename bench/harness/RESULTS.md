@@ -36,24 +36,34 @@ starts in 1.1 MB.
 
 | Scenario | Runtime | Wall | Peak RSS | Settled RSS | CPU (user+sys) | First screen | First token | Turn | Tokens |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| runtime-floor | node | 92.4 ms | 37.5 MB | - | 0.08 s | - | - | - | - |
-| runtime-floor | bun | 8.3 ms | 17.3 MB | - | 0.00 s | - | - | - | - |
+| runtime-floor | node | 94.0 ms | 37.5 MB | - | 0.08 s | - | - | - | - |
+| runtime-floor | bun | 8.1 ms | 17.3 MB | - | 0.00 s | - | - | - | - |
 | runtime-floor | bun-smol | 8.2 ms | 17.3 MB | - | 0.00 s | - | - | - | - |
-| runtime-floor | deno | 30.6 ms | 39.6 MB | - | 0.02 s | - | - | - | - |
-| runtime-floor | native | 3.0 ms | 1.1 MB | - | 0.00 s | - | - | - | - |
-| cli-version | node | 350.2 ms | 119.8 MB | - | 0.39 s | - | - | - | - |
-| cli-version | bun | 154.8 ms | 89.8 MB | - | 0.43 s | - | - | - | - |
-| cli-version | bun-smol | 170.4 ms | 91.5 MB | - | 0.44 s | - | - | - | - |
-| tui-first-screen | node | 629.5 ms | 139.8 MB | - | 0.56 s | 629.5 ms | - | - | - |
-| tui-first-screen | bun | 422.1 ms | 136.7 MB | - | 0.60 s | 422.1 ms | - | - | - |
-| tui-first-screen | bun-smol | 453.9 ms | 136.5 MB | - | 0.61 s | 453.9 ms | - | - | - |
-| rpc-first-screen | node | 420.2 ms | 135.6 MB | 135.5 MB | 0.51 s | 420.2 ms | - | - | - |
-| rpc-first-screen | bun | 208.0 ms | 111.6 MB | 111.5 MB | 0.49 s | 208.0 ms | - | - | - |
-| rpc-first-screen | bun-smol | 227.6 ms | 113.6 MB | 113.5 MB | 0.55 s | 227.6 ms | - | - | - |
-| rpc-turn | node | 420.2 ms | 159.3 MB | 135.8 MB | 0.61 s | 420.2 ms | 1143 ms | 1212 ms | 4671 |
-| rpc-turn | bun | 211.3 ms | 125.5 MB | 112.1 MB | 0.61 s | 211.3 ms | 1429 ms | 1546 ms | 4675 |
-| rpc-turn | bun-smol | 254.5 ms | 126.8 MB | 113.5 MB | 0.64 s | 254.5 ms | 1019 ms | 1164 ms | 4671 |
-| build | toolchain | 7528 ms | 1050.0 MB | - | 18.25 s | - | - | - | - |
+| runtime-floor | deno | 31.9 ms | 39.5 MB | - | 0.02 s | - | - | - | - |
+| runtime-floor | native | 2.9 ms | 1.1 MB | - | 0.00 s | - | - | - | - |
+| cli-version | node | 354.5 ms | 119.4 MB | - | 0.40 s | - | - | - | - |
+| cli-version | bun | 153.1 ms | 89.7 MB | - | 0.43 s | - | - | - | - |
+| cli-version | bun-smol | 170.6 ms | 91.2 MB | - | 0.46 s | - | - | - | - |
+| cli-version | binary | 155.5 ms | 91.5 MB | - | 0.18 s | - | - | - | - |
+| tui-first-screen | node | 662.5 ms | 139.6 MB | - | 0.60 s | 662.5 ms | - | - | - |
+| tui-first-screen | bun | 422.4 ms | 136.1 MB | - | 0.59 s | 422.4 ms | - | - | - |
+| tui-first-screen | bun-smol | 473.7 ms | 136.7 MB | - | 0.63 s | 473.7 ms | - | - | - |
+| tui-first-screen | binary | 475.0 ms | 134.0 MB | - | 0.34 s | 475.0 ms | - | - | - |
+| rpc-first-screen | node | 421.1 ms | 135.8 MB | 135.7 MB | 0.50 s | 421.1 ms | - | - | - |
+| rpc-first-screen | bun | 216.3 ms | 112.5 MB | 112.3 MB | 0.54 s | 216.3 ms | - | - | - |
+| rpc-first-screen | bun-smol | 227.6 ms | 112.8 MB | 112.5 MB | 0.55 s | 227.6 ms | - | - | - |
+| rpc-first-screen | binary | 222.9 ms | 113.0 MB | 112.8 MB | 0.27 s | 222.9 ms | - | - | - |
+| rpc-turn | node | 420.3 ms | 159.1 MB | 135.5 MB | 0.61 s | 420.3 ms | 912 ms | 1029 ms | 4678 |
+| rpc-turn | bun | 213.8 ms | 125.9 MB | 111.6 MB | 0.61 s | 213.8 ms | 1086 ms | 1180 ms | 4672 |
+| rpc-turn | bun-smol | 227.0 ms | 125.7 MB | 112.7 MB | 0.62 s | 227.0 ms | 1079 ms | 1165 ms | 4676 |
+| rpc-turn | binary | 225.6 ms | 120.7 MB | 112.7 MB | 0.33 s | 225.6 ms | 1139 ms | 1209 ms | 4673 |
+| build | toolchain | 7570 ms | 1086.4 MB | - | 18.38 s | - | - | - | - |
+
+The **compiled binary** (`dist/pi`, 78.2 MB) is the artifact that ships. It
+starts as fast as Bun from source and reaches the first screen in 475 ms, and
+it burns **less than half the cpu** of the same code run from source (0.34 s
+against 0.59 s): the bundle has no module graph to resolve at startup. Its
+memory is the same as Bun's, because it is a Bun executable.
 
 - `tui-first-screen` measures the interactive mode until it draws its first
   screen, in a terminal, through `PI_STARTUP_BENCHMARK=1`. The agent reports
@@ -67,9 +77,18 @@ starts in 1.1 MB.
   transient of the startup. The peak of a turn is 24 MB above it on Node: that
   is the request, the answer and the model catalog.
 - `build` is the whole workspace built from source: every package compiled
-  with tsc and the coding agent bundled. It takes 7.5 s of wall time, 18.3 s
-  of cpu time and 1.05 GB of memory at its peak, and it leaves 17.9 MB of
-  `dist`.
+  with tsc and the coding agent bundled. It takes 7.6 s of wall time, 18.4 s
+  of cpu time and 1.09 GB of memory at its peak.
+
+### Disk
+
+| Path | Size |
+| --- | --- |
+| `node_modules` | 481.5 MB |
+| the compiled binary `dist/pi` | 78.2 MB |
+| the coding agent `dist` (with the binary and the assets) | 102.9 MB |
+| the tui `dist` | 2.1 MB |
+| the ai package `dist` | 3.9 MB |
 
 ### The two halves of a message
 
@@ -100,12 +119,12 @@ floor is above the goal:
 
 - Node: 37.5 MB before the agent loads a single module.
 - Bun: 17.3 MB.
-- The best of the two, with the agent on top: 136.7 MB for the interactive
-  mode, 111.5 MB for the headless one.
+- The best artifact, the compiled binary, with the agent on top: 134.0 MB for
+  the interactive mode, 112.8 MB for the headless one.
 
 So the agent's own work is what can be cut, and that is what this branch cuts.
-The gap to the goal on Bun is 102 MB, of which 94 MB is the agent's own code
-and 17.3 MB the runtime.
+The gap to the goal on the compiled binary is 124 MB, of which 95 MB is the
+agent's own code and 17.3 MB the runtime.
 
 Under 10 MB needs a runtime that starts in a megabyte or two. The repository
 already has one: the Rust daemon of the `env` package serves in 9.6 MB. A
