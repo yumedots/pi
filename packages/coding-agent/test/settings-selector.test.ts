@@ -92,7 +92,7 @@ describe("SettingsSelectorComponent", () => {
 			modelThinkingLevels: {},
 			currentTheme: "dark",
 			terminalTheme: "dark",
-			availableThemes: ["system", "dark", "light"],
+			availableThemes: ["neutral", "dark", "light"],
 			warnings: {},
 		} as unknown as SettingsConfig;
 		const callbacks = { onThemePreview: vi.fn(), onCancel: () => {} } as unknown as SettingsCallbacks;
@@ -102,7 +102,7 @@ describe("SettingsSelectorComponent", () => {
 		list.handleInput("\r");
 		let output = stripAnsi(list.render(120).join("\n"));
 		expect(output).toMatch(
-			/ {4}system +Theme created from your terminal's colors\n {4}automatic +Use separate themes/,
+			/ {4}neutral +Follows the terminal's light or dark mode\n {4}automatic +Use separate themes/,
 		);
 		expect(output).toContain("→ ✓ dark");
 

@@ -10,6 +10,7 @@
 
 ### Changed
 
+- The `system` theme is now called `neutral` and uses Pi's own light or dark colors, following the terminal's mode, instead of building colors from the terminal's ANSI palette. A `theme` setting of `system` falls back to `neutral`
 - Renamed the `/session` command to `/stats`. It still shows the session file, ID, message counts, token usage, and cost
 - The fullscreen transcript's "Jump to latest message" shortcut is now `Ctrl+E` instead of `Ctrl+End`, and its indicator sits at the right edge of the transcript instead of the center
 - Removed the editor's "End of line" shortcut (`End` / `Ctrl+E`). `Ctrl+E` now only jumps to the latest message

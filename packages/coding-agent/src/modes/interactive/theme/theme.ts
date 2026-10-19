@@ -29,7 +29,6 @@ import type { SourceInfo } from "../../../core/source-info.ts";
 import { closeWatcher, watchWithErrorHandler } from "../../../utils/fs-watch.ts";
 import { highlight, supportsLanguage } from "../../../utils/syntax-highlight.ts";
 import { stripBom } from "../../../utils/text.ts";
-import { generateSystemThemeColors, SYSTEM_THEME_NAME, terminalAppearance } from "./system-theme.ts";
 import {
 	type ResolvedThemeColorValues,
 	THEME_TOKENS,
@@ -39,7 +38,8 @@ import {
 	type ThemeToken,
 } from "./theme-tokens.ts";
 
-export { SYSTEM_THEME_NAME } from "./system-theme.ts";
+/** The theme that follows the terminal's light or dark mode with pi's own colors. */
+export const NEUTRAL_THEME_NAME = "neutral";
 
 // ============================================================================
 // Types & Schema
@@ -132,28 +132,20 @@ export type ThemeAppearance = TerminalTheme;
 // The terminal's reported colors. Replaced (never mutated) on update, so themes can cache resolved colors
 // by identity.
 let terminalColors: TerminalColors = {};
-// While the terminal color query is in flight, the system theme renders in grayscale.
-let terminalColorsPending = false;
 // The terminal's last light/dark report (mode 2031). Only used while it has not reported a background.
 let terminalColorScheme: TerminalTheme | undefined;
 
 /**
  * Record the terminal's reported colors. Themes use the default colors for tokens set to "" (terminal
- * default); the system theme is generated from all of them. Ends the pending state.
+ * default), and the neutral theme follows the reported background's lightness.
  */
 export function setTerminalColors(colors: TerminalColors): void {
 	terminalColors = { ...colors };
-	terminalColorsPending = false;
 }
 
 /** Record the terminal's light/dark report, the fallback for terminals that do not report their background. */
 export function setTerminalColorScheme(scheme: TerminalTheme | undefined): void {
 	terminalColorScheme = scheme;
-}
-
-/** Render the system theme in grayscale until `setTerminalColors()` reports the terminal's colors. */
-export function markTerminalColorsPending(): void {
-	terminalColorsPending = true;
 }
 
 /** Assumed terminal default colors when the terminal does not report them. */
@@ -177,6 +169,46 @@ function detectAppearance(foregrounds: Color[], backgrounds: Color[]): ThemeAppe
 	if (bg !== undefined) return bg < 0.5 ? "dark" : "light";
 	if (fg !== undefined) return fg > 0.5 ? "dark" : "light";
 	return undefined;
+}
+
+const TEXT_MINIMUM_WCAG_CONTRAST = 4.5;
+
+/** WCAG 2 relative luminance. */
+function relativeLuminance({ r, g, b }: RgbColor): number {
+	const linear = (channel: number) => {
+		const value = channel / 255;
+		return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+	};
+	return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+}
+
+/** WCAG 2 contrast ratio, 1-21. */
+function wcagContrast(first: RgbColor, second: RgbColor): number {
+	const a = relativeLuminance(first);
+	const b = relativeLuminance(second);
+	return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+/**
+ * Whether a terminal is dark or light, from its reported colors: the direction of its own foreground
+ * when text can be readable that way, otherwise dark when white text has more contrast on the
+ * background than black text.
+ */
+function terminalAppearance(background: RgbColor, foreground?: RgbColor): ThemeAppearance {
+	const white = { r: 255, g: 255, b: 255 };
+	const black = { r: 0, g: 0, b: 0 };
+	const whiteContrast = wcagContrast(white, background);
+	const blackContrast = wcagContrast(black, background);
+	if (foreground) {
+		const foregroundL = colorToOklch(rgbColor(foreground.r, foreground.g, foreground.b)).l;
+		const backgroundL = colorToOklch(rgbColor(background.r, background.g, background.b)).l;
+		if (Math.abs(foregroundL - backgroundL) > 0.05) {
+			const appearance = foregroundL > backgroundL ? "dark" : "light";
+			const best = appearance === "dark" ? whiteContrast : blackContrast;
+			if (best >= TEXT_MINIMUM_WCAG_CONTRAST) return appearance;
+		}
+	}
+	return whiteContrast >= blackContrast ? "dark" : "light";
 }
 
 // ============================================================================
@@ -418,8 +450,8 @@ export function getAvailableThemesWithPaths(): ThemeInfo[] {
 		result.push(themeInfo);
 	};
 
-	// Built-in themes. The system theme is generated, so it has no file.
-	addTheme({ name: SYSTEM_THEME_NAME, path: undefined });
+	// Built-in themes. The neutral theme resolves to a built-in one, so it has no file.
+	addTheme({ name: NEUTRAL_THEME_NAME, path: undefined });
 	for (const name of Object.keys(getBuiltinThemes())) {
 		addTheme({ name, path: path.join(themesDir, `${name}.json`) });
 	}
@@ -433,9 +465,9 @@ export function getAvailableThemesWithPaths(): ThemeInfo[] {
 		addTheme({ name, path: theme.sourcePath });
 	}
 
-	// The system theme comes first: it is the default and adapts to every terminal.
+	// The neutral theme comes first: it is the default and adapts to every terminal.
 	return result.sort((a, b) =>
-		a.name === SYSTEM_THEME_NAME ? -1 : b.name === SYSTEM_THEME_NAME ? 1 : a.name.localeCompare(b.name),
+		a.name === NEUTRAL_THEME_NAME ? -1 : b.name === NEUTRAL_THEME_NAME ? 1 : a.name.localeCompare(b.name),
 	);
 }
 
@@ -539,19 +571,14 @@ function createTheme(themeJson: ThemeJson, mode?: TerminalColorMode, sourcePath?
 	});
 }
 
-/** Generate the system theme from the terminal's reported colors (grayscale while they are pending). */
-function createSystemTheme(mode?: TerminalColorMode): Theme {
-	const generated = generateSystemThemeColors({
-		...terminalColors,
-		saturation: terminalColorsPending ? 0 : 1,
-		appearanceHint: getTerminalTheme(),
-	});
-	const { fgColors, bgColors } = splitThemeColors(withThemeTokenFallbacks(generated.colors));
-	return new Theme(fgColors, bgColors, mode ?? getTerminalColorMode(), {
-		name: SYSTEM_THEME_NAME,
-		appearance: generated.appearance,
-		dim: generated.dim,
-	});
+/** The neutral theme: pi's own light or dark colors, following the terminal's mode. */
+function createNeutralTheme(mode?: TerminalColorMode): Theme {
+	return loadTheme(getTerminalTheme() === "light" ? "light" : "dark", mode);
+}
+
+/** The built-in theme the neutral theme resolves to right now. */
+export function resolveNeutralThemeName(): "light" | "dark" {
+	return getTerminalTheme() === "light" ? "light" : "dark";
 }
 
 export function loadThemeFromPath(themePath: string, mode?: TerminalColorMode): Theme {
@@ -561,8 +588,8 @@ export function loadThemeFromPath(themePath: string, mode?: TerminalColorMode): 
 }
 
 function loadTheme(name: string, mode?: TerminalColorMode): Theme {
-	// The system theme name is reserved: it takes precedence over custom themes of the same name.
-	if (name === SYSTEM_THEME_NAME) return createSystemTheme(mode);
+	// The neutral theme name is reserved: it takes precedence over custom themes of the same name.
+	if (name === NEUTRAL_THEME_NAME) return createNeutralTheme(mode);
 	const registeredTheme = registeredThemes.get(name);
 	if (registeredTheme) {
 		return registeredTheme;
@@ -627,9 +654,8 @@ export function detectColorFgBgTheme(env: NodeJS.ProcessEnv = process.env): Term
 }
 
 /**
- * Whether the terminal is dark or light. The background it renders decides, classified the same way the
- * system theme does. Without a reported background: the terminal's light/dark report, then COLORFGBG,
- * then dark.
+ * Whether the terminal is dark or light. The background it renders decides. Without a reported
+ * background: the terminal's light/dark report, then COLORFGBG, then dark.
  */
 export function detectTerminalTheme(
 	colors: TerminalColors = {},
@@ -686,7 +712,7 @@ export function setRegisteredThemes(themes: Theme[]): void {
 }
 
 export function initTheme(themeName?: string, enableWatcher: boolean = false): void {
-	const name = themeName ?? SYSTEM_THEME_NAME;
+	const name = themeName ?? NEUTRAL_THEME_NAME;
 	currentThemeName = name;
 	try {
 		setGlobalTheme(loadTheme(name));
@@ -694,9 +720,9 @@ export function initTheme(themeName?: string, enableWatcher: boolean = false): v
 			startThemeWatcher();
 		}
 	} catch (_error) {
-		// Theme is invalid - fall back to the system theme silently
-		currentThemeName = SYSTEM_THEME_NAME;
-		setGlobalTheme(loadTheme(SYSTEM_THEME_NAME));
+		// Theme is invalid - fall back to the neutral theme silently
+		currentThemeName = NEUTRAL_THEME_NAME;
+		setGlobalTheme(loadTheme(NEUTRAL_THEME_NAME));
 		// Don't start watcher for fallback theme
 	}
 }
@@ -713,9 +739,9 @@ export function setTheme(name: string, enableWatcher: boolean = false): { succes
 		}
 		return { success: true };
 	} catch (error) {
-		// Theme is invalid - fall back to the system theme
-		currentThemeName = SYSTEM_THEME_NAME;
-		setGlobalTheme(loadTheme(SYSTEM_THEME_NAME));
+		// Theme is invalid - fall back to the neutral theme
+		currentThemeName = NEUTRAL_THEME_NAME;
+		setGlobalTheme(loadTheme(NEUTRAL_THEME_NAME));
 		// Don't start watcher for fallback theme
 		return {
 			success: false,
@@ -745,7 +771,7 @@ function startThemeWatcher(): void {
 		!currentThemeName ||
 		currentThemeName === "dark" ||
 		currentThemeName === "light" ||
-		currentThemeName === SYSTEM_THEME_NAME
+		currentThemeName === NEUTRAL_THEME_NAME
 	) {
 		return;
 	}
@@ -833,7 +859,7 @@ export function stopThemeWatcher(): void {
  * Used by HTML export to generate CSS custom properties.
  */
 export function getResolvedThemeColors(themeName?: string): Record<string, string> {
-	const colors = loadTheme(themeName ?? currentThemeName ?? SYSTEM_THEME_NAME).colors;
+	const colors = loadTheme(themeName ?? currentThemeName ?? NEUTRAL_THEME_NAME).colors;
 	return Object.fromEntries(Object.entries(colors).map(([token, color]) => [token, colorToHex(color)]));
 }
 
@@ -841,7 +867,7 @@ export function getResolvedThemeColors(themeName?: string): Record<string, strin
  * Check if a theme is a "light" theme (for CSS that needs light/dark variants).
  */
 export function isLightTheme(themeName?: string): boolean {
-	return loadTheme(themeName ?? currentThemeName ?? SYSTEM_THEME_NAME).appearance === "light";
+	return loadTheme(themeName ?? currentThemeName ?? NEUTRAL_THEME_NAME).appearance === "light";
 }
 
 /**
@@ -853,10 +879,11 @@ export function getThemeExportColors(themeName?: string): {
 	cardBg?: string;
 	infoBg?: string;
 } {
-	const name = themeName ?? currentThemeName ?? SYSTEM_THEME_NAME;
-	if (name === SYSTEM_THEME_NAME) return {};
+	const name = themeName ?? currentThemeName ?? NEUTRAL_THEME_NAME;
+	// The neutral theme takes its export colors from the built-in theme it resolves to.
+	const exportName = name === NEUTRAL_THEME_NAME ? resolveNeutralThemeName() : name;
 	try {
-		const themeJson = loadThemeJson(name);
+		const themeJson = loadThemeJson(exportName);
 		const exportSection = themeJson.export;
 		if (!exportSection) return {};
 

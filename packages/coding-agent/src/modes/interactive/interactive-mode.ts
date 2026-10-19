@@ -193,8 +193,8 @@ import {
 	getEditorTheme,
 	getMarkdownTheme,
 	getThemeByName,
+	NEUTRAL_THEME_NAME,
 	onThemeChange,
-	SYSTEM_THEME_NAME,
 	setRegisteredThemes,
 	stopThemeWatcher,
 	Theme,
@@ -4941,7 +4941,7 @@ export class InteractiveMode {
 					thinkingLevel: this.settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL,
 					availableThinkingLevels: [...THINKING_LEVEL_OPTIONS],
 					modelThinkingLevels: this.settingsManager.getAllModelThinkingLevels(),
-					currentTheme: this.themeController.getThemeSelection() || SYSTEM_THEME_NAME,
+					currentTheme: this.themeController.getThemeSelection() || NEUTRAL_THEME_NAME,
 					terminalTheme: this.themeController.getTerminalTheme(),
 					availableThemes: getAvailableThemes(),
 					hideThinkingBlock: this.hideThinkingBlock,
@@ -5739,7 +5739,7 @@ export class InteractiveMode {
 	private activeMenuOverlay: OverlayHandle | undefined;
 
 	private showThemeSelector(): void {
-		const current = this.themeController.getThemeSelection() || SYSTEM_THEME_NAME;
+		const current = this.themeController.getThemeSelection() || NEUTRAL_THEME_NAME;
 		const items: MenuItem<string>[] = getAvailableThemes().map((name) => ({
 			title: name,
 			description: name === current ? "(current)" : undefined,

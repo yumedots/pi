@@ -17,12 +17,11 @@ import {
 	FirstTimeSetupComponent,
 	type FirstTimeSetupResult,
 } from "../modes/interactive/components/first-time-setup.ts";
-import { SYSTEM_THEME_NAME } from "../modes/interactive/theme/system-theme.ts";
 import {
 	getTerminalTheme,
 	initTheme,
 	loadThemeFromPath,
-	markTerminalColorsPending,
+	NEUTRAL_THEME_NAME,
 	resolveThemeSetting,
 	setRegisteredThemes,
 	setTerminalColors,
@@ -85,9 +84,7 @@ async function loadStartupThemes(settingsManager: SettingsManager): Promise<Them
 export async function createStartupTui(settingsManager: SettingsManager): Promise<TUI> {
 	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
 	setRegisteredThemes(await loadStartupThemes(settingsManager));
-	// The system theme starts in grayscale until the terminal reports its colors.
-	markTerminalColorsPending();
-	initTheme(resolveThemeSetting(settingsManager.getThemeSetting(), getTerminalTheme()) ?? SYSTEM_THEME_NAME);
+	initTheme(resolveThemeSetting(settingsManager.getThemeSetting(), getTerminalTheme()) ?? NEUTRAL_THEME_NAME);
 	setKeybindings(KeybindingsManager.create());
 	const ui: TUI = new TuiMainScreen(new ProcessTerminal(), settingsManager.getShowHardwareCursor(), getAgentDir());
 	ui.setClearOnShrink(settingsManager.getClearOnShrink());
@@ -98,13 +95,14 @@ export function startStartupTui(ui: TUI, settingsManager: SettingsManager): void
 	ui.start();
 	const themeSetting = settingsManager.getThemeSetting();
 	queryStartupTerminalColors(ui, () => {
-		setTheme(resolveThemeSetting(themeSetting, getTerminalTheme()) ?? SYSTEM_THEME_NAME);
+		setTheme(resolveThemeSetting(themeSetting, getTerminalTheme()) ?? NEUTRAL_THEME_NAME);
 	});
 }
 
 /**
  * Query the terminal's colors without waiting for them. When they arrive, including after the timeout,
- * record them for the system theme and "" (terminal default) tokens, run `onColors`, and re-render.
+ * record them for the "" (terminal default) tokens and the light/dark detection, run `onColors`, and
+ * re-render.
  */
 function queryStartupTerminalColors(ui: TUI, onColors: () => void): void {
 	void requestTerminalColors(ui, (colors) => {
@@ -199,7 +197,7 @@ export async function showFirstTimeSetup(settingsManager: SettingsManager): Prom
 		};
 
 		ui.start();
-		let previewTheme = SYSTEM_THEME_NAME;
+		let previewTheme = NEUTRAL_THEME_NAME;
 		setTheme(previewTheme);
 		const component = new FirstTimeSetupComponent({
 			onThemePreview: (themeName) => {
@@ -213,7 +211,7 @@ export async function showFirstTimeSetup(settingsManager: SettingsManager): Prom
 		ui.addChild(component);
 		ui.setFocus(component);
 		ui.requestRender();
-		// The terminal's colors regenerate the system theme; re-rendering rebuilds the dialog with it.
+		// The terminal's colors can change the theme; re-rendering rebuilds the dialog with it.
 		queryStartupTerminalColors(ui, () => setTheme(previewTheme));
 	});
 }

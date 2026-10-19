@@ -27,8 +27,8 @@ import {
 } from "../../../core/settings-manager.ts";
 import {
 	getSettingsListTheme,
+	NEUTRAL_THEME_NAME,
 	parseAutoThemeSetting,
-	SYSTEM_THEME_NAME,
 	type TerminalTheme,
 	theme,
 } from "../theme/theme.ts";
@@ -214,16 +214,16 @@ function themeItems(availableThemes: string[], currentTheme: string): SelectItem
 	return availableThemes.map((name) => ({
 		value: name,
 		label: `${name === currentTheme ? "✓ " : "  "}${name}`,
-		...(name === SYSTEM_THEME_NAME ? { description: "Theme created from your terminal's colors" } : {}),
+		...(name === NEUTRAL_THEME_NAME ? { description: "Follows the terminal's light or dark mode" } : {}),
 	}));
 }
 
 const AUTOMATIC_THEME_VALUE = "/";
 
-/** The system theme comes first, then automatic mode, then the remaining themes. */
+/** The neutral theme comes first, then automatic mode, then the remaining themes. */
 function singleModeThemeItems(availableThemes: string[], currentTheme: string): SelectItem[] {
 	const items = themeItems(availableThemes, currentTheme);
-	const systemIndex = items.findIndex((item) => item.value === SYSTEM_THEME_NAME);
+	const systemIndex = items.findIndex((item) => item.value === NEUTRAL_THEME_NAME);
 	const system = systemIndex === -1 ? [] : items.splice(systemIndex, 1);
 	return [
 		...system,
@@ -250,7 +250,7 @@ function defaultAutomaticThemes(
 	if (autoTheme) return autoTheme;
 
 	const currentFixedTheme = currentThemeSetting.includes("/") ? undefined : currentThemeSetting;
-	const themeName = preferredTheme(availableThemes, currentFixedTheme, SYSTEM_THEME_NAME);
+	const themeName = preferredTheme(availableThemes, currentFixedTheme, NEUTRAL_THEME_NAME);
 	return { lightTheme: themeName, darkTheme: themeName };
 }
 
@@ -288,7 +288,7 @@ class ThemeSubmenu extends Container {
 		this.singleTheme = preferredTheme(
 			availableThemes,
 			fixedTheme ?? (autoTheme ? this.getActiveAutomaticTheme() : undefined),
-			SYSTEM_THEME_NAME,
+			NEUTRAL_THEME_NAME,
 		);
 
 		if (this.mode === "automatic") {
