@@ -136,6 +136,7 @@ import {
 	DEFAULT_TOOL_NAMES,
 	type SettingsManager,
 } from "./settings-manager.ts";
+import { findSkillMentions, parseSkillCommand, removeSkillMentions, type Skill } from "./skills.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { BUILTIN_PATH_PREFIX, createSyntheticSourceInfo, isSyntheticPath, type SourceInfo } from "./source-info.ts";
 import {
@@ -167,22 +168,36 @@ export interface ParsedSkillBlock {
 	name: string;
 	location: string;
 	content: string;
+}
+
+/** A user message that invoked one or more skills */
+export interface ParsedSkillMessage {
+	/** The skill blocks that were expanded into the message. */
+	blocks: ParsedSkillBlock[];
+	/** The request that came with the skills, undefined when the message only invoked skills. */
 	userMessage: string | undefined;
 }
 
+const SKILL_BLOCK_REGEX = /^<skill name="([^"]+)" location="([^"]+)">\n([\s\S]*?)\n<\/skill>/;
+
 /**
- * Parse a skill block from message text.
- * Returns null if the text doesn't contain a skill block.
+ * Parse the skill blocks from message text.
+ * Returns null if the text doesn't start with a skill block.
  */
-export function parseSkillBlock(text: string): ParsedSkillBlock | null {
-	const match = text.match(/^<skill name="([^"]+)" location="([^"]+)">\n([\s\S]*?)\n<\/skill>(?:\n\n([\s\S]+))?$/);
-	if (!match) return null;
-	return {
-		name: match[1],
-		location: match[2],
-		content: match[3],
-		userMessage: match[4]?.trim() || undefined,
-	};
+export function parseSkillMessage(text: string): ParsedSkillMessage | null {
+	const blocks: ParsedSkillBlock[] = [];
+	let rest = text;
+	while (true) {
+		const match = rest.match(SKILL_BLOCK_REGEX);
+		if (!match) break;
+		blocks.push({ name: match[1]!, location: match[2]!, content: match[3]! });
+		rest = rest.slice(match[0].length);
+		if (!rest.startsWith("\n\n")) break;
+		rest = rest.slice(2);
+	}
+	if (blocks.length === 0) return null;
+	const userMessage = rest.trim();
+	return { blocks, userMessage: userMessage || undefined };
 }
 
 /** Tool execution events of calls a tool made through `ctx.executeTool()` carry `parentToolCallId`. */
@@ -2170,25 +2185,45 @@ export class AgentSession {
 	}
 
 	/**
-	 * Expand skill commands (/skill:name args) to their full content.
-	 * Returns the expanded text, or the original text if not a skill command or skill not found.
+	 * Expand skill invocations to their full content.
+	 * A "@name" mention anywhere in the message loads that skill, and the request keeps
+	 * the rest of the text. A "/skill:name args" command loads the skill and appends its args.
+	 * Returns the expanded text, or the original text if no skill was invoked.
 	 * Emits errors via extension runner if file read fails.
 	 */
 	private _expandSkillCommand(text: string): string {
-		if (!text.startsWith("/skill:")) return text;
+		const skills = this.resourceLoader.getSkills().skills;
 
-		const spaceIndex = text.indexOf(" ");
-		const skillName = spaceIndex === -1 ? text.slice(7) : text.slice(7, spaceIndex);
-		const args = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1).trim();
+		const mentions = findSkillMentions(text).filter((mention) => skills.some((s) => s.name === mention.name));
+		if (mentions.length > 0) {
+			const blocks: string[] = [];
+			for (const mention of mentions) {
+				const skill = skills.find((s) => s.name === mention.name)!;
+				const block = this._buildSkillBlock(skill);
+				if (block) blocks.push(block);
+			}
+			if (blocks.length === 0) return text;
+			const request = removeSkillMentions(text, mentions);
+			return request ? `${blocks.join("\n\n")}\n\n${request}` : blocks.join("\n\n");
+		}
 
-		const skill = this.resourceLoader.getSkills().skills.find((s) => s.name === skillName);
+		const command = parseSkillCommand(text);
+		if (!command) return text;
+
+		const skill = skills.find((s) => s.name === command.name);
 		if (!skill) return text; // Unknown skill, pass through
 
+		const block = this._buildSkillBlock(skill);
+		if (!block) return text;
+		return command.args ? `${block}\n\n${command.args}` : block;
+	}
+
+	/** Build the skill block for a skill, or undefined when the file cannot be read. */
+	private _buildSkillBlock(skill: Skill): string | undefined {
 		try {
 			const content = readFileSync(skill.filePath, "utf-8");
 			const body = stripFrontmatter(content).trim();
-			const skillBlock = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
-			return args ? `${skillBlock}\n\n${args}` : skillBlock;
+			return `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
 		} catch (err) {
 			// Emit error like extension commands do
 			this._extensionRunner.emitError({
@@ -2196,7 +2231,7 @@ export class AgentSession {
 				event: "skill_expansion",
 				error: err instanceof Error ? err.message : String(err),
 			});
-			return text; // Return original on error
+			return undefined;
 		}
 	}
 

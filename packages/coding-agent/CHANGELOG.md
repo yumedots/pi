@@ -2,14 +2,23 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `parseSkillBlock()` is replaced by `parseSkillMessage()`. It returns the skill blocks of a message and the request that came with them, so a message can now carry more than one skill
+
 ### Added
 
 - Added `/skills` to browse the loaded skills and run one from a picker. `/resume` also answers to `/history`
 - Added `/theme` to change the color theme. It previews each theme as you move through the list, and `/theme <name>` applies one directly
 - Added a Models Configuration reference generated from the `models.json` schema, listing all provider, model, model override, and compatibility fields ([#10790](https://github.com/earendil-works/pi/issues/10790))
+- Added the `autocompletePosition` setting, so the slash-command menu can float above the input (default) or sit below it
 
 ### Changed
 
+- A skill invocation and the request typed alongside it now render as one message. The request appears on the same line as the mention
+- Skills can be picked with `@` in the editor. The mention loads the skill, and the transcript shows it as `@name` instead of `[skill] name`
+- An `@name` mention loads the skill wherever it appears in the message, so `extract report.pdf with @pdf-tools` works too. The mention is consumed by the skill and does not repeat in the request
+- The skill body in the transcript toggles on a click (or the expand shortcut). The clicks of a double click count as one, and the card stays in place while it opens or closes
 - The `system` theme now uses Pi's own light or dark colors, following the terminal's mode, instead of building colors from the terminal's ANSI palette
 - Renamed the `/session` command to `/stats`. It still shows the session file, ID, message counts, token usage, and cost
 - The fullscreen transcript's "Jump to latest message" shortcut is now `Ctrl+E` instead of `Ctrl+End`, and its indicator sits at the right edge of the transcript instead of the center
@@ -19,6 +28,7 @@
 - The session picker renders full-width block rows with a scrollbar instead of a `(n/m)` counter
 - `generateSummary()` and `generateSummaryWithUsage()` now ignore their `reserveTokens` parameter. Summary requests use the model's output limit instead.
 - `Ctrl+C` no longer clears the editor. It only exits when pressed twice, and clearing the editor moved to `Alt+C` (`app.clear`). The exit shortcut is the new `app.quit` action
+- The startup listing of loaded context files, skills, prompt templates, and extensions is gone. Resource conflicts and load errors still show as warnings on startup
 
 ### Fixed
 

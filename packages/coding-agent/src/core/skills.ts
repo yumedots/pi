@@ -345,6 +345,72 @@ function loadSkillFromFile(
 }
 
 /**
+ * A skill invocation parsed from the start of a message.
+ */
+export interface SkillInvocation {
+	/** Name of the skill to load. */
+	name: string;
+	/** Arguments that followed the invocation, empty when none were given. */
+	args: string;
+}
+
+/**
+ * Parse a "/skill:name args" command from the start of a message.
+ */
+export function parseSkillCommand(text: string): SkillInvocation | null {
+	if (!text.startsWith("/skill:")) return null;
+	const match = text.slice("/skill:".length).match(/^(\S+)(?:\s+([\s\S]*))?$/);
+	if (!match) return null;
+	return { name: match[1]!, args: (match[2] ?? "").trim() };
+}
+
+/**
+ * A skill mention ("@name") found in message text.
+ */
+export interface SkillMention {
+	/** Name of the skill, without the "@". */
+	name: string;
+	/** Index of the "@" in the text. */
+	start: number;
+	/** Index just after the name. */
+	end: number;
+}
+
+// Mentions are "@name" with a skill name, not part of a word ("user@example.com" is not a mention).
+const SKILL_MENTION_REGEX = /(^|[^\w@])@([a-z0-9-]+)(?![\w-])/g;
+
+/**
+ * Find the "@name" mentions in a message. The names are not checked against the loaded
+ * skills, so callers decide which mentions invoke a skill.
+ */
+export function findSkillMentions(text: string): SkillMention[] {
+	const mentions: SkillMention[] = [];
+	for (const match of text.matchAll(SKILL_MENTION_REGEX)) {
+		const start = match.index! + match[1]!.length;
+		mentions.push({ name: match[2]!, start, end: start + match[2]!.length + 1 });
+	}
+	return mentions;
+}
+
+/**
+ * Remove the mentions from the text, leaving the request they were part of.
+ */
+export function removeSkillMentions(text: string, mentions: readonly SkillMention[]): string {
+	let result = "";
+	let last = 0;
+	for (const mention of mentions) {
+		result += text.slice(last, mention.start);
+		last = mention.end;
+	}
+	result += text.slice(last);
+	return result
+		.replace(/[ \t]{2,}/g, " ")
+		.replace(/[ \t]+([,.;:!?])/g, "$1")
+		.replace(/\(\s*\)/g, "")
+		.trim();
+}
+
+/**
  * Format skills for inclusion in a system prompt.
  * Uses XML format per Agent Skills standard.
  * See: https://agentskills.io/integrate-skills

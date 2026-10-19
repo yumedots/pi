@@ -221,6 +221,29 @@ describe("viewport layout", () => {
 		assert.strictEqual(scrollView.scrollTop, 36);
 	});
 
+	it("keeps the content in place when a card expands while following the end", () => {
+		const lines = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n");
+		const content = new Text(lines(40), 0, 0);
+		const scrollView = new ScrollView(content, {
+			follow: "end",
+			primary: true,
+		});
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 35);
+
+		// A card in view expanded: the content grows, but the transcript must not move, so the
+		// card stays under the pointer that toggled it.
+		scrollView.keepOffsetOnNextLayout();
+		content.setText(lines(41));
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 35);
+
+		// The next content change follows the end again.
+		content.setText(lines(42));
+		renderLayoutFrame(scrollView, 10, 5, () => {});
+		assert.strictEqual(scrollView.scrollTop, 37);
+	});
+
 	it("pins an explicit jump to the end even when the viewport changed since", () => {
 		const content = new Text(Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0);
 		const scrollView = new ScrollView(content, {

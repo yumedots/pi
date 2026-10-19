@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 import { BlockList, type BlockListTheme } from "../src/components/block-list.ts";
 import { Editor, type EditorTheme } from "../src/components/editor.ts";
 import { Input } from "../src/components/input.ts";
+import { MouseRegion } from "../src/components/mouse-region.ts";
 import { SelectList, type SelectListTheme } from "../src/components/select-list.ts";
 import { SettingsList, type SettingsListTheme } from "../src/components/settings-list.ts";
+import { Text } from "../src/components/text.ts";
 import { Container, type TuiMouseEvent, type TuiMouseEventType } from "../src/tui.ts";
 import { TuiAltScreen } from "../src/tui-alt-screen.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
@@ -236,6 +238,35 @@ describe("mouse-aware components", () => {
 			assert.deepStrictEqual(changes, [{ id: `item-${4 + row}`, value: "on" }]);
 		});
 	}
+
+	it("delivers a click event for every click, including the second of a double click", async () => {
+		// A double click selects a word, which moves the selection anchor away from the
+		// clicked column. The click event still has to arrive, or a region can never be
+		// activated with a double click.
+		const terminal = new VirtualTerminal(20, 4);
+		const tui = new TuiAltScreen(terminal);
+		const events: TuiMouseEventType[] = [];
+		const region = new MouseRegion(new Text("clickable", 0, 0), (event) => {
+			events.push(event.type);
+			return event.type === "click" ? { handled: true } : undefined;
+		});
+		tui.addChild(region);
+		tui.start();
+		await terminal.waitForRender();
+
+		terminal.sendInput("\x1b[<0;3;1M");
+		terminal.sendInput("\x1b[<0;3;1m");
+		await terminal.waitForRender();
+		terminal.sendInput("\x1b[<0;3;1M");
+		terminal.sendInput("\x1b[<0;3;1m");
+		await terminal.waitForRender();
+
+		assert.deepStrictEqual(
+			events.filter((type) => type === "click"),
+			["click", "click"],
+		);
+		tui.stop();
+	});
 
 	it("keeps a delegating overlay focused when its nested input is clicked", async () => {
 		const terminal = new VirtualTerminal(20, 4);

@@ -304,11 +304,18 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 	private commands: (SlashCommand | AutocompleteItem)[];
 	private basePath: string;
 	private fdPath: string | null;
+	private mentionItems: AutocompleteItem[];
 
-	constructor(commands: (SlashCommand | AutocompleteItem)[] = [], basePath: string, fdPath: string | null = null) {
+	constructor(
+		commands: (SlashCommand | AutocompleteItem)[] = [],
+		basePath: string,
+		fdPath: string | null = null,
+		mentionItems: AutocompleteItem[] = [],
+	) {
 		this.commands = commands;
 		this.basePath = basePath;
 		this.fdPath = fdPath;
+		this.mentionItems = mentionItems;
 	}
 
 	async getSuggestions(
@@ -323,10 +330,12 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		const atPrefix = this.extractAtPrefix(textBeforeCursor);
 		if (atPrefix) {
 			const { rawPrefix, isQuotedPrefix } = parsePathPrefix(atPrefix);
-			const suggestions = await this.getFuzzyFileSuggestions(rawPrefix, {
+			const mentionSuggestions = this.getMentionSuggestions(rawPrefix);
+			const fileSuggestions = await this.getFuzzyFileSuggestions(rawPrefix, {
 				isQuotedPrefix,
 				signal: options.signal,
 			});
+			const suggestions = [...mentionSuggestions, ...fileSuggestions];
 			if (suggestions.length === 0) return null;
 
 			return {
@@ -497,6 +506,12 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			cursorLine,
 			cursorCol: beforePrefix.length + cursorOffset,
 		};
+	}
+
+	// Suggestions for "@" mentions (e.g. skills) matching the text after the "@"
+	private getMentionSuggestions(query: string): AutocompleteItem[] {
+		if (this.mentionItems.length === 0) return [];
+		return fuzzyFilter(this.mentionItems, query, (item) => item.value.replace(/^@/, ""));
 	}
 
 	// Extract @ prefix for fuzzy file suggestions

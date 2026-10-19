@@ -34,6 +34,7 @@ export class ScrollView extends Container {
 	private followingEnd: boolean;
 	private followSuppressedAtEnd = false;
 	private pendingEndJump = false;
+	private keepOffsetPending = false;
 	private requestRenderCallback: (() => void) | undefined;
 	private transientScrollbarVisible = false;
 	private scrollbarActive = false;
@@ -189,6 +190,14 @@ export class ScrollView extends Container {
 		}
 	}
 
+	/**
+	 * Keep the current offset when the content grows, so the content in view stays where it
+	 * is. Used when a card in the transcript expands or collapses.
+	 */
+	keepOffsetOnNextLayout(): void {
+		this.keepOffsetPending = true;
+	}
+
 	updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
 		const contentChanged = contentHeight !== this.contentHeight;
 		this.contentHeight = Math.max(0, Math.floor(contentHeight));
@@ -203,11 +212,16 @@ export class ScrollView extends Container {
 			// Only the viewport resized (the dock next to the transcript changed height): keep
 			// the content where it is, so the transcript does not slide up and back down.
 			this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
+		} else if (this.followingEnd && this.keepOffsetPending) {
+			// A card in the transcript expanded or collapsed: keep the content in place, so the
+			// card does not move out from under the pointer that toggled it.
+			this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
 		} else if (this.followingEnd) {
 			this.currentScrollTop = maxScrollTop;
 		} else {
 			this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
 		}
+		this.keepOffsetPending = false;
 		if (this.currentScrollTop < maxScrollTop) this.followSuppressedAtEnd = false;
 		if (this.followEnd && this.currentScrollTop === maxScrollTop && !this.followSuppressedAtEnd) {
 			this.followingEnd = true;

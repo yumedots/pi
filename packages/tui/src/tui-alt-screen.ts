@@ -223,6 +223,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private selectionAutoScrollDirection: -1 | 0 | 1 = 0;
 	private selectionAutoScrollTimer?: NodeJS.Timeout;
 	private selectionPressActive = false;
+	/** Where the current mouse press started, to tell a click from a drag. */
+	private selectionPressPoint?: SelectionPoint;
 	private scrollbarDrag?: ScrollbarDrag;
 	private scrollbarHover?: ScrollView;
 	private scrollToEndIndicatorRect?: ScrollToEndIndicatorRect;
@@ -493,6 +495,14 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	scrollToBottom(): void {
 		this.getPrimaryScrollView().scrollToEnd();
 		this.requestRender();
+	}
+
+	/**
+	 * Keep the transcript content in place across the next layout, so a card that expands or
+	 * collapses does not move out from under the pointer that toggled it.
+	 */
+	keepScrollPosition(): void {
+		this.getPrimaryScrollView().keepOffsetOnNextLayout();
 	}
 
 	private scrollToPrompt(direction: -1 | 1): void {
@@ -882,6 +892,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private clearTextSelection(): void {
 		this.stopSelectionAutoScroll();
 		this.selectionPressActive = false;
+		this.selectionPressPoint = undefined;
 		this.selectionAnchor = undefined;
 		this.selectionFocus = undefined;
 		this.selectionGranularity = "character";
@@ -1321,11 +1332,17 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			this.stopSelectionAutoScroll();
 			if (!this.selectionAnchor) return;
 			this.updateSelectionFocus(point);
+			// A click is a press and release at the same spot. Compare with the press
+			// position, not the selection anchor: a double click moves the anchor to the
+			// start of the selected word, which would swallow the second click.
+			const pressPoint = this.selectionPressPoint;
+			this.selectionPressPoint = undefined;
 			const isClick =
 				!this.selectionDragged &&
-				this.selectionAnchor.scrollView === point.scrollView &&
-				this.selectionAnchor.row === point.row &&
-				this.selectionAnchor.col === point.col;
+				pressPoint !== undefined &&
+				pressPoint.scrollView === point.scrollView &&
+				pressPoint.row === point.row &&
+				pressPoint.col === point.col;
 			const clickedUrl = isClick ? this.pressedUrl : undefined;
 			this.pressedUrl = undefined;
 			if (clickedUrl && this.openUrl) {
@@ -1380,6 +1397,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.selectionInitialRange = range;
 		this.selectionAnchor = range?.start ?? anchor;
 		this.selectionFocus = range?.end ?? anchor;
+		this.selectionPressPoint = anchor;
 		this.selectionDragged = false;
 		this.pressedUrl = range
 			? undefined

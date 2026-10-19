@@ -65,7 +65,7 @@ import {
 	getDocsPath,
 	VERSION,
 } from "../../config.ts";
-import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.ts";
+import { type AgentSession, type AgentSessionEvent, parseSkillMessage } from "../../core/agent-session.ts";
 import { type AgentSessionRuntime, SessionImportFileNotFoundError } from "../../core/agent-session-runtime.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../../core/agent-session-services.ts";
 import {
@@ -775,10 +775,18 @@ export class InteractiveMode {
 				getArgumentCompletions: cmd.getArgumentCompletions,
 			}));
 
+		// Skills are offered as "@name" mentions next to the file completions
+		const skillMentions: AutocompleteItem[] = this.session.resourceLoader.getSkills().skills.map((skill) => ({
+			value: `@${skill.name}`,
+			label: `@${skill.name}`,
+			description: skill.description,
+		}));
+
 		return new CombinedAutocompleteProvider(
 			[...slashCommands, ...templateCommands, ...extensionCommands],
 			this.sessionManager.getCwd(),
 			this.fdPath,
+			skillMentions,
 		);
 	}
 
@@ -2197,6 +2205,14 @@ export class InteractiveMode {
 
 	private getMarkdownTransformers(): MarkdownTransformer[] {
 		return [this.mermaidMarkdownTransformer, ...this.session.extensionRunner.getMarkdownTransformers()];
+	}
+
+	/**
+	 * Keep the transcript where it is when a card expands or collapses, so the card does not
+	 * move out from under the pointer that toggled it.
+	 */
+	private keepTranscriptPosition(): void {
+		if (this.renderer instanceof TuiAltScreen) this.renderer.keepScrollPosition();
 	}
 
 	/**
@@ -3924,27 +3940,18 @@ export class InteractiveMode {
 					if (this.chatContainer.children.length > 0) {
 						this.chatContainer.addChild(new Spacer(1));
 					}
-					const skillBlock = parseSkillBlock(textContent);
-					if (skillBlock) {
-						// Render skill block (collapsible)
+					const skillMessage = parseSkillMessage(textContent);
+					if (skillMessage) {
+						// Render skill block (collapsible) with the request that came with it
 						const component = new SkillInvocationMessageComponent(
-							skillBlock,
+							skillMessage,
 							this.getMarkdownThemeWithSettings(),
 							this.outputPad,
+							this.getMarkdownTransformers(),
+							() => this.keepTranscriptPosition(),
 						);
 						component.setExpanded(this.toolOutputExpanded);
 						this.chatContainer.addChild(component);
-						// Render user message separately if present
-						if (skillBlock.userMessage) {
-							this.chatContainer.addChild(new Spacer(1));
-							const userComponent = new UserMessageComponent(
-								skillBlock.userMessage,
-								this.getMarkdownThemeWithSettings(),
-								this.outputPad,
-								this.getMarkdownTransformers(),
-							);
-							this.chatContainer.addChild(userComponent);
-						}
 					} else {
 						const userComponent = new UserMessageComponent(
 							textContent,

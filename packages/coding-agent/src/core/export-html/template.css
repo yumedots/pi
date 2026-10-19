@@ -814,8 +814,18 @@
       font-weight: bold;
     }
 
-    .skill-invocation-collapsed {
-      color: var(--customMessageText);
+    .skill-invocation-hint {
+      color: var(--muted);
+      font-weight: normal;
+    }
+
+    .skill-invocation.expanded .skill-invocation-hint {
+      display: none;
+    }
+
+    .skill-user-request {
+      color: var(--userMessageText);
+      margin-top: var(--line-height);
     }
 
     .skill-invocation-content {
@@ -824,16 +834,8 @@
       margin-top: var(--line-height);
     }
 
-    .skill-invocation.expanded .skill-invocation-collapsed {
-      display: none;
-    }
-
     .skill-invocation.expanded .skill-invocation-content {
       display: block;
-    }
-
-    .skill-invocation + .user-message {
-      margin-top: var(--line-height);
     }
 
     .skill-user-entry {
