@@ -15,13 +15,16 @@ much of that can be cut.
 
 | | Request reaches the model | First token | Whole turn |
 | --- | --- | --- | --- |
-| node | 39 ms | 69 ms | 1347 ms |
-| bun | 38 ms | 70 ms | 1196 ms |
+| node | 39 ms | 69 ms | 1038 ms |
+| bun | 38 ms | 70 ms | 1504 ms |
 
 The request reaches the model 38 ms after the message leaves the agent. That
 is the agent's own work: the preflight, the system prompt, the tool
 declarations and the request itself. The first token follows 30 ms later, on
 the model.
+
+The 200 turn session in [the harness report](../harness/RESULTS.md#the-long-session-the-soak-test)
+holds the same first token time (51 ms at the median) on both runtimes.
 
 ## Where the tokens go
 
