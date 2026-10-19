@@ -16,11 +16,15 @@ help:
 	  'make install  Build the binary and install it to $(BIN_DIR)/pi' \
 	  'make clean    Remove build output'
 
+# npm prints a blank line before its run-script banner; drop it so the output
+# starts with the command instead of an empty gap.
+STRIP_LEADING_BLANK = sed -e '1{/^$$/d;}'
+
 build:
-	@npm run build
+	@set -o pipefail; npm run build | $(STRIP_LEADING_BLANK)
 
 run:
-	@./pi-test.sh $(ARGS)
+	@if [ -t 1 ]; then exec ./pi-test.sh $(ARGS); else set -o pipefail; ./pi-test.sh $(ARGS) | $(STRIP_LEADING_BLANK); fi
 
 app:
 	npm --prefix packages/coding-agent run build:binary
