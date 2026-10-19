@@ -206,7 +206,6 @@ const KEYBINDING_NAME_MIGRATIONS = {
 	cursorWordLeft: "tui.editor.cursorWordLeft",
 	cursorWordRight: "tui.editor.cursorWordRight",
 	cursorLineStart: "tui.editor.cursorLineStart",
-	cursorLineEnd: "tui.editor.cursorLineEnd",
 	jumpForward: "tui.editor.jumpForward",
 	jumpBackward: "tui.editor.jumpBackward",
 	pageUp: "tui.editor.pageUp",

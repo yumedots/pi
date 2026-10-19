@@ -43,10 +43,6 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Move to line start"
     },
-    "tui.editor.cursorLineEnd": {
-      "$ref": "#/$defs/KeybindingValue",
-      "description": "Move to line end"
-    },
     "tui.editor.jumpForward": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Jump forward to character"

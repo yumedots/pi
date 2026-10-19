@@ -554,6 +554,13 @@ describe("TuiAltScreen", () => {
 	});
 
 	it("supports configurable keyboard viewport navigation with four rows of page overlap", async () => {
+		const previousKeybindings = getKeybindings();
+		setKeybindings(
+			new KeybindingsManager({
+				...TUI_KEYBINDINGS,
+				"tui.altScreen.top": { defaultKeys: "ctrl+home", description: "Scroll viewport to top" },
+			}),
+		);
 		const terminal = new VirtualTerminal(20, 8);
 		const tui = new TuiAltScreen(terminal);
 		tui.addChild(new Text(Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0));
@@ -591,6 +598,7 @@ describe("TuiAltScreen", () => {
 		);
 
 		tui.stop();
+		setKeybindings(previousKeybindings);
 	});
 
 	it("searches normalized rendered transcript text across rows", () => {
@@ -899,6 +907,13 @@ describe("TuiAltScreen", () => {
 	});
 
 	it("routes Home and End to the focused component and Ctrl+Home/Ctrl+E to the transcript", async () => {
+		const previousKeybindings = getKeybindings();
+		setKeybindings(
+			new KeybindingsManager({
+				...TUI_KEYBINDINGS,
+				"tui.altScreen.top": { defaultKeys: "ctrl+home", description: "Scroll viewport to top" },
+			}),
+		);
 		const terminal = new VirtualTerminal(20, 6);
 		const tui = new TuiAltScreen(terminal);
 		const transcript = new ScrollView(
@@ -952,6 +967,7 @@ describe("TuiAltScreen", () => {
 		assert.deepStrictEqual(editorInputs, editorKeys);
 
 		tui.stop();
+		setKeybindings(previousKeybindings);
 	});
 
 	it("jumps between OSC 133 semantic prompt markers", async () => {

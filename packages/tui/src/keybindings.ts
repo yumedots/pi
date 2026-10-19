@@ -15,7 +15,6 @@ export interface Keybindings {
 	"tui.editor.cursorWordLeft": true;
 	"tui.editor.cursorWordRight": true;
 	"tui.editor.cursorLineStart": true;
-	"tui.editor.cursorLineEnd": true;
 	"tui.editor.jumpForward": true;
 	"tui.editor.jumpBackward": true;
 	"tui.editor.pageUp": true;
@@ -98,10 +97,6 @@ export const TUI_KEYBINDINGS = {
 	"tui.editor.cursorLineStart": {
 		defaultKeys: ["home", "ctrl+a"],
 		description: "Move to line start",
-	},
-	"tui.editor.cursorLineEnd": {
-		defaultKeys: ["end", "ctrl+e"],
-		description: "Move to line end",
 	},
 	"tui.editor.jumpForward": {
 		defaultKeys: "ctrl+]",
@@ -205,7 +200,7 @@ export const TUI_KEYBINDINGS = {
 		defaultKeys: "escape",
 		description: "Close transcript search",
 	},
-	"tui.altScreen.top": { defaultKeys: "ctrl+home", description: "Scroll viewport to top" },
+	"tui.altScreen.top": { defaultKeys: [], description: "Scroll viewport to top" },
 	// Ctrl+E shadows the editor's cursor-to-line-end binding in fullscreen mode, like the
 	// other alt-screen viewport keys.
 	"tui.altScreen.bottom": { defaultKeys: "ctrl+e", description: "Scroll viewport to bottom" },

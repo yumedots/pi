@@ -17,6 +17,13 @@ function createTestTUI(cols = 80, rows = 24): TUI {
 	return new TuiMainScreen(new VirtualTerminal(cols, rows));
 }
 
+/** The editor has no "move to line end" keybinding, so walk the cursor there with arrow keys. */
+function moveToLineEnd(editor: Editor): void {
+	const { line, col } = editor.getCursor();
+	const lineLength = editor.getLines()[line]?.length ?? 0;
+	for (let i = col; i < lineLength; i++) editor.handleInput("\x1b[C");
+}
+
 /** Standard applyCompletion that replaces prefix with item.value */
 function applyCompletion(
 	lines: string[],
@@ -1478,7 +1485,7 @@ describe("Editor component", () => {
 			editor.handleInput("d");
 			// Move to end of first line
 			editor.handleInput("\x1b[A"); // Up arrow
-			editor.handleInput("\x05"); // Ctrl+E - end of line
+			moveToLineEnd(editor);
 
 			// Now at end of "ab", Ctrl+K should delete newline (merge with "cd")
 			editor.handleInput("\x0b"); // Ctrl+K - deletes newline
@@ -1584,7 +1591,7 @@ describe("Editor component", () => {
 			editor.setText("line1\nline2");
 			// Move to start of document, then to end of first line
 			editor.handleInput("\x1b[A"); // Up arrow - go to first line
-			editor.handleInput("\x05"); // Ctrl+E - end of line
+			moveToLineEnd(editor);
 
 			editor.handleInput("\x1bd"); // Alt+D - deletes newline (merges lines)
 			assert.strictEqual(editor.getText(), "line1line2");
@@ -3473,7 +3480,7 @@ describe("Editor component", () => {
 			assert.deepStrictEqual(editor.getCursor(), { line: 0, col: 0 });
 		});
 
-		it("resets sticky column on Ctrl+E (move to line end)", () => {
+		it("moves to the end of the line with arrow keys", () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
 
 			editor.setText("12345\n\n1234567890");
@@ -3487,8 +3494,8 @@ describe("Editor component", () => {
 			editor.handleInput("\x1b[A"); // Up - line 0, col 3
 			assert.deepStrictEqual(editor.getCursor(), { line: 0, col: 3 });
 
-			// Ctrl+E - resets sticky column to end
-			editor.handleInput("\x05"); // Ctrl+E
+			// Walk to the end of the line
+			moveToLineEnd(editor);
 			assert.deepStrictEqual(editor.getCursor(), { line: 0, col: 5 });
 
 			// Move down twice
@@ -3664,7 +3671,7 @@ describe("Editor component", () => {
 			// Go to line 0, press Ctrl+E (end of line) - col 20
 			editor.handleInput("\x1b[A"); // Up to line 1
 			editor.handleInput("\x1b[A"); // Up to line 0
-			editor.handleInput("\x05"); // Ctrl+E - move to end of line
+			moveToLineEnd(editor);
 			assert.deepStrictEqual(editor.getCursor(), { line: 0, col: 20 });
 
 			// Move down to line 2 - cursor clamped to col 10 (end of line)
@@ -3998,7 +4005,7 @@ describe("Editor component", () => {
 			editor.handleInput(`\x1b[200~${pasteB}\x1b[201~`); // #2 = B, text: [#2][#1]
 			editor.handleInput("\x01"); // Ctrl+A
 			editor.handleInput(`\x1b[200~${pasteC}\x1b[201~`); // #3 = C, text: [#3][#2][#1]
-			editor.handleInput("\x05"); // Ctrl+E
+			moveToLineEnd(editor);
 			editor.handleInput("\x7f"); // delete marker #1, renumber #3 -> #2 and #2 -> #1
 			editor.handleInput("\r");
 			assert.strictEqual(submitted, pasteC + pasteB);

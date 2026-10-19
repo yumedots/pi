@@ -874,10 +874,6 @@ export class Editor implements Component, Focusable {
 			this.moveToLineStart();
 			return;
 		}
-		if (kb.matches(data, "tui.editor.cursorLineEnd")) {
-			this.moveToLineEnd();
-			return;
-		}
 		if (kb.matches(data, "tui.editor.cursorWordLeft")) {
 			this.moveWordBackwards();
 			return;

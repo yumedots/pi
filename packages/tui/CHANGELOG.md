@@ -10,6 +10,8 @@
 ### Changed
 
 - Changed the `tui.altScreen.bottom` default from `ctrl+end` to `ctrl+e`, and moved the jump-to-end indicator from the center of the transcript to its right edge
+- Removed the `tui.editor.cursorLineEnd` keybinding, so the editor no longer has a shortcut that moves the cursor to the end of the line
+- `tui.altScreen.top` is unbound by default, so `ctrl+home` no longer scrolls the transcript to the top
 
 ## [1.3.0] - 2026-10-15
 

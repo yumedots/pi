@@ -196,12 +196,6 @@ export class Input implements Component, Focusable {
 			return;
 		}
 
-		if (kb.matches(data, "tui.editor.cursorLineEnd")) {
-			this.lastAction = null;
-			this.cursor = this.value.length;
-			return;
-		}
-
 		if (kb.matches(data, "tui.editor.cursorWordLeft")) {
 			this.moveWordBackwards();
 			return;

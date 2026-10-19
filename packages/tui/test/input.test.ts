@@ -3,6 +3,11 @@ import { describe, it } from "node:test";
 import { Input } from "../src/components/input.ts";
 import { stripTerminalSequences, visibleWidth } from "../src/utils.ts";
 
+/** The input has no "move to line end" keybinding, so walk the cursor there with arrow keys. */
+function moveToEnd(input: Input): void {
+	for (let i = 0; i < input.getValue().length; i++) input.handleInput("\x1b[C");
+}
+
 describe("Input component", () => {
 	it("submits value including backslash on Enter", () => {
 		const input = new Input();
@@ -68,7 +73,7 @@ describe("Input component", () => {
 						for (let i = 0; i < 10; i++) input.handleInput("\x1b[C");
 					},
 				},
-				{ label: "end", move: (input: Input) => input.handleInput("\x05") },
+				{ label: "end", move: (input: Input) => moveToEnd(input) },
 			];
 
 			for (const text of cases) {
@@ -106,7 +111,7 @@ describe("Input component", () => {
 
 			input.setValue("foo bar baz");
 			// Move cursor to end
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 
 			input.handleInput("\x17"); // Ctrl+W - deletes "baz"
 			assert.strictEqual(input.getValue(), "foo bar ");
@@ -121,12 +126,12 @@ describe("Input component", () => {
 			const input = new Input();
 
 			input.setValue("foo.bar");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "bar"
 			assert.strictEqual(input.getValue(), "foo.");
 
 			input.setValue("foo:bar");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "bar"
 			assert.strictEqual(input.getValue(), "foo:");
 		});
@@ -136,7 +141,7 @@ describe("Input component", () => {
 
 			// "你好世界。你好，世界" segments as: 你好|世界|。|你好|，|世界
 			input.setValue("你好世界。你好，世界");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "世界"
 			assert.strictEqual(input.getValue(), "你好世界。你好，");
 			input.handleInput("\x17"); // Ctrl+W - deletes "，"
@@ -183,7 +188,7 @@ describe("Input component", () => {
 			const input = new Input();
 
 			input.setValue("test");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x19"); // Ctrl+Y
 			assert.strictEqual(input.getValue(), "test");
 		});
@@ -193,13 +198,13 @@ describe("Input component", () => {
 
 			// Create kill ring with multiple entries
 			input.setValue("first");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "first"
 			input.setValue("second");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "second"
 			input.setValue("third");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "third"
 
 			assert.strictEqual(input.getValue(), "");
@@ -221,10 +226,10 @@ describe("Input component", () => {
 			const input = new Input();
 
 			input.setValue("test");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "test"
 			input.setValue("other");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 
 			// Type something to break the yank chain
 			input.handleInput("x");
@@ -238,7 +243,7 @@ describe("Input component", () => {
 			const input = new Input();
 
 			input.setValue("only");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "only"
 
 			input.handleInput("\x19"); // Ctrl+Y - yanks "only"
@@ -252,7 +257,7 @@ describe("Input component", () => {
 			const input = new Input();
 
 			input.setValue("one two three");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "three"
 			input.handleInput("\x17"); // Ctrl+W - deletes "two "
 			input.handleInput("\x17"); // Ctrl+W - deletes "one "
@@ -267,7 +272,7 @@ describe("Input component", () => {
 			const input = new Input();
 
 			input.setValue("foo bar baz");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "baz"
 			assert.strictEqual(input.getValue(), "foo bar ");
 
@@ -288,10 +293,10 @@ describe("Input component", () => {
 			const input = new Input();
 
 			input.setValue("first");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W
 			input.setValue("second");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W
 			input.setValue("");
 
@@ -309,13 +314,13 @@ describe("Input component", () => {
 			const input = new Input();
 
 			input.setValue("first");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // deletes "first"
 			input.setValue("second");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // deletes "second"
 			input.setValue("third");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // deletes "third"
 			input.setValue("");
 
@@ -401,7 +406,7 @@ describe("Input component", () => {
 			const input = new Input();
 
 			input.setValue("word");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "word"
 			input.setValue("hello world");
 			// Move to middle (after "hello ")
@@ -417,10 +422,10 @@ describe("Input component", () => {
 
 			// Create two kill ring entries
 			input.setValue("FIRST");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "FIRST"
 			input.setValue("SECOND");
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("\x17"); // Ctrl+W - deletes "SECOND"
 
 			// Set up "hello world" and position cursor after "hello "
@@ -647,7 +652,7 @@ describe("Input component", () => {
 			input.handleInput("b");
 			input.handleInput("c");
 			input.handleInput("\x01"); // Ctrl+A - movement breaks coalescing
-			input.handleInput("\x05"); // Ctrl+E
+			moveToEnd(input);
 			input.handleInput("d");
 			input.handleInput("e");
 			assert.strictEqual(input.getValue(), "abcde");
