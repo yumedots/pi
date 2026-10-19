@@ -56,11 +56,13 @@
 
 A few scripts must keep running on Node even though the rest of the toolchain moved to Bun. Don't "fix" these by switching them over:
 
-- `scripts/check-runtime-deps.mjs` and `scripts/check-ts-relative-imports.mjs` use TypeScript 7's `typescript/unstable/sync` API, which needs Node internals Bun does not expose.
 - `scripts/biome-check.mjs` spawns the Biome CLI through `process.execPath`.
-- `test:scripts` uses Node's built-in test runner; Bun's runner fails several of these tests.
-- The published packages run on Node: `node:module`'s `registerHooks` (used by the chord facet loader and the coding-agent source resolver) is not implemented in Bun.
+- `test:scripts` and `packages/tui`'s test script use Node's built-in test runner. `bun test` passes the same tests, but it is slower.
+- vitest runs on Node. Bun's `undici` npm package is a stub, and Bun has no `node:module` `registerHooks`, so the coding-agent cannot run its own test suite there.
+- The published packages run on Node, for the same two reasons.
 - npm stays the publisher and the owner of `package-lock.json`.
+
+The TypeScript-based checks run on Bun: they use `typescript/unstable/async`, which works on both runtimes. The synchronous API reads `child.stdout._handle.fd`, which Bun does not expose.
 
 ## Git
 

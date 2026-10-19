@@ -110,14 +110,14 @@ test-one: require-bun require-install
 
 bench: require-bun require-install
 	@printf '==> running the npm baseline benchmark\n'
-	@$(BUN) bench/bench.mjs --profile npm
+	@$(BUN) bench/bench.mjs --profile npm --out npm-current
 	@printf '==> running the Bun benchmark\n'
 	@$(BUN) bench/bench.mjs --profile bun
 	@$(BUN) bench/render.mjs
 
 bench-compare:
 	@printf '==> rendering bench/compare.md\n'
-	@$(BUN) bench/render.mjs
+	@$(BUN) bench/render.mjs --compare
 
 clean:
 	@printf '==> cleaning build output\n'

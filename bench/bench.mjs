@@ -14,7 +14,7 @@ import { benchDir, measureMemory, repoRoot, systemInfo, timeCommand, writeJson }
 import { cliStartupMetrics, memoryMetricsFor, metricsFor } from "./metrics.mjs";
 
 function parseArgs(argv) {
-	const args = { profile: null, only: [], skipMemory: false, skipCli: false, runs: null, merge: false };
+	const args = { profile: null, only: [], skipMemory: false, skipCli: false, runs: null, merge: false, out: null };
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
 		if (arg === "--profile") args.profile = argv[++i];
@@ -22,9 +22,10 @@ function parseArgs(argv) {
 		else if (arg === "--skip-memory") args.skipMemory = true;
 		else if (arg === "--skip-cli") args.skipCli = true;
 		else if (arg === "--merge") args.merge = true;
+		else if (arg === "--out") args.out = argv[++i];
 		else if (arg === "--runs") args.runs = Number(argv[++i]);
 		else if (arg === "--help" || arg === "-h") {
-			console.log("Usage: node bench/bench.mjs --profile <npm|bun> [--only <prefix>]...");
+			console.log("Usage: node bench/bench.mjs --profile <npm|bun> [--only <prefix>] [--out <name>]");
 			process.exit(0);
 		} else throw new Error(`Unknown argument: ${arg}`);
 	}
@@ -46,15 +47,20 @@ console.log(`# ${info.platform} ${info.os} | ${info.cpuCount} cores | ${info.tot
 console.log(`# node ${info.node} | npm ${info.npm} | bun ${info.bun} | hyperfine ${info.hyperfine}`);
 
 const all = [...metricsFor(args.profile, { include: args.only.length > 0 ? args.only : null })];
-if (!args.skipCli) all.push(...cliStartupMetrics());
-if (!args.skipMemory) all.push(...memoryMetricsFor(args.profile));
+if (!args.skipCli) all.push(...cliStartupMetrics().filter(matchesInclude));
+if (!args.skipMemory) all.push(...memoryMetricsFor(args.profile).filter(matchesInclude));
+
+function matchesInclude(metric) {
+	if (args.only.length === 0) return true;
+	return args.only.some((prefix) => metric.name === prefix || metric.name.startsWith(`${prefix}.`));
+}
 
 for (const metric of all) {
 	const isMemory = metric.group === "memory";
 	process.stdout.write(`- ${metric.name} ... `);
 	try {
 		if (isMemory) {
-			const result = measureMemory(metric.command);
+			const result = measureMemory(metric.command, { prepare: metric.prepare ?? null });
 			memory.push({ ...result, name: metric.name, group: metric.group, note: metric.note });
 			console.log(`${result.maxRssMiB} MiB peak RSS`);
 		} else {
@@ -86,7 +92,7 @@ const output = {
 };
 
 // The npm profile is the baseline; the Bun profile is the candidate.
-const outputName = args.profile === "npm" ? "baseline" : args.profile;
+const outputName = args.out ?? (args.profile === "npm" ? "baseline" : args.profile);
 const outputPath = join(benchDir, `${outputName}.json`);
 if (args.merge && existsSync(outputPath)) {
 	const previous = JSON.parse(readFileSync(outputPath, "utf8"));

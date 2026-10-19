@@ -77,26 +77,44 @@ const comparisonRows = [
 	{ key: "test.one", label: "One test file", note: "packages/agent." },
 	{ key: "script.startup", label: "One script invocation", note: "Process startup for a trivial script." },
 	{ key: "build.binary", label: "Build the compiled binary", note: "bun build --compile." },
-	{ key: "cli.startup.node", label: "CLI startup on Node (--version)", note: "" },
-	{ key: "cli.startup.binary", label: "CLI startup, compiled binary (--version)", note: "" },
-	{ key: "cli.startup.node.models", label: "CLI startup on Node (--list-models)", note: "" },
-	{ key: "cli.startup.binary.models", label: "CLI startup, compiled binary (--list-models)", note: "" },
+	{
+		key: "cli.startup.node",
+		label: "CLI startup on Node (--version)",
+		note: "The same command in both profiles: it does not go through the package manager.",
+	},
+	{
+		key: "cli.startup.binary",
+		label: "CLI startup, compiled binary (--version)",
+		note: "The same command in both profiles.",
+	},
+	{
+		key: "cli.startup.node.models",
+		label: "CLI startup on Node (--list-models)",
+		note: "The same command in both profiles.",
+	},
+	{
+		key: "cli.startup.binary.models",
+		label: "CLI startup, compiled binary (--list-models)",
+		note: "The same command in both profiles.",
+	},
 ];
 
-function compareMarkdown(baseline, bun) {
+function compareMarkdown(baseline, bun, npmCurrent) {
 	const lines = [];
 	lines.push("# npm + Node vs Bun");
 	lines.push("");
-	lines.push(`Baseline: ${baseline.generatedAt}`);
+	lines.push(`Baseline (npm + Node, before the migration): ${baseline.generatedAt}`);
 	lines.push("");
-	lines.push(`Bun: ${bun.generatedAt}`);
+	lines.push(`Bun (after the migration): ${bun.generatedAt}`);
 	lines.push("");
 	lines.push(
 		`Same machine, same settings, same method (hyperfine, ${baseline.timings[0]?.runs ?? "?"}+ runs, 1 warmup). ` +
 			"Lower is better except for the memory and size rows.",
 	);
 	lines.push("");
-	lines.push("| Metric | npm + Node | Bun | Speedup | Notes |");
+	lines.push("## The headline: the repository before and after");
+	lines.push("");
+	lines.push("| Metric | npm + Node (before) | Bun (after) | Speedup | Notes |");
 	lines.push("| --- | --- | --- | --- | --- |");
 
 	const byName = (data) => new Map(data.timings.map((entry) => [entry.name, entry]));
@@ -126,10 +144,30 @@ function compareMarkdown(baseline, bun) {
 		lines.push(`| ${row.label} | ${npmValue} | ${bunValue} | ${speedup} | ${notes.join(" ")} |`);
 	}
 
+	if (npmCurrent) {
+		lines.push("");
+		lines.push("## The toolchain alone: the same code, both runners");
+		lines.push("");
+		lines.push(
+			"Both columns run the migrated code. The only difference is the package manager and the script runner, so these rows isolate the toolchain from the code changes. The CLI startup rows run the same command in both columns, so they should read the same; they are the noise floor of this measurement.",
+		);
+		lines.push("");
+		lines.push("| Metric | npm + Node | Bun | Speedup |");
+		lines.push("| --- | --- | --- | --- |");
+		const currentTimings = byName(npmCurrent);
+		for (const row of comparisonRows) {
+			const npmEntry = currentTimings.get(row.key);
+			const bunEntry = bunTimings.get(row.key);
+			if (!npmEntry || !bunEntry) continue;
+			const speedup = bunEntry.meanMs > 0 ? `${round(npmEntry.meanMs / bunEntry.meanMs, 2)}x` : "-";
+			lines.push(`| ${row.label} | ${formatMs(npmEntry.meanMs)} | ${formatMs(bunEntry.meanMs)} | ${speedup} |`);
+		}
+	}
+
 	lines.push("");
 	lines.push("## Per-package tsc build");
 	lines.push("");
-	lines.push("| Package | npm + Node | Bun | Speedup |");
+	lines.push("| Package | npm + Node (before) | Bun (after) | Speedup |");
 	lines.push("| --- | --- | --- | --- |");
 	for (const npmEntry of baseline.timings) {
 		if (!npmEntry.name.startsWith("build.pkg.")) continue;
@@ -144,7 +182,7 @@ function compareMarkdown(baseline, bun) {
 	lines.push("");
 	lines.push("## Memory (peak RSS)");
 	lines.push("");
-	lines.push("| Measurement | npm + Node | Bun |");
+	lines.push("| Measurement | npm + Node (before) | Bun (after) |");
 	lines.push("| --- | --- | --- |");
 	const npmMemory = new Map(baseline.memory.map((entry) => [entry.name, entry]));
 	const bunMemory = new Map(bun.memory.map((entry) => [entry.name, entry]));
@@ -156,21 +194,37 @@ function compareMarkdown(baseline, bun) {
 		);
 	}
 
+	const flaky = bun.timings.filter((entry) => entry.failedRuns > 0);
+	if (flaky.length > 0) {
+		lines.push("");
+		lines.push("## Runs that did not exit 0");
+		lines.push("");
+		for (const entry of flaky) {
+			lines.push(`- \`${entry.name}\`: ${entry.failedRuns} of ${entry.runs} runs exited non-zero.`);
+		}
+	}
+
 	lines.push("");
 	lines.push("## Raw data");
 	lines.push("");
-	lines.push("- `bench/baseline.json`");
-	lines.push("- `bench/bun.json`");
+	lines.push("- `bench/baseline.json` (npm + Node, before the migration)");
+	lines.push("- `bench/npm-current.json` (npm + Node, migrated code)");
+	lines.push("- `bench/bun.json` (Bun, migrated code)");
 	lines.push("");
 	return lines.join("\n");
 }
 const baselinePath = join(benchDir, "baseline.json");
+const npmCurrentPath = join(benchDir, "npm-current.json");
 const bunPath = join(benchDir, "bun.json");
 
 if (!onlyCompare) {
 	if (existsSync(baselinePath)) {
 		const baseline = readJson(baselinePath);
 		writeText(join(benchDir, "baseline.md"), profileMarkdown("npm + Node (baseline)", baseline));
+	}
+	if (existsSync(npmCurrentPath)) {
+		const current = readJson(npmCurrentPath);
+		writeText(join(benchDir, "npm-current.md"), profileMarkdown("npm + Node (migrated code)", current));
 	}
 	if (existsSync(bunPath)) {
 		const bun = readJson(bunPath);
@@ -179,8 +233,9 @@ if (!onlyCompare) {
 }
 
 if (existsSync(baselinePath) && existsSync(bunPath)) {
-	writeText(join(benchDir, "compare.md"), compareMarkdown(readJson(baselinePath), readJson(bunPath)));
-	console.log("wrote bench/baseline.md, bench/bun.md and bench/compare.md");
+	const npmCurrent = existsSync(npmCurrentPath) ? readJson(npmCurrentPath) : undefined;
+	writeText(join(benchDir, "compare.md"), compareMarkdown(readJson(baselinePath), readJson(bunPath), npmCurrent));
+	console.log("wrote bench/baseline.md, bench/npm-current.md, bench/bun.md and bench/compare.md");
 } else if (!onlyCompare) {
 	console.log("wrote bench/baseline.md and/or bench/bun.md (bench/compare.md needs both)");
 } else {

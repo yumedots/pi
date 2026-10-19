@@ -33,7 +33,10 @@ export const profiles = {
 		label: "npm + Node",
 		run: (script) => `npm run ${script}`,
 		install: "npm ci --ignore-scripts",
-		installColdPrepare: "rm -rf node_modules && npm cache clean --force",
+		// `npm cache clean --force` only drops part of the cache: 815 MB of
+		// cache became 673 MB. Removing the content-addressable store is what
+		// actually makes the install cold.
+		installColdPrepare: "rm -rf node_modules && rm -rf ~/.npm/_cacache",
 		installWarmPrepare: "rm -rf node_modules",
 		// The type checker and bundler are the same in both profiles; only the
 		// package manager and script runner change.
@@ -41,6 +44,9 @@ export const profiles = {
 		// The repository's test runner isolates the environment. PI_TEST_PACKAGE_MANAGER
 		// selects which package manager drives the suite.
 		test: "./test.sh",
+		// The parallel build script picks its runner from the runtime it runs on.
+		// Pin it so the npm profile really drives the workspace scripts with npm.
+		buildEnv: "PI_PACKAGE_MANAGER=npm",
 	},
 	bun: {
 		label: "Bun",
@@ -49,11 +55,16 @@ export const profiles = {
 		installColdPrepare: "rm -rf node_modules && rm -rf ~/.bun/install/cache",
 		installWarmPrepare: "rm -rf node_modules",
 		tsc: "./node_modules/.bin/tsc",
-		// The repository's test runner isolates the environment. PI_TEST_PACKAGE_MANAGER
-		// selects which package manager drives the suite.
 		test: "PI_TEST_PACKAGE_MANAGER=bun ./test.sh",
+		buildEnv: "PI_PACKAGE_MANAGER=bun",
 	},
 };
+
+/**
+ * Remove every workspace package's build output, so a build metric always
+ * measures a full compile.
+ */
+const cleanAllPackages = `rm -rf ${buildOrder.map((pkg) => `packages/${pkg}/dist`).join(" ")}`;
 
 /**
  * The repository's original explicit build chain, with the script runner
@@ -103,16 +114,20 @@ export function metricsFor(profileName, options = {}) {
 	});
 
 	// --- build ---------------------------------------------------------
+	// Every build metric starts from a clean package output directory, so both
+	// profiles measure a full compile rather than an incremental no-op.
 	add({
 		name: "build.full",
 		group: "build",
-		command: profile.run("build:offline"),
-		note: "Full offline build of all workspace packages, in dependency order.",
+		command: `${profile.buildEnv} ${profile.run("build:offline")}`,
+		prepare: cleanAllPackages,
+		note: "The repository's own build script, with this profile's runner, from a clean tree.",
 	});
 	add({
 		name: "build.full.sequential",
 		group: "build",
 		command: sequentialChain(profile),
+		prepare: cleanAllPackages,
 		note: "The original explicit per-package chain, run with this profile's script runner.",
 	});
 	for (const pkg of buildOrder) {
@@ -120,15 +135,18 @@ export function metricsFor(profileName, options = {}) {
 			name: `build.pkg.${pkg}`,
 			group: "build",
 			command: `cd packages/${pkg} && ../../node_modules/.bin/tsc -p tsconfig.build.json`,
+			prepare: `rm -rf packages/${pkg}/dist`,
 			cwd: repoRoot,
-			note: `tsc -p tsconfig.build.json for packages/${pkg}.`,
+			note: `tsc -p tsconfig.build.json for packages/${pkg}, from a clean output directory.`,
 		});
 	}
 	add({
 		name: "build.incremental",
 		group: "build",
 		command: "cd packages/coding-agent && ../../node_modules/.bin/tsc -p tsconfig.build.json",
-		prepare: "touch packages/coding-agent/src/cli.ts",
+		// Build once so the build info exists, then change one file. What is
+		// measured is the rebuild that follows the change.
+		prepare: "cd packages/coding-agent && ../../node_modules/.bin/tsc -p tsconfig.build.json && touch src/cli.ts",
 		note: "Rebuild of packages/coding-agent after touching one source file.",
 	});
 
@@ -145,6 +163,10 @@ export function metricsFor(profileName, options = {}) {
 		name: "test.full",
 		group: "test",
 		command: profile.test,
+		// The suite has one timing-sensitive test in packages/codemode that
+		// flakes under load. Record the exit codes instead of aborting the
+		// whole benchmark on the first flake.
+		ignoreFailure: true,
 		note: "Full suite through the repository's isolated test runner.",
 	});
 	add({
@@ -159,7 +181,7 @@ export function metricsFor(profileName, options = {}) {
 	add({
 		name: "script.startup",
 		group: "runner",
-		command: profile.run("check:model-data"),
+		command: profile.run("bench:noop"),
 		note: "Cost of one package-manager script invocation, including process startup.",
 	});
 
@@ -167,8 +189,12 @@ export function metricsFor(profileName, options = {}) {
 	add({
 		name: "build.binary",
 		group: "binary",
-		command: profileName === "npm" ? "npm --prefix packages/coding-agent run build:binary" : "bun --cwd packages/coding-agent run build:binary",
-		note: "Standalone compiled binary (bun build --compile).",
+		command:
+			profileName === "npm"
+				? "npm --prefix packages/coding-agent run build:binary"
+				: "cd packages/coding-agent && bun run build:binary",
+		prepare: cleanAllPackages,
+		note: "Standalone compiled binary (bun build --compile), from a clean tree.",
 		runs: 3,
 	});
 
@@ -183,6 +209,7 @@ export function memoryMetricsFor(profileName) {
 			name: "memory.build.full",
 			group: "memory",
 			command: profile.run("build:offline"),
+			prepare: cleanAllPackages,
 			note: "Peak RSS of the full offline build.",
 		},
 		{

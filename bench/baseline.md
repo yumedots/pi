@@ -1,6 +1,6 @@
 # Benchmark: npm + Node (baseline)
 
-Generated 2026-10-19T17:32:03.962Z
+Generated 2026-10-19T20:08:10.728Z
 
 ## Machine
 
@@ -20,8 +20,8 @@ Generated 2026-10-19T17:32:03.962Z
 
 | Metric | Mean | Min | Max | Std dev | Runs |
 | --- | --- | --- | --- | --- | --- |
-| `install.cold` | 16.31 s | 14.71 s | 18.66 s | 1.64 s | 5 |
-| `install.warm` | 3.02 s | 2.92 s | 3.15 s | 117 ms | 5 |
+| `install.cold` | 7.42 s | 5.79 s | 10.21 s | 1.85 s | 5 |
+| `install.warm` | 3.13 s | 2.98 s | 3.56 s | 242 ms | 5 |
 | `build.full` | 8.06 s | 7.58 s | 9.73 s | 935 ms | 5 |
 | `build.pkg.telemetry` | 147 ms | 117 ms | 183 ms | 31 ms | 5 |
 | `build.pkg.chord` | 681 ms | 634 ms | 749 ms | 48 ms | 5 |
@@ -38,10 +38,10 @@ Generated 2026-10-19T17:32:03.962Z
 | `test.one` | 962 ms | 894 ms | 1.14 s | 101 ms | 5 |
 | `script.startup` | 464 ms | 445 ms | 492 ms | 20 ms | 5 |
 | `build.binary` | 9.41 s | 8.74 s | 9.95 s | 619 ms | 3 |
-| `cli.startup.node` | 201 ms | 199 ms | 208 ms | 4 ms | 5 |
-| `cli.startup.binary` | 156 ms | 155 ms | 157 ms | 1 ms | 5 |
-| `cli.startup.node.models` | 252 ms | 246 ms | 262 ms | 6 ms | 5 |
-| `cli.startup.binary.models` | 235 ms | 227 ms | 245 ms | 7 ms | 5 |
+| `cli.startup.node` | 203 ms | 202 ms | 205 ms | 1 ms | 5 |
+| `cli.startup.binary` | 157 ms | 156 ms | 159 ms | 1 ms | 5 |
+| `cli.startup.node.models` | 252 ms | 250 ms | 254 ms | 2 ms | 5 |
+| `cli.startup.binary.models` | 224 ms | 222 ms | 227 ms | 2 ms | 5 |
 | `build.full.sequential` | 7.44 s | 7.32 s | 7.57 s | 98 ms | 5 |
 | `test.full` | 134.02 s | 121.96 s | 159.81 s | 15.5 s | 5 |
 
@@ -49,10 +49,10 @@ Generated 2026-10-19T17:32:03.962Z
 
 | Metric | Peak RSS |
 | --- | --- |
-| `memory.build.full` | 1057 MiB |
-| `memory.check.full` | 3014.1 MiB |
-| `memory.cli.node` | 105.9 MiB |
-| `memory.cli.binary` | 90.5 MiB |
+| `memory.build.full` | 1097.8 MiB |
+| `memory.check.full` | 2904.3 MiB |
+| `memory.cli.node` | 120.4 MiB |
+| `memory.cli.binary` | 93.2 MiB |
 
 ## Failures
 

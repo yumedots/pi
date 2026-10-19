@@ -70,7 +70,11 @@ export function systemInfo() {
  * hyperfine 2.x exports schema_version 2, where the summary lives under
  * results[0].summary; 1.x put it straight on results. Both are handled.
  */
-export function timeCommand(name, command, { runs = 5, warmup = 1, prepare = null, cwd = repoRoot, shellMode = true } = {}) {
+export function timeCommand(
+	name,
+	command,
+	{ runs = 5, warmup = 1, prepare = null, cwd = repoRoot, shellMode = true, ignoreFailure = false } = {},
+) {
 	const exportPath = join(benchDir, `.hyperfine-${name}.json`);
 	// hyperfine 2.x refuses shell syntax unless the shell mode is chosen explicitly.
 	const args = [
@@ -83,6 +87,7 @@ export function timeCommand(name, command, { runs = 5, warmup = 1, prepare = nul
 		shellMode ? "--shell=default" : "--shell=none",
 	];
 	if (prepare) args.push("--prepare", prepare);
+	if (ignoreFailure) args.push("--ignore-failure");
 	args.push(command);
 	run("hyperfine", args, { cwd, stdio: ["ignore", "ignore", "pipe"] });
 	const parsed = JSON.parse(readFileSync(exportPath, "utf8"));
@@ -91,6 +96,8 @@ export function timeCommand(name, command, { runs = 5, warmup = 1, prepare = nul
 	const summary = parsed.schema_version === 2 ? parsed.results[0].summary : null;
 	const wall = summary ? summary.time_wall_clock : parsed.results;
 	const memory = summary ? summary.memory_peak_resident : undefined;
+	const measurements = parsed.schema_version === 2 ? parsed.results[0].measurements : undefined;
+	const failedRuns = measurements ? measurements.filter((entry) => entry.exit_code !== 0).length : 0;
 
 	return {
 		name,
@@ -103,6 +110,7 @@ export function timeCommand(name, command, { runs = 5, warmup = 1, prepare = nul
 		stddevMs: round((wall.stddev ?? wall.standard_deviation ?? 0) * 1000),
 		medianMs: round(wall.median * 1000),
 		maxRssMiB: memory ? round(memory.mean / 1024 ** 2, 1) : null,
+		failedRuns,
 	};
 }
 
@@ -110,7 +118,8 @@ export function timeCommand(name, command, { runs = 5, warmup = 1, prepare = nul
  * Measure peak resident set size of a command with /usr/bin/time.
  * The wrapper normalizes macOS (`time -l`, bytes) and Linux (`time -v`, KiB).
  */
-export function measureMemory(command, { cwd = repoRoot } = {}) {
+export function measureMemory(command, { cwd = repoRoot, prepare = null } = {}) {
+	if (prepare) shell(prepare, { cwd });
 	const wrapper = join(benchDir, "measure-memory.sh");
 	const raw = run("/bin/bash", [wrapper, "sh", "-c", command], {
 		cwd,

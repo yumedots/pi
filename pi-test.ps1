@@ -58,10 +58,17 @@ if ($noEnv) {
 	Write-Host "Running without API keys..."
 }
 
-# --import takes a module specifier, so pass the resolver as a file URL (Windows paths are not specifiers).
-$resolverUrl = ([System.Uri](Join-Path $scriptDir "packages/coding-agent/src/experimental/source-resolver.ts")).AbsoluteUri
+# Bun applies the tsconfig path aliases itself, so it runs the CLI straight
+# from source. Node needs the source resolver preloaded, because it does not
+# read the tsconfig paths.
 $cliPath = Join-Path $scriptDir "packages/coding-agent/src/cli.ts"
-& node --import $resolverUrl $cliPath @forwardArgs
+if (Get-Command bun -ErrorAction SilentlyContinue) {
+	& bun $cliPath @forwardArgs
+} else {
+	# --import takes a module specifier, so pass the resolver as a file URL (Windows paths are not specifiers).
+	$resolverUrl = ([System.Uri](Join-Path $scriptDir "packages/coding-agent/src/experimental/source-resolver.ts")).AbsoluteUri
+	& node --import $resolverUrl $cliPath @forwardArgs
+}
 $exitCode = $LASTEXITCODE
 if ($exitCode -ne 0) {
 	exit $exitCode
