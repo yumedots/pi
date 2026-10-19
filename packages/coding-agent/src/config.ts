@@ -21,8 +21,17 @@ const __dirname = dirname(__filename);
 export const isBunBinary =
 	import.meta.url.includes("$bunfs") || import.meta.url.includes("~BUN") || import.meta.url.includes("%7EBUN");
 
-/** Detect if Bun is the runtime (compiled binary or bun run) */
-export const isBunRuntime = !!process.versions.bun;
+/**
+ * Detect if Bun is the runtime (compiled binary or bun run).
+ *
+ * Read at call time rather than captured when this module loads. The value
+ * cannot change while the process runs, but the install method has to answer
+ * for the runtime that is running right now, and reading it lazily lets the
+ * tests exercise the install-path detection on Bun as well.
+ */
+export function isBunRuntime(): boolean {
+	return !!process.versions.bun;
+}
 
 /** Detect the esbuild-bundled Node.js distribution. */
 declare const PI_BUNDLED_NODE: boolean;
@@ -89,7 +98,7 @@ export function detectInstallMethod(): InstallMethod {
 	if (resolvedPath.includes("/yarn/") || resolvedPath.includes("/.yarn/")) {
 		return "yarn";
 	}
-	if (isBunRuntime || resolvedPath.includes("/install/global/node_modules/")) {
+	if (isBunRuntime() || resolvedPath.includes("/install/global/node_modules/")) {
 		return "bun";
 	}
 	if (resolvedPath.includes("/npm/") || resolvedPath.includes("/node_modules/")) {

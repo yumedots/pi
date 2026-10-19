@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { delimiter, join } from "path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
 	detectInstallChange,
 	detectInstallMethod,
@@ -10,6 +10,7 @@ import {
 	getSelfUpdateUnavailableInstruction,
 	getUpdateInstruction,
 } from "../src/config.ts";
+import { hideBunRuntime } from "./bun-runtime.ts";
 
 const execPathDescriptor = Object.getOwnPropertyDescriptor(process, "execPath");
 const originalPath = process.env.PATH;
@@ -24,7 +25,20 @@ function setExecPath(value: string): void {
 	});
 }
 
+let restoreBunRuntime: (() => void) | undefined;
+
+beforeEach(() => {
+	// The install method reports the runtime before it looks at the install
+	// path, so on Bun it answers "bun" whatever the path says. Hide the
+	// runtime so these cases exercise the path-based detection on both
+	// runtimes. The runtime branch itself is covered by
+	// config-install-method-runtime.test.ts.
+	restoreBunRuntime = hideBunRuntime();
+});
+
 afterEach(() => {
+	restoreBunRuntime?.();
+	restoreBunRuntime = undefined;
 	if (execPathDescriptor) {
 		Object.defineProperty(process, "execPath", execPathDescriptor);
 	}

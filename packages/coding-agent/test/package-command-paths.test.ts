@@ -22,6 +22,7 @@ import { main } from "../src/main.ts";
 import { ConfigSelectorComponent } from "../src/modes/interactive/components/config-selector.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { handlePackageCommand } from "../src/package-manager-cli.ts";
+import { hideBunRuntime } from "./bun-runtime.ts";
 import { allowNetwork } from "./test-network-env.ts";
 
 describe("package commands", () => {
@@ -35,6 +36,16 @@ describe("package commands", () => {
 	let originalPath: string | undefined;
 	let originalExitCode: typeof process.exitCode;
 	let originalExecPath: string;
+
+	/**
+	 * The exit code that means "the command did not fail".
+	 *
+	 * Bun keeps a previously set process.exitCode: assigning undefined does not
+	 * clear it, and the property is unconfigurable. Node clears it, so the two
+	 * runtimes need different values here.
+	 */
+	const noFailureExitCode = process.versions.bun ? 0 : undefined;
+	let restoreBunRuntime: (() => void) | undefined;
 
 	function getNewerPatchVersion(): string {
 		const [major = "0", minor = "0", patch = "0"] = VERSION.split(".");
@@ -150,10 +161,11 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 		originalPath = process.env.PATH;
 		originalExitCode = process.exitCode;
 		originalExecPath = process.execPath;
-		process.exitCode = undefined;
+		process.exitCode = noFailureExitCode;
+		restoreBunRuntime = hideBunRuntime();
 		vi.spyOn(process, "exit").mockImplementation(((code?: string | number | null) => {
 			if (code === undefined || code === null || Number(code) === 0) {
-				process.exitCode = undefined;
+				process.exitCode = noFailureExitCode;
 			} else {
 				process.exitCode = code;
 			}
@@ -164,6 +176,8 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 	});
 
 	afterEach(() => {
+		restoreBunRuntime?.();
+		restoreBunRuntime = undefined;
 		vi.unstubAllGlobals();
 		vi.unstubAllEnvs();
 		vi.restoreAllMocks();
@@ -244,7 +258,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 			expect(stdout).toContain("Project packages:");
 			expect(stdout).toContain("npm:@project/pkg");
 			expect(stdout).not.toContain("No packages installed.");
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 		} finally {
 			logSpy.mockRestore();
 		}
@@ -262,7 +276,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 			const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
 			expect(stdout).toContain("No packages installed.");
 			expect(stdout).not.toContain("Project packages:");
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 		} finally {
 			logSpy.mockRestore();
 		}
@@ -280,7 +294,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 			expect(stdout).toContain("Project packages:");
 			expect(stdout).toContain("npm:@project/pkg");
 			expect(stdout).not.toContain("No packages installed.");
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 		} finally {
 			logSpy.mockRestore();
 		}
@@ -299,7 +313,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 			expect(stdout).toContain("Project packages:");
 			expect(stdout).toContain("npm:@project/pkg");
 			expect(stdout).not.toContain("No packages installed.");
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 		} finally {
 			logSpy.mockRestore();
 		}
@@ -325,7 +339,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 			expect(stdout).toContain("Project packages:");
 			expect(stdout).toContain("npm:@project/pkg");
 			expect(stdout).not.toContain("No packages installed.");
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 		} finally {
 			logSpy.mockRestore();
 		}
@@ -363,7 +377,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 
 			expect(projectTrustCalled).toBe(false);
 			expect(existsSync(recordPath)).toBe(false);
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 		} finally {
 			logSpy.mockRestore();
 		}
@@ -388,7 +402,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 			await expect(main(["update", "--extensions"])).resolves.toBeUndefined();
 
 			expect(existsSync(recordPath)).toBe(true);
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 		} finally {
 			logSpy.mockRestore();
 		}
@@ -407,7 +421,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 			const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
 			expect(stdout).toContain("No packages installed.");
 			expect(stdout).not.toContain("Project packages:");
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 		} finally {
 			logSpy.mockRestore();
 		}
@@ -437,7 +451,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 		expect(settings.packages?.length).toBe(1);
 		const stored = settings.packages?.[0] ?? "";
 		expect(realpathSync(join(projectDir, ".pi", stored))).toBe(realpathSync(packageDir));
-		expect(process.exitCode).toBeUndefined();
+		expect(process.exitCode).toBe(noFailureExitCode);
 	});
 
 	it("shows install subcommand help", async () => {
@@ -451,7 +465,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 			expect(stdout).toContain("Usage:");
 			expect(stdout).toContain("pi install <source> [-l]");
 			expect(errorSpy).not.toHaveBeenCalled();
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 		} finally {
 			logSpy.mockRestore();
 			errorSpy.mockRestore();
@@ -479,7 +493,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 		});
 		expect(logSpy.mock.calls.map(([message]) => String(message)).join("\n")).toContain("Model catalogs refreshed");
 		expect(errorSpy).not.toHaveBeenCalled();
-		expect(process.exitCode).toBeUndefined();
+		expect(process.exitCode).toBe(noFailureExitCode);
 	});
 
 	it("rejects update --models combined with another update target", async () => {
@@ -634,7 +648,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 				`pi is already up to date (v${VERSION})`,
 			);
 			expect(errorSpy).not.toHaveBeenCalled();
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 		} finally {
 			if (previousSkipVersionCheck === undefined) {
 				delete process.env.PI_SKIP_VERSION_CHECK;
@@ -694,7 +708,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 			`Updated pi from ${VERSION} to ${targetVersion}`,
 		);
 		expect(errorSpy).not.toHaveBeenCalled();
-		expect(process.exitCode).toBeUndefined();
+		expect(process.exitCode).toBe(noFailureExitCode);
 	});
 
 	it("removes older managed releases after an update", async () => {
@@ -713,7 +727,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 
 		expect(readdirSync(releasesRoot).sort()).toEqual([VERSION, "not-a-release", targetVersion].sort());
 		expect(errorSpy).not.toHaveBeenCalled();
-		expect(process.exitCode).toBeUndefined();
+		expect(process.exitCode).toBe(noFailureExitCode);
 	});
 
 	it("rejects a concurrent managed update", async () => {
@@ -819,7 +833,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 		try {
 			await expect(runPackageCommandDirectly(["update", "--self", "--force"])).resolves.toBeUndefined();
 
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 			expect(errorSpy).not.toHaveBeenCalled();
 			expect(fetchMock).toHaveBeenCalledOnce();
 			const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
@@ -867,7 +881,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 		try {
 			await expect(runPackageCommandDirectly(["update", "--self"])).resolves.toBeUndefined();
 
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 			expect(errorSpy).not.toHaveBeenCalled();
 			expect(fetchMock).toHaveBeenCalledOnce();
 			const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
@@ -919,7 +933,7 @@ else {
 		try {
 			await expect(runPackageCommandDirectly(["update", "--self"])).resolves.toBeUndefined();
 
-			expect(process.exitCode).toBeUndefined();
+			expect(process.exitCode).toBe(noFailureExitCode);
 			expect(errorSpy).not.toHaveBeenCalled();
 			const recordedCalls = JSON.parse(readFileSync(recordPath, "utf-8")) as string[][];
 			expect(recordedCalls).toEqual([
