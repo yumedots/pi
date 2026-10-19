@@ -654,14 +654,40 @@ function withTextContrast(color: RgbColor, surfaces: RgbColor[], lighter: boolea
 }
 
 /**
+ * The menu panel in the indexed tier, where the terminal's own background shows through. A neutral
+ * gray keeps the panel from reading as the terminal's background, which can be any color.
+ */
+const INDEXED_PANEL_BG: Record<ThemeAppearance, string> = {
+	dark: "#2f2f2f",
+	light: "#f2f2f2",
+};
+
+/** The selected row in the indexed tier, one step away from the panel background. */
+const INDEXED_SELECTED_BG: Record<ThemeAppearance, string> = {
+	dark: "#4d4d4d",
+	light: "#d4d4d4",
+};
+
+/**
  * Colors for terminals that reported nothing: the terminal renders ANSI indices 0-15 and the default
  * colors with its own theme, so they fit any background. Neutral tokens below body text are faint (SGR 2)
- * instead of bright black, which some themes make nearly invisible. Panels have no background.
+ * instead of bright black, which some themes make nearly invisible. Panels have no background, except
+ * the menu panel, which keeps a neutral gray.
  */
 function indexedColors(saturation: number, appearance: ThemeAppearance | undefined): SystemThemeColors {
 	const colors = {} as Record<ThemeToken, string | number>;
 	const dim: ThemeColor[] = [];
 	for (const [token, familyName] of Object.entries(TOKEN_FAMILIES) as [ThemeToken, FamilyName][]) {
+		if (token === "panelBg") {
+			colors[token] = appearance ? INDEXED_PANEL_BG[appearance] : "";
+			continue;
+		}
+		if (token === "selectedBg") {
+			// A selected row needs a block to read as selected; the terminal's default background
+			// would not show one.
+			colors[token] = appearance ? INDEXED_SELECTED_BG[appearance] : "";
+			continue;
+		}
 		if (PANELS.includes(token as ThemeBg)) {
 			colors[token] = "";
 			continue;

@@ -20,6 +20,8 @@
 
 - Fixed compaction and branch summaries failing with "generation hit the token cap" when reasoning used most of the fixed summary output limit. Summaries now use the model's output limit, and `compaction.reserveTokens` only controls when compaction starts ([#9512](https://github.com/earendil-works/pi/issues/9512), [#9075](https://github.com/earendil-works/pi/issues/9075)).
 - Fixed `models.schema.json` missing descriptions for provider and model fields, so editors showed no hints for them ([#10790](https://github.com/earendil-works/pi/issues/10790))
+- Fixed the menu keeping the colors of the previous theme after a theme change, which left light panels with unreadable text
+- Fixed the system theme leaving the menu panel transparent when the terminal reports no colors, so the menu showed the terminal's own background. The panel and the selected row keep a neutral gray instead
 
 ## [1.3.0] - 2026-10-15
 
