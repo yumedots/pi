@@ -1,6 +1,6 @@
 import { Container, getKeybindings, Spacer, Text } from "@earendil-works/pi-tui";
 import { APP_NAME } from "../../../config.ts";
-import { NEUTRAL_THEME_NAME, theme } from "../theme/theme.ts";
+import { SYSTEM_THEME_NAME, theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyHint, rawKeyHint } from "./keybinding-hints.ts";
 
@@ -16,7 +16,7 @@ export interface FirstTimeSetupOptions {
 }
 
 const THEME_OPTIONS: Array<{ value: string; label: string }> = [
-	{ value: NEUTRAL_THEME_NAME, label: "Neutral (follows the terminal's light or dark mode)" },
+	{ value: SYSTEM_THEME_NAME, label: "System (follows the terminal's light or dark mode)" },
 	{ value: "dark", label: "Dark" },
 	{ value: "light", label: "Light" },
 ];
@@ -42,7 +42,7 @@ export class FirstTimeSetupComponent extends Container {
 		this.update();
 	}
 
-	/** Rebuild on theme changes, e.g. when the neutral theme switches between light and dark. */
+	/** Rebuild on theme changes, e.g. when the system theme switches between light and dark. */
 	override invalidate(): void {
 		this.update();
 		super.invalidate();

@@ -1,16 +1,16 @@
 # Customize Pi with themes
 
-Themes control the colors Pi uses in interactive mode and HTML exports. Pi includes the `neutral`, `dark`, and `light` themes. You can select one theme, follow your terminal's light or dark appearance, or create your own palette.
+Themes control the colors Pi uses in interactive mode and HTML exports. Pi includes the `system`, `dark`, and `light` themes. You can select one theme, follow your terminal's light or dark appearance, or create your own palette.
 
 ## Follow your terminal's mode
 
-The `neutral` theme is the default. It uses Pi's own colors and picks the light or the dark one to match your terminal:
+The `system` theme is the default. It uses Pi's own colors and picks the light or the dark one to match your terminal:
 
 - Pi asks the terminal whether it is in light or dark mode and uses the matching built-in theme.
 - The terminal's reported background decides the mode when it reports one. Otherwise Pi uses the terminal's light/dark notification, then the `COLORFGBG` environment variable, then dark.
 - When the terminal switches between light and dark, Pi picks the other theme and redraws.
 
-The terminal's ANSI palette is not used, so the theme looks the same everywhere. `neutral` is a reserved name: a custom theme with that name is ignored.
+The terminal's ANSI palette is not used, so the theme looks the same everywhere. `system` is a reserved name: a custom theme with that name is ignored.
 
 Pi asks the terminal for its colors when it starts. Terminals usually answer within a few milliseconds, and Pi waits at most 100 ms before showing the startup header. If the terminal does not answer in time, Pi uses the light/dark notification instead, and it still applies the colors if they arrive later, for example over a slow SSH connection.
 
@@ -28,7 +28,7 @@ The selection is saved as the `theme` [setting](settings.md#terminal-and-display
 }
 ```
 
-Without a `theme` setting, Pi uses `neutral`.
+Without a `theme` setting, Pi uses `system`.
 
 Automatic mode stores the light theme first and the dark theme second:
 
@@ -38,7 +38,7 @@ Automatic mode stores the light theme first and the dark theme second:
 }
 ```
 
-Pi decides whether the terminal is light or dark from its reported background and foreground colors. If the terminal does not report its background, Pi uses the terminal's light/dark notification, then the `COLORFGBG` environment variable, then dark. The same decision picks the theme of a light/dark pair and the light or dark variant of `neutral`. When automatic mode is active, Pi changes themes when the terminal reports an appearance change. Theme names cannot contain `/` because Pi reserves it for this setting format.
+Pi decides whether the terminal is light or dark from its reported background and foreground colors. If the terminal does not report its background, Pi uses the terminal's light/dark notification, then the `COLORFGBG` environment variable, then dark. The same decision picks the theme of a light/dark pair and the light or dark variant of `system`. When automatic mode is active, Pi changes themes when the terminal reports an appearance change. Theme names cannot contain `/` because Pi reserves it for this setting format.
 
 Use `--use-theme` to choose the initial theme for one invocation without changing the saved setting:
 
@@ -65,7 +65,7 @@ Use the theme name as the filename. Pi hot-reloads the active user theme only fr
 | Property | Required | Responsibility |
 |---|---|---|
 | `$schema` | No | Enables editor validation and completion against Pi's published schema. |
-| `name` | Yes | Identifies the theme in selectors and settings. It must be unique, cannot contain `/`, and cannot be `neutral`. |
+| `name` | Yes | Identifies the theme in selectors and settings. It must be unique, cannot contain `/`, and cannot be `system`. |
 | `appearance` | No | `"dark"` or `"light"`: the background the theme is designed for. Pi detects it from the theme colors when omitted. |
 | `vars` | No | Defines reusable color values. Variables can reference other variables. |
 | `colors` | Yes | Assigns colors to terminal UI roles. The schema identifies required and optional roles. |

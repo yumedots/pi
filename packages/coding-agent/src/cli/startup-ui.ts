@@ -21,8 +21,8 @@ import {
 	getTerminalTheme,
 	initTheme,
 	loadThemeFromPath,
-	NEUTRAL_THEME_NAME,
 	resolveThemeSetting,
+	SYSTEM_THEME_NAME,
 	setRegisteredThemes,
 	setTerminalColors,
 	setTheme,
@@ -84,7 +84,7 @@ async function loadStartupThemes(settingsManager: SettingsManager): Promise<Them
 export async function createStartupTui(settingsManager: SettingsManager): Promise<TUI> {
 	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
 	setRegisteredThemes(await loadStartupThemes(settingsManager));
-	initTheme(resolveThemeSetting(settingsManager.getThemeSetting(), getTerminalTheme()) ?? NEUTRAL_THEME_NAME);
+	initTheme(resolveThemeSetting(settingsManager.getThemeSetting(), getTerminalTheme()) ?? SYSTEM_THEME_NAME);
 	setKeybindings(KeybindingsManager.create());
 	const ui: TUI = new TuiMainScreen(new ProcessTerminal(), settingsManager.getShowHardwareCursor(), getAgentDir());
 	ui.setClearOnShrink(settingsManager.getClearOnShrink());
@@ -95,7 +95,7 @@ export function startStartupTui(ui: TUI, settingsManager: SettingsManager): void
 	ui.start();
 	const themeSetting = settingsManager.getThemeSetting();
 	queryStartupTerminalColors(ui, () => {
-		setTheme(resolveThemeSetting(themeSetting, getTerminalTheme()) ?? NEUTRAL_THEME_NAME);
+		setTheme(resolveThemeSetting(themeSetting, getTerminalTheme()) ?? SYSTEM_THEME_NAME);
 	});
 }
 
@@ -197,7 +197,7 @@ export async function showFirstTimeSetup(settingsManager: SettingsManager): Prom
 		};
 
 		ui.start();
-		let previewTheme = NEUTRAL_THEME_NAME;
+		let previewTheme = SYSTEM_THEME_NAME;
 		setTheme(previewTheme);
 		const component = new FirstTimeSetupComponent({
 			onThemePreview: (themeName) => {

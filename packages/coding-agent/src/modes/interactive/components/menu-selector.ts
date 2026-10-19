@@ -76,6 +76,7 @@ export class MenuSelectorComponent<T> extends Container implements Focusable {
 		this.searchInput = new Input({
 			placeholder: options.placeholder ?? "Search",
 			placeholderStyle: (text) => theme.fg("muted", text),
+			textStyle: (text) => theme.fg("text", text),
 		});
 		this.searchInput.onSubmit = () => this.submit();
 		this.searchInput.onEscape = () => this.cancel();
@@ -95,7 +96,7 @@ export class MenuSelectorComponent<T> extends Container implements Focusable {
 
 	/** Render a single row. Subclasses override to customize the layout. */
 	protected drawItem(item: MenuItem<T>, selected: boolean, _width: number): string {
-		const title = selected ? theme.fg("accent", item.title) : item.title;
+		const title = selected ? theme.fg("accent", item.title) : theme.fg("text", item.title);
 		const description = item.description ? theme.fg("muted", item.description) : "";
 		const text = description ? `${title}  ${description}` : title;
 		return `  ${text}`;
@@ -130,7 +131,7 @@ export class MenuSelectorComponent<T> extends Container implements Focusable {
 			new ThemedText(
 				() => {
 					const title = this.getTitle();
-					const titleLine = theme.bold(`  ${title}`);
+					const titleLine = theme.bold(theme.fg("text", `  ${title}`));
 					const escHint = theme.fg("muted", "  esc");
 					return `${titleLine}${" ".repeat(Math.max(0, this.panelWidth - title.length - 6))}${escHint}`;
 				},

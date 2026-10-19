@@ -21,7 +21,7 @@ vi.mock("../../../src/core/output-guard.js", () => ({
 	},
 }));
 
-vi.mock("../../../src/modes/interactive/theme/theme.js", () => ({ theme: {}, NEUTRAL_THEME_NAME: "neutral" }));
+vi.mock("../../../src/modes/interactive/theme/theme.js", () => ({ theme: {}, SYSTEM_THEME_NAME: "system" }));
 
 vi.mock("../../../src/modes/interactive/components/bash-execution.js", () => ({
 	BashExecutionComponent: class {

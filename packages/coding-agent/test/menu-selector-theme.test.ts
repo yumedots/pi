@@ -63,4 +63,25 @@ describe("menu selector theme changes", () => {
 		expect(body).toContain("Skills");
 		expect(getThemeByName("light")).toBeDefined();
 	});
+
+	it("colors the title and the items, so the terminal's default foreground does not show through", () => {
+		setTheme("light", false);
+		const menu = new MenuSelectorComponent<string>(
+			{
+				title: "Skills",
+				items: [
+					{ title: "commit", value: "commit" },
+					{ title: "review", value: "review" },
+				],
+			},
+			() => {},
+			() => {},
+		);
+
+		const lines = menu.render(60);
+		// The title and the unselected item carry an explicit color; without one they would use
+		// the terminal's default foreground, which can be white on a light panel.
+		expect(colorBefore(lines[0]!, "Skills")).not.toBe("");
+		expect(colorBefore(lines.find((line) => line.includes("review"))!, "review")).not.toBe("");
+	});
 });
