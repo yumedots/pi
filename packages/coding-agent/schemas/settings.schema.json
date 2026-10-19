@@ -382,7 +382,7 @@
     },
     "enableSkillCommands": {
       "type": "boolean",
-      "description": "Register skills as /skill:name commands.",
+      "description": "Enable /skill:name command expansion.",
       "default": true
     },
     "terminal": {

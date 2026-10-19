@@ -456,7 +456,6 @@ export {
 	type RenderDiffOptions,
 	rawKeyHint,
 	renderDiff,
-	SessionSelectorComponent,
 	type SettingsCallbacks,
 	type SettingsConfig,
 	SettingsSelectorComponent,

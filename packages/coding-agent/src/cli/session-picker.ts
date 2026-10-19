@@ -4,9 +4,9 @@
 
 import { setKeybindings } from "@earendil-works/pi-tui";
 import { KeybindingsManager } from "../core/keybindings.ts";
-import type { SessionInfo, SessionListProgress } from "../core/session-manager.ts";
+import { type SessionInfo, type SessionListProgress, SessionManager } from "../core/session-manager.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
-import { SessionSelectorComponent } from "../modes/interactive/components/session-selector.ts";
+import { SessionMenuComponent } from "../modes/interactive/components/session-menu.ts";
 import { createStartupTui, startStartupTui } from "./startup-ui.ts";
 
 type SessionsLoader = (onProgress?: SessionListProgress, signal?: AbortSignal) => Promise<SessionInfo[]>;
@@ -23,33 +23,32 @@ export async function selectSession(
 		setKeybindings(keybindings);
 		let resolved = false;
 
-		const selector = new SessionSelectorComponent(
-			currentSessionsLoader,
-			allSessionsLoader,
-			(path: string) => {
+		const selector = new SessionMenuComponent({
+			currentLoad: currentSessionsLoader,
+			allLoad: allSessionsLoader,
+			renameSession: async (sessionFilePath: string, nextName: string | undefined) => {
+				const next = (nextName ?? "").trim();
+				if (!next) return;
+				SessionManager.open(sessionFilePath).appendSessionInfo(next);
+			},
+			onSelect: (session) => {
 				if (!resolved) {
 					resolved = true;
 					ui.stop();
-					resolve(path);
+					resolve(session.path);
 				}
 			},
-			() => {
+			onCancel: () => {
 				if (!resolved) {
 					resolved = true;
 					ui.stop();
 					resolve(null);
 				}
 			},
-			() => {
-				ui.stop();
-				process.exit(0);
-			},
-			() => ui.requestRender(),
-			{ showRenameHint: false, keybindings },
-		);
+		});
 
 		ui.addChild(selector);
-		ui.setFocus(selector.getSessionList());
+		ui.setFocus(selector);
 		startStartupTui(ui, settingsManager);
 	});
 }

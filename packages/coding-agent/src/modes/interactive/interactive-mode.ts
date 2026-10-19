@@ -152,6 +152,7 @@ import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
 import { FooterComponent, formatTokens } from "./components/footer.ts";
 import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.ts";
 import { LoginDialogComponent } from "./components/login-dialog.ts";
+import { type MenuItem, MenuSelectorComponent } from "./components/menu-selector.ts";
 import { createMermaidMarkdownTransformer } from "./components/mermaid.ts";
 import { ModelSelectorComponent } from "./components/model-selector.ts";
 import {
@@ -163,10 +164,9 @@ import {
 import { piLogoLines, piWordmark, supportsPiLogo } from "./components/pi-logo.ts";
 import { createLoginMenuSelector } from "./components/radius-login-selector.ts";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
-import { SessionSelectorComponent } from "./components/session-selector.ts";
+import { SessionMenuComponent } from "./components/session-menu.ts";
 import { SettingsSelectorComponent } from "./components/settings-selector.ts";
 import { SkillInvocationMessageComponent } from "./components/skill-invocation-message.ts";
-import { SkillsSelectorComponent } from "./components/skills-selector.ts";
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
@@ -520,9 +520,6 @@ export class InteractiveMode {
 		theme,
 	});
 
-	// Skill commands: command name -> skill file path
-	private skillCommands = new Map<string, string>();
-
 	// Agent subscription unsubscribe function
 	private unsubscribe?: () => void;
 	private signalCleanupHandlers: Array<() => void> = [];
@@ -771,22 +768,8 @@ export class InteractiveMode {
 				getArgumentCompletions: cmd.getArgumentCompletions,
 			}));
 
-		// Build skill commands from session.skills (if enabled)
-		this.skillCommands.clear();
-		const skillCommandList: SlashCommand[] = [];
-		if (this.settingsManager.getEnableSkillCommands()) {
-			for (const skill of this.session.resourceLoader.getSkills().skills) {
-				const commandName = `skill:${skill.name}`;
-				this.skillCommands.set(commandName, skill.filePath);
-				skillCommandList.push({
-					name: commandName,
-					description: skill.description,
-				});
-			}
-		}
-
 		return new CombinedAutocompleteProvider(
-			[...slashCommands, ...templateCommands, ...extensionCommands, ...skillCommandList],
+			[...slashCommands, ...templateCommands, ...extensionCommands],
 			this.sessionManager.getCwd(),
 			this.fdPath,
 		);
@@ -5732,63 +5715,97 @@ export class InteractiveMode {
 			return;
 		}
 
-		this.showSelector((done) => {
-			const selector = new SkillsSelectorComponent(
-				skills,
-				(skill) => {
-					done();
-					void this.editor.onSubmit?.(`/skill:${skill.name}`);
-				},
-				() => {
-					done();
-					this.ui.requestRender();
-				},
-			);
-			return { component: selector, focus: selector };
+		const items: MenuItem<string>[] = skills.map((skill) => ({
+			title: skill.name,
+			description: skill.description,
+			value: skill.name,
+		}));
+
+		this.showMenu(
+			"Skills",
+			items,
+			(skillName) => {
+				this.editor.setText(`/skill:${skillName} `);
+			},
+			{ wrapLines: 2, maxVisible: 8 },
+		);
+	}
+
+	private activeMenuOverlay: OverlayHandle | undefined;
+
+	private showMenu<T>(
+		title: string,
+		items: MenuItem<T>[],
+		onSelect: (value: T) => void,
+		options?: { placeholder?: string; wrapLines?: number; maxVisible?: number },
+	): void {
+		this.activeMenuOverlay?.hide();
+		const selector = new MenuSelectorComponent<T>(
+			{
+				title,
+				items,
+				placeholder: options?.placeholder,
+				wrapLines: options?.wrapLines,
+				maxVisible: options?.maxVisible,
+			},
+			(value) => {
+				this.activeMenuOverlay?.hide();
+				this.activeMenuOverlay = undefined;
+				this.ui.setFocus(this.editor);
+				onSelect(value);
+			},
+			() => {
+				this.activeMenuOverlay?.hide();
+				this.activeMenuOverlay = undefined;
+				this.ui.setFocus(this.editor);
+				this.ui.requestRender();
+			},
+		);
+		this.activeMenuOverlay = this.ui.showOverlay(selector, {
+			anchor: "center",
+			width: 70,
+			maxHeight: 24,
 		});
+		this.ui.setFocus(selector);
+		this.ui.requestRender();
 	}
 
 	private showSessionSelector(): void {
-		this.showSelector((done) => {
-			const selector = new SessionSelectorComponent(
-				(onProgress, signal) =>
-					SessionManager.list(
-						this.sessionManager.getCwd(),
-						this.sessionManager.getSessionDir(),
-						onProgress,
-						signal,
-					),
-				(onProgress, signal) =>
-					this.sessionManager.usesDefaultSessionDir()
-						? SessionManager.listAll(onProgress, signal)
-						: SessionManager.listAll(this.sessionManager.getSessionDir(), onProgress, signal),
-				async (sessionPath) => {
-					done();
-					await this.handleResumeSession(sessionPath);
-				},
-				() => {
-					done();
-					this.ui.requestRender();
-				},
-				() => {
-					void this.shutdown();
-				},
-				() => this.ui.requestRender(),
-				{
-					renameSession: async (sessionFilePath: string, nextName: string | undefined) => {
-						const next = (nextName ?? "").trim();
-						if (!next) return;
-						const mgr = SessionManager.open(sessionFilePath);
-						mgr.appendSessionInfo(next);
-					},
-					showRenameHint: true,
-					keybindings: this.keybindings,
-				},
-
-				this.sessionManager.getSessionFile(),
-			);
-			return { component: selector, focus: selector };
+		const selector = new SessionMenuComponent({
+			currentLoad: (onProgress, signal) =>
+				SessionManager.list(this.sessionManager.getCwd(), this.sessionManager.getSessionDir(), onProgress, signal),
+			allLoad: (onProgress, signal) =>
+				this.sessionManager.usesDefaultSessionDir()
+					? SessionManager.listAll(onProgress, signal)
+					: SessionManager.listAll(this.sessionManager.getSessionDir(), onProgress, signal),
+			onSelect: (session) => {
+				this.activeMenuOverlay?.hide();
+				this.activeMenuOverlay = undefined;
+				this.ui.setFocus(this.editor);
+				void this.handleResumeSession(session.path);
+			},
+			onCancel: () => {
+				this.activeMenuOverlay?.hide();
+				this.activeMenuOverlay = undefined;
+				this.ui.setFocus(this.editor);
+				this.ui.requestRender();
+			},
+			onRequestRender: () => this.ui.requestRender(),
+			renameSession: async (sessionFilePath: string, nextName: string | undefined) => {
+				const next = (nextName ?? "").trim();
+				if (!next) return;
+				const mgr = SessionManager.open(sessionFilePath);
+				mgr.appendSessionInfo(next);
+			},
+			currentSessionPath: this.sessionManager.getSessionFile(),
 		});
+		this.activeMenuOverlay = this.ui.showOverlay(selector, {
+			anchor: "center",
+			width: 80,
+			maxHeight: 20,
+		});
+		this.ui.setFocus(selector);
+		this.ui.requestRender();
 	}
 
 	private async handleResumeSession(

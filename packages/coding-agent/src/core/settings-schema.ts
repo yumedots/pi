@@ -319,7 +319,7 @@ export const SettingsSchema = Type.Object(
 		themes: Type.Optional(Type.Array(Type.String(), { description: "Local theme file paths or directories." })),
 		enableSkillCommands: Type.Optional(
 			Type.Boolean({
-				description: "Register skills as /skill:name commands.",
+				description: "Enable /skill:name command expansion.",
 				default: SETTINGS_DEFAULTS.enableSkillCommands,
 			}),
 		),
