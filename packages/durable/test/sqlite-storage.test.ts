@@ -362,7 +362,7 @@ describe("Pico SqliteStorage", () => {
 				],
 				context,
 			),
-		).rejects.toThrow("circular structure");
+		).rejects.toThrow(/circular|cyclic/i);
 		expect(await storage.entry(transientId, context)).toBeUndefined();
 		expect(await storage.task(transientTaskId, context)).toBeUndefined();
 		const committedId = await storage.mintId<EntryId>();

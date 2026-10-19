@@ -9,6 +9,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FileError, getOrThrow, type ShellExecOptions } from "../src/env/index.ts";
 import { NodeExecutionEnv } from "../src/env/node.ts";
 
+// Node resolves access() with undefined, Bun with null, so the result is not inspected.
+async function isReadable(path: string): Promise<boolean> {
+	await access(path);
+	return true;
+}
+
 const tempDirs: string[] = [];
 const chmodRestorePaths: string[] = [];
 
@@ -318,10 +324,10 @@ describe("NodeExecutionEnv filesystem", () => {
 		const env = new NodeExecutionEnv({ cwd: root });
 		const tempDir = getOrThrow(await env.createTempDir("node-env-test-", BACKGROUND_CONTEXT));
 		tempDirs.push(tempDir);
-		await expect(access(tempDir)).resolves.toBeUndefined();
+		await expect(isReadable(tempDir)).resolves.toBe(true);
 		const tempFile = getOrThrow(await env.createTempFile({ prefix: "prefix-", suffix: ".txt" }, BACKGROUND_CONTEXT));
 		tempDirs.push(join(tempFile, ".."));
-		await expect(access(tempFile)).resolves.toBeUndefined();
+		await expect(isReadable(tempFile)).resolves.toBe(true);
 		expect(tempFile.endsWith(".txt")).toBe(true);
 		expect(getOrThrow(await env.readTextFile(tempFile, BACKGROUND_CONTEXT))).toBe("");
 	});

@@ -203,7 +203,9 @@ describe("worker lifetime", () => {
 });
 
 const runtimes = [
-	{ name: "Node", command: process.execPath, available: true },
+	// The Node case spawns Node by name, so the case still covers Node when the suite
+	// itself runs on Bun.
+	{ name: "Node", command: "node", available: true },
 	{ name: "Bun", command: "bun", available: spawnSync("bun", ["--version"], { timeout: 5000 }).status === 0 },
 ];
 

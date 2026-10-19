@@ -3,7 +3,13 @@ import net from "node:net";
 import tls from "node:tls";
 import * as undici from "undici";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isBunRuntime } from "../src/config.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "../src/core/http-dispatcher.ts";
+
+// Bun ships a stub for the undici package, so the dispatcher of the Node implementation
+// does not exist there. The tests below cover the dispatcher on Node and the contract
+// that replaces it on Bun.
+const onBun = isBunRuntime();
 
 const PROXY_ENV_KEYS = ["HTTP_PROXY", "HTTPS_PROXY"] as const;
 const DISPATCHER_PROXY_ENV_KEYS = [...PROXY_ENV_KEYS, "http_proxy", "https_proxy", "NO_PROXY", "no_proxy"] as const;
@@ -90,7 +96,7 @@ describe("http dispatcher", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("tunnels proxied HTTP origins", async () => {
+	it.runIf(!onBun)("tunnels proxied HTTP origins", async () => {
 		const origin = http.createServer((_request, response) => {
 			response.end("origin");
 		});
@@ -147,7 +153,16 @@ describe("http dispatcher", () => {
 		}
 	});
 
-	it("allows two seconds for HTTPS connection attempts without changing the Node default", async () => {
+	it.runIf(onBun)("leaves the runtime's own fetch in place", () => {
+		// Bun's fetch reads the proxy environment variables itself. Installing a dispatcher
+		// from the undici stub would replace it with one that cannot carry a request.
+		configureHttpDispatcher();
+
+		expect(undici.getGlobalDispatcher()).toBe(originalDispatcher);
+		expect(globalThis.fetch).toBe(originalFetch);
+	});
+
+	it.runIf(!onBun)("allows two seconds for HTTPS connection attempts without changing the Node default", async () => {
 		// Preserve a deliberate host fetch override while testing the dispatcher itself.
 		globalThis.fetch = async () => {
 			throw new Error("Unexpected global fetch");

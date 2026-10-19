@@ -35,7 +35,10 @@ function runProbe(action: string): ProbeResult {
 		console.log(JSON.stringify({ loadedSpecifiers: [...new Set(loaded)] }));
 	`;
 
-	const result = spawnSync(process.execPath, ["--input-type=module", "--eval", script], {
+	// The probe needs Node's module hooks, which Bun does not implement. The property it
+	// checks is about the published package on its supported runtime, so the probe runs
+	// on Node whatever runtime the test suite runs on.
+	const result = spawnSync("node", ["--input-type=module", "--eval", script], {
 		cwd: packageRoot,
 		encoding: "utf8",
 	});

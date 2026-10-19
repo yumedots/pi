@@ -49,18 +49,18 @@ describe("issue #2791 fs.watch error event crashes process", () => {
 		writeFileSync(
 			scriptPath,
 			`
-import { setTheme, stopThemeWatcher } from "${themeModulePath}";
+import { setTheme, stopThemeWatcher, getThemeWatcher } from "${themeModulePath}";
 
 process.env.PI_CODING_AGENT_DIR = "${agentDir}";
 
 setTheme("custom-test", true);
 
-// Find the FSWatcher among active handles
-const handles = (process as any)._getActiveHandles();
-const fsWatcher = handles.find((h: any) => h.constructor?.name === "FSWatcher");
+// The watcher the theme set up. It is read from the theme module, because the runtime
+// does not list file watchers among the active handles.
+const fsWatcher = getThemeWatcher();
 
 if (!fsWatcher) {
-	process.stderr.write("no FSWatcher found among active handles\\n");
+	process.stderr.write("no theme watcher was started\\n");
 	process.exit(2);
 }
 
