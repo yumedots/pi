@@ -1,4 +1,4 @@
-import { setKeybindings } from "@earendil-works/pi-tui";
+import { setCapabilities, setKeybindings } from "@earendil-works/pi-tui";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { MenuSelectorComponent } from "../src/modes/interactive/components/menu-selector.ts";
@@ -9,6 +9,9 @@ const renderBody = (menu: MenuSelectorComponent<string>): string => stripAnsi(me
 
 describe("menu selector", () => {
 	beforeAll(() => {
+		// The assertions look for truecolor escapes. The terminal the suite runs in decides
+		// the color mode, and a terminal without truecolor support would fail them.
+		setCapabilities({ images: null, trueColor: true, hyperlinks: false });
 		initTheme("dark");
 	});
 

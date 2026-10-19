@@ -1,4 +1,4 @@
-import { setKeybindings } from "@earendil-works/pi-tui";
+import { setCapabilities, setKeybindings } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { MenuSelectorComponent } from "../src/modes/interactive/components/menu-selector.ts";
@@ -21,6 +21,9 @@ function colorBefore(line: string, marker: string): string {
 
 describe("menu selector theme changes", () => {
 	beforeAll(() => {
+		// The assertions look for truecolor escapes. The terminal the suite runs in decides
+		// the color mode, and a terminal without truecolor support would fail them.
+		setCapabilities({ images: null, trueColor: true, hyperlinks: false });
 		initTheme("dark");
 	});
 
