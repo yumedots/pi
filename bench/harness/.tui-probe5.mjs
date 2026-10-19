@@ -1,0 +1,22 @@
+const rss = () => Math.round(process.memoryUsage().rss / 1048576);
+const log = (label) => console.log(`${label.padEnd(46)} rss=${rss()}MB`);
+const tui = "/Users/gabriel/pi/packages/tui/dist";
+
+log("start");
+await import(`${tui}/colors.js`);
+await import(`${tui}/terminal-capabilities.js`);
+log("after the colors and the capabilities");
+await import(`${tui}/components/text.js`);
+await import(`${tui}/components/box.js`);
+await import(`${tui}/components/stack.js`);
+await import(`${tui}/components/spacer.js`);
+await import(`${tui}/components/mouse-region.js`);
+log("after the components");
+await import(`${tui}/keys.js`);
+log("after the keys");
+await import(`${tui}/tui.js`);
+log("after the tui main module");
+await import(`${tui}/terminal-image.js`);
+log("after the terminal image");
+await import(`${tui}/index.js`);
+log("after the tui barrel");

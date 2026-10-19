@@ -20,6 +20,14 @@ before and after every run. The result is in [RESULTS.md](harness/RESULTS.md).
 `node bench/harness/memory-attribution.mjs` shows which group of modules costs
 how much memory.
 
+`node bench/harness/soak.mjs --turns 200 --agent-dir <dir>` runs many turns
+against a local model in one session and reports the memory over time, the
+latency of the turns and the tokens. It answers whether the memory grows while
+the model is on.
+
+`node bench/harness/heap-report.mjs <snapshot>` lists the biggest holders of a
+heap snapshot.
+
 The turn scenario needs a model. A local llama.cpp server is enough, see
 [the token report](tokens/RESULTS.md#reproduce).
 

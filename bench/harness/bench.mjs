@@ -148,10 +148,12 @@ function batteryCharge() {
 	if (result.status !== 0) return undefined;
 	const percent = result.stdout.match(/"CurrentCapacity" = (\d+)/);
 	const mah = result.stdout.match(/"RemainingCapacity"=(\d+)/);
+	const adapter = result.stdout.match(/"ExternalConnected"\s*=\s*(\w+)/);
 	if (!percent && !mah) return undefined;
 	return {
 		percent: percent ? Number.parseInt(percent[1], 10) : undefined,
 		mah: mah ? Number.parseInt(mah[1], 10) : undefined,
+		onAc: adapter?.[1] === "Yes",
 	};
 }
 
@@ -170,6 +172,14 @@ function parseTimeReport(stderr) {
 		report.userSeconds = Number.parseFloat(real[2]);
 		report.sysSeconds = Number.parseFloat(real[3]);
 	}
+	// The counters of the processor. The energy of a run follows them, and they are
+	// the only power measure that does not need the battery to be discharging.
+	const instructions = stderr.match(/(\d+)\s+instructions retired/);
+	if (instructions) report.instructionsRetired = Number.parseInt(instructions[1], 10);
+	const cycles = stderr.match(/(\d+)\s+cycles elapsed/);
+	if (cycles) report.cyclesElapsed = Number.parseInt(cycles[1], 10);
+	const faults = stderr.match(/(\d+)\s+page faults/);
+	if (faults) report.pageFaults = Number.parseInt(faults[1], 10);
 	return report;
 }
 
@@ -470,6 +480,9 @@ function summarizeRuns(runs) {
 	summary.firstTokenMs = numeric(runs, "firstTokenMs");
 	summary.turnMs = numeric(runs, "turnMs");
 	summary.batteryDrainPercent = numeric(runs, "batteryDrainPercent");
+	summary.instructionsRetired = numeric(runs, "instructionsRetired");
+	summary.cyclesElapsed = numeric(runs, "cyclesElapsed");
+	summary.pageFaults = numeric(runs, "pageFaults");
 	summary.distBytes = numeric(runs, "distBytes");
 	summary.settledRssBytes = numeric(runs, "settledRssBytes");
 	const startup = {};
@@ -617,6 +630,9 @@ async function main() {
 						userSeconds: run.userSeconds,
 						sysSeconds: run.sysSeconds,
 						batteryDrainPercent: run.batteryDrainPercent,
+						instructionsRetired: run.instructionsRetired,
+						cyclesElapsed: run.cyclesElapsed,
+						pageFaults: run.pageFaults,
 						distBytes: run.distBytes,
 					},
 				],
@@ -647,6 +663,9 @@ async function main() {
 					turnMs: run.turnMs,
 					settledRssBytes: run.settledRssBytes,
 					batteryDrainPercent: run.batteryDrainPercent,
+					instructionsRetired: run.instructionsRetired,
+					cyclesElapsed: run.cyclesElapsed,
+					pageFaults: run.pageFaults,
 					distBytes: run.distBytes,
 					usage: run.usage,
 					startupTimings: run.startupTimings,
@@ -677,15 +696,15 @@ function renderMarkdown(results) {
 	lines.push(`- Node: ${results.machine.node}`);
 	lines.push(`- Date: ${results.date}`);
 	lines.push("");
-	lines.push("| Scenario | Runtime | Wall | Peak RSS | Settled RSS | CPU (user+sys) | Battery | First screen | First token | Turn | Tokens |");
-	lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+	lines.push("| Scenario | Runtime | Wall | Peak RSS | Settled RSS | CPU (user+sys) | Instructions | Cycles | Battery | First screen | First token | Turn | Tokens |");
+	lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
 	for (const [name, scenario] of Object.entries(results.scenarios)) {
 		for (const [runtime, entry] of Object.entries(scenario.runtimes)) {
 			const s = entry.summary;
 			const cpu = s.userSeconds && s.sysSeconds ? `${(s.userSeconds.avg + s.sysSeconds.avg).toFixed(2)} s` : "-";
 			const battery = s.batteryDrainPercent ? `${s.batteryDrainPercent.avg.toFixed(2)}%` : "-";
 			lines.push(
-				`| ${name} | ${runtime} | ${formatMs(s.wallMs?.avg)} | ${s.peakRssBytes ? formatMb(s.peakRssBytes.avg) : "-"} | ${s.settledRssBytes ? formatMb(s.settledRssBytes.avg) : "-"} | ${cpu} | ${battery} | ${formatMs(s.firstScreenMs?.avg)} | ${formatMs(s.firstTokenMs?.avg)} | ${formatMs(s.turnMs?.avg)} | ${s.usageTotal ? Math.round(s.usageTotal.avg) : "-"} |`,
+				`| ${name} | ${runtime} | ${formatMs(s.wallMs?.avg)} | ${s.peakRssBytes ? formatMb(s.peakRssBytes.avg) : "-"} | ${s.settledRssBytes ? formatMb(s.settledRssBytes.avg) : "-"} | ${cpu} | ${s.instructionsRetired ? `${(s.instructionsRetired.avg / 1e6).toFixed(0)}M` : "-"} | ${s.cyclesElapsed ? `${(s.cyclesElapsed.avg / 1e6).toFixed(0)}M` : "-"} | ${battery} | ${formatMs(s.firstScreenMs?.avg)} | ${formatMs(s.firstTokenMs?.avg)} | ${formatMs(s.turnMs?.avg)} | ${s.usageTotal ? Math.round(s.usageTotal.avg) : "-"} |`,
 			);
 		}
 	}
@@ -701,12 +720,18 @@ function renderMarkdown(results) {
 	if (results.battery?.before !== undefined) {
 		const before = results.battery.before;
 		const after = results.battery.after;
-		lines.push("## Battery");
+		lines.push("## Battery and power");
 		lines.push("");
+		lines.push(`- Power source: ${before.onAc ? "AC power" : "battery"}`);
 		lines.push(`- Charge before the run: ${before.percent}% (${before.mah} mAh)`);
 		lines.push(`- Charge after the run: ${after?.percent}% (${after?.mah} mAh)`);
 		if (before.mah !== undefined && after?.mah !== undefined) {
 			lines.push(`- Drain of the run: ${before.mah - after.mah} mAh (${results.battery.drainPercent ?? 0}%)`);
+		}
+		if (before.onAc) {
+			lines.push(
+				"- On AC power the battery does not drain, so the drain of a run is below what the machine reports. The instructions and the cycles of the processor are the power measure of the table above: the energy of a run follows them.",
+			);
 		}
 		lines.push("");
 	}
