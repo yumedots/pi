@@ -16,6 +16,11 @@ function clickRow(component: Box, marker: string): boolean | undefined {
 	const lines = component.render(WIDTH);
 	const row = lines.findIndex((line) => stripAnsi(line).includes(marker));
 	expect(row).toBeGreaterThanOrEqual(0);
+	return clickAtRow(component, row);
+}
+
+function clickAtRow(component: Box, row: number): boolean | undefined {
+	const lines = component.render(WIDTH);
 	const event: TuiMouseEvent = {
 		type: "click",
 		button: "left",
@@ -96,6 +101,20 @@ describe("collapsible message components", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+
+	test("toggles a skill invocation from the empty space around the mention", () => {
+		const component = new SkillInvocationMessageComponent({
+			blocks: [{ name: "example-skill", location: "/tmp/example-skill.md", content: "skill details" }],
+			userMessage: undefined,
+		});
+
+		// The empty line above the mention belongs to the card, so a click there toggles it.
+		const lines = component.render(WIDTH);
+		const mentionRow = lines.findIndex((line) => stripAnsi(line).includes("@example-skill"));
+		expect(mentionRow).toBeGreaterThan(0);
+		expect(clickAtRow(component, mentionRow - 1)).toBe(true);
+		expect(renderText(component)).toContain("skill details");
 	});
 
 	test("keeps the request that came with a skill on the mention line", () => {

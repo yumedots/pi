@@ -85,7 +85,9 @@ export class SkillInvocationMessageComponent extends Box {
 		markdownTransformers: readonly MarkdownTransformer[] = [],
 		onBeforeToggle?: () => void,
 	) {
-		super(outputPad, 1, (t) => theme.bg("customMessageBg", t));
+		// The vertical padding lives inside the click target, so the empty space around the
+		// mention belongs to the card.
+		super(outputPad, 0, (t) => theme.bg("customMessageBg", t));
 		this.skillMessage = skillMessage;
 		this.markdownTheme = markdownTheme;
 		this.markdownTransformers = markdownTransformers;
@@ -128,9 +130,29 @@ export class SkillInvocationMessageComponent extends Box {
 			line.addChild(new Text(mention, 0, 0));
 		}
 
+		// The whole card is the click target, including the empty space around the mention.
+		const card = new Container();
+		card.addChild(new Spacer(1));
+		card.addChild(line);
+		if (this.expanded) {
+			for (const block of this.skillMessage.blocks) {
+				card.addChild(new Spacer(1));
+				card.addChild(
+					new Markdown(block.content, 0, 0, this.markdownTheme, {
+						color: (text: string) => theme.fg("customMessageText", text),
+					}),
+				);
+			}
+		}
+		card.addChild(new Spacer(1));
+
 		this.addChild(
-			new MouseRegion(line, (event) => {
-				if (event.type !== "click" || event.button !== "left") return undefined;
+			new MouseRegion(card, (event) => {
+				if (event.button !== "left") return undefined;
+				// Claim the press, so the transcript does not start a text selection on the card
+				// and a second click does not select the line.
+				if (event.type === "press") return { handled: true };
+				if (event.type !== "click") return undefined;
 				const now = Date.now();
 				// A click toggles the skill body. A double click arrives as two clicks, so the
 				// following clicks of one burst are ignored instead of toggling twice.
@@ -143,17 +165,5 @@ export class SkillInvocationMessageComponent extends Box {
 				return { handled: true };
 			}),
 		);
-
-		// Expanded: the skill bodies below the mention and the request
-		if (this.expanded) {
-			for (const block of this.skillMessage.blocks) {
-				this.addChild(new Spacer(1));
-				this.addChild(
-					new Markdown(block.content, 0, 0, this.markdownTheme, {
-						color: (text: string) => theme.fg("customMessageText", text),
-					}),
-				);
-			}
-		}
 	}
 }
