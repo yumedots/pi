@@ -15,8 +15,8 @@ import {
 	isPropertyAccessExpression,
 	isStringLiteral,
 } from "typescript/unstable/ast/is";
-import { API } from "typescript/unstable/sync";
 import { getPublicWorkspacePackages } from "./release-packages.mjs";
+import { closeTypeScriptApi, createTypeScriptApi } from "./typescript-api.mjs";
 
 // Packages without tsconfig.build.json are checked against a synthetic config.
 const fallbackConfigName = "tsconfig.runtime-deps-fallback.json";
@@ -103,7 +103,7 @@ const packages = getPublicWorkspacePackages()
 const fallbackConfigs = new Set(
 	packages.map(({ configPath }) => configPath).filter((path) => path.endsWith(fallbackConfigName)),
 );
-const api = new API({
+const api = createTypeScriptApi({
 	cwd: process.cwd(),
 	fs: {
 		fileExists: (fileName) => (fallbackConfigs.has(resolve(fileName)) ? true : undefined),
@@ -111,13 +111,13 @@ const api = new API({
 	},
 });
 try {
-	const snapshot = api.updateSnapshot({ openProjects: packages.map(({ configPath }) => configPath) });
+	const snapshot = await api.updateSnapshot({ openProjects: packages.map(({ configPath }) => configPath) });
 	for (const { sourceDirectory, manifest, configPath } of packages) {
 		const project = snapshot.getProject(configPath);
-		const diagnostics = project.program.getConfigFileParsingDiagnostics();
+		const diagnostics = await project.program.getConfigFileParsingDiagnostics();
 		if (diagnostics.length > 0) throw new Error(diagnostics.map((diagnostic) => diagnostic.text).join("\n"));
 		const roots = new Set(project.rootFiles.map((file) => resolve(file)));
-		for (const fileName of project.program.getSourceFileNames()) {
+		for (const fileName of await project.program.getSourceFileNames()) {
 			if (fileName.endsWith(".d.ts") || fileName.endsWith(".json")) continue;
 			const path = relative(sourceDirectory, resolve(fileName));
 			if (path.startsWith("..") || isAbsolute(path)) continue;
@@ -126,11 +126,12 @@ try {
 			if (!roots.has(resolve(fileName))) {
 				failures.push(`${fileName} is excluded from ${manifest.name}'s build but imported by it`);
 			}
-			checkSource(project.program.getSourceFile(fileName), manifest);
+			const sourceFile = await project.program.getSourceFile(fileName);
+			if (sourceFile) checkSource(sourceFile, manifest);
 		}
 	}
 } finally {
-	api.close();
+	await closeTypeScriptApi(api);
 }
 
 if (failures.length > 0) {

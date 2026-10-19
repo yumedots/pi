@@ -3,7 +3,7 @@
 // TODO(loader): replace with an isolating, evicting loader. Every reload imports fresh module copies under a new
 // query and the old copies are never evicted (they leak until the process exits). TUI plugins need isolation, which
 // this loader does not provide.
-import { registerHooks } from "node:module";
+import * as nodeModule from "node:module";
 import { pathToFileURL } from "node:url";
 import type { Facet, FacetDefinition, FacetLoader } from "./host.ts";
 
@@ -22,6 +22,14 @@ let generation = 0;
 function hook(): void {
 	if (hooked) return;
 	hooked = true;
+	// Bun has no node:module registerHooks. The hook cannot be registered there,
+	// so reloading a facet module cannot isolate its relative imports.
+	const registerHooks = nodeModule.registerHooks;
+	if (!registerHooks) {
+		throw new Error(
+			"The node facet loader needs node:module's registerHooks, which this runtime does not implement.",
+		);
+	}
 	registerHooks({
 		resolve(specifier, context, nextResolve) {
 			const result = nextResolve(specifier, context);

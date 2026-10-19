@@ -21,10 +21,10 @@
 		"check": "node scripts/biome-check.mjs --write && bun run check:pinned-deps && bun run check:runtime-deps && bun run check:ts-imports && bun run check:entry-graphs && bun run check:install-lock:coding-agent && bun run check:lockfiles && tsc --noEmit && bun run check:browser-smoke",
 		"check:browser-smoke": "bun scripts/check-browser-smoke.mjs",
 		"check:pinned-deps": "bun scripts/check-pinned-deps.mjs",
-		"check:runtime-deps": "node scripts/check-runtime-deps.mjs",
+		"check:runtime-deps": "bun scripts/check-runtime-deps.mjs",
 		"check:package-install": "node scripts/check-package-install.mjs",
 		"check:install-lock:coding-agent": "bun scripts/generate-coding-agent-install-lock.mjs --check",
-		"check:ts-imports": "node scripts/check-ts-relative-imports.mjs",
+		"check:ts-imports": "bun scripts/check-ts-relative-imports.mjs",
 		"check:entry-graphs": "bun scripts/check-entry-graphs.mjs",
 		"check:lockfiles": "bun scripts/check-lockfiles-agree.mjs",
 		"generate:models": "bun run --filter '@earendil-works/pi-ai' generate-models",
@@ -55,6 +55,7 @@
 		"release:minor": "node scripts/release.mjs minor",
 		"release:major": "node scripts/release.mjs major",
 		"release:fix-links": "node scripts/release-notes.mjs fix-github-releases",
+		"bench:noop": "node -e \"\"",
 		"prepare": "husky"
 	},
 	"devDependencies": {

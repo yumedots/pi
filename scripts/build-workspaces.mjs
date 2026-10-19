@@ -13,7 +13,8 @@
 //   --offline              Use packages/ai's `build:offline` script (bundled
 //                          model data) instead of `build` (fetches models.dev).
 //   --package-manager      Which runner to invoke the workspace scripts with.
-//                          Defaults to the runtime this script runs on.
+//                          Defaults to PI_PACKAGE_MANAGER, then to the runtime
+//                          this script runs on.
 
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -33,7 +34,8 @@ for (const arg of args) {
 	process.exit(1);
 }
 
-const packageManager = explicitPackageManager ?? (process.versions.bun ? "bun" : "npm");
+const packageManager =
+	explicitPackageManager ?? process.env.PI_PACKAGE_MANAGER ?? (process.versions.bun ? "bun" : "npm");
 if (packageManager !== "npm" && packageManager !== "bun") {
 	console.error(`Unsupported package manager: ${packageManager}`);
 	process.exit(1);
