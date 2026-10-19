@@ -3,7 +3,9 @@ SHELL := /bin/bash
 
 PREFIX ?= $(HOME)/.local
 BIN_DIR ?= $(PREFIX)/bin
-BINARY := packages/coding-agent/dist/pi
+LIB_DIR ?= $(PREFIX)/lib/pi
+DIST := packages/coding-agent/dist
+BINARY := $(DIST)/pi
 ARGS ?=
 
 help:
@@ -24,8 +26,13 @@ app:
 	npm --prefix packages/coding-agent run build:binary
 
 install: build app
-	install -Dm755 $(BINARY) $(BIN_DIR)/pi
-	@printf 'installed %s\n' "$(BIN_DIR)/pi"
+	rm -rf $(LIB_DIR)
+	install -d $(LIB_DIR)
+	install -m755 $(BINARY) $(LIB_DIR)/pi
+	cp $(DIST)/package.json $(DIST)/README.md $(DIST)/CHANGELOG.md $(DIST)/photon_rs_bg.wasm $(LIB_DIR)/
+	cp -r $(DIST)/theme $(DIST)/assets $(DIST)/export-html $(DIST)/docs $(DIST)/examples $(LIB_DIR)/
+	ln -sfn ../lib/pi/pi $(BIN_DIR)/pi
+	@printf 'installed %s -> %s (%s)\n' "$(BIN_DIR)/pi" "$(LIB_DIR)/pi" "$$($(BIN_DIR)/pi --version)"
 	@found="$$(command -v pi || true)"; \
 	if [ -n "$$found" ] && [ "$$found" != "$(BIN_DIR)/pi" ]; then \
 	  printf 'warning: %s takes precedence on PATH\n' "$$found"; \
