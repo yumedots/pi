@@ -744,7 +744,7 @@
         }
       ],
       "description": "Lines scrolled per wheel event in fullscreen mode; numeric values are clamped from 1 to 100.",
-      "default": "auto"
+      "default": 1
     },
     "queueMode": {
       "anyOf": [

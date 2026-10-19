@@ -32,12 +32,14 @@
 - `Ctrl+C` no longer clears the editor. It only exits when pressed twice, and clearing the editor moved to `Alt+C` (`app.clear`). The exit shortcut is the new `app.quit` action
 - The startup listing of loaded context files, skills, prompt templates, and extensions is gone. Resource conflicts and load errors still show as warnings on startup
 - The settings menu no longer lists the fullscreen exit output while it holds its default value
+- The footer now shows the cwd and the stats on a single line, with the model info right-aligned on the same line
 
 ### Fixed
 
 - Fixed the fullscreen transcript bouncing after jumping to the latest message. The transcript now keeps its position when the editor or footer changes height, instead of sliding up and back down
 - Fixed the input box growing with the prompt, which resized the transcript above it. The input area now has a fixed height and longer prompts scroll inside it, so the conversation stays put while typing
-- Fixed Ctrl+E not sticking when a trackpad was still sending wheel events. The jump now drops the wheel gesture that was in progress, for at most 250 ms, so it keeps working and does not block scrolling afterwards
+- The mouse wheel now scrolls one line per event in fullscreen mode by default. `fullscreenWheelScrollLines: "auto"` restores the accelerating scroll
+- Fixed Ctrl+E not sticking when a trackpad was still sending wheel events. The jump now drops the wheel gesture that was in progress, until the next gesture starts, so the jump sticks and scrolling works again afterwards
 - Fixed a running bash command's output disappearing from the pending area when the queued messages were updated
 - Fixed compaction and branch summaries failing with "generation hit the token cap" when reasoning used most of the fixed summary output limit. Summaries now use the model's output limit, and `compaction.reserveTokens` only controls when compaction starts ([#9512](https://github.com/earendil-works/pi/issues/9512), [#9075](https://github.com/earendil-works/pi/issues/9075)).
 - Fixed `models.schema.json` missing descriptions for provider and model fields, so editors showed no hints for them ([#10790](https://github.com/earendil-works/pi/issues/10790))

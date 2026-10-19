@@ -23,8 +23,7 @@
 ### Fixed
 
 - Fixed the second click of a double click never reaching the components under the cursor. The click was compared against the selection anchor, which a double click moves to the start of the selected word
-- Fixed a scroll view sliding its content up and back down when only the viewport height changed. The scroll offset now stays where it is, so a transcript next to a resizing dock no longer bounces
-- Fixed a trackpad's momentum wheel events scrolling the view off the end right after a jump to it. The jump now drops the wheel gesture that was in progress, for at most 250 ms, so it never blocks scrolling afterwards
+- Fixed a trackpad's momentum wheel events scrolling the view off the end right after a jump to it. The jump now drops the wheel gesture that was in progress, until the next gesture starts
 - Fixed the select and settings lists re-centering their visible window on the selection, which made a hovered row slide out from under the pointer
 - Fixed the overlay of a component inside a container never being painted, so a list that floats above its box stayed invisible. Containers now forward the overlay of their children, and the regular renderer paints it
 

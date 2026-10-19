@@ -533,10 +533,11 @@ describe("SettingsManager", () => {
 		expect(reloadedManager.getFullscreenCopyOnSelect()).toBe(true);
 	});
 
-	// #9758: wheel scrolling defaults to auto, persists line counts, and ignores invalid values.
+	// #9758: wheel scrolling defaults to one line per event, persists line counts, and
+	// ignores invalid values.
 	it("persists fullscreen wheel scroll lines", async () => {
 		const manager = SettingsManager.create(projectDir, agentDir);
-		expect(manager.getFullscreenWheelScrollLines()).toBe("auto");
+		expect(manager.getFullscreenWheelScrollLines()).toBe(1);
 
 		manager.setFullscreenWheelScrollLines(3);
 		await manager.flush();
@@ -546,8 +547,8 @@ describe("SettingsManager", () => {
 			[7.9, 7],
 			[0, 1],
 			[1000, 100],
-			["fast", "auto"],
-			[null, "auto"],
+			["fast", 1],
+			[null, 1],
 		] as const) {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ fullscreenWheelScrollLines: value }));
 			expect(SettingsManager.create(projectDir, agentDir).getFullscreenWheelScrollLines()).toBe(expected);

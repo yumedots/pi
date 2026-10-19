@@ -74,12 +74,6 @@ const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
 const OSC133_PROMPT_START = /^\x1b\]133;A(?:\x07|\x1b\\)/;
 const PAGE_SCROLL_OVERLAP = 4;
 const ALT_WHEEL_SCROLL_MULTIPLIER = 5;
-/**
- * After a jump to the end, wheel events that continue the current gesture are dropped for
- * this long, so a trackpad's momentum does not undo the jump. It is deliberately short:
- * once it expires, scrolling works again even if the gesture never had a visible pause.
- */
-const JUMP_WHEEL_CANCEL_MS = 250;
 const MAX_CACHED_OFFSCREEN_KITTY_IMAGES = 16;
 const MAX_CACHED_OFFSCREEN_KITTY_TRANSMISSION_BYTES = 32 * 1024 * 1024;
 const MAX_CACHED_OFFSCREEN_KITTY_DECODED_BYTES = 64 * 1024 * 1024;
@@ -252,10 +246,11 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	/** Timestamp of the last wheel event, to tell apart one scroll gesture from the next. */
 	private lastWheelAt = Number.NEGATIVE_INFINITY;
 	/**
-	 * Wheel events that belong to the gesture in progress are dropped until this time, after
-	 * an explicit jump to the end. Time-bounded so a jump can never block later scrolling.
+	 * Set by an explicit jump to the end: wheel events that continue the gesture in progress
+	 * are dropped, so a trackpad's momentum cannot undo the jump. It stays set until the
+	 * gesture ends, which is the next wheel event after a pause.
 	 */
-	private wheelGestureCancelUntil = 0;
+	private cancelWheelGesture = false;
 	private readonly mouseEnabled: boolean;
 	private readonly searchMatchStyle: (text: string) => string;
 	private readonly searchCurrentMatchStyle: (text: string) => string;
@@ -509,9 +504,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.getPrimaryScrollView().scrollToEnd();
 		// A trackpad keeps sending wheel events after the fingers lift (momentum). Without
 		// this, those events would immediately scroll the view back off the end the user
-		// just jumped to. Only the ongoing gesture is dropped, and only briefly, so a jump
-		// never blocks later scrolling.
-		this.wheelGestureCancelUntil = performance.now() + JUMP_WHEEL_CANCEL_MS;
+		// just jumped to. The gesture in progress is dropped; the next one scrolls again.
+		this.cancelWheelGesture = true;
 		this.requestRender();
 	}
 
@@ -727,7 +721,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			const now = performance.now();
 			const continuesGesture = now - this.lastWheelAt <= WHEEL_GESTURE_GAP_MS;
 			this.lastWheelAt = now;
-			if (continuesGesture && now < this.wheelGestureCancelUntil) return { consume: true };
+			if (this.cancelWheelGesture) {
+				if (continuesGesture) return { consume: true };
+				this.cancelWheelGesture = false;
+			}
 			const lines = this.wheelScroll.next(wheelEvent.direction, now);
 			// SGR mouse button codes use bit 3 (value 8) for the Alt modifier.
 			const wheelDelta =

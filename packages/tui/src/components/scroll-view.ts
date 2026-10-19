@@ -199,7 +199,6 @@ export class ScrollView extends Container {
 	}
 
 	updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
-		const contentChanged = contentHeight !== this.contentHeight;
 		this.contentHeight = Math.max(0, Math.floor(contentHeight));
 		this.currentViewportHeight = Math.max(0, Math.floor(viewportHeight));
 		this.requestRenderCallback = requestRender;
@@ -208,10 +207,6 @@ export class ScrollView extends Container {
 			// An explicit jump to the end: land on the exact end.
 			this.pendingEndJump = false;
 			this.currentScrollTop = maxScrollTop;
-		} else if (this.followingEnd && !contentChanged) {
-			// Only the viewport resized (the dock next to the transcript changed height): keep
-			// the content where it is, so the transcript does not slide up and back down.
-			this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
 		} else if (this.followingEnd && this.keepOffsetPending) {
 			// A card in the transcript expanded or collapsed: keep the content in place, so the
 			// card does not move out from under the pointer that toggled it.

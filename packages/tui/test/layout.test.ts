@@ -197,7 +197,7 @@ describe("viewport layout", () => {
 		assert.deepStrictEqual(visibleLines(frame.lines), ["shown"]);
 	});
 
-	it("keeps the content in place when the viewport resizes while following the end", () => {
+	it("follows the end line by line when the viewport resizes", () => {
 		const content = new Text(Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0);
 		const scrollView = new ScrollView(content, {
 			follow: "end",
@@ -207,11 +207,11 @@ describe("viewport layout", () => {
 		assert.strictEqual(scrollView.scrollTop, 35);
 
 		// The dock next to the transcript grew (the editor opened its autocomplete list): the
-		// viewport shrank. The content must not slide, so the offset stays where it was.
+		// viewport shrank, so the end moved down and the view follows it.
 		renderLayoutFrame(scrollView, 10, 3, () => {});
-		assert.strictEqual(scrollView.scrollTop, 35);
+		assert.strictEqual(scrollView.scrollTop, 37);
 
-		// The dock shrank back: the content still did not slide, and the end is visible again.
+		// The dock shrank back: the end moved up again.
 		renderLayoutFrame(scrollView, 10, 5, () => {});
 		assert.strictEqual(scrollView.scrollTop, 35);
 
