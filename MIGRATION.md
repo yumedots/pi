@@ -87,17 +87,16 @@ regenerates `bun.lock` from it.
 ### Node stays the runtime of the published packages
 
 Bun 1.4.3 does not implement `node:module`'s `registerHooks`, which
-`packages/chord/src/loader.ts` and
-`packages/coding-agent/src/experimental/source-resolver.ts` need. The
-published packages therefore keep running on Node. The compiled binary does
-not include those modules, so it is unaffected.
+`packages/chord/src/loader.ts` needs. The published packages therefore keep
+running on Node. The compiled binary does not include that module, so it is
+unaffected.
 
 Bun's `undici` npm package is a stub. `new undici.Client()` under Bun has
 only `request`: no `close`, no `destroy`, no `stats`. The coding-agent builds
-its HTTP dispatcher on the npm `undici` package, so every provider request
-depends on it. Moving the coding-agent's runtime to Bun means replacing
-undici with Bun's native fetch, which is an application change, not a
-toolchain change.
+its HTTP dispatcher on the npm `undici` package, so the dispatcher is inert
+under Bun. What replaces it is Bun's native `fetch`, which honors
+`HTTP_PROXY` and `HTTPS_PROXY`; Node's does not. Proxying therefore works on
+both, through different code.
 
 The dev-only source resolver now reads `registerHooks` off the namespace and
 skips registering the hook when the runtime has none. Bun applies the
@@ -136,16 +135,32 @@ fails in the rest:
 
 | Package | Failing files | Cause |
 | --- | --- | --- |
-| `packages/coding-agent` | 12 of 303 | install-method detection (19 tests), the undici stub, `fs.watch` handle semantics, and other runtime differences |
+| `packages/coding-agent` | 9 of 305 | Node's undici integration, `fs.watch` handles, `fileURLToPath` strictness, path expansion, and vitest's fake timers not driving Bun's native timers |
 | `packages/chord` | 4 of 47 | `registerHooks`, `node:v8`'s `setFlagsFromString("--expose-gc")`, WebSocket server timeouts |
 | `packages/durable` | 2 of 68 | error message wording, `null` against `undefined` from the file system |
 | `packages/env` | 1 of 6 | a different file system error code |
 | `packages/codemode` | 1 of 6 | the timing-sensitive worker lifetime test |
 
-The largest group is the install-method detection. `detectInstallMethod()`
-answers "bun" under Bun, which is correct: the app knows which runtime it
-runs on. The tests assume the ambient runtime is npm. Making them pass
-needs a seam in the application, so they stay on Node.
+The coding-agent suite went from 35 failures on Bun to 11. Getting there
+turned up two real problems, both fixed:
+
+- The app reported the runtime it runs on before it looked at the install
+  path, and the runtime was captured when the config module loaded. It is now
+  read at call time, so the install-path detection can be exercised on Bun.
+- The stdout takeover replaces `process.stdout.write` to keep stdout clean in
+  `--mode json` and rpc mode. On Node, `console.log` goes through
+  `process.stdout.write` and was covered. Bun's console writes to the file
+  descriptor directly, so the help text landed on stdout in json mode. The
+  takeover now routes `console.log` and `console.info` to stderr too.
+
+Two more Bun differences are worth knowing about:
+
+- `process.exitCode` cannot be cleared. Assigning `undefined` leaves the
+  previous value in place and the property is unconfigurable. Assigning `0`
+  works.
+- Bun's native `fetch` honors `HTTP_PROXY` and `HTTPS_PROXY`; Node's does
+  not. That is why the app installs the npm `undici` package for its proxy
+  support, and why `test/http-dispatcher.test.ts` is Node-specific.
 
 The packages' `test` scripts are unchanged (`vitest --run`), so vitest runs on
 Node in both setups. `bun run --workspaces` drives them.
