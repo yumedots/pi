@@ -13,9 +13,11 @@
 - Added `/theme` to change the color theme. It previews each theme as you move through the list, and `/theme <name>` applies one directly
 - Added a Models Configuration reference generated from the `models.json` schema, listing all provider, model, model override, and compatibility fields ([#10790](https://github.com/earendil-works/pi/issues/10790))
 - Added the `autocompletePosition` setting, so the slash-command menu can float above the input (default) or sit below it
+- Added the `projectContextMaxChars` setting, which cuts the project context (`AGENTS.md` and friends) in the system prompt. The context is sent with every request, so it is the largest part of the prompt. The cut says how much was left out, and the model can read the file for the rest
 
 ### Changed
 
+- The terminal interface is loaded when the interactive mode runs, so `pi --version` and the headless modes use about 12 MB less memory
 - Thinking blocks now start collapsed. The transcript shows an animated braille sign in front of the `Thinking...` label while the model thinks, and a `+Thought · 3.7s` summary once it is done. Running tool calls show the same spinning sign. Set `hideThinkingBlock` to `false`, or press `Ctrl+T`, to show the thinking again
 - A skill invocation and the request typed alongside it now render as one message. The request appears on the same line as the mention
 - Skills can be picked with `@` in the editor. The mention loads the skill, and the transcript shows it as `@name` instead of `[skill] name`
