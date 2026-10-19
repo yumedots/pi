@@ -11,6 +11,8 @@
 - Added `ScrollView.keepOffsetOnNextLayout()`, which keeps the content in place when it grows, so a card that expands or collapses does not move
 - Added an `autocompletePosition` option to the editor, so the autocomplete list can float above the input or sit under it
 - Added a `contentHeight` option to the editor, so the input box can keep a fixed height while longer text scrolls inside it
+- Added a `backgroundColor` option to the editor theme, so the input box can be drawn as a filled card instead of a box framed by horizontal rules
+- Added a `prompt` option to the editor, which draws a marker in a gutter at the left of the input, and a `promptColor` option to the editor theme to color it
 - Added `Component.renderOverlayAbove()`, so a component can paint lines over the content above it without taking up layout height
 
 ### Changed

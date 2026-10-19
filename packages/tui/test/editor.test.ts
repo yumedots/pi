@@ -748,6 +748,85 @@ describe("Editor component", () => {
 		});
 	});
 
+	describe("Filled box", () => {
+		const backgroundColor = (text: string) => `\x1b[48;2;57;61;63m${text}\x1b[49m`;
+
+		it("paints every row of the box and drops the rules", () => {
+			const width = 20;
+			const editor = new Editor(createTestTUI(width), { ...defaultEditorTheme, backgroundColor });
+
+			const lines = editor.render(width);
+			for (const line of lines) {
+				assert.ok(line.startsWith("\x1b[48;2;57;61;63m"), `row is not painted: ${JSON.stringify(line)}`);
+				assert.ok(line.endsWith("\x1b[49m"), `row is not closed: ${JSON.stringify(line)}`);
+				assert.strictEqual(visibleWidth(line), width);
+			}
+			assert.ok(!lines.some((line) => line.includes("─")), "the box still has a rule");
+		});
+
+		it("keeps the scroll hint on the painted row", () => {
+			const width = 40;
+			const editor = new Editor(createTestTUI(width), { ...defaultEditorTheme, backgroundColor });
+			editor.setText(Array.from({ length: 20 }, (_, index) => `line ${index}`).join("\n"));
+
+			editor.render(width);
+			for (let index = 0; index < 10; index++) editor.handleInput("\x1b[A");
+
+			const lines = editor.render(width);
+			assert.match(stripVTControlCharacters(lines[0]!), /↑ 9 more/);
+			assert.match(stripVTControlCharacters(lines.at(-1)!), /↓ 4 more/);
+			assert.ok(!stripVTControlCharacters(lines[0]!).includes("─"));
+		});
+	});
+
+	describe("Prompt gutter", () => {
+		it("draws the prompt in front of the text and keeps the text inside the box", () => {
+			const width = 20;
+			const editor = new Editor(createTestTUI(width), defaultEditorTheme, { prompt: "> " });
+			editor.setText("hello");
+
+			const lines = editor.render(width);
+			assert.ok(stripVTControlCharacters(lines[1] ?? "").startsWith("> hello"));
+			for (const line of lines) {
+				assert.ok(visibleWidth(line) <= width, `row is too wide: ${JSON.stringify(line)}`);
+			}
+		});
+
+		it("wraps the text within the width left of the prompt", () => {
+			const width = 20;
+			const editor = new Editor(createTestTUI(width), defaultEditorTheme, { prompt: "> " });
+			editor.setText("a".repeat(40));
+
+			const lines = editor.render(width);
+			// The text wraps after 18 columns, so it never runs under the prompt.
+			assert.ok(stripVTControlCharacters(lines[1] ?? "").startsWith("> aaaa"));
+			assert.ok(!stripVTControlCharacters(lines[1] ?? "").includes("> >"));
+		});
+
+		it("places the cursor after the prompt on a click", () => {
+			const editor = new Editor(createTestTUI(40), defaultEditorTheme, { prompt: "> " });
+			editor.setText("hello");
+
+			editor.render(40);
+			editor.handleMouse({
+				type: "click",
+				button: "left",
+				x: 3,
+				y: 1,
+				screenX: 3,
+				screenY: 0,
+				width: 40,
+				height: 3,
+				shift: false,
+				alt: false,
+				ctrl: false,
+			});
+
+			// Column 3 of the row is the first character of the text, not the prompt.
+			assert.deepStrictEqual(editor.getCursor(), { line: 0, col: 1 });
+		});
+	});
+
 	describe("Grapheme-aware text wrapping", () => {
 		it("wraps lines correctly when text contains wide emojis", () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);

@@ -13,6 +13,7 @@ import {
 } from "../tui.ts";
 import { UndoStack } from "../undo-stack.ts";
 import {
+	applyBackgroundToLine,
 	autocompleteBoundaryRegex,
 	autocompleteSeparatorRegex,
 	cjkBreakRegex,
@@ -20,6 +21,7 @@ import {
 	getWordSegmenter,
 	isWhitespaceChar,
 	sliceByColumn,
+	truncateToWidth,
 	visibleWidth,
 } from "../utils.ts";
 import { findWordBackward, findWordForward } from "../word-navigation.ts";
@@ -238,6 +240,13 @@ interface LayoutLine {
 export interface EditorTheme {
 	borderColor: (str: string) => string;
 	selectList: SelectListTheme;
+	/**
+	 * Fills the editor box with a background color. A filled box has no horizontal rules: its
+	 * top and bottom rows are plain background rows.
+	 */
+	backgroundColor?: (str: string) => string;
+	/** Colors the prompt marker drawn in the left gutter of the input. */
+	promptColor?: (str: string) => string;
 }
 
 /** Where the autocomplete list is shown relative to the input box. */
@@ -257,6 +266,11 @@ export interface EditorOptions {
 	 * next to the editor do not resize while typing.
 	 */
 	contentHeight?: number;
+	/**
+	 * Marker drawn in a gutter at the left of the input, e.g. "> ". The text starts after
+	 * the gutter, so wrapping, the cursor, and mouse clicks account for its width.
+	 */
+	prompt?: string;
 }
 
 const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
@@ -335,6 +349,9 @@ export class Editor implements Component, Focusable {
 	// Border color (can be changed dynamically)
 	public borderColor: (str: string) => string;
 
+	// Background color of the editor box. Set, the box is drawn as a filled card.
+	protected backgroundColor: ((str: string) => string) | undefined;
+
 	// Autocomplete support
 	private autocompleteProvider?: AutocompleteProvider;
 	private autocompleteTriggerCharacters = [...DEFAULT_AUTOCOMPLETE_TRIGGER_CHARACTERS];
@@ -346,6 +363,12 @@ export class Editor implements Component, Focusable {
 	private autocompleteMaxVisible: number = 5;
 	private autocompletePosition: AutocompletePosition = "above";
 	private fixedContentHeight: number | undefined;
+	/** Marker drawn in a left gutter of the input, e.g. "> ". */
+	private prompt: string | undefined;
+	/** Visible width of the prompt gutter. */
+	private promptWidth: number = 0;
+	/** Color for the prompt marker. */
+	private promptColor: ((str: string) => string) | undefined;
 	private autocompleteAbort?: AbortController;
 	private autocompleteDebounceTimer?: ReturnType<typeof setTimeout>;
 	private autocompleteRequestTask: Promise<void> = Promise.resolve();
@@ -393,6 +416,7 @@ export class Editor implements Component, Focusable {
 		this.tui = tui;
 		this.theme = theme;
 		this.borderColor = theme.borderColor;
+		this.backgroundColor = theme.backgroundColor;
 		const paddingX = options.paddingX ?? 0;
 		this.paddingX = Number.isFinite(paddingX) ? Math.max(0, Math.floor(paddingX)) : 0;
 		const maxVisible = options.autocompleteMaxVisible ?? 5;
@@ -403,6 +427,9 @@ export class Editor implements Component, Focusable {
 			contentHeight !== undefined && Number.isFinite(contentHeight)
 				? Math.max(1, Math.floor(contentHeight))
 				: undefined;
+		this.prompt = options.prompt;
+		this.promptWidth = this.prompt ? visibleWidth(this.prompt) : 0;
+		this.promptColor = theme.promptColor;
 	}
 
 	/** Set of currently valid paste IDs, for marker-aware segmentation. */
@@ -544,14 +571,31 @@ export class Editor implements Component, Focusable {
 		// No cached state to invalidate currently
 	}
 
+	/** Whether the editor is drawn as a filled box instead of one framed by rules. */
+	protected get filledBox(): boolean {
+		return this.backgroundColor !== undefined;
+	}
+
 	protected renderTopBorder(width: number, hiddenLineCount: number): string {
+		if (this.filledBox) {
+			// The box itself is the frame, so the row only carries the scroll hint.
+			return hiddenLineCount > 0 ? this.renderScrollHint("↑", hiddenLineCount, width) : "";
+		}
 		const border = hiddenLineCount > 0 ? createScrollBorder("↑", hiddenLineCount, width) : "─".repeat(width);
 		return this.borderColor(border);
 	}
 
 	protected renderBottomBorder(width: number, hiddenLineCount: number): string {
+		if (this.filledBox) {
+			return hiddenLineCount > 0 ? this.renderScrollHint("↓", hiddenLineCount, width) : "";
+		}
 		const border = hiddenLineCount > 0 ? createScrollBorder("↓", hiddenLineCount, width) : "─".repeat(width);
 		return this.borderColor(border);
+	}
+
+	/** The scroll hint on a filled box: the label alone, the box is the rule. */
+	private renderScrollHint(direction: "↑" | "↓", hiddenLineCount: number, width: number): string {
+		return this.borderColor(truncateToWidth(` ${direction} ${hiddenLineCount} more `, width, ""));
 	}
 
 	render(width: number): string[] {
@@ -559,9 +603,16 @@ export class Editor implements Component, Focusable {
 		const paddingX = Math.min(this.paddingX, maxPadding);
 		const contentWidth = Math.max(1, width - paddingX * 2);
 
+		// The prompt marker sits in a gutter at the left of the text, so the text
+		// starts after it and wraps within the remaining width.
+		const promptWidth = Math.min(this.promptWidth, contentWidth - 1);
+		const textWidth = Math.max(1, contentWidth - promptWidth);
+		const prompt = this.prompt ? truncateToWidth(this.prompt, promptWidth, "") : "";
+		const promptText = this.promptColor ? this.promptColor(prompt) : prompt;
+
 		// Layout width: with padding the cursor can overflow into it,
 		// without padding we reserve 1 column for the cursor.
-		const layoutWidth = Math.max(1, contentWidth - (paddingX ? 0 : 1));
+		const layoutWidth = Math.max(1, textWidth - (paddingX ? 0 : 1));
 
 		// Store for cursor navigation (must match wrapping width)
 		this.lastWidth = layoutWidth;
@@ -606,10 +657,13 @@ export class Editor implements Component, Focusable {
 		// autocomplete (e.g. slash-command menu) is visible.
 		const emitCursorMarker = this.focused;
 
-		for (const layoutLine of visibleLines) {
+		for (const [index, layoutLine] of visibleLines.entries()) {
 			let displayText = layoutLine.text;
 			let lineVisibleWidth = visibleWidth(layoutLine.text);
 			let cursorInPadding = false;
+			// The prompt marker sits in the gutter of the first visible line; the other
+			// lines keep the gutter blank so the text of every line stays aligned.
+			const gutter = index === 0 ? promptText : " ".repeat(promptWidth);
 
 			// Add cursor if this line has it
 			if (layoutLine.hasCursor && layoutLine.cursorPos !== undefined) {
@@ -634,18 +688,18 @@ export class Editor implements Component, Focusable {
 					displayText = before + marker + cursor;
 					lineVisibleWidth = lineVisibleWidth + 1;
 					// If cursor overflows content width into the padding, flag it
-					if (lineVisibleWidth > contentWidth && paddingX > 0) {
+					if (lineVisibleWidth > textWidth && paddingX > 0) {
 						cursorInPadding = true;
 					}
 				}
 			}
 
 			// Calculate padding based on actual visible width
-			const padding = " ".repeat(Math.max(0, contentWidth - lineVisibleWidth));
+			const padding = " ".repeat(Math.max(0, textWidth - lineVisibleWidth));
 			const lineRightPadding = cursorInPadding ? rightPadding.slice(1) : rightPadding;
 
 			// Render the line (no side borders, just horizontal lines above and below)
-			result.push(`${leftPadding}${displayText}${padding}${lineRightPadding}`);
+			result.push(`${leftPadding}${gutter}${displayText}${padding}${lineRightPadding}`);
 		}
 
 		// Keep the box height constant when the text is shorter than the content height,
@@ -661,13 +715,23 @@ export class Editor implements Component, Focusable {
 		result.push(this.renderBottomBorder(width, linesBelow));
 		this.renderedBoxHeight = result.length;
 
+		// A filled box is painted as one card, so the background covers every row of it.
+		const box = this.paintBackground(result, width);
+
 		// With the list above the input it floats over the content above (see
 		// renderOverlayAbove). Below the input it takes part in the editor's own layout.
 		if (this.autocompletePosition === "below") {
-			for (const line of this.renderAutocompleteList(width)) result.push(line);
+			for (const line of this.renderAutocompleteList(width)) box.push(line);
 		}
 
-		return result;
+		return box;
+	}
+
+	/** Fills the rows of the editor box with the background color. */
+	private paintBackground(rows: string[], width: number): string[] {
+		const bg = this.backgroundColor;
+		if (!bg) return rows;
+		return rows.map((row) => applyBackgroundToLine(row, width, bg));
 	}
 
 	/**
@@ -736,7 +800,10 @@ export class Editor implements Component, Focusable {
 		const chunk = logicalLine.slice(visualLine.startCol, chunkEnd);
 		const maxPadding = Math.max(0, Math.floor((event.width - 1) / 2));
 		const paddingX = Math.min(this.paddingX, maxPadding);
-		const targetColumn = Math.max(0, event.x - paddingX);
+		const contentWidth = Math.max(1, event.width - paddingX * 2);
+		// The text starts after the padding and the prompt gutter.
+		const promptWidth = Math.min(this.promptWidth, contentWidth - 1);
+		const targetColumn = Math.max(0, event.x - paddingX - promptWidth);
 		let visibleColumn = 0;
 		let targetIndex = chunk.length;
 		let lastGraphemeIndex = 0;
