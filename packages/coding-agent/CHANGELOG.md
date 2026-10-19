@@ -19,6 +19,7 @@
 - Skills can be picked with `@` in the editor. The mention loads the skill, and the transcript shows it as `@name` instead of `[skill] name`
 - An `@name` mention loads the skill wherever it appears in the message, so `extract report.pdf with @pdf-tools` works too. The mention is consumed by the skill and does not repeat in the request
 - The skill body in the transcript toggles on a click (or the expand shortcut). The clicks of a double click count as one, and the card stays in place while it opens or closes
+- Clicking a skill invocation no longer starts a text selection, and the whole card, including the empty space around the mention, toggles the skill body
 - The `system` theme now uses Pi's own light or dark colors, following the terminal's mode, instead of building colors from the terminal's ANSI palette
 - Renamed the `/session` command to `/stats`. It still shows the session file, ID, message counts, token usage, and cost
 - The fullscreen transcript's "Jump to latest message" shortcut is now `Ctrl+E` instead of `Ctrl+End`, and its indicator sits at the right edge of the transcript instead of the center
