@@ -33,6 +33,7 @@
 - The startup listing of loaded context files, skills, prompt templates, and extensions is gone. Resource conflicts and load errors still show as warnings on startup
 - The settings menu no longer lists the fullscreen exit output while it holds its default value
 - The footer now shows the cwd and the stats on a single line, with the model info right-aligned on the same line
+- Sent messages now share one gray card background, instead of a blue card for regular messages and a purple card for skill invocations
 
 ### Fixed
 
