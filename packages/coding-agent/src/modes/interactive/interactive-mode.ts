@@ -5721,33 +5721,17 @@ export class InteractiveMode {
 			value: skill.name,
 		}));
 
-		this.showMenu(
-			"Skills",
-			items,
-			(skillName) => {
-				this.editor.setText(`/skill:${skillName} `);
-			},
-			{ wrapLines: 2, maxVisible: 8 },
-		);
+		this.showMenu("Skills", items, (skillName) => {
+			this.editor.setText(`/skill:${skillName} `);
+		});
 	}
 
 	private activeMenuOverlay: OverlayHandle | undefined;
 
-	private showMenu<T>(
-		title: string,
-		items: MenuItem<T>[],
-		onSelect: (value: T) => void,
-		options?: { placeholder?: string; wrapLines?: number; maxVisible?: number },
-	): void {
+	private showMenu<T>(title: string, items: MenuItem<T>[], onSelect: (value: T) => void): void {
 		this.activeMenuOverlay?.hide();
 		const selector = new MenuSelectorComponent<T>(
-			{
-				title,
-				items,
-				placeholder: options?.placeholder,
-				wrapLines: options?.wrapLines,
-				maxVisible: options?.maxVisible,
-			},
+			{ title, items },
 			(value) => {
 				this.activeMenuOverlay?.hide();
 				this.activeMenuOverlay = undefined;

@@ -28,15 +28,14 @@ describe("menu selector", () => {
 		expect(body).toContain("Write a commit");
 	});
 
-	it("wraps the description to at most two lines when wrapLines is set", () => {
+	it("renders the description on the same line as the title", () => {
 		const menu = new MenuSelectorComponent<string>(
 			{
 				title: "Skills",
-				wrapLines: 2,
 				items: [
 					{
 						title: "add-llm-provider",
-						description: "Checklist for adding a new LLM provider to packages/ai with full coverage",
+						description: "Checklist for adding a new LLM provider to packages/ai",
 						value: "add-llm-provider",
 					},
 				],
@@ -46,10 +45,9 @@ describe("menu selector", () => {
 		);
 
 		const body = renderBody(menu);
-		const lines = body.split("\n");
-		const entry = lines.filter((line) => line.includes("add-llm-provider") || line.includes("Checklist"));
-		expect(entry.length).toBeLessThanOrEqual(2);
-		expect(body).toContain("Checklist");
+		const entry = body.split("\n").find((line) => line.includes("add-llm-provider"));
+		expect(entry).toBeDefined();
+		expect(entry).toContain("Checklist for adding a new LLM provider");
 	});
 
 	it("selects the highlighted item on confirm", () => {

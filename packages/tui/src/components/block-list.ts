@@ -10,10 +10,6 @@ export interface BlockListTheme {
 }
 
 export interface BlockListOptions<T> {
-	/**
-	 * Render a row. The returned text may contain newlines to render a row
-	 * across several lines; each line is truncated to the row width.
-	 */
 	draw: (item: T, selected: boolean, width: number) => string;
 }
 
@@ -34,11 +30,6 @@ export class BlockList<T> implements Component {
 	private theme: BlockListTheme;
 	private draw: (item: T, selected: boolean, width: number) => string;
 	private mousePressedIndex: number | undefined;
-	/** Cached line count per item, keyed by the width they were measured at. */
-	private heights: number[] = [];
-	private heightsWidth = -1;
-	/** Maps a rendered line index to the item it belongs to. */
-	private lineToItem: number[] = [];
 
 	public onSelect?: (item: T) => void;
 	public onCancel?: () => void;
@@ -55,8 +46,6 @@ export class BlockList<T> implements Component {
 		this.items = items;
 		this.selectedIndex = clamp(this.selectedIndex, 0, Math.max(0, items.length - 1));
 		this.scrollOffset = 0;
-		this.heights = [];
-		this.heightsWidth = -1;
 	}
 
 	setSelectedIndex(index: number): void {
@@ -84,54 +73,33 @@ export class BlockList<T> implements Component {
 		const visibleRows = Math.min(this.maxVisible, this.items.length);
 		this.ensureSelectedVisible();
 
-		const heights = this.computeHeights(contentWidth);
 		const lines: string[] = [];
-		this.lineToItem = [];
 		for (let row = 0; row < visibleRows; row++) {
 			const index = this.scrollOffset + row;
 			const item = this.items[index];
 			if (item === undefined) {
 				lines.push(" ".repeat(contentWidth));
-				this.lineToItem.push(index);
 				continue;
 			}
 			const selected = index === this.selectedIndex;
-			const bg = selected ? this.theme.selection : this.theme.block;
-			for (const line of this.draw(item, selected, contentWidth).split("\n")) {
-				lines.push(applyBackgroundToLine(truncateToWidth(line, contentWidth, "…"), contentWidth, bg));
-				this.lineToItem.push(index);
-			}
+			const text = truncateToWidth(this.draw(item, selected, contentWidth), contentWidth, "…");
+			lines.push(applyBackgroundToLine(text, contentWidth, selected ? this.theme.selection : this.theme.block));
 		}
 
 		if (!scrollbar) return lines;
 
-		const totalHeight = heights.reduce((sum, height) => sum + height, 0);
-		const visibleHeight = lines.length;
 		const thumbHeight = Math.max(
-			Math.min(MIN_THUMB_ROWS, visibleHeight),
-			Math.round((visibleHeight * visibleHeight) / totalHeight),
+			Math.min(MIN_THUMB_ROWS, lines.length),
+			Math.round((lines.length * lines.length) / this.items.length),
 		);
 		const maxScrollTop = this.items.length - this.maxVisible;
 		const thumbTop =
-			maxScrollTop > 0 ? Math.round((this.scrollOffset / maxScrollTop) * (visibleHeight - thumbHeight)) : 0;
+			maxScrollTop > 0 ? Math.round((this.scrollOffset / maxScrollTop) * (lines.length - thumbHeight)) : 0;
 
 		return lines.map((line, row) => {
 			const isThumb = row >= thumbTop && row < thumbTop + thumbHeight;
 			return `${line} ${isThumb ? this.theme.thumb("█") : this.theme.track("│")}`;
 		});
-	}
-
-	/**
-	 * Line count per item, measured once per width. Selection only changes
-	 * styling, so the unselected measurement is representative.
-	 */
-	private computeHeights(width: number): number[] {
-		if (this.heightsWidth === width && this.heights.length === this.items.length) {
-			return this.heights;
-		}
-		this.heights = this.items.map((item) => this.draw(item, false, width).split("\n").length);
-		this.heightsWidth = width;
-		return this.heights;
 	}
 
 	handleInput(keyData: string): void {
@@ -161,13 +129,8 @@ export class BlockList<T> implements Component {
 		}
 		if (event.button !== "left" || (event.type !== "press" && event.type !== "click")) return undefined;
 
-		// Rows can span several lines, so map the clicked line back to its item.
-		const mapped = this.lineToItem.length > 0 ? this.lineToItem[event.y] : undefined;
-		const index = mapped ?? this.scrollOffset + event.y;
-		if (mapped === undefined && event.y >= Math.min(this.maxVisible, this.items.length)) {
-			return undefined;
-		}
-		if (index < 0 || index >= this.items.length) {
+		const index = this.scrollOffset + event.y;
+		if (event.y < 0 || event.y >= Math.min(this.maxVisible, this.items.length) || index >= this.items.length) {
 			return undefined;
 		}
 

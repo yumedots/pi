@@ -1,13 +1,4 @@
-import {
-	BlockList,
-	Container,
-	type Focusable,
-	fuzzyFilter,
-	getKeybindings,
-	Input,
-	Text,
-	wrapTextWithAnsi,
-} from "@earendil-works/pi-tui";
+import { BlockList, Container, type Focusable, fuzzyFilter, getKeybindings, Input, Text } from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.ts";
 
 export interface MenuItem<T> {
@@ -23,8 +14,6 @@ export interface MenuSelectorOptions<T> {
 	maxVisible?: number;
 	/** Rendered in place of the list while the items are still loading. */
 	loadingText?: string;
-	/** Maximum number of lines a row may occupy. Defaults to 1. */
-	wrapLines?: number;
 }
 
 const DEFAULT_MAX_VISIBLE = 10;
@@ -55,7 +44,6 @@ export class MenuSelectorComponent<T> extends Container implements Focusable {
 	private maxVisible: number;
 	private title: string;
 	private panelWidth = 60;
-	private wrapLines: number;
 	private loading: boolean;
 	private loadingText: string;
 	private footerText: string | undefined;
@@ -69,7 +57,6 @@ export class MenuSelectorComponent<T> extends Container implements Focusable {
 		this.allItems = options.items ?? [];
 		this.filteredItems = this.allItems;
 		this.maxVisible = options.maxVisible ?? DEFAULT_MAX_VISIBLE;
-		this.wrapLines = options.wrapLines ?? 1;
 		this.loading = options.items === undefined;
 		this.loadingText = options.loadingText ?? "Loading...";
 		this.onSelectCallback = onSelect;
@@ -92,23 +79,11 @@ export class MenuSelectorComponent<T> extends Container implements Focusable {
 	}
 
 	/** Render a single row. Subclasses override to customize the layout. */
-	protected drawItem(item: MenuItem<T>, selected: boolean, width: number): string {
+	protected drawItem(item: MenuItem<T>, selected: boolean, _width: number): string {
 		const title = selected ? theme.fg("accent", item.title) : item.title;
 		const description = item.description ? theme.fg("muted", item.description) : "";
 		const text = description ? `${title}  ${description}` : title;
-		return this.wrapRow(`  ${text}`, width);
-	}
-
-	/** Wrap a row to at most `wrapLines` lines, indenting continuation lines. */
-	protected wrapRow(text: string, width: number): string {
-		const maxLines = this.wrapLines;
-		if (!maxLines || maxLines <= 1) return text;
-		const indent = "  ";
-		const lines = wrapTextWithAnsi(text, Math.max(1, width - indent.length));
-		return lines
-			.slice(0, maxLines)
-			.map((line, index) => (index === 0 ? line : indent + line))
-			.join("\n");
+		return `  ${text}`;
 	}
 
 	/** The panel title. Subclasses override to show dynamic state. */
