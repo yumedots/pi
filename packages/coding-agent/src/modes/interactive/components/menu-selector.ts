@@ -1,4 +1,14 @@
-import { BlockList, Container, type Focusable, fuzzyFilter, getKeybindings, Input, Text } from "@earendil-works/pi-tui";
+import {
+	BlockList,
+	Box,
+	type Component,
+	Container,
+	type Focusable,
+	fuzzyFilter,
+	getKeybindings,
+	Input,
+	Text,
+} from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.ts";
 
 export interface MenuItem<T> {
@@ -106,36 +116,51 @@ export class MenuSelectorComponent<T> extends Container implements Focusable {
 
 	protected renderPanel(): void {
 		this.clear();
+		this.addChild(this.wrapPanel(this.buildContent()));
+	}
+
+	/** Build the panel content. Subclasses override to change the layout. */
+	protected buildContent(): Component {
+		const panel = new Container();
 
 		const title = this.getTitle();
 		const titleLine = theme.bold(`  ${title}`);
 		const escHint = theme.fg("muted", "  esc");
 
-		this.addChild(
+		panel.addChild(
 			new Text(`${titleLine}${" ".repeat(Math.max(0, this.panelWidth - title.length - 6))}${escHint}`, 0, 0),
 		);
-		this.addChild(this.searchInput);
-		this.addChild(new Text("", 0, 0));
+		panel.addChild(this.searchInput);
+		panel.addChild(new Text("", 0, 0));
 
 		if (this.loading) {
-			this.addChild(new Text(theme.fg("muted", `  ${this.loadingText}`), 0, 0));
-			return;
+			panel.addChild(new Text(theme.fg("muted", `  ${this.loadingText}`), 0, 0));
+			return panel;
 		}
 
-		this.addChild(this.blockList);
+		panel.addChild(this.blockList);
 
 		if (this.filteredItems.length === 0) {
 			const emptyText = this.allItems.length === 0 ? "No items available" : "No results found";
-			this.addChild(new Text(theme.fg("muted", `  ${emptyText}`), 0, 0));
+			panel.addChild(new Text(theme.fg("muted", `  ${emptyText}`), 0, 0));
 		}
 
 		if (this.footerText) {
-			this.addChild(new Text(theme.fg("muted", `  ${this.footerText}`), 0, 0));
+			panel.addChild(new Text(theme.fg("muted", `  ${this.footerText}`), 0, 0));
 		}
 
 		for (const line of this.extraFooterLines()) {
-			this.addChild(new Text(line, 0, 0));
+			panel.addChild(new Text(line, 0, 0));
 		}
+
+		return panel;
+	}
+
+	/** Paint the panel background behind the content. */
+	protected wrapPanel(content: Component): Component {
+		const box = new Box(0, 0, (text) => theme.bg("panelBg", text));
+		box.addChild(content);
+		return box;
 	}
 
 	/** Replace the items once an async source has finished loading. */

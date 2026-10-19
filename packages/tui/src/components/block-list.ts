@@ -1,6 +1,6 @@
 import { getKeybindings } from "../keybindings.ts";
 import type { Component, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
-import { applyBackgroundToLine, truncateToWidth } from "../utils.ts";
+import { applyBackgroundToLine, truncateToWidth, visibleWidth } from "../utils.ts";
 
 export interface BlockListTheme {
 	block: (text: string) => string;
@@ -73,32 +73,41 @@ export class BlockList<T> implements Component {
 		const visibleRows = Math.min(this.maxVisible, this.items.length);
 		this.ensureSelectedVisible();
 
-		const lines: string[] = [];
+		const contents: string[] = [];
+		const selectedFlags: boolean[] = [];
 		for (let row = 0; row < visibleRows; row++) {
 			const index = this.scrollOffset + row;
 			const item = this.items[index];
 			if (item === undefined) {
-				lines.push(" ".repeat(contentWidth));
+				contents.push("");
+				selectedFlags.push(false);
 				continue;
 			}
 			const selected = index === this.selectedIndex;
-			const text = truncateToWidth(this.draw(item, selected, contentWidth), contentWidth, "…");
-			lines.push(applyBackgroundToLine(text, contentWidth, selected ? this.theme.selection : this.theme.block));
+			contents.push(truncateToWidth(this.draw(item, selected, contentWidth), contentWidth, "…"));
+			selectedFlags.push(selected);
 		}
 
-		if (!scrollbar) return lines;
+		let thumbTop = 0;
+		let thumbHeight = 0;
+		if (scrollbar) {
+			thumbHeight = Math.max(
+				Math.min(MIN_THUMB_ROWS, visibleRows),
+				Math.round((visibleRows * visibleRows) / this.items.length),
+			);
+			const maxScrollTop = this.items.length - this.maxVisible;
+			thumbTop = maxScrollTop > 0 ? Math.round((this.scrollOffset / maxScrollTop) * (visibleRows - thumbHeight)) : 0;
+		}
 
-		const thumbHeight = Math.max(
-			Math.min(MIN_THUMB_ROWS, lines.length),
-			Math.round((lines.length * lines.length) / this.items.length),
-		);
-		const maxScrollTop = this.items.length - this.maxVisible;
-		const thumbTop =
-			maxScrollTop > 0 ? Math.round((this.scrollOffset / maxScrollTop) * (lines.length - thumbHeight)) : 0;
-
-		return lines.map((line, row) => {
-			const isThumb = row >= thumbTop && row < thumbTop + thumbHeight;
-			return `${line} ${isThumb ? this.theme.thumb("█") : this.theme.track("│")}`;
+		return contents.map((content, row) => {
+			const isThumb = scrollbar && row >= thumbTop && row < thumbTop + thumbHeight;
+			const gutter = scrollbar ? ` ${isThumb ? this.theme.thumb("█") : this.theme.track("│")}` : "";
+			// Pad the content before the gutter so the scrollbar stays at the right edge.
+			const padded = content + " ".repeat(Math.max(0, contentWidth - visibleWidth(content)));
+			// The row background covers the scrollbar gutter too, so a panel behind
+			// the list does not show through next to the selected row.
+			const bg = selectedFlags[row] ? this.theme.selection : this.theme.block;
+			return applyBackgroundToLine(`${padded}${gutter}`, width, bg);
 		});
 	}
 

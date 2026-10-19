@@ -2,7 +2,15 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import * as os from "node:os";
-import { getKeybindings, Input, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+	type Component,
+	Container,
+	getKeybindings,
+	Input,
+	Text,
+	truncateToWidth,
+	visibleWidth,
+} from "@earendil-works/pi-tui";
 import type { SessionInfo, SessionListProgress } from "../../../core/session-manager.ts";
 import { canonicalizePath as _canonicalizePath } from "../../../utils/paths.ts";
 import { theme } from "../theme/theme.ts";
@@ -243,27 +251,27 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 		return "Sessions";
 	}
 
-	protected override renderPanel(): void {
+	protected override buildContent(): Component {
 		if (this.mode === "rename") {
-			this.renderRenamePanel();
-			return;
+			return this.buildRenameContent();
 		}
-		super.renderPanel();
+		return super.buildContent();
 	}
 
-	private renderRenamePanel(): void {
-		this.clear();
-		this.addChild(new Text(theme.bold("  Rename Session"), 0, 0));
-		this.addChild(new Text("", 0, 0));
-		this.addChild(this.renameInput);
-		this.addChild(new Text("", 0, 0));
-		this.addChild(
+	private buildRenameContent(): Component {
+		const panel = new Container();
+		panel.addChild(new Text(theme.bold("  Rename Session"), 0, 0));
+		panel.addChild(new Text("", 0, 0));
+		panel.addChild(this.renameInput);
+		panel.addChild(new Text("", 0, 0));
+		panel.addChild(
 			new Text(
 				theme.fg("muted", `  ${keyHint("tui.select.confirm", "save")} · ${keyHint("tui.select.cancel", "cancel")}`),
 				0,
 				0,
 			),
 		);
+		return panel;
 	}
 
 	override handleInput(keyData: string): void {
