@@ -22,6 +22,8 @@
 - Fixed `models.schema.json` missing descriptions for provider and model fields, so editors showed no hints for them ([#10790](https://github.com/earendil-works/pi/issues/10790))
 - Fixed the menu keeping the colors of the previous theme after a theme change, which left light panels with unreadable text
 - Fixed the system theme leaving the menu panel transparent when the terminal reports no colors, so the menu showed the terminal's own background. The panel and the selected row keep a neutral gray instead
+- Fixed the menu cutting a row's text off with a reset that cleared the panel background, so the end of the row showed the terminal's own background
+- Fixed the system theme taking the menu's selected row color from the terminal palette, which made it brown on a warm palette. The menu now has its own `menuSelectedBg` token that stays gray
 
 ## [1.3.0] - 2026-10-15
 

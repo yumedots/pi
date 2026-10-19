@@ -70,6 +70,7 @@ type FamilyName = keyof typeof FAMILIES;
 const TOKEN_FAMILIES: Record<ThemeToken, FamilyName> = {
 	selectedBg: "blue",
 	panelBg: "panel",
+	menuSelectedBg: "panel",
 	searchMatchBg: "orange",
 	userMessageBg: "blue",
 	customMessageBg: "violet",
@@ -137,7 +138,7 @@ const TOKEN_SLOTS: Partial<Record<ThemeToken, number>> = { syntaxString: 2, synt
  * Tokens that keep their family's own hue instead of taking it from the terminal palette.
  * Large surfaces read as a tint of the palette color, so a panel picks up a warm palette as brown.
  */
-const ACHROMATIC_TOKENS = new Set<ThemeToken>(["panelBg"]);
+const ACHROMATIC_TOKENS = new Set<ThemeToken>(["panelBg", "menuSelectedBg"]);
 
 // ============================================================================
 // Contrast levels and rules
@@ -304,19 +305,25 @@ const RULES: Rule[] = [
 	{ token: "text", on: ["background"], level: "text" },
 	{ token: "text", on: ["selectedBg"], level: "textOnPanel" },
 	{ token: "text", on: ["panelBg"], level: "textOnPanel" },
+	{ token: "text", on: ["menuSelectedBg"], level: "textOnPanel" },
+	{ token: "menuSelectedBg", on: ["panelBg"], level: "track" },
 	{ token: "userMessageText", on: ["userMessageBg"], level: "textOnPanel" },
 	{ token: "toolTitle", on: TOOL_PANELS, level: "textOnPanel" },
 	...each(
 		["accent", "success", "error", "warning"],
-		["background", "selectedBg", "panelBg", ...TOOL_PANELS],
+		["background", "selectedBg", "panelBg", "menuSelectedBg", ...TOOL_PANELS],
 		"readable",
 	),
 	{
 		token: "muted",
-		on: ["background", "selectedBg", "panelBg", "customMessageBg", ...TOOL_PANELS],
+		on: ["background", "selectedBg", "panelBg", "menuSelectedBg", "customMessageBg", ...TOOL_PANELS],
 		level: "readable",
 	},
-	{ token: "dim", on: ["background", "selectedBg", "panelBg", "customMessageBg", ...TOOL_PANELS], level: "subtle" },
+	{
+		token: "dim",
+		on: ["background", "selectedBg", "panelBg", "menuSelectedBg", "customMessageBg", ...TOOL_PANELS],
+		level: "subtle",
+	},
 	{ token: "thinkingText", on: ["background"], level: "readable" },
 	{ token: "customMessageText", on: ["customMessageBg", ...TOOL_PANELS], level: "readable" },
 	{
@@ -668,6 +675,12 @@ const INDEXED_SELECTED_BG: Record<ThemeAppearance, string> = {
 	light: "#d4d4d4",
 };
 
+/** The menu's selected row in the indexed tier, a step further from the panel background. */
+const INDEXED_MENU_SELECTED_BG: Record<ThemeAppearance, string> = {
+	dark: "#6a6a6a",
+	light: "#bcbcbc",
+};
+
 /**
  * Colors for terminals that reported nothing: the terminal renders ANSI indices 0-15 and the default
  * colors with its own theme, so they fit any background. Neutral tokens below body text are faint (SGR 2)
@@ -686,6 +699,10 @@ function indexedColors(saturation: number, appearance: ThemeAppearance | undefin
 			// A selected row needs a block to read as selected; the terminal's default background
 			// would not show one.
 			colors[token] = appearance ? INDEXED_SELECTED_BG[appearance] : "";
+			continue;
+		}
+		if (token === "menuSelectedBg") {
+			colors[token] = appearance ? INDEXED_MENU_SELECTED_BG[appearance] : "";
 			continue;
 		}
 		if (PANELS.includes(token as ThemeBg)) {

@@ -306,6 +306,11 @@ export class Theme {
 		return `${ansi}${text}\x1b[49m`;
 	}
 
+	/** The escape sequence that starts a background color, for painting a background behind content. */
+	bgStart(color: ThemeBg): string {
+		return this.tokenAnsi(this.bgAnsi, color);
+	}
+
 	private tokenAnsi<T extends ThemeToken>(ansi: Map<T, string>, token: T): string {
 		const value = ansi.get(token);
 		if (value === undefined) throw new Error(`Unknown theme color: ${token}`);

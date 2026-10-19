@@ -138,9 +138,7 @@ function treePrefix(node: FlatSessionNode): string {
 	return parts.join("") + branch;
 }
 
-/**
- * Delete a session file, trying the `trash` CLI first, then falling back to unlink.
- */
+/** Delete a session file, trying the `trash` CLI first, then falling back to unlink. */
 async function deleteSessionFile(
 	sessionPath: string,
 ): Promise<{ ok: boolean; method: "trash" | "unlink"; error?: string }> {
@@ -189,10 +187,7 @@ export interface SessionMenuOptions {
 	currentSessionPath?: string;
 }
 
-/**
- * Session picker built on the generic menu primitive. Sessions load asynchronously,
- * so the list starts empty and is filled in once the loader resolves.
- */
+/** Session picker built on the generic menu primitive. Sessions load asynchronously. */
 export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 	private abortController = new AbortController();
 	private scope: SessionScope = "current";
@@ -447,7 +442,6 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 		try {
 			const sessions = await loader((loaded, total, partial) => {
 				if (this.abortController.signal.aborted || !partial) return;
-				// Show sessions as they are discovered instead of waiting for the full scan.
 				store([...partial]);
 				this.refreshItems();
 				this.setFooterText(`loaded ${loaded} of ${total}`);
@@ -488,8 +482,7 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 	}
 
 	protected override applyFilter(_query: string): void {
-		// The session picker matches against the full session text (id, name, messages, cwd)
-		// and supports re:<pattern> regex and "phrase" exact matching.
+		// Matches the full session text and supports re:<pattern> regex and "phrase" exact matching.
 		this.refreshItems();
 	}
 

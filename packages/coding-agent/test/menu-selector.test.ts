@@ -50,6 +50,29 @@ describe("menu selector", () => {
 		expect(entry).toContain("Checklist for adding a new LLM provider");
 	});
 
+	it("keeps the panel background across a truncated row", () => {
+		const menu = new MenuSelectorComponent<string>(
+			{
+				title: "Sessions",
+				items: [
+					{
+						title: "a".repeat(120),
+						description: "a description that also runs past the width of the panel",
+						value: "a",
+					},
+				],
+			},
+			() => {},
+			() => {},
+		);
+
+		const line = menu.render(40).find((row) => row.includes("…"))!;
+		// The row is cut with an ellipsis, which inserts a reset that clears the background.
+		// The background must be re-applied, or the rest of the row shows the terminal's own.
+		const afterReset = line.slice(line.indexOf("\x1b[0m"));
+		expect(afterReset).toMatch(/\x1b\[48;2;\d+;\d+;\d+m/);
+	});
+
 	it("selects the highlighted item on confirm", () => {
 		const onSelect = vi.fn();
 		const menu = new MenuSelectorComponent<string>(

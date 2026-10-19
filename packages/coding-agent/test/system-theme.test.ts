@@ -92,10 +92,12 @@ describe("generateSystemThemeColors", () => {
 				.concat(["#57534e", "#f87171", "#84cc16", "#fbbf24", "#3b82f6", "#c084fc", "#2dd4bf", "#d6d3d1"])
 				.map(rgb),
 		};
-		const panel = resolved(warm, "panelBg");
-		// The panel reads as gray, not brown: every channel is the same.
-		expect(panel.r).toBe(panel.g);
-		expect(panel.g).toBe(panel.b);
+		// The panel and the menu's selected row read as gray, not brown: every channel is the same.
+		for (const token of ["panelBg", "menuSelectedBg"] as const) {
+			const surface = resolved(warm, token);
+			expect(surface.r, token).toBe(surface.g);
+			expect(surface.g, token).toBe(surface.b);
+		}
 	});
 
 	// https://github.com/earendil-works/pi/issues/10255

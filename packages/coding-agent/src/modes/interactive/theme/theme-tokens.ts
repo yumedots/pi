@@ -49,6 +49,11 @@ export const THEME_TOKENS = defineThemeTokens({
 		description: "Menu and dialog panel background (falls back to selectedBg when omitted)",
 		fallback: "selectedBg",
 	},
+	menuSelectedBg: {
+		slot: "background",
+		description: "Selected row in menus (falls back to selectedBg when omitted)",
+		fallback: "selectedBg",
+	},
 	searchMatchBg: {
 		slot: "background",
 		description: "Transcript search match background and current-match text (falls back to selectedBg when omitted)",

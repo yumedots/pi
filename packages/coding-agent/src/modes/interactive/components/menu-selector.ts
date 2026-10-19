@@ -31,7 +31,7 @@ const DEFAULT_MAX_VISIBLE = 10;
 
 const blockListTheme = {
 	block: (text: string) => text,
-	selection: (text: string) => theme.bg("selectedBg", text),
+	selection: (text: string) => theme.bg("menuSelectedBg", text),
 	track: (text: string) => theme.fg("scrollbarTrack", text),
 	thumb: (text: string) => theme.fg("scrollbarThumb", text),
 };
@@ -111,10 +111,7 @@ export class MenuSelectorComponent<T> extends Container implements Focusable {
 		return [];
 	}
 
-	/**
-	 * Handle a key before the menu's own bindings. Return true to consume it.
-	 * Subclasses override to add their own shortcuts.
-	 */
+	/** Handle a key before the menu's own bindings. Return true to consume it. */
 	protected handleExtraKey(_keyData: string): boolean {
 		return false;
 	}
@@ -128,8 +125,7 @@ export class MenuSelectorComponent<T> extends Container implements Focusable {
 	protected buildContent(): Component {
 		const panel = new Container();
 
-		// ThemedText rebuilds its string after an invalidation, which the UI performs on theme
-		// changes. Plain Text would keep the colors it was built with.
+		// ThemedText rebuilds its string after the invalidation a theme change performs.
 		panel.addChild(
 			new ThemedText(
 				() => {
@@ -168,9 +164,15 @@ export class MenuSelectorComponent<T> extends Container implements Focusable {
 
 	/** Paint the panel background behind the content. */
 	protected wrapPanel(content: Component): Component {
-		const box = new Box(0, 0, (text) => theme.bg("panelBg", text));
+		const box = new Box(0, 0, (text) => this.paintPanel(text));
 		box.addChild(content);
 		return box;
+	}
+
+	/** A reset in the content clears the background, so it is re-applied after every reset. */
+	private paintPanel(text: string): string {
+		const bg = theme.bgStart("panelBg");
+		return theme.bg("panelBg", text.replace(/(\x1b\[(?:0|49)m)/g, `$1${bg}`));
 	}
 
 	/** Replace the items once an async source has finished loading. */

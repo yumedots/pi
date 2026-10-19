@@ -155,6 +155,10 @@
           "$ref": "#/$defs/ColorValue",
           "description": "Menu and dialog panel background (falls back to selectedBg when omitted)"
         },
+        "menuSelectedBg": {
+          "$ref": "#/$defs/ColorValue",
+          "description": "Selected row in menus (falls back to selectedBg when omitted)"
+        },
         "searchMatchBg": {
           "$ref": "#/$defs/ColorValue",
           "description": "Transcript search match background and current-match text (falls back to selectedBg when omitted)"
