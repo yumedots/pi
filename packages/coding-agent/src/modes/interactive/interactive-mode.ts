@@ -674,40 +674,6 @@ export class InteractiveMode {
 		});
 	}
 
-	private getAutocompleteSourceTag(sourceInfo?: SourceInfo): string | undefined {
-		// Built-in extension commands are untagged, like built-in commands.
-		if (!sourceInfo || sourceInfo.source === "builtin") {
-			return undefined;
-		}
-
-		const scopePrefix = sourceInfo.scope === "user" ? "u" : sourceInfo.scope === "project" ? "p" : "t";
-		const source = sourceInfo.source.trim();
-
-		if (source === "auto" || source === "local" || source === "cli") {
-			return scopePrefix;
-		}
-
-		if (source.startsWith("npm:")) {
-			return `${scopePrefix}:${source}`;
-		}
-
-		const gitSource = parseGitUrl(source);
-		if (gitSource) {
-			const ref = gitSource.ref ? `@${gitSource.ref}` : "";
-			return `${scopePrefix}:git:${gitSource.host}/${gitSource.path}${ref}`;
-		}
-
-		return scopePrefix;
-	}
-
-	private prefixAutocompleteDescription(description: string | undefined, sourceInfo?: SourceInfo): string | undefined {
-		const sourceTag = this.getAutocompleteSourceTag(sourceInfo);
-		if (!sourceTag) {
-			return description;
-		}
-		return description ? `[${sourceTag}] ${description}` : `[${sourceTag}]`;
-	}
-
 	private getBuiltInCommandConflictDiagnostics(extensionRunner: ExtensionRunner): ResourceDiagnostic[] {
 		const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
 		return extensionRunner
@@ -787,7 +753,7 @@ export class InteractiveMode {
 		// Convert prompt templates to SlashCommand format for autocomplete
 		const templateCommands: SlashCommand[] = this.session.promptTemplates.map((cmd) => ({
 			name: cmd.name,
-			description: this.prefixAutocompleteDescription(cmd.description, cmd.sourceInfo),
+			description: cmd.description,
 			...(cmd.argumentHint && { argumentHint: cmd.argumentHint }),
 		}));
 
@@ -798,7 +764,7 @@ export class InteractiveMode {
 			.filter((cmd) => !builtinCommandNames.has(cmd.name))
 			.map((cmd) => ({
 				name: cmd.invocationName,
-				description: this.prefixAutocompleteDescription(cmd.description, cmd.sourceInfo),
+				description: cmd.description,
 				getArgumentCompletions: cmd.getArgumentCompletions,
 			}));
 
@@ -811,7 +777,7 @@ export class InteractiveMode {
 				this.skillCommands.set(commandName, skill.filePath);
 				skillCommandList.push({
 					name: commandName,
-					description: this.prefixAutocompleteDescription(skill.description, skill.sourceInfo),
+					description: skill.description,
 				});
 			}
 		}
