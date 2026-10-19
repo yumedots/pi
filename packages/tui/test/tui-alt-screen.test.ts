@@ -1943,6 +1943,41 @@ describe("TuiAltScreen", () => {
 		tui.stop();
 	});
 
+	it("drops wheel events from the gesture in progress when the user jumps to the end", async () => {
+		const terminal = new VirtualTerminal(20, 6);
+		const tui = new TuiAltScreen(terminal);
+		const transcript = new ScrollView(
+			new Text(Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0),
+			{ follow: "end", primary: true },
+		);
+		tui.setLayoutRoot(transcript);
+		tui.start();
+		await terminal.waitForRender();
+		const bottom = transcript.scrollTop;
+
+		// A trackpad gesture: scroll up, then press Ctrl+E while the wheel is still firing.
+		terminal.sendInput("\x1b[<64;5;3M");
+		await terminal.waitForRender();
+		assert.ok(transcript.scrollTop < bottom);
+
+		terminal.sendInput("\x05");
+		await terminal.waitForRender();
+		assert.strictEqual(transcript.scrollTop, bottom);
+
+		// Momentum events from the same gesture must not pull the view off the end.
+		terminal.sendInput("\x1b[<64;5;3M");
+		await terminal.waitForRender();
+		assert.strictEqual(transcript.scrollTop, bottom);
+		assert.strictEqual(transcript.isFollowingEnd, true);
+
+		// After a pause the gesture is over, so scrolling works again.
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		terminal.sendInput("\x1b[<64;5;3M");
+		await terminal.waitForRender();
+		assert.ok(transcript.scrollTop < bottom);
+		tui.stop();
+	});
+
 	it("focuses and captures drag gestures for mouse-aware components", async () => {
 		const terminal = new VirtualTerminal(20, 2);
 		const tui = new TuiAltScreen(terminal);

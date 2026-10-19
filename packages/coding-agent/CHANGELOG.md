@@ -34,6 +34,7 @@
 
 - Fixed the fullscreen transcript bouncing after jumping to the latest message. The transcript now keeps its position when the editor or footer changes height, instead of sliding up and back down
 - Fixed the input box growing with the prompt, which resized the transcript above it. The input area now has a fixed height and longer prompts scroll inside it, so the conversation stays put while typing
+- Fixed Ctrl+E not sticking when a trackpad was still sending wheel events: the jump now cancels the scroll gesture that was in progress, instead of being immediately scrolled back
 - Fixed a running bash command's output disappearing from the pending area when the queued messages were updated
 - Fixed compaction and branch summaries failing with "generation hit the token cap" when reasoning used most of the fixed summary output limit. Summaries now use the model's output limit, and `compaction.reserveTokens` only controls when compaction starts ([#9512](https://github.com/earendil-works/pi/issues/9512), [#9075](https://github.com/earendil-works/pi/issues/9075)).
 - Fixed `models.schema.json` missing descriptions for provider and model fields, so editors showed no hints for them ([#10790](https://github.com/earendil-works/pi/issues/10790))

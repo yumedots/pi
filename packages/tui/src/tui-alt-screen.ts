@@ -58,7 +58,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "./utils.ts";
-import { WheelScrollAccelerator, type WheelScrollLines } from "./wheel-scroll.ts";
+import { WHEEL_GESTURE_GAP_MS, WheelScrollAccelerator, type WheelScrollLines } from "./wheel-scroll.ts";
 
 const ENTER_ALT_SCREEN = "\x1b[?1049h";
 const EXIT_ALT_SCREEN = "\x1b[?1049l";
@@ -243,6 +243,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		y: number;
 	};
 	private readonly wheelScroll: WheelScrollAccelerator;
+	/** Timestamp of the last wheel event, to tell apart one scroll gesture from the next. */
+	private lastWheelAt = Number.NEGATIVE_INFINITY;
+	/** Set by an explicit jump to the end; wheel events from the ongoing gesture are dropped. */
+	private cancelWheelGesture = false;
 	private readonly mouseEnabled: boolean;
 	private readonly searchMatchStyle: (text: string) => string;
 	private readonly searchCurrentMatchStyle: (text: string) => string;
@@ -494,6 +498,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 	scrollToBottom(): void {
 		this.getPrimaryScrollView().scrollToEnd();
+		// A trackpad keeps sending wheel events after the fingers lift (momentum). Without
+		// this, those events would immediately scroll the view back off the end the user
+		// just jumped to. Cancel the gesture that was in progress at the jump.
+		this.cancelWheelGesture = true;
 		this.requestRender();
 	}
 
@@ -706,7 +714,14 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 		const wheelEvent = this.parseWheelEvent(data);
 		if (wheelEvent) {
-			const lines = this.wheelScroll.next(wheelEvent.direction, performance.now());
+			const now = performance.now();
+			const continuesGesture = now - this.lastWheelAt <= WHEEL_GESTURE_GAP_MS;
+			this.lastWheelAt = now;
+			if (this.cancelWheelGesture) {
+				if (continuesGesture) return { consume: true };
+				this.cancelWheelGesture = false;
+			}
+			const lines = this.wheelScroll.next(wheelEvent.direction, now);
 			// SGR mouse button codes use bit 3 (value 8) for the Alt modifier.
 			const wheelDelta =
 				wheelEvent.direction * ((wheelEvent.button & 8) !== 0 ? lines * ALT_WHEEL_SCROLL_MULTIPLIER : lines);
