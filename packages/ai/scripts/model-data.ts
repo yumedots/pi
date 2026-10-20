@@ -2,10 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-export const MODEL_DATA_SCHEMA_VERSION = 7;
+export const MODEL_DATA_SCHEMA_VERSION = 6;
 export const MODEL_DATA_MANIFEST_FILE = ".manifest.json";
-/** The single file that holds the generated catalog of every provider. */
-export const MODEL_DATA_FILE = "models.json";
 
 export type ModelDataStructure = Record<string, Record<string, string>>;
 
@@ -71,35 +69,20 @@ function readJsonObject(path: string, description: string, errors: string[]): Re
 	return parsed;
 }
 
-/** Reads the generated catalog and returns the groups of every provider. */
-function readModelDataProviders(dataDir: string, errors: string[]): Record<string, unknown> | undefined {
-	const path = join(dataDir, MODEL_DATA_FILE);
-	const catalog = readJsonObject(path, MODEL_DATA_FILE, errors);
-	if (!catalog) return undefined;
-	if (!isRecord(catalog.providers)) {
-		errors.push(`${MODEL_DATA_FILE} must contain a "providers" object`);
-		return undefined;
-	}
-	return catalog.providers;
-}
-
-function readProviderStructure(dataDir: string, providerId: string): Record<string, string> {
+function readProviderStructure(path: string, providerId: string): Record<string, string> {
 	const errors: string[] = [];
-	const providers = readModelDataProviders(dataDir, errors);
-	if (!providers) throw new Error(errors.join("\n"));
-
-	const groups = providers[providerId];
-	if (!isRecord(groups)) throw new Error(`${MODEL_DATA_FILE} has no data for provider ${providerId}`);
+	const groups = readJsonObject(path, `${providerId}.json`, errors);
+	if (!groups) throw new Error(errors.join("\n"));
 
 	const models = new Map<string, string>();
 	for (const [api, value] of Object.entries(groups)) {
-		if (!isRecord(value)) throw new Error(`${MODEL_DATA_FILE} API group ${JSON.stringify(api)} must be an object`);
+		if (!isRecord(value)) throw new Error(`${path} API group ${JSON.stringify(api)} must be an object`);
 		for (const modelKey of Object.keys(value)) {
-			if (models.has(modelKey)) throw new Error(`${MODEL_DATA_FILE} contains ${modelKey} in more than one API group`);
+			if (models.has(modelKey)) throw new Error(`${path} contains ${modelKey} in more than one API group`);
 			models.set(modelKey, api);
 		}
 	}
-	if (models.size === 0) throw new Error(`${MODEL_DATA_FILE} contains no generated model data for ${providerId}`);
+	if (models.size === 0) throw new Error(`${path} contains no generated model data`);
 	return sortedRecord(models);
 }
 
@@ -129,7 +112,10 @@ export function readModelDataStructure(packageRoot: string): ModelDataStructure 
 	}
 
 	return sortedRecord(
-		providerIds.map((providerId) => [providerId, readProviderStructure(dataDir, providerId)]),
+		providerIds.map((providerId) => [
+			providerId,
+			readProviderStructure(join(dataDir, `${providerId}.json`), providerId),
+		]),
 	);
 }
 
@@ -231,7 +217,9 @@ export function validateModelDataDirectory(structure: ModelDataStructure, dataDi
 	}
 
 	const errors: string[] = [];
-	const expectedFiles = [MODEL_DATA_FILE];
+	const expectedFiles = Object.keys(structure)
+		.map((providerId) => `${providerId}.json`)
+		.sort();
 	const actualFiles = readdirSync(dataDir)
 		.filter((entry) => entry.endsWith(".json") && entry !== MODEL_DATA_MANIFEST_FILE)
 		.sort();
@@ -262,26 +250,21 @@ export function validateModelDataDirectory(structure: ModelDataStructure, dataDi
 		}
 	}
 
-	const catalogPath = join(dataDir, MODEL_DATA_FILE);
-	if (existsSync(catalogPath)) {
-		const content = readFileSync(catalogPath, "utf8");
-		if (manifestFiles && manifestFiles[MODEL_DATA_FILE] !== sha256(content)) {
-			errors.push(`${MODEL_DATA_FILE} does not match its manifest hash`);
-		}
-	}
-	const providers = readModelDataProviders(dataDir, errors);
-
 	for (const [providerId, expectedModels] of Object.entries(structure)) {
-		const groups = providers?.[providerId];
-		if (!isRecord(groups)) {
-			errors.push(`${MODEL_DATA_FILE} has no data for provider ${providerId}`);
-			continue;
+		const filename = `${providerId}.json`;
+		const path = join(dataDir, filename);
+		if (!existsSync(path)) continue;
+		const content = readFileSync(path, "utf8");
+		if (manifestFiles && manifestFiles[filename] !== sha256(content)) {
+			errors.push(`${filename} does not match its manifest hash`);
 		}
+		const groups = readJsonObject(path, filename, errors);
+		if (!groups) continue;
 
 		const actualModels = new Map<string, string>();
 		for (const [api, value] of Object.entries(groups)) {
 			if (!isRecord(value)) {
-				errors.push(`${MODEL_DATA_FILE} API group ${JSON.stringify(api)} must be an object`);
+				errors.push(`${filename} API group ${JSON.stringify(api)} must be an object`);
 				continue;
 			}
 			for (const [modelKey, model] of Object.entries(value)) {
@@ -302,7 +285,7 @@ export function validateModelDataDirectory(structure: ModelDataStructure, dataDi
 		const expectedModelIds = Object.keys(expectedModels).sort();
 		const actualModelIds = Array.from(actualModels.keys()).sort();
 		if (!sameStrings(expectedModelIds, actualModelIds)) {
-			errors.push(`${providerId} model IDs do not match the generated catalog (${describeSetDifference(expectedModelIds, actualModelIds)})`);
+			errors.push(`${filename} model IDs do not match the generated catalog (${describeSetDifference(expectedModelIds, actualModelIds)})`);
 		}
 		for (const [modelId, expectedApi] of Object.entries(expectedModels)) {
 			const actualApi = actualModels.get(modelId);

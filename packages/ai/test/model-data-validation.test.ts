@@ -6,7 +6,6 @@ import { hydrateModelCatalog } from "../scripts/hydrate-model-catalog.ts";
 import {
 	assertExactModelIds,
 	createModelDataManifest,
-	MODEL_DATA_FILE,
 	MODEL_DATA_MANIFEST_FILE,
 	MODEL_DATA_SCHEMA_VERSION,
 	type ModelDataStructure,
@@ -38,7 +37,7 @@ function createFixture(): {
 	);
 	writeFileSync(
 		join(providersDir, "test-provider.models.ts"),
-		'import catalog from "./data/models.json" with { type: "json" };\n',
+		'import values from "./data/test-provider.json" with { type: "json" };\n',
 	);
 
 	const structure: ModelDataStructure = {
@@ -72,9 +71,10 @@ function writeFixtureData(
 	manifestSchemaVersion = MODEL_DATA_SCHEMA_VERSION,
 	apiGroup = "openai-completions",
 ): void {
-	const content = `${JSON.stringify({ providers: { "test-provider": { [apiGroup]: values } } })}\n`;
-	writeFileSync(join(dataDir, MODEL_DATA_FILE), content);
-	const manifest = createModelDataManifest(structure, { [MODEL_DATA_FILE]: content }, GENERATED_AT);
+	const filename = "test-provider.json";
+	const content = `${JSON.stringify({ [apiGroup]: values })}\n`;
+	writeFileSync(join(dataDir, filename), content);
+	const manifest = createModelDataManifest(structure, { [filename]: content }, GENERATED_AT);
 	manifest.schemaVersion = manifestSchemaVersion;
 	writeFileSync(join(dataDir, MODEL_DATA_MANIFEST_FILE), `${JSON.stringify(manifest)}\n`);
 }
@@ -98,10 +98,10 @@ describe("published model catalog hydration", () => {
 		expect(readModelDataStructure(packageRoot)).toEqual(structure);
 		expect(readFileSync(aggregatorPath, "utf8")).toBe(aggregator);
 		const manifest = readFileSync(join(dataDir, MODEL_DATA_MANIFEST_FILE), "utf8");
-		const provider = readFileSync(join(dataDir, MODEL_DATA_FILE), "utf8");
+		const provider = readFileSync(join(dataDir, "test-provider.json"), "utf8");
 		hydrateModelCatalog(packageRoot, catalogPath);
 		expect(readFileSync(join(dataDir, MODEL_DATA_MANIFEST_FILE), "utf8")).toBe(manifest);
-		expect(readFileSync(join(dataDir, MODEL_DATA_FILE), "utf8")).toBe(provider);
+		expect(readFileSync(join(dataDir, "test-provider.json"), "utf8")).toBe(provider);
 	});
 
 	it("groups models by API and keys them by type and id", () => {
@@ -143,12 +143,12 @@ describe("published model catalog hydration", () => {
 
 	it("validates without replacing existing data", () => {
 		const { dataDir, packageRoot, values } = createFixture();
-		const original = readFileSync(join(dataDir, MODEL_DATA_FILE), "utf8");
+		const original = readFileSync(join(dataDir, "test-provider.json"), "utf8");
 		const catalogPath = join(packageRoot, "catalog.json");
 		const model = chatModel(values);
 		writeFileSync(catalogPath, JSON.stringify({ "test-provider": [model, { ...model, id: "model-b" }] }));
 		hydrateModelCatalog(packageRoot, catalogPath, { validateOnly: true });
-		expect(readFileSync(join(dataDir, MODEL_DATA_FILE), "utf8")).toBe(original);
+		expect(readFileSync(join(dataDir, "test-provider.json"), "utf8")).toBe(original);
 		writeFileSync(catalogPath, JSON.stringify({ "other-provider": [model] }));
 		expect(() => hydrateModelCatalog(packageRoot, catalogPath, { validateOnly: true })).toThrow(/missing provider/);
 	});
@@ -167,13 +167,13 @@ describe("published model catalog hydration", () => {
 
 	it.each(["api", "provider", "cost"])("validates model %s before replacing existing data", (field) => {
 		const { dataDir, packageRoot, values } = createFixture();
-		const original = readFileSync(join(dataDir, MODEL_DATA_FILE), "utf8");
+		const original = readFileSync(join(dataDir, "test-provider.json"), "utf8");
 		const model = chatModel(values);
 		model[field] = null;
 		const catalogPath = join(packageRoot, "catalog.json");
 		writeFileSync(catalogPath, JSON.stringify({ "test-provider": [model] }));
 		expect(() => hydrateModelCatalog(packageRoot, catalogPath)).toThrow();
-		expect(readFileSync(join(dataDir, MODEL_DATA_FILE), "utf8")).toBe(original);
+		expect(readFileSync(join(dataDir, "test-provider.json"), "utf8")).toBe(original);
 	});
 });
 
@@ -306,23 +306,20 @@ describe("generated model data validation", () => {
 
 	it("rejects duplicate model IDs across API groups", () => {
 		const fixture = createFixture();
+		const filename = "test-provider.json";
 		const content = `${JSON.stringify({
-			providers: {
-				"test-provider": {
-					"openai-completions": fixture.values,
-					"anthropic-messages": fixture.values,
-				},
-			},
+			"openai-completions": fixture.values,
+			"anthropic-messages": fixture.values,
 		})}\n`;
-		writeFileSync(join(fixture.dataDir, MODEL_DATA_FILE), content);
-		const manifest = createModelDataManifest(fixture.structure, { [MODEL_DATA_FILE]: content }, GENERATED_AT);
+		writeFileSync(join(fixture.dataDir, filename), content);
+		const manifest = createModelDataManifest(fixture.structure, { [filename]: content }, GENERATED_AT);
 		writeFileSync(join(fixture.dataDir, MODEL_DATA_MANIFEST_FILE), `${JSON.stringify(manifest)}\n`);
 		expect(() => validateModelDataDirectory(fixture.structure, fixture.dataDir)).toThrow("more than one API group");
 	});
 
 	it("rejects missing model IDs and stale file hashes", () => {
 		const fixture = createFixture();
-		writeFileSync(join(fixture.dataDir, MODEL_DATA_FILE), "{}\n");
+		writeFileSync(join(fixture.dataDir, "test-provider.json"), "{}\n");
 		expect(() => validateModelDataDirectory(fixture.structure, fixture.dataDir)).toThrow(/manifest hash|model IDs/);
 	});
 

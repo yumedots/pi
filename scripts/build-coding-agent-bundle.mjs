@@ -5,7 +5,6 @@ import { isBuiltin } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { modelCatalogSlicePlugin } from "./model-catalog-plugin.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -94,11 +93,7 @@ function commonBuildOptions() {
 		// package replaces it with a synchronous lazy require so jiti loads only
 		// when importing an extension; Babel remains deferred until a cache miss
 		// needs transformation.
-		plugins: [
-			lazyJitiPlugin,
-			httpsProxyAgentNamedExportPlugin,
-			modelCatalogSlicePlugin(join(aiDistDir, "providers", "data")),
-		],
+		plugins: [lazyJitiPlugin, httpsProxyAgentNamedExportPlugin],
 		sourcemap: false,
 		target: "node22.19",
 		// Do not apply the monorepo's source-oriented path aliases while bundling
