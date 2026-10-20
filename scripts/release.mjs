@@ -161,7 +161,7 @@ function bumpOrSetVersion(target) {
 	removeStaleWorkspaceLockEntries();
 	run("npm install --package-lock-only --ignore-scripts");
 	// package-lock.json stays the source of truth for the published installer
-	// shrinkwrap and the nix build. bun.lock is regenerated from it.
+	// shrinkwrap. bun.lock is regenerated from it.
 	run("bun pm migrate");
 	run("bun install --frozen-lockfile --ignore-scripts");
 	return getVersion();
