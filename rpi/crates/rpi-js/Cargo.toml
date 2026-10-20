@@ -1,0 +1,18 @@
+[package]
+name = "rpi-js"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+version = "0.6.3"
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "The embedded JavaScript engine that runs TypeScript extensions"
+
+[dependencies]
+v8 = "152"
+serde_json = { workspace = true }
+oxc = { version = "0.155", default-features = false, features = ["codegen", "semantic", "transformer"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
