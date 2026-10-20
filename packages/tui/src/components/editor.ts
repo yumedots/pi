@@ -267,6 +267,16 @@ export interface EditorOptions {
 	 */
 	contentHeight?: number;
 	/**
+	 * Maximum number of text lines the box shows. The box grows with the text up to this
+	 * height, then scrolls the overflow inside the box.
+	 */
+	maxContentHeight?: number;
+	/**
+	 * Whether the borders report how many lines are hidden above and below the box
+	 * ("↑ 3 more"). Turning it off keeps the report out of the box; it still scrolls.
+	 */
+	showScrollHints?: boolean;
+	/**
 	 * Marker drawn in a gutter at the left of the input, e.g. "> ". The text starts after
 	 * the gutter, so wrapping, the cursor, and mouse clicks account for its width.
 	 */
@@ -339,12 +349,19 @@ export class Editor implements Component, Focusable {
 	// Store last render geometry for cursor navigation and mouse hit-testing.
 	private lastWidth: number = 80;
 	private renderedVisibleLineCount = 1;
+	/** Lines the text has, including the ones the box hides. */
+	private renderedTotalLineCount = 1;
 	private renderedAutocompleteHeight = 0;
 	/** Rows of the editor's own box, without the autocomplete list under it. */
 	private renderedBoxHeight = 0;
 
 	// Vertical scrolling support
 	private scrollOffset: number = 0;
+	/**
+	 * The view was scrolled away from the cursor (with the mouse wheel), so it stays
+	 * where it was until the next key press moves the cursor back into view.
+	 */
+	private scrollPinned = false;
 
 	// Border color (can be changed dynamically)
 	public borderColor: (str: string) => string;
@@ -363,6 +380,9 @@ export class Editor implements Component, Focusable {
 	private autocompleteMaxVisible: number = 5;
 	private autocompletePosition: AutocompletePosition = "above";
 	private fixedContentHeight: number | undefined;
+	private maxContentHeight: number | undefined;
+	/** Whether the borders report the lines hidden above and below the box. */
+	protected showScrollHints: boolean;
 	/** Marker drawn in a left gutter of the input, e.g. "> ". */
 	private prompt: string | undefined;
 	/** Visible width of the prompt gutter. */
@@ -427,6 +447,12 @@ export class Editor implements Component, Focusable {
 			contentHeight !== undefined && Number.isFinite(contentHeight)
 				? Math.max(1, Math.floor(contentHeight))
 				: undefined;
+		const maxContentHeight = options.maxContentHeight;
+		this.maxContentHeight =
+			maxContentHeight !== undefined && Number.isFinite(maxContentHeight)
+				? Math.max(1, Math.floor(maxContentHeight))
+				: undefined;
+		this.showScrollHints = options.showScrollHints ?? true;
 		this.prompt = options.prompt;
 		this.promptWidth = this.prompt ? visibleWidth(this.prompt) : 0;
 		this.promptColor = theme.promptColor;
@@ -561,6 +587,7 @@ export class Editor implements Component, Focusable {
 		this.setCursorCol(cursorPlacement === "start" ? 0 : this.state.lines[this.state.cursorLine]?.length || 0);
 		// Reset scroll - render() will adjust to show cursor
 		this.scrollOffset = 0;
+		this.scrollPinned = false;
 
 		if (this.onChange) {
 			this.onChange(this.getText());
@@ -579,17 +606,23 @@ export class Editor implements Component, Focusable {
 	protected renderTopBorder(width: number, hiddenLineCount: number): string {
 		if (this.filledBox) {
 			// The box itself is the frame, so the row only carries the scroll hint.
-			return hiddenLineCount > 0 ? this.renderScrollHint("↑", hiddenLineCount, width) : "";
+			return hiddenLineCount > 0 && this.showScrollHints ? this.renderScrollHint("↑", hiddenLineCount, width) : "";
 		}
-		const border = hiddenLineCount > 0 ? createScrollBorder("↑", hiddenLineCount, width) : "─".repeat(width);
+		const border =
+			hiddenLineCount > 0 && this.showScrollHints
+				? createScrollBorder("↑", hiddenLineCount, width)
+				: "─".repeat(width);
 		return this.borderColor(border);
 	}
 
 	protected renderBottomBorder(width: number, hiddenLineCount: number): string {
 		if (this.filledBox) {
-			return hiddenLineCount > 0 ? this.renderScrollHint("↓", hiddenLineCount, width) : "";
+			return hiddenLineCount > 0 && this.showScrollHints ? this.renderScrollHint("↓", hiddenLineCount, width) : "";
 		}
-		const border = hiddenLineCount > 0 ? createScrollBorder("↓", hiddenLineCount, width) : "─".repeat(width);
+		const border =
+			hiddenLineCount > 0 && this.showScrollHints
+				? createScrollBorder("↓", hiddenLineCount, width)
+				: "─".repeat(width);
 		return this.borderColor(border);
 	}
 
@@ -620,29 +653,45 @@ export class Editor implements Component, Focusable {
 		// Layout the text
 		const layoutLines = this.layoutText(layoutWidth);
 
-		// Calculate max visible lines: 30% of terminal height, minimum 5 lines, unless the
-		// editor was given a fixed content height.
+		// Height of the box in text lines. A fixed height always shows that many lines, a
+		// capped height grows with the text up to the cap, and without either the box shows
+		// 30% of the terminal height, minimum 5 lines.
 		const terminalRows = this.tui.terminal.rows;
-		const maxVisibleLines = this.fixedContentHeight ?? Math.max(5, Math.floor(terminalRows * 0.3));
+		const defaultMaxVisibleLines = Math.max(5, Math.floor(terminalRows * 0.3));
+		// A growing box never takes more than half of the terminal, so the content above it
+		// stays visible on a short terminal.
+		const cappedHeight =
+			this.maxContentHeight === undefined
+				? undefined
+				: Math.min(this.maxContentHeight, Math.max(5, Math.floor(terminalRows / 2)));
+		const heightLimit = this.fixedContentHeight ?? cappedHeight ?? defaultMaxVisibleLines;
+		// Rows the box shows. A fixed box keeps its height (padding the rest with empty
+		// rows), a growing box shows the text it has.
+		const visibleRowCount =
+			this.fixedContentHeight !== undefined ? heightLimit : Math.max(1, Math.min(layoutLines.length, heightLimit));
 
 		// Find the cursor line index in layoutLines
 		let cursorLineIndex = layoutLines.findIndex((line) => line.hasCursor);
 		if (cursorLineIndex === -1) cursorLineIndex = 0;
 
-		// Adjust scroll offset to keep cursor visible
-		if (cursorLineIndex < this.scrollOffset) {
-			this.scrollOffset = cursorLineIndex;
-		} else if (cursorLineIndex >= this.scrollOffset + maxVisibleLines) {
-			this.scrollOffset = cursorLineIndex - maxVisibleLines + 1;
+		// Adjust scroll offset to keep cursor visible, unless the view was scrolled away
+		// from the cursor with the mouse wheel.
+		if (!this.scrollPinned) {
+			if (cursorLineIndex < this.scrollOffset) {
+				this.scrollOffset = cursorLineIndex;
+			} else if (cursorLineIndex >= this.scrollOffset + visibleRowCount) {
+				this.scrollOffset = cursorLineIndex - visibleRowCount + 1;
+			}
 		}
 
 		// Clamp scroll offset to valid range
-		const maxScrollOffset = Math.max(0, layoutLines.length - maxVisibleLines);
+		const maxScrollOffset = Math.max(0, layoutLines.length - visibleRowCount);
 		this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, maxScrollOffset));
 
 		// Get visible lines slice
-		const visibleLines = layoutLines.slice(this.scrollOffset, this.scrollOffset + maxVisibleLines);
+		const visibleLines = layoutLines.slice(this.scrollOffset, this.scrollOffset + visibleRowCount);
 		this.renderedVisibleLineCount = visibleLines.length;
+		this.renderedTotalLineCount = layoutLines.length;
 
 		const result: string[] = [];
 		const leftPadding = " ".repeat(paddingX);
@@ -705,7 +754,7 @@ export class Editor implements Component, Focusable {
 		// Keep the box height constant when the text is shorter than the content height,
 		// so neighbouring views do not resize while typing.
 		if (this.fixedContentHeight !== undefined) {
-			for (let pad = visibleLines.length; pad < maxVisibleLines; pad++) {
+			for (let pad = visibleLines.length; pad < heightLimit; pad++) {
 				result.push(`${leftPadding}${" ".repeat(contentWidth)}${rightPadding}`);
 			}
 		}
@@ -784,6 +833,12 @@ export class Editor implements Component, Focusable {
 			return result ? { ...result, focus: true } : undefined;
 		}
 
+		// The wheel scrolls the text inside the box. It only takes the event when the box
+		// has lines to scroll, so an empty box still scrolls the content above it.
+		if (event.type === "wheel" && event.wheelDelta) {
+			return this.handleWheel(event);
+		}
+
 		// Leave press/drag/release unhandled so the renderer's screen-level text
 		// selection can run over the editor rows (drag to select, release to copy).
 		// The renderer synthesizes a click when press and release land on the same
@@ -825,11 +880,34 @@ export class Editor implements Component, Focusable {
 		this.setCursorCol(visualLine.startCol + targetIndex);
 		this.lastAction = null;
 		this.exitHistoryBrowsing();
+		this.scrollPinned = false;
 		if (this.autocompleteState) this.updateAutocomplete();
 		return { handled: true, focus: true };
 	}
 
+	/**
+	 * Scroll the text inside the box with the mouse wheel.
+	 *
+	 * The event is only taken when the box hides lines, so the wheel scrolls the content
+	 * above the box while the text fits. The view stays where the wheel put it, until a
+	 * key press moves the cursor and the view follows it again.
+	 */
+	private handleWheel(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+		const maxScrollOffset = Math.max(0, this.renderedTotalLineCount - this.renderedVisibleLineCount);
+		if (maxScrollOffset === 0) return undefined;
+
+		const next = Math.max(0, Math.min(maxScrollOffset, this.scrollOffset + (event.wheelDelta ?? 0)));
+		if (next === this.scrollOffset) return undefined;
+
+		this.scrollOffset = next;
+		this.scrollPinned = true;
+		this.tui.requestRender();
+		return { handled: true };
+	}
+
 	handleInput(data: string): void {
+		// A key press moves the cursor, so the view follows it again.
+		this.scrollPinned = false;
 		const kb = getKeybindings();
 
 		// Handle character jump mode (awaiting next character to jump to)
@@ -1502,6 +1580,7 @@ export class Editor implements Component, Focusable {
 		this.pasteCounter = 0;
 		this.exitHistoryBrowsing();
 		this.scrollOffset = 0;
+		this.scrollPinned = false;
 		this.undoStack.clear();
 		this.lastAction = null;
 

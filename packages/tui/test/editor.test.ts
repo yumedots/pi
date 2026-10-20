@@ -2614,6 +2614,101 @@ describe("Editor component", () => {
 			assert.ok(stripVTControlCharacters(long[3] ?? "").includes("a"));
 		});
 
+		it("grows up to the max content height and scrolls beyond it", () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme, { maxContentHeight: 12 });
+
+			editor.setText("one\ntwo");
+			const twoLines = editor.render(40);
+			// top border + 2 content lines + bottom border
+			assert.strictEqual(twoLines.length, 4);
+			assert.ok(!stripVTControlCharacters(twoLines[0] ?? "").includes("more"));
+
+			editor.setText(Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join("\n"));
+			const twelveLines = editor.render(40);
+			// top border + 12 content lines + bottom border
+			assert.strictEqual(twelveLines.length, 14);
+			assert.ok(!stripVTControlCharacters(twelveLines[0] ?? "").includes("more"));
+
+			editor.setText(Array.from({ length: 15 }, (_, i) => `line ${i + 1}`).join("\n"));
+			const fifteenLines = editor.render(40);
+			// The box stays at the max height and scrolls the overflow.
+			assert.strictEqual(fifteenLines.length, 14);
+			// The hidden lines above are reported in the top border.
+			assert.ok(stripVTControlCharacters(fifteenLines[0] ?? "").includes("3 more"));
+			// The last line stays visible, since the cursor is on it.
+			assert.ok(stripVTControlCharacters(fifteenLines[12] ?? "").includes("line 15"));
+		});
+
+		it("caps the growing box at half of the terminal height", () => {
+			const editor = new Editor(createTestTUI(80, 10), defaultEditorTheme, { maxContentHeight: 12 });
+			editor.setText(Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join("\n"));
+			// 10 terminal rows allow 5 content lines, so the box shows 5 of them.
+			assert.strictEqual(editor.render(40).length, 7);
+		});
+
+		it("leaves the scroll hints out of the borders when they are turned off", () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme, {
+				maxContentHeight: 3,
+				showScrollHints: false,
+			});
+			editor.setText("one\ntwo\nthree\nfour");
+			const rows = editor.render(40);
+			assert.strictEqual(rows.length, 5);
+			assert.ok(!stripVTControlCharacters(rows[0] ?? "").includes("more"));
+			assert.ok(!stripVTControlCharacters(rows[4] ?? "").includes("more"));
+		});
+
+		it("scrolls the text inside the box with the mouse wheel", () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme, { maxContentHeight: 3 });
+			editor.setText("one\ntwo\nthree\nfour\nfive");
+			// The box shows the last three lines, with the cursor on the last one.
+			assert.ok(stripVTControlCharacters(editor.render(40)[1] ?? "").includes("three"));
+
+			const wheel = (wheelDelta: number) =>
+				editor.handleMouse({
+					type: "wheel",
+					button: "none",
+					x: 2,
+					y: 2,
+					screenX: 2,
+					screenY: 2,
+					width: 40,
+					height: 5,
+					shift: false,
+					alt: false,
+					ctrl: false,
+					wheelDelta,
+				});
+
+			// The wheel scrolls the text inside the box.
+			assert.ok(wheel(-1));
+			assert.ok(stripVTControlCharacters(editor.render(40)[1] ?? "").includes("two"));
+
+			// A key press brings the cursor back into view.
+			editor.handleInput("x");
+			assert.ok(stripVTControlCharacters(editor.render(40)[1] ?? "").includes("three"));
+		});
+
+		it("leaves the wheel to the content above when the text fits in the box", () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme, { maxContentHeight: 3 });
+			editor.setText("one\ntwo");
+			const result = editor.handleMouse({
+				type: "wheel",
+				button: "none",
+				x: 2,
+				y: 2,
+				screenX: 2,
+				screenY: 2,
+				width: 40,
+				height: 4,
+				shift: false,
+				alt: false,
+				ctrl: false,
+				wheelDelta: -1,
+			});
+			assert.strictEqual(result, undefined);
+		});
+
 		it("renders the autocomplete list as an overlay above the editor", async () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme, { contentHeight: 3 });
 			const mockProvider: AutocompleteProvider = {

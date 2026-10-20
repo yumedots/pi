@@ -47,11 +47,12 @@ export class CustomEditor extends Editor {
 
 		if (this.filledBox) {
 			// The box itself is the frame, so the status sits on the filled top row, without a rule.
-			const overflow = hiddenLineCount > 0 ? this.borderColor(` ↑ ${hiddenLineCount} more`) : "";
+			const overflow =
+				hiddenLineCount > 0 && this.showScrollHints ? this.borderColor(` ↑ ${hiddenLineCount} more`) : "";
 			return `${status}${overflow}`;
 		}
 
-		const overflowLabel = hiddenLineCount > 0 ? ` ↑ ${hiddenLineCount} more ` : undefined;
+		const overflowLabel = hiddenLineCount > 0 && this.showScrollHints ? ` ↑ ${hiddenLineCount} more ` : undefined;
 		const overflowLabelWidth = overflowLabel ? visibleWidth(overflowLabel) : 0;
 		const overflowStart = Math.floor((width - overflowLabelWidth) / 2);
 		const canFitOverflow = () =>

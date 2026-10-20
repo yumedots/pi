@@ -39,13 +39,14 @@
 - Sent messages now share one gray card background, instead of a blue card for regular messages and a purple card for skill invocations
 - The input box is now a card in the same gray as the sent messages, instead of a box framed by horizontal rules
 - The input box shows a `>` prompt in front of the text, like a shell prompt, and grows with the prompt up to 12 text lines. A longer prompt scrolls inside the box, instead of hiding all but the last line behind a `↑ N more` hint
+- The input box no longer shows the `↑ N more` and `↓ N more` reports of the lines hidden above and below it
+- Scrolling with the mouse wheel over the input box now scrolls the text in the box, instead of the transcript above it
 - Starting a new session with `/new` no longer adds a "New session started" line to the transcript
 
 ### Fixed
 
 - Fixed the delay between pressing Enter and the message showing up in the transcript. The submitted message now appears right away, instead of after the run is prepared (extension hooks, compaction checks, session writes)
 - Fixed the fullscreen transcript bouncing after jumping to the latest message. The transcript now keeps its position when the editor or footer changes height, instead of sliding up and back down
-- Fixed the input box growing with the prompt, which resized the transcript above it. The input area now has a fixed height and longer prompts scroll inside it, so the conversation stays put while typing
 - The mouse wheel now scrolls one line per event in fullscreen mode by default. `fullscreenWheelScrollLines: "auto"` restores the accelerating scroll
 - Fixed Ctrl+E not sticking when a trackpad was still sending wheel events. The jump now drops the wheel gesture that was in progress, until the next gesture starts, so the jump sticks and scrolling works again afterwards
 - Fixed a running bash command's output disappearing from the pending area when the queued messages were updated
