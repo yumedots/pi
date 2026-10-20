@@ -1491,6 +1491,9 @@ mod tests {
             model: "claude-sonnet-5".into(),
             response_model: None,
             response_id: None,
+            provider_thinking_level: None,
+            thinking_level: None,
+            diagnostics: None,
             usage: Usage::zero(),
             stop_reason: stop,
             deferred: None,
@@ -1498,6 +1501,7 @@ mod tests {
             raw_stop_reason: None,
             end_turn: None,
             timestamp: 0,
+            duration_ms: None,
         }
     }
 

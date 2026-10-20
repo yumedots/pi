@@ -216,6 +216,9 @@ async fn loads_real_cdylib_and_drives_echo_tool() {
         model: "m".into(),
         response_model: None,
         response_id: None,
+        provider_thinking_level: None,
+        thinking_level: None,
+        diagnostics: None,
         usage: Usage::zero(),
         stop_reason: rpi_ai::types::StopReason::Stop,
         deferred: None,
@@ -223,6 +226,7 @@ async fn loads_real_cdylib_and_drives_echo_tool() {
         raw_stop_reason: None,
         end_turn: None,
         timestamp: 0,
+        duration_ms: None,
     }));
     let before = stub_message_end_hits(&stub_path);
     emitter.try_emit(rpi_agent::AgentEvent::MessageEnd { message: am });

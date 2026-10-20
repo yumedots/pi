@@ -466,8 +466,8 @@ const createContext = (state: ExtensionState) => ({
 	ui: {
 		theme,
 		notify: (message: string, type?: string) =>
-			hostCall("ui.notify", { message, type: type ?? "info" }),
-		setStatus: (key: string, text?: string) => hostCall("ui.setStatus", { key, text: text ?? "" }),
+			{ hostCall("ui.notify", { message, type: type ?? "info" }); },
+		setStatus: (key: string, text?: string) => { hostCall("ui.setStatus", { key, text: text ?? "" }); },
 		setWidget: (key: string, content?: unknown, options?: { placement?: string }) => {
 			if (content === undefined) {
 				hostCall("ui.setWidget", { key });
@@ -494,13 +494,13 @@ const createContext = (state: ExtensionState) => ({
 			}
 			hostCall("ui.setFooter", { component: registerComponent(factory) });
 		},
-		setTitle: (title: string) => hostCall("ui.setTitle", { title }),
-		setWorkingMessage: (message?: string) => hostCall("ui.setWorkingMessage", { message: message ?? "" }),
-		setWorkingVisible: (visible: boolean) => hostCall("ui.setWorkingVisible", { visible }),
-		setHiddenThinkingLabel: (label: string) => hostCall("ui.setHiddenThinkingLabel", { label }),
-		setEditorText: (text: string) => hostCall("ui.setEditorText", { text }),
+		setTitle: (title: string) => { hostCall("ui.setTitle", { title }); },
+		setWorkingMessage: (message?: string) => { hostCall("ui.setWorkingMessage", { message: message ?? "" }); },
+		setWorkingVisible: (visible: boolean) => { hostCall("ui.setWorkingVisible", { visible }); },
+		setHiddenThinkingLabel: (label: string) => { hostCall("ui.setHiddenThinkingLabel", { label }); },
+		setEditorText: (text: string) => { hostCall("ui.setEditorText", { text }); },
 		getEditorText: () => hostCall("ui.getEditorText", {}),
-		pasteToEditor: (text: string) => hostCall("ui.pasteToEditor", { text }),
+		pasteToEditor: (text: string) => { hostCall("ui.pasteToEditor", { text }); },
 		select: (title: string, options: string[]) => hostCall("ui.select", { title, options }),
 		confirm: (title: string, message: string) => hostCall("ui.confirm", { title, message }),
 		input: (title: string, placeholder?: string) => hostCall("ui.input", { title, placeholder }),
@@ -518,7 +518,7 @@ const createContext = (state: ExtensionState) => ({
 		getTheme: (name: string) => hostCall("ui.getTheme", { name }),
 		setTheme: (theme: unknown) => hostCall("ui.setTheme", { theme }),
 		getToolsExpanded: () => hostCall("ui.getToolsExpanded", {}),
-		setToolsExpanded: (expanded: boolean) => hostCall("ui.setToolsExpanded", { expanded }),
+		setToolsExpanded: (expanded: boolean) => { hostCall("ui.setToolsExpanded", { expanded }); },
 		onTerminalInput: (handler: TerminalInputHandler) => registerTerminalInput(state, handler),
 		addAutocompleteProvider: (factory: unknown) => {
 			state.autocompleteProviders.push(factory);
@@ -548,15 +548,19 @@ const createContext = (state: ExtensionState) => ({
 		getHeader: () => hostCall("session.getHeader", {}),
 		getEntries: () => hostCall("session.getEntries", {}),
 		getTree: () => hostCall("session.getTree", {}),
-		getSessionName: () => hostCall("session.getSessionName", {}),
+		getSessionName: () => {
+		const answer = hostCall("session.getSessionName", {}) as string | null;
+		return answer ?? undefined;
+	},
 	},
 	modelRegistry: createModelRegistry(),
 	get model() {
 		return hostCall("model.get", {});
 	},
 	scopedModels: [],
-	get thinkingLevel() {
-		return hostCall("model.getThinkingLevel", {});
+	get thinkingLevel(): string {
+		const answer = hostCall("model.getThinkingLevel", {}) as { level?: string };
+		return answer?.level ?? "off";
 	},
 	isIdle: () => hostCall("agent.isIdle", {}),
 	isProjectTrusted: () => hostCall("agent.isProjectTrusted", {}),
@@ -566,7 +570,10 @@ const createContext = (state: ExtensionState) => ({
 	shutdown: () => hostCall("session.shutdown", {}),
 	getContextUsage: () => hostCall("agent.getContextUsage", {}),
 	compact: (options?: unknown) => hostCall("agent.compact", { options }),
-	getSystemPrompt: () => hostCall("agent.getSystemPrompt", {}),
+	getSystemPrompt: () => {
+		const answer = hostCall("agent.getSystemPrompt", {}) as { prompt?: string };
+		return answer?.prompt ?? "";
+	},
 	extensionPath: state.path,
 });
 
@@ -648,13 +655,19 @@ const createApi = (state: ExtensionState) => {
 		setSessionName: (name: string) => {
 			hostCall("session.setSessionName", { name });
 		},
-		getSessionName: () => hostCall("session.getSessionName", {}),
+		getSessionName: () => {
+		const answer = hostCall("session.getSessionName", {}) as string | null;
+		return answer ?? undefined;
+	},
 		setLabel: (entryId: string, label?: string) => {
 			hostCall("session.setLabel", { entryId, label });
 		},
 		exec: (command: string, args: string[], options?: unknown) =>
 			hostCall("session.exec", { command, args, options }),
-		getActiveTools: () => hostCall("tools.getActive", {}),
+		getActiveTools: () => {
+		const answer = hostCall("tools.getActive", {}) as { tools?: string[] };
+		return answer?.tools ?? [];
+	},
 		getAllTools: () => hostCall("tools.getAll", {}),
 		getSettings: () => hostCall("settings.get", {}),
 		setActiveTools: (toolNames: string[]) => {
@@ -662,7 +675,10 @@ const createApi = (state: ExtensionState) => {
 		},
 		getCommands: () => hostCall("commands.get", {}),
 		setModel: (model: unknown) => hostCall("model.set", { model }),
-		getThinkingLevel: () => hostCall("model.getThinkingLevel", {}),
+		getThinkingLevel: () => {
+		const answer = hostCall("model.getThinkingLevel", {}) as { level?: string };
+		return answer?.level ?? "off";
+	},
 		setThinkingLevel: (level: unknown) => {
 			hostCall("model.setThinkingLevel", { level });
 		},

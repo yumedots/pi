@@ -242,38 +242,16 @@ pub(super) fn add_help_message(container: &Arc<Container>) {
     )));
     container.add_child(Arc::new(Spacer::new(1)));
 
-    let cmds: &[(&str, &str)] = &[
-        ("/settings", "Open settings menu"),
-        ("/model", "Select model (opens selector UI)"),
-        ("/tree", "Navigate session tree (switch branches)"),
-        ("/thinking", "Set thinking level"),
-        ("/scoped-models", "Enable/disable models for Ctrl+P cycling"),
-        ("/theme", "Change the color theme"),
-        ("/export", "Export session (HTML default, or specify path: .html/.jsonl)"),
-        ("/import", "Import and resume a session from a JSONL file"),
-        ("/share", "Share session via a Radius artifact or a GitHub gist"),
-        ("/copy", "Copy last agent message to clipboard"),
-        ("/name", "Set session display name"),
-        ("/changelog", "Show changelog entries"),
-        ("/hotkeys", "Show all keyboard shortcuts"),
-        ("/fork", "Create a new fork from a previous user message"),
-        ("/clone", "Duplicate the current session at the current position"),
-        ("/trust", "Save project trust decision for future sessions"),
-        ("/login", "Configure provider authentication"),
-        ("/logout", "Remove provider authentication"),
-        ("/clear", "Clear the conversation"),
-        ("/compact", "Manually compact the session context"),
-        ("/resume", "Resume a different session"),
-        ("/skills", "Browse and run a skill"),
-        ("/bug", "Report a bug to the Pi developers"),
-        ("/stats", "Show session info and stats"),
-        ("/reload", "Reload keybindings, extensions, skills, prompts, themes, and context files"),
-        ("/quit", "Quit pi"),
-        ("/help", "Show this help message"),
-        ("/version", "Show version information"),
-    ];
+    // The original has no `/help`; its equivalent is the `/` autocomplete
+    // list, so the port's listing is generated from the same registry and
+    // always shows the same set of commands.
+    let entries = super::build_builtin_registry().visible_entries();
+    let cmds: Vec<(&str, &str)> = entries
+        .iter()
+        .map(|entry| (entry.name.as_str(), entry.description.as_str()))
+        .collect();
     let cmd_w = cmds.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
-    for (cmd, desc) in cmds {
+    for (cmd, desc) in &cmds {
         let row = format!(
             "  {:<cmd_w$}  {}  {}",
             c.accent.fg(cmd),
@@ -540,6 +518,12 @@ fn hotkey_keys(ids: &[&'static str]) -> String {
 // transcript entry (every entry contributes one trailing spacer so
 // consecutive turns are separated by exactly one blank line).
 pub(super) fn add_user_message(container: &Arc<Container>, text: &str) {
+    // The original separates an echoed user message from the entry above it
+    // with a blank row, but only when the transcript is not empty
+    // (`interactive-mode.ts:3192`).
+    if container.child_count() > 0 {
+        container.add_child(Arc::new(Spacer::new(1)));
+    }
     container.add_child(Arc::new(UserMessageComponent::new(text.to_string())));
     container.add_child(Arc::new(Spacer::new(1)));
 }
@@ -590,11 +574,23 @@ pub(super) fn quote_shell_arg(value: &str) -> String {
     }
 }
 
+/// The original's error notice: `Error: <message>` (`interactive-mode.ts:4490`).
 pub(super) fn add_error_message(container: &Arc<Container>, text: &str) {
     let c = current_theme().colors;
     let text = sanitize_error_message(text);
     container.add_child(Arc::new(Text::new(
-        format!("  {} {}", c.error.fg("✗"), c.error.fg(&text)),
+        c.error.fg(&format!("Error: {text}")),
+        1,
+        0,
+    )));
+    container.add_child(Arc::new(Spacer::new(1)));
+}
+
+/// The original's warning notice: `Warning: <message>` (`interactive-mode.ts:4494`).
+pub(super) fn add_warning_message(container: &Arc<Container>, text: &str) {
+    let c = current_theme().colors;
+    container.add_child(Arc::new(Text::new(
+        c.warning.fg(&format!("Warning: {text}")),
         1,
         0,
     )));
@@ -651,14 +647,11 @@ pub(super) fn sanitize_error_message(text: &str) -> String {
     }
 }
 
-/// Add a neutral note (e.g. unsupported-command message) to the chat container.
+/// Add a neutral note to the chat container. The original prints a status
+/// line as plain dim text (`interactive-mode.ts:3686`).
 pub(super) fn add_note_message(container: &Arc<Container>, text: &str) {
     let c = current_theme().colors;
-    container.add_child(Arc::new(Text::new(
-        format!("  {} {}", c.accent.fg("ℹ"), c.muted.fg(text)),
-        1,
-        0,
-    )));
+    container.add_child(Arc::new(Text::new(c.dim.fg(text), 1, 0)));
     container.add_child(Arc::new(Spacer::new(1)));
 }
 

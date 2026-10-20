@@ -111,6 +111,9 @@ fn two_call_stream_fn(release: Arc<Notify>) -> rpi_agent::StreamFn {
                 model: "mock".to_string(),
                 response_model: None,
                 response_id: None,
+                provider_thinking_level: None,
+                thinking_level: None,
+                diagnostics: None,
                 usage: rpi_ai::types::Usage::zero(),
                 stop_reason: StopReason::Stop,
                 deferred: None,
@@ -118,6 +121,7 @@ fn two_call_stream_fn(release: Arc<Notify>) -> rpi_agent::StreamFn {
                 raw_stop_reason: None,
                 end_turn: None,
                 timestamp: 0,
+                duration_ms: None,
             },
         ])));
     rpi_agent::stream_fn(move |_model, _ctx, _opts| {
@@ -185,6 +189,9 @@ fn assistant_two_tool_calls() -> AssistantMessage {
         model: "mock".to_string(),
         response_model: None,
         response_id: None,
+        provider_thinking_level: None,
+        thinking_level: None,
+        diagnostics: None,
         usage: rpi_ai::types::Usage::zero(),
         stop_reason: StopReason::ToolUse,
         deferred: None,
@@ -192,6 +199,7 @@ fn assistant_two_tool_calls() -> AssistantMessage {
         raw_stop_reason: None,
         end_turn: None,
         timestamp: 0,
+        duration_ms: None,
     }
 }
 

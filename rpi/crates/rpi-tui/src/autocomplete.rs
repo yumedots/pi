@@ -119,6 +119,34 @@ pub struct SlashCommand {
     pub name: String,
     /// Description.
     pub description: String,
+    /// The argument placeholder shown in front of the description
+    /// (`<provider/model> — Select model (opens selector UI)`).
+    ///
+    /// Mirrors the original's `argumentHint`
+    /// (`packages/tui/src/autocomplete.ts:352-360`).
+    pub argument_hint: Option<String>,
+}
+
+impl SlashCommand {
+    /// The row text for the command: the argument hint in front of the
+    /// description, joined by an em dash.
+    ///
+    /// Mirrors the original's `fullDesc`
+    /// (`packages/tui/src/autocomplete.ts:356-359`): a hint with a description
+    /// reads `<hint> — <description>`, a hint alone reads `<hint>`, and a
+    /// command with neither reads its bare description.
+    pub fn row_description(&self) -> String {
+        match self.argument_hint.as_deref() {
+            Some(hint) if !hint.is_empty() => {
+                if self.description.is_empty() {
+                    hint.to_string()
+                } else {
+                    format!("{hint} — {}", self.description)
+                }
+            }
+            _ => self.description.clone(),
+        }
+    }
 }
 
 /// File path autocomplete provider.
@@ -289,23 +317,28 @@ impl SlashCommandAutocompleteProvider {
             SlashCommand {
                 name: "/help".to_string(),
                 description: "Show help information".to_string(),
+                argument_hint: None,
             },
             SlashCommand {
                 name: "/clear".to_string(),
                 description: "Clear the conversation".to_string(),
+                argument_hint: None,
             },
             SlashCommand {
                 name: "/exit".to_string(),
                 description: "Exit the application".to_string(),
+                argument_hint: None,
             },
             SlashCommand {
                 name: "/model".to_string(),
                 description: "Change the model".to_string(),
+                argument_hint: None,
             },
             SlashCommand {
                 name: "/context".to_string(),
                 description: "List discovered context files, skills, and prompt templates"
                     .to_string(),
+                argument_hint: None,
             },
         ])
     }
@@ -327,11 +360,36 @@ impl AutocompleteProvider for SlashCommandAutocompleteProvider {
         }
 
         let query = &before_cursor[1..];
-        let items: Vec<AutocompleteItem> = fuzzy_filter(&self.commands, query, |cmd| &cmd.name)
+        // The original matches a `skill:` command by its bare name first and
+        // puts the full-name matches after them
+        // (`packages/tui/src/autocomplete.ts:365-372`), so typing a skill's
+        // name finds the skill without the `skill:` prefix in the way.
+        fn bare_name(cmd: &SlashCommand) -> &str {
+            let without_slash = cmd.name.strip_prefix('/').unwrap_or(&cmd.name);
+            match without_slash.strip_prefix("skill:") {
+                Some(bare) => bare,
+                None => &cmd.name,
+            }
+        }
+        fn is_skill(cmd: &SlashCommand) -> bool {
+            cmd.name
+                .strip_prefix('/')
+                .unwrap_or(&cmd.name)
+                .starts_with("skill:")
+        }
+        let bare_matches = fuzzy_filter(&self.commands, query, bare_name);
+        let bare_matched: Vec<&str> = bare_matches.iter().map(|cmd| cmd.name.as_str()).collect();
+        let full_only: Vec<SlashCommand> = fuzzy_filter(&self.commands, query, |cmd| cmd.name.as_str())
+            .into_iter()
+            .filter(|cmd| is_skill(cmd) && !bare_matched.contains(&cmd.name.as_str()))
+            .collect();
+        let mut ordered = bare_matches;
+        ordered.extend(full_only);
+        let items: Vec<AutocompleteItem> = ordered
             .into_iter()
             .map(|cmd| {
                 AutocompleteItem::new(&cmd.name)
-                    .with_description(&cmd.description)
+                    .with_description(&cmd.row_description())
                     .with_insert_space(false)
             })
             .collect();
@@ -478,5 +536,94 @@ mod tests {
 
         assert_eq!(item.text, "test.txt");
         assert!(item.is_directory);
+    }
+
+    #[test]
+    fn row_description_puts_the_argument_hint_in_front() {
+        // The original's row: `<provider/model> — Select model (opens
+        // selector UI)` (`packages/tui/src/autocomplete.ts:352-360`).
+        let command = SlashCommand {
+            name: "/model".to_string(),
+            description: "Select model (opens selector UI)".to_string(),
+            argument_hint: Some("<provider/model>".to_string()),
+        };
+        assert_eq!(
+            command.row_description(),
+            "<provider/model> — Select model (opens selector UI)"
+        );
+    }
+
+    #[test]
+    fn row_description_falls_back_to_the_bare_description() {
+        let without_hint = SlashCommand {
+            name: "/help".to_string(),
+            description: "Show help information".to_string(),
+            argument_hint: None,
+        };
+        assert_eq!(without_hint.row_description(), "Show help information");
+
+        let hint_only = SlashCommand {
+            name: "/thinking".to_string(),
+            description: String::new(),
+            argument_hint: Some("<level>".to_string()),
+        };
+        assert_eq!(hint_only.row_description(), "<level>");
+    }
+
+    #[test]
+    fn the_provider_row_carries_the_argument_hint() {
+        let provider = SlashCommandAutocompleteProvider::new(vec![SlashCommand {
+            name: "/model".to_string(),
+            description: "Select model (opens selector UI)".to_string(),
+            argument_hint: Some("<provider/model>".to_string()),
+        }]);
+        let suggestions = provider.get_suggestions("/mod", 4).expect("a suggestion");
+        assert_eq!(
+            suggestions.items[0].description.as_deref(),
+            Some("<provider/model> — Select model (opens selector UI)")
+        );
+    }
+
+    #[test]
+    fn a_skill_is_matched_by_its_bare_name_first() {
+        // The original matches `skill:foo` by `foo` and puts the full-name
+        // matches after the bare ones (`packages/tui/src/autocomplete.ts:365-372`).
+        let provider = SlashCommandAutocompleteProvider::new(vec![
+            SlashCommand {
+                name: "/skill:foo".to_string(),
+                description: "Do the foo thing".to_string(),
+                argument_hint: None,
+            },
+            SlashCommand {
+                name: "/help".to_string(),
+                description: "Show help information".to_string(),
+                argument_hint: None,
+            },
+        ]);
+        let suggestions = provider.get_suggestions("/foo", 4).expect("a suggestion");
+        assert_eq!(suggestions.items[0].text, "/skill:foo");
+    }
+
+    #[test]
+    fn a_skill_full_name_match_comes_after_the_bare_ones() {
+        let provider = SlashCommandAutocompleteProvider::new(vec![
+            SlashCommand {
+                name: "/skill:foo".to_string(),
+                description: "Do the foo thing".to_string(),
+                argument_hint: None,
+            },
+            SlashCommand {
+                name: "/skill:barfoo".to_string(),
+                description: "Do the barfoo thing".to_string(),
+                argument_hint: None,
+            },
+        ]);
+        let suggestions = provider.get_suggestions("/foo", 4).expect("a suggestion");
+        let names: Vec<&str> = suggestions
+            .items
+            .iter()
+            .map(|item| item.text.as_str())
+            .collect();
+        assert_eq!(names, vec!["/skill:foo", "/skill:barfoo"]);
     }
 }

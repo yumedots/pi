@@ -85,7 +85,22 @@ pub fn metadata_from_header(
         created_at: ms_from_iso_timestamp(&header.timestamp).unwrap_or(0),
         modified_at,
         source_format: JsonlSourceFormat::V3,
-        parent_session_id: None,
+        parent_session_id: header
+            .parent_session
+            .as_deref()
+            .and_then(session_id_from_path),
+    }
+}
+
+/// The session id in a session file's name (`<timestamp>_<id>.jsonl`).
+fn session_id_from_path(path: &str) -> Option<String> {
+    let name = path.rsplit('/').next()?;
+    let stem = name.strip_suffix(".jsonl")?;
+    let id = stem.rsplit_once('_')?.1;
+    if id.is_empty() {
+        None
+    } else {
+        Some(id.to_string())
     }
 }
 

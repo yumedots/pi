@@ -22,8 +22,15 @@ use serde_json::{json, Value};
 use crate::js_extensions::JsExtensions;
 
 /// The listener the extension crate publishes pi's events to.
+///
+/// The JavaScript host answers the extension synchronously, on the runtime's
+/// own thread. An event published from inside a host call therefore cannot be
+/// handed to the extensions straight away: the extensions are the very thread
+/// that is making the call, and the dispatch would wait for itself. Such an
+/// event is queued and delivered when the call returns.
 pub struct JsEventSink {
     extensions: Mutex<Option<JsExtensions>>,
+    queued: Mutex<Vec<(String, Value)>>,
 }
 
 impl JsEventSink {
@@ -32,6 +39,7 @@ impl JsEventSink {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             extensions: Mutex::new(None),
+            queued: Mutex::new(Vec::new()),
         })
     }
 
@@ -46,7 +54,36 @@ impl JsEventSink {
 impl rpi_extensions::EventSink for JsEventSink {
     fn emit(&self, name: &str, payload: &Value) -> Option<Value> {
         let extensions = self.extensions.lock().ok().and_then(|slot| slot.clone())?;
+        if crate::js_extensions::in_host_call() {
+            // The extensions are the thread that is making the call; the event
+            // waits for it to return.
+            if let Ok(mut queued) = self.queued.lock() {
+                queued.push((name.to_string(), payload.clone()));
+            }
+            return None;
+        }
         extensions.dispatch(name, payload.clone()).ok()
+    }
+}
+
+impl JsEventSink {
+    /// Deliver the events that were published from inside a host call.
+    pub fn drain(&self) {
+        let queued = match self.queued.lock() {
+            Ok(mut queued) => std::mem::take(&mut *queued),
+            Err(_) => return,
+        };
+        if queued.is_empty() {
+            return;
+        }
+        let extensions = match self.extensions.lock() {
+            Ok(slot) => slot.clone(),
+            Err(_) => return,
+        };
+        let Some(extensions) = extensions else { return };
+        for (name, payload) in queued {
+            let _ = extensions.dispatch(&name, payload);
+        }
     }
 }
 

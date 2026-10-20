@@ -134,6 +134,8 @@ pub fn bash_execution_message(
     })
     .expect("BashExecutionData serializes");
     AgentMessage::Custom(CustomMessage {
+        custom_type: None,
+        display: None,
         role: BASH_EXECUTION_ROLE.into(),
         content: Vec::new(),
         data,
@@ -155,6 +157,8 @@ pub fn create_branch_summary_message(
     })
     .expect("BranchSummaryData serializes");
     AgentMessage::Custom(CustomMessage {
+        custom_type: None,
+        display: None,
         role: BRANCH_SUMMARY_ROLE.into(),
         content: Vec::new(),
         data,
@@ -176,6 +180,8 @@ pub fn create_compaction_summary_message(
     })
     .expect("CompactionSummaryData serializes");
     AgentMessage::Custom(CustomMessage {
+        custom_type: None,
+        display: None,
         role: COMPACTION_SUMMARY_ROLE.into(),
         content: Vec::new(),
         data,
@@ -204,6 +210,8 @@ pub fn create_custom_message(
     })
     .expect("CustomData serializes");
     AgentMessage::Custom(CustomMessage {
+        custom_type: None,
+        display: None,
         role: CUSTOM_ROLE.into(),
         content: blocks,
         data,
@@ -394,6 +402,7 @@ pub fn convert_to_llm(messages: Vec<AgentMessage>) -> Vec<Message> {
             AgentMessage::User(u) => Some(Message::User(u)),
             AgentMessage::Assistant(a) => Some(Message::Assistant(a)),
             AgentMessage::ToolResult(t) => Some(Message::ToolResult(t)),
+            AgentMessage::System(_) => None,
             AgentMessage::Custom(c) => convert_custom_to_llm(c),
         })
         .collect()

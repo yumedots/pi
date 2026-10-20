@@ -272,6 +272,10 @@ mod tests {
             model: model.to_string(),
             response_model: None,
             response_id: None,
+            duration_ms: None,
+            thinking_level: None,
+            provider_thinking_level: None,
+            diagnostics: None,
             usage: Usage {
                 input,
                 output: 0,

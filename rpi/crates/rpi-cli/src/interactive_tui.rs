@@ -365,16 +365,14 @@ impl CommandRegistry {
         let mut out: Vec<SlashCommandEntry> = Vec::new();
         for c in &self.commands {
             let description = c.description_owned();
-            // The original's row shows the argument hint in front of the
-            // description: `<hint> — <description>`.
-            let description = match c.argument_hint() {
-                Some(hint) if !description.is_empty() => format!("{hint} — {description}"),
-                _ => description,
-            };
             if c.visible() && !description.is_empty() {
                 out.push(SlashCommandEntry {
                     name: c.name().into(),
                     description: description.clone(),
+                    // The row shows the argument hint in front of the
+                    // description (`<hint> — <description>`); the tui library
+                    // builds that text from the two parts.
+                    argument_hint: c.argument_hint().map(str::to_string),
                 });
             }
             // Surfaced aliases share the command's description.
@@ -382,6 +380,7 @@ impl CommandRegistry {
                 out.push(SlashCommandEntry {
                     name: (*alias).into(),
                     description: description.clone(),
+                    argument_hint: c.argument_hint().map(str::to_string),
                 });
             }
         }
@@ -553,6 +552,16 @@ fn template_autocomplete_description(template: &rpi_harness::types::PromptTempla
 /// Aliases the original rewrites only when the input is the bare command name.
 const BARE_ALIASES: &[&str] = &["/history", "/sessions"];
 
+/// Whether the input's first word is a command invocation. The original
+/// rewrites a bare alias only, so `/history some text` stays a message
+/// (`packages/coding-agent/src/core/slash-commands.ts:57-68`).
+fn is_command_token(token: &str, args: &str) -> bool {
+    if !args.is_empty() && BARE_ALIASES.contains(&token) {
+        return false;
+    }
+    true
+}
+
 /// Resolve a command for a `/`-prefixed input and run it when one matches.
 ///
 /// Unknown slash-prefixed input is deliberately left for the normal prompt
@@ -566,7 +575,7 @@ fn dispatch_slash(text: &str, ctx: &CommandContext, registry: &CommandRegistry) 
     let args = parts.collect::<Vec<_>>().join(" ");
     // The original rewrites a bare alias only: `/history some text` is not an
     // alias invocation and stays a message.
-    if !args.is_empty() && BARE_ALIASES.contains(&token) {
+    if !is_command_token(token, &args) {
         return false;
     }
     match registry.find(token) {
@@ -731,6 +740,8 @@ enum TuiMessage {
     Exit,
     /// Clear the transcript (from `/clear`).
     ClearChat,
+    /// Start a new session (from `/new`).
+    NewSession,
     /// Compact the conversation (from `/compact`).
     Compact,
     /// Copy the last assistant reply to the clipboard (from `/copy`).
@@ -1450,7 +1461,11 @@ pub async fn interactive_tui(
         .iter()
         .map(|t| SlashCommandEntry {
             name: format!("/{}", t.name),
-            description: template_autocomplete_description(t),
+            description: t
+                .description
+                .clone()
+                .unwrap_or_else(|| "Expand prompt template".to_string()),
+            argument_hint: t.argument_hint.clone(),
         })
         .collect();
     let resources_arc = Arc::new(Mutex::new(resources_snapshot));
@@ -1484,8 +1499,12 @@ pub async fn interactive_tui(
         .map(|skill| SlashCommandEntry {
             name: format!("/skill:{}", skill.name),
             description: skill.description.clone(),
+            argument_hint: None,
         })
         .collect();
+    // The skill rows join the command list, so `/skill:<name>` is offered next
+    // to the built-in commands and the prompt templates.
+    all_slash_commands.extend(skill_slash_commands);
     let autocomplete = AutocompleteManager::new();
     {
         let mut combined = CombinedAutocompleteProvider::new();
@@ -3113,6 +3132,27 @@ pub async fn interactive_tui(
                 continue;
             }
 
+            // 4b. Enter: accept the highlighted autocomplete suggestion. The
+            //     original's editor binds `tui.select.confirm` to the open
+            //     suggestion list, so Enter picks the highlighted row instead
+            //     of sending the raw draft. A `/` command completion also
+            //     submits (upstream falls through to submit for a command),
+            //     while a path or mention completion only fills the text.
+            if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Enter {
+                match accept_highlighted_suggestion(&state_for_key, &editor_for_key) {
+                    AcceptOutcome::None => {}
+                    AcceptOutcome::Completed => {
+                        tui_for_key.request_render_reusing_scroll_content();
+                        continue;
+                    }
+                    AcceptOutcome::SlashCommand => {
+                        // The command is in the editor now; let it go to the
+                        // editor's submit path below.
+                        tui_for_key.request_render_reusing_scroll_content();
+                    }
+                }
+            }
+
             // 5. Global transcript scroll. PageUp/PageDown use the actual
             // viewport height with four rows of overlap (upstream behavior),
             // while Home/End jump to the transcript boundaries.
@@ -3902,6 +3942,9 @@ pub async fn interactive_tui(
             }
             // The original's `/skills`, `/bug` and `/stats` are registered and
             // dispatch here; the bodies belong to the interactive mode port.
+            // The original's `/new` starts a new session; the body belongs to
+            // the interactive mode port.
+            Some(TuiMessage::NewSession) => {}
             Some(TuiMessage::ShowSkills) => {}
             Some(TuiMessage::ReportBug(_)) => {}
             Some(TuiMessage::ShowStats) => {}

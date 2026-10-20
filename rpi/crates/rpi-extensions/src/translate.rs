@@ -1018,6 +1018,9 @@ mod tests {
             model: "m".into(),
             response_model: None,
             response_id: None,
+            provider_thinking_level: None,
+            thinking_level: None,
+            diagnostics: None,
             usage: Usage::zero(),
             stop_reason: rpi_ai::types::StopReason::Stop,
             deferred: None,
@@ -1025,6 +1028,7 @@ mod tests {
             raw_stop_reason: None,
             end_turn: None,
             timestamp: 0,
+            duration_ms: None,
         }));
         let events = vec![
             AgentEvent::AgentStart,
@@ -1098,6 +1102,9 @@ mod tests {
             model: "m".into(),
             response_model: None,
             response_id: None,
+            provider_thinking_level: None,
+            thinking_level: None,
+            diagnostics: None,
             usage: Usage::zero(),
             stop_reason: rpi_ai::types::StopReason::Pending,
             deferred: None,
@@ -1105,6 +1112,7 @@ mod tests {
             raw_stop_reason: None,
             end_turn: None,
             timestamp: 0,
+            duration_ms: None,
         });
         let translate_delta = |delta: &str| {
             let event = AgentEvent::MessageUpdate {
@@ -1141,6 +1149,9 @@ mod tests {
             model: "m".into(),
             response_model: None,
             response_id: None,
+            provider_thinking_level: None,
+            thinking_level: None,
+            diagnostics: None,
             usage: Usage::zero(),
             stop_reason: rpi_ai::types::StopReason::Stop,
             deferred: None,
@@ -1148,6 +1159,7 @@ mod tests {
             raw_stop_reason: None,
             end_turn: None,
             timestamp: 0,
+            duration_ms: None,
         }));
         let ev = AgentEvent::MessageEnd { message: am };
         let stable = translate(&ev).expect("maps");
@@ -1188,6 +1200,9 @@ mod tests {
             model: "m".into(),
             response_model: None,
             response_id: None,
+            provider_thinking_level: None,
+            thinking_level: None,
+            diagnostics: None,
             usage: Usage::zero(),
             stop_reason: rpi_ai::types::StopReason::Stop,
             deferred: None,
@@ -1195,6 +1210,7 @@ mod tests {
             raw_stop_reason: None,
             end_turn: None,
             timestamp: 0,
+            duration_ms: None,
         }));
         // Use try_emit (sync) — no runtime needed.
         emitter.try_emit(AgentEvent::MessageEnd { message: am });
@@ -1210,6 +1226,9 @@ mod tests {
             model: "m".into(),
             response_model: None,
             response_id: None,
+            provider_thinking_level: None,
+            thinking_level: None,
+            diagnostics: None,
             usage: Usage::zero(),
             stop_reason: rpi_ai::types::StopReason::Stop,
             deferred: None,
@@ -1217,6 +1236,7 @@ mod tests {
             raw_stop_reason: None,
             end_turn: None,
             timestamp: 0,
+            duration_ms: None,
         }));
         emitter.try_emit(AgentEvent::MessageEnd { message: am2 });
         assert_eq!(
@@ -1261,6 +1281,9 @@ mod tests {
             model: "m".into(),
             response_model: None,
             response_id: None,
+            provider_thinking_level: None,
+            thinking_level: None,
+            diagnostics: None,
             usage: Usage::zero(),
             stop_reason: rpi_ai::types::StopReason::Stop,
             deferred: None,
@@ -1268,6 +1291,7 @@ mod tests {
             raw_stop_reason: None,
             end_turn: None,
             timestamp: 0,
+            duration_ms: None,
         }));
         // Broadcast path: both collectors receive the event, and the extension
         // emitter dispatches to the one registered handler.
