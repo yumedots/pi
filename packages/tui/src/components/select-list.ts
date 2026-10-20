@@ -36,6 +36,11 @@ export interface SelectListLayoutOptions {
 	minPrimaryColumnWidth?: number;
 	maxPrimaryColumnWidth?: number;
 	truncatePrimary?: (context: SelectListTruncatePrimaryContext) => string;
+	/**
+	 * Draws a row of the list. Without it the list draws the label of the item
+	 * and its description next to it.
+	 */
+	renderItem?: (item: SelectItem, selected: boolean, width: number) => string;
 }
 
 export class SelectList implements Component, HoverableList {
@@ -72,6 +77,14 @@ export class SelectList implements Component, HoverableList {
 		this.windowStart = 0;
 	}
 
+	/** Replaces the items of the list and clears the filter. */
+	setItems(items: SelectItem[]): void {
+		this.items = items;
+		this.filteredItems = items;
+		this.selectedIndex = 0;
+		this.windowStart = 0;
+	}
+
 	setSelectedIndex(index: number): void {
 		this.selectedIndex = Math.max(0, Math.min(index, this.filteredItems.length - 1));
 		this.scrollToSelection();
@@ -90,7 +103,8 @@ export class SelectList implements Component, HoverableList {
 			return lines;
 		}
 
-		const primaryColumnWidth = this.getPrimaryColumnWidth();
+		// The primary column only matters for the default row.
+		const primaryColumnWidth = this.layout.renderItem ? 0 : this.getPrimaryColumnWidth();
 
 		// Calculate visible range with scrolling
 		const { startIndex, endIndex } = this.getVisibleRange();
@@ -101,6 +115,10 @@ export class SelectList implements Component, HoverableList {
 			if (!item) continue;
 
 			const isSelected = i === this.selectedIndex;
+			if (this.layout.renderItem) {
+				lines.push(this.layout.renderItem(item, isSelected, width));
+				continue;
+			}
 			const descriptionSingleLine = item.description ? normalizeToSingleLine(item.description) : undefined;
 			lines.push(this.renderItem(item, isSelected, width, descriptionSingleLine, primaryColumnWidth));
 		}

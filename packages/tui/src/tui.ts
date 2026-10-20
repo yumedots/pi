@@ -136,6 +136,12 @@ export interface Component {
 	 */
 	getOverlayRow?(): number;
 
+	/**
+	 * The rows of this component's box that an overlay above it covers. The overlay
+	 * belongs to a child that floats above its own box.
+	 */
+	getOverlayAboveRows?(): { start: number; end: number } | undefined;
+
 	/** Optional handler for keyboard input when component has focus. */
 	handleInput?(data: string): void;
 
@@ -378,6 +384,8 @@ export class Container implements Component {
 	private overlayRow = 0;
 	/** Height of the overlay owner's box. */
 	private overlayOwnerHeight = 0;
+	/** Number of rows the overlay covers above the owner's box. */
+	private overlayHeight = 0;
 
 	addChild(component: Component): void {
 		this.children.push(component);
@@ -401,6 +409,18 @@ export class Container implements Component {
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | undefined {
+		// The rows of the overlay of a child belong to that child, even when they
+		// sit above the box of the child that owns it.
+		const overlayRows = this.getOverlayAboveRows();
+		if (overlayRows && event.y >= overlayRows.start && event.y < overlayRows.end) {
+			const owner = this.overlayOwner;
+			if (!owner) return undefined;
+			return dispatchMouseEvent(owner, {
+				...event,
+				y: event.y - this.overlayRow,
+				height: this.overlayOwnerHeight || event.height,
+			});
+		}
 		if (event.y < 0) {
 			// The overlay of a child is painted above that child's box, which can sit
 			// inside this container. The rows above this container's box belong to it.
@@ -419,6 +439,18 @@ export class Container implements Component {
 				: this.children.map((component) => ({ component, height: component.render(event.width).length }));
 		let childY = 0;
 		for (const { component: child, height: childHeight } of mouseChildren) {
+			// A child that floats above its own box owns the rows above it, which
+			// belong to the child before it.
+			const overlayRows = child.getOverlayAboveRows?.();
+			if (overlayRows && event.y >= childY + overlayRows.start && event.y < childY + overlayRows.end) {
+				const result = dispatchMouseEvent(child, {
+					...event,
+					y: event.y - childY,
+					height: childHeight,
+				});
+				if (result?.focus && (this as Component).handleInput) return { ...result, focusTarget: this };
+				return result;
+			}
 			if (event.y >= childY && event.y < childY + childHeight) {
 				const result = dispatchMouseEvent(child, {
 					...event,
@@ -455,6 +487,7 @@ export class Container implements Component {
 		this.overlayOwner = undefined;
 		this.overlayRow = 0;
 		this.overlayOwnerHeight = 0;
+		this.overlayHeight = 0;
 		const layout = this.mouseLayout?.width === width ? this.mouseLayout : undefined;
 		let row = 0;
 		for (let index = 0; index < this.children.length; index++) {
@@ -464,11 +497,21 @@ export class Container implements Component {
 				this.overlayOwner = child;
 				this.overlayRow = row;
 				this.overlayOwnerHeight = layout?.children[index]?.height ?? child.render(width).length;
+				this.overlayHeight = overlay.length;
 				return overlay;
 			}
 			row += layout?.children[index]?.height ?? child.render(width).length;
 		}
 		return [];
+	}
+
+	/**
+	 * The rows of this container that the overlay of a child covers, relative to the
+	 * box of this container. The overlay sits above the box of the child that owns it.
+	 */
+	getOverlayAboveRows(): { start: number; end: number } | undefined {
+		if (!this.overlayOwner || this.overlayHeight === 0) return undefined;
+		return { start: this.overlayRow - this.overlayHeight, end: this.overlayRow };
 	}
 
 	/** Row inside this container where the overlay's bottom edge sits. */

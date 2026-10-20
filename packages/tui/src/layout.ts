@@ -476,8 +476,9 @@ export function getLayoutBoxesAt(frame: LayoutFrame, x: number, y: number): Layo
 	const visit = (box: LayoutBox, depth: number): void => {
 		const inClip = containsPoint(box.clip, x, y);
 		const inOverlay = box.overlayRect !== undefined && containsPoint(box.overlayRect, x, y);
-		if (!inClip && !inOverlay) return;
-		result.push({ box, depth });
+		if (inClip || inOverlay) result.push({ box, depth });
+		// An overlay reaches out of the box it belongs to, so the children are
+		// visited even when the box itself does not hold the pointer.
 		for (const child of box.children) visit(child, depth + 1);
 	};
 	visit(frame.root, 0);

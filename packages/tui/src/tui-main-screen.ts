@@ -269,7 +269,9 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		// regular renderer has no layout frame, so it paints the overlay itself.
 		const childOverlay = this.renderOverlayAbove(width);
 		if (childOverlay.length > 0) {
-			newLines = paintOverlayAbove(newLines, childOverlay, this.getOverlayRow(), width);
+			// The overlay is painted after the fake cursors of the frame were resolved,
+			// so its own cursors still need them.
+			newLines = paintOverlayAbove(newLines, this.resolveFakeCursors(childOverlay), this.getOverlayRow(), width);
 		}
 
 		// Composite overlays into the rendered lines (before differential compare)
