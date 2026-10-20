@@ -150,7 +150,7 @@ import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
 import { FooterComponent, formatTokens } from "./components/footer.ts";
 import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.ts";
 import { LoginDialogComponent } from "./components/login-dialog.ts";
-import { type MenuItem, MenuSelectorComponent } from "./components/menu-selector.ts";
+import { MenuComponent, type MenuItem } from "./components/menu.ts";
 import { createMermaidMarkdownTransformer } from "./components/mermaid.ts";
 import { ModelSelectorComponent } from "./components/model-selector.ts";
 import {
@@ -4753,6 +4753,7 @@ export class InteractiveMode {
 	 */
 	private showSelector(
 		create: (done: () => void) => { component: Component; focus: Component; dispose?: () => void },
+		options: { floating?: boolean } = {},
 	): void {
 		const token = {};
 		let dispose: (() => void) | undefined;
@@ -4774,8 +4775,15 @@ export class InteractiveMode {
 		if (this.emptySessionActive) {
 			// On the empty-session screen the selector opens below the input box, so it does
 			// not cover the logo. The editor stays in place above it.
+			const menu = created.component as { setFloating?: (floating: boolean) => void };
+			menu.setFloating?.(false);
 			this.editorContainer.addChild(this.editor as Component);
 			this.editorContainer.addChild(created.component);
+		} else if (options.floating) {
+			// A floating selector is painted above the input box, so the editor stays
+			// in place. The selector comes first, so the container picks its overlay.
+			this.editorContainer.addChild(created.component);
+			this.editorContainer.addChild(this.editor as Component);
 		} else {
 			this.editorContainer.addChild(created.component);
 		}
@@ -5620,8 +5628,6 @@ export class InteractiveMode {
 		});
 	}
 
-	private activeMenuOverlay: OverlayHandle | undefined;
-
 	private showThemeSelector(): void {
 		const current = this.themeController.getThemeSelection() || SYSTEM_THEME_NAME;
 		const items: MenuItem<string>[] = getAvailableThemes().map((name) => ({
@@ -5630,33 +5636,27 @@ export class InteractiveMode {
 			value: name,
 		}));
 
-		this.activeMenuOverlay?.hide();
-		const selector = new MenuSelectorComponent<string>(
-			{ title: "Theme", items },
-			(themeName) => {
-				this.activeMenuOverlay?.hide();
-				this.activeMenuOverlay = undefined;
-				this.ui.setFocus(this.editor);
-				this.applyTheme(themeName);
+		this.showSelector(
+			(done) => {
+				const selector = new MenuComponent<string>(
+					{ title: "Theme", items, floating: true },
+					(themeName) => {
+						done();
+						this.applyTheme(themeName);
+					},
+					() => {
+						done();
+						// Restore the theme that was active before the preview.
+						this.themeController.preview(current);
+						this.ui.requestRender();
+					},
+				);
+				// Preview the theme under the cursor so the choice is visible before confirming.
+				selector.onSelectionChange = (themeName) => this.themeController.preview(themeName);
+				return { component: selector, focus: selector };
 			},
-			() => {
-				this.activeMenuOverlay?.hide();
-				this.activeMenuOverlay = undefined;
-				this.ui.setFocus(this.editor);
-				// Restore the theme that was active before the preview.
-				this.themeController.preview(current);
-				this.ui.requestRender();
-			},
+			{ floating: true },
 		);
-		// Preview the theme under the cursor so the choice is visible before confirming.
-		selector.onSelectionChange = (themeName) => this.themeController.preview(themeName);
-		this.activeMenuOverlay = this.ui.showOverlay(selector, {
-			anchor: "center",
-			width: 50,
-			maxHeight: 20,
-		});
-		this.ui.setFocus(selector);
-		this.ui.requestRender();
 	}
 
 	private applyTheme(themeName: string): void {
@@ -5683,67 +5683,62 @@ export class InteractiveMode {
 	}
 
 	private showMenu<T>(title: string, items: MenuItem<T>[], onSelect: (value: T) => void): void {
-		this.activeMenuOverlay?.hide();
-		const selector = new MenuSelectorComponent<T>(
-			{ title, items },
-			(value) => {
-				this.activeMenuOverlay?.hide();
-				this.activeMenuOverlay = undefined;
-				this.ui.setFocus(this.editor);
-				onSelect(value);
+		this.showSelector(
+			(done) => {
+				const selector = new MenuComponent<T>(
+					{ title, items, floating: true },
+					(value) => {
+						done();
+						onSelect(value);
+					},
+					() => {
+						done();
+						this.ui.requestRender();
+					},
+				);
+				return { component: selector, focus: selector };
 			},
-			() => {
-				this.activeMenuOverlay?.hide();
-				this.activeMenuOverlay = undefined;
-				this.ui.setFocus(this.editor);
-				this.ui.requestRender();
-			},
+			{ floating: true },
 		);
-		this.activeMenuOverlay = this.ui.showOverlay(selector, {
-			anchor: "center",
-			width: 70,
-			maxHeight: 24,
-		});
-		this.ui.setFocus(selector);
-		this.ui.requestRender();
 	}
 
 	private showSessionSelector(): void {
-		const selector = new SessionMenuComponent({
-			currentLoad: (onProgress, signal) =>
-				SessionManager.list(this.sessionManager.getCwd(), this.sessionManager.getSessionDir(), onProgress, signal),
-			allLoad: (onProgress, signal) =>
-				this.sessionManager.usesDefaultSessionDir()
-					? SessionManager.listAll(onProgress, signal)
-					: SessionManager.listAll(this.sessionManager.getSessionDir(), onProgress, signal),
-			onSelect: (session) => {
-				this.activeMenuOverlay?.hide();
-				this.activeMenuOverlay = undefined;
-				this.ui.setFocus(this.editor);
-				void this.handleResumeSession(session.path);
+		this.showSelector(
+			(done) => {
+				const selector = new SessionMenuComponent({
+					currentLoad: (onProgress, signal) =>
+						SessionManager.list(
+							this.sessionManager.getCwd(),
+							this.sessionManager.getSessionDir(),
+							onProgress,
+							signal,
+						),
+					allLoad: (onProgress, signal) =>
+						this.sessionManager.usesDefaultSessionDir()
+							? SessionManager.listAll(onProgress, signal)
+							: SessionManager.listAll(this.sessionManager.getSessionDir(), onProgress, signal),
+					onSelect: (session) => {
+						done();
+						void this.handleResumeSession(session.path);
+					},
+					onCancel: () => {
+						done();
+						this.ui.requestRender();
+					},
+					onRequestRender: () => this.ui.requestRender(),
+					renameSession: async (sessionFilePath: string, nextName: string | undefined) => {
+						const next = (nextName ?? "").trim();
+						if (!next) return;
+						const mgr = SessionManager.open(sessionFilePath);
+						mgr.appendSessionInfo(next);
+					},
+					currentSessionPath: this.sessionManager.getSessionFile(),
+					floating: true,
+				});
+				return { component: selector, focus: selector, dispose: () => selector.dispose() };
 			},
-			onCancel: () => {
-				this.activeMenuOverlay?.hide();
-				this.activeMenuOverlay = undefined;
-				this.ui.setFocus(this.editor);
-				this.ui.requestRender();
-			},
-			onRequestRender: () => this.ui.requestRender(),
-			renameSession: async (sessionFilePath: string, nextName: string | undefined) => {
-				const next = (nextName ?? "").trim();
-				if (!next) return;
-				const mgr = SessionManager.open(sessionFilePath);
-				mgr.appendSessionInfo(next);
-			},
-			currentSessionPath: this.sessionManager.getSessionFile(),
-		});
-		this.activeMenuOverlay = this.ui.showOverlay(selector, {
-			anchor: "center",
-			width: 80,
-			maxHeight: 20,
-		});
-		this.ui.setFocus(selector);
-		this.ui.requestRender();
+			{ floating: true },
+		);
 	}
 
 	private async handleResumeSession(

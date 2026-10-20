@@ -45,6 +45,8 @@ export async function selectSession(
 					resolve(null);
 				}
 			},
+			// The sessions load in the background, so the screen has to be repainted when they arrive.
+			onRequestRender: () => ui.requestRender(),
 		});
 
 		ui.addChild(selector);

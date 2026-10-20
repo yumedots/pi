@@ -7,16 +7,18 @@ import {
 	Container,
 	getKeybindings,
 	Input,
+	SelectList,
 	Text,
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 import type { SessionInfo, SessionListProgress } from "../../../core/session-manager.ts";
 import { canonicalizePath as _canonicalizePath } from "../../../utils/paths.ts";
-import { theme } from "../theme/theme.ts";
+import { getSelectListTheme, theme } from "../theme/theme.ts";
 import { keyHint } from "./keybinding-hints.ts";
-import { type MenuItem, MenuSelectorComponent } from "./menu-selector.ts";
+import { DEFAULT_MAX_VISIBLE, MenuComponent, type MenuItem } from "./menu.ts";
 import { filterAndSortSessions, hasSessionName, type NameFilter, type SortMode } from "./session-selector-search.ts";
+import { ThemedText } from "./themed-text.ts";
 
 type SessionScope = "current" | "all";
 
@@ -185,10 +187,12 @@ export interface SessionMenuOptions {
 	renameSession?: (sessionPath: string, nextName: string | undefined) => Promise<void>;
 	/** Path of the currently active session, which cannot be deleted. */
 	currentSessionPath?: string;
+	/** Floats the menu above its box, so it does not move the chat. */
+	floating?: boolean;
 }
 
-/** Session picker built on the generic menu primitive. Sessions load asynchronously. */
-export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
+/** Session picker. Sessions load asynchronously. */
+export class SessionMenuComponent extends MenuComponent<SessionInfo> {
 	private abortController = new AbortController();
 	private scope: SessionScope = "current";
 	private sortMode: SortMode = "threaded";
@@ -200,17 +204,28 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 	private mode: "list" | "rename" = "list";
 	private renameInput = new Input();
 	private renameTargetPath: string | null = null;
-	private readonly options: SessionMenuOptions;
+	private readonly sessionOptions: SessionMenuOptions;
 
 	constructor(options: SessionMenuOptions) {
-		super({ title: "Sessions", loadingText: "Loading sessions..." }, options.onSelect, options.onCancel);
-		this.options = options;
+		super(
+			{ title: "Sessions", loadingText: "Loading sessions...", floating: options.floating },
+			options.onSelect,
+			options.onCancel,
+		);
+		this.sessionOptions = options;
 		void this.loadScope("current");
 	}
 
-	protected override drawItem(item: MenuItem<SessionInfo>, selected: boolean, width: number): string {
+	protected override createList(): SelectList {
+		return new SelectList([], DEFAULT_MAX_VISIBLE, getSelectListTheme(), {
+			renderItem: (row, selected, width) => this.drawRow(this.itemOf(row), selected, width),
+		});
+	}
+
+	/** Draws a session row: the tree prefix and the title on the left, the metadata on the right. */
+	private drawRow(item: MenuItem<SessionInfo>, selected: boolean, width: number): string {
 		const session = item.value;
-		const isCurrent = session.path === this.options.currentSessionPath;
+		const isCurrent = session.path === this.sessionOptions.currentSessionPath;
 		const prefix = item.description ?? "";
 		const displayText = (session.name ?? session.firstMessage).replace(/[\x00-\x1f\x7f]/g, " ").trim();
 
@@ -222,7 +237,7 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 			rightPart = `${shortenPath(session.cwd)} ${rightPart}`;
 		}
 
-		const cursor = selected ? theme.fg("accent", "› ") : "  ";
+		const cursor = selected ? theme.fg("accent", "→ ") : "  ";
 		const rightWidth = visibleWidth(rightPart);
 		// Reserve room for the tree prefix, the cursor, the gap and the right-aligned metadata.
 		const available = Math.max(10, width - visibleWidth(prefix) - rightWidth - 4);
@@ -242,10 +257,6 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 		return `${leftPart}${" ".repeat(spacing)}${theme.fg("dim", rightPart)}`;
 	}
 
-	protected override getTitle(): string {
-		return "Sessions";
-	}
-
 	protected override buildContent(): Component {
 		if (this.mode === "rename") {
 			return this.buildRenameContent();
@@ -254,19 +265,23 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 	}
 
 	private buildRenameContent(): Component {
-		const panel = new Container();
-		panel.addChild(new Text(theme.bold("  Rename Session"), 0, 0));
-		panel.addChild(new Text("", 0, 0));
-		panel.addChild(this.renameInput);
-		panel.addChild(new Text("", 0, 0));
-		panel.addChild(
-			new Text(
-				theme.fg("muted", `  ${keyHint("tui.select.confirm", "save")} · ${keyHint("tui.select.cancel", "cancel")}`),
+		const content = new Container();
+		content.addChild(new ThemedText(() => theme.bold(theme.fg("text", "  Rename Session")), 0, 0));
+		content.addChild(new Text("", 0, 0));
+		content.addChild(this.renameInput);
+		content.addChild(new Text("", 0, 0));
+		content.addChild(
+			new ThemedText(
+				() =>
+					theme.fg(
+						"dim",
+						`  ${keyHint("tui.select.confirm", "save")} · ${keyHint("tui.select.cancel", "cancel")}`,
+					),
 				0,
 				0,
 			),
 		);
-		return panel;
+		return content;
 	}
 
 	override handleInput(keyData: string): void {
@@ -280,8 +295,8 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 				const path = this.renameTargetPath;
 				const nextName = this.renameInput.getValue();
 				this.exitRenameMode();
-				if (path && this.options.renameSession) {
-					void this.options.renameSession(path, nextName);
+				if (path && this.sessionOptions.renameSession) {
+					void this.sessionOptions.renameSession(path, nextName);
 				}
 				return;
 			}
@@ -291,14 +306,12 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 		super.handleInput(keyData);
 	}
 
-	protected override extraFooterLines(): string[] {
+	protected override hintLine(): string {
 		if (this.confirmingDeletePath) {
-			return [
-				theme.fg(
-					"error",
-					`  Delete session? ${keyHint("tui.select.confirm", "confirm")} · ${keyHint("tui.select.cancel", "cancel")}`,
-				),
-			];
+			return theme.fg(
+				"error",
+				`  Delete session? ${keyHint("tui.select.confirm", "confirm")} · ${keyHint("tui.select.cancel", "cancel")}`,
+			);
 		}
 		const sep = theme.fg("muted", " · ");
 		const pathState = this.showPath ? "(on)" : "(off)";
@@ -313,10 +326,10 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 			keyHint("app.session.delete", "delete"),
 			keyHint("app.session.togglePath", `path ${pathState}`),
 		];
-		if (this.options.renameSession) {
+		if (this.sessionOptions.renameSession) {
 			hint2Parts.push(keyHint("app.session.rename", "rename"));
 		}
-		return [theme.fg("dim", `  ${hint1}`), theme.fg("dim", `  ${hint2Parts.join(sep)}`)];
+		return `${theme.fg("dim", `  ${hint1}`)}\n${theme.fg("dim", `  ${hint2Parts.join(sep)}`)}`;
 	}
 
 	protected override handleExtraKey(keyData: string): boolean {
@@ -332,7 +345,7 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 			}
 			if (kb.matches(keyData, "tui.select.cancel")) {
 				this.confirmingDeletePath = null;
-				this.renderPanel();
+				this.renderContent();
 				return true;
 			}
 			return true;
@@ -340,7 +353,7 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 
 		if (kb.matches(keyData, "tui.input.tab")) {
 			void this.loadScope(this.scope === "current" ? "all" : "current");
-			this.options.onRequestRender?.();
+			this.sessionOptions.onRequestRender?.();
 			return true;
 		}
 
@@ -359,13 +372,13 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 
 		if (kb.matches(keyData, "app.session.togglePath")) {
 			this.showPath = !this.showPath;
-			this.renderPanel();
+			this.renderContent();
 			return true;
 		}
 
 		if (kb.matches(keyData, "app.session.rename")) {
 			const selected = this.getSelectedValue();
-			if (selected && this.options.renameSession) {
+			if (selected && this.sessionOptions.renameSession) {
 				this.enterRenameMode(selected.path, selected.name);
 			}
 			return true;
@@ -392,26 +405,26 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 		this.renameTargetPath = sessionPath;
 		this.renameInput.setValue(currentName ?? "");
 		this.renameInput.focused = true;
-		this.renderPanel();
-		this.options.onRequestRender?.();
+		this.renderContent();
+		this.sessionOptions.onRequestRender?.();
 	}
 
 	private exitRenameMode(): void {
 		this.mode = "list";
 		this.renameTargetPath = null;
-		this.renderPanel();
-		this.options.onRequestRender?.();
+		this.renderContent();
+		this.sessionOptions.onRequestRender?.();
 	}
 
 	private startDeleteConfirmation(): void {
 		const selected = this.getSelectedValue();
 		if (!selected) return;
-		if (selected.path === this.options.currentSessionPath) {
+		if (selected.path === this.sessionOptions.currentSessionPath) {
 			this.setFooterText("Cannot delete the currently active session");
 			return;
 		}
 		this.confirmingDeletePath = selected.path;
-		this.renderPanel();
+		this.renderContent();
 	}
 
 	private async deleteSession(sessionPath: string): Promise<void> {
@@ -424,14 +437,14 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 		} else {
 			this.setFooterText(`Failed to delete: ${result.error ?? "Unknown error"}`);
 		}
-		this.options.onRequestRender?.();
+		this.sessionOptions.onRequestRender?.();
 	}
 
 	private async loadScope(scope: SessionScope): Promise<void> {
 		this.scope = scope;
 		this.setLoading(true);
-		this.options.onRequestRender?.();
-		const loader = scope === "current" ? this.options.currentLoad : this.options.allLoad;
+		this.sessionOptions.onRequestRender?.();
+		const loader = scope === "current" ? this.sessionOptions.currentLoad : this.sessionOptions.allLoad;
 		const store = (sessions: SessionInfo[]): void => {
 			if (scope === "current") {
 				this.currentSessions = sessions;
@@ -445,7 +458,7 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 				store([...partial]);
 				this.refreshItems();
 				this.setFooterText(`loaded ${loaded} of ${total}`);
-				this.options.onRequestRender?.();
+				this.sessionOptions.onRequestRender?.();
 			}, this.abortController.signal);
 			if (this.abortController.signal.aborted) return;
 			store(sessions);
@@ -455,7 +468,7 @@ export class SessionMenuComponent extends MenuSelectorComponent<SessionInfo> {
 			if (this.abortController.signal.aborted) return;
 			this.setItems([]);
 		}
-		this.options.onRequestRender?.();
+		this.sessionOptions.onRequestRender?.();
 	}
 
 	private refreshItems(): void {

@@ -1,6 +1,5 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { BlockList, type BlockListTheme } from "../src/components/block-list.ts";
 import { Editor, type EditorTheme } from "../src/components/editor.ts";
 import { Input } from "../src/components/input.ts";
 import { MouseRegion } from "../src/components/mouse-region.ts";
@@ -42,13 +41,6 @@ const settingsTheme: SettingsListTheme = {
 	description: (text) => text,
 	cursor: "> ",
 	hint: (text) => text,
-};
-
-const blockTheme: BlockListTheme = {
-	block: (text) => text,
-	selection: (text) => text,
-	track: (text) => text,
-	thumb: (text) => text,
 };
 
 const editorTheme: EditorTheme = {
@@ -144,25 +136,6 @@ describe("mouse-aware components", () => {
 		list.handleMouse(mouse("press", 1, 2, 40, 5));
 		list.handleMouse(mouse("click", 1, 2, 40, 5));
 		assert.deepStrictEqual(changes, [{ id: "third", value: "high" }]);
-	});
-
-	it("hovers block-list rows", () => {
-		const list = new BlockList(
-			[
-				{ value: "a", label: "A" },
-				{ value: "b", label: "B" },
-				{ value: "c", label: "C" },
-			],
-			3,
-			blockTheme,
-			{ draw: (item) => `  ${item.label}` },
-		);
-		const changes: string[] = [];
-		list.onSelectionChange = (item) => changes.push(item.value);
-
-		list.handleMouse(mouse("move", 1, 2, 40, 3));
-		assert.strictEqual(list.getSelectedItem()?.value, "c");
-		assert.deepStrictEqual(changes, ["c"]);
 	});
 
 	for (const row of [0, 4]) {

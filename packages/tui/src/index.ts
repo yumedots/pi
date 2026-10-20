@@ -37,7 +37,6 @@ export {
 	type TextStyle,
 } from "./colors.ts";
 // Components
-export { BlockList, type BlockListOptions, type BlockListTheme } from "./components/block-list.ts";
 export { Box } from "./components/box.ts";
 export { CancellableLoader } from "./components/cancellable-loader.ts";
 export { type AutocompletePosition, Editor, type EditorOptions, type EditorTheme } from "./components/editor.ts";
@@ -177,6 +176,7 @@ export {
 	type TuiInputListenerResult,
 	type TuiMode,
 	type TuiMouseButton,
+	type TuiMouseDispatchResult,
 	type TuiMouseEvent,
 	type TuiMouseEventResult,
 	type TuiMouseEventType,
