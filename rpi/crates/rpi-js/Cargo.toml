@@ -13,7 +13,7 @@ description = "The embedded JavaScript engine that runs TypeScript extensions"
 v8 = "152"
 serde_json = { workspace = true }
 rpi-tui = { path = "../rpi-tui" }
-oxc = { version = "0.155", default-features = false, features = ["codegen", "semantic", "transformer"] }
+oxc = { version = "0.155", default-features = false, features = ["codegen", "semantic", "transformer", "ast_visit"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

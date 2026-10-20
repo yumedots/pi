@@ -38,7 +38,14 @@
   var require_node_fs = __commonJS({
     "rpi/crates/rpi-js/js/shims/node-fs.ts"(exports, module) {
       "use strict";
-      var call = (op, args) => globalThis.__piHostCall(op, args);
+      var call = (op, args) => {
+        const bridge = globalThis.__piHostCall;
+        const response = JSON.parse(bridge(op, JSON.stringify(args ?? {})));
+        if (!response.ok) {
+          throw new Error(response.error ?? "the host refused the call");
+        }
+        return response.value;
+      };
       var readFileSync = (path2) => call("fs.readFile", { path: path2 });
       var writeFileSync = (path2, content) => {
         call("fs.writeFile", { path: path2, content });
@@ -14546,6 +14553,7 @@
       "__filename",
       "__dirname",
       "__piExports",
+      "__piImportMeta",
       code
     );
     factory(
@@ -14554,7 +14562,12 @@
       module,
       path2,
       paths.dirname(path2),
-      module.exports
+      module.exports,
+      {
+        url: `file://${path2}`,
+        filename: path2,
+        dirname: paths.dirname(path2)
+      }
     );
     return module.exports;
   };

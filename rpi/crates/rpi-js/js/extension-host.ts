@@ -536,6 +536,7 @@ const loadModule = (path: string, code: string): Record<string, unknown> => {
 		"__filename",
 		"__dirname",
 		"__piExports",
+		"__piImportMeta",
 		code,
 	);
 	factory(
@@ -545,6 +546,11 @@ const loadModule = (path: string, code: string): Record<string, unknown> => {
 		path,
 		paths.dirname(path),
 		module.exports,
+		{
+			url: `file://${path}`,
+			filename: path,
+			dirname: paths.dirname(path),
+		},
 	);
 	return module.exports;
 };

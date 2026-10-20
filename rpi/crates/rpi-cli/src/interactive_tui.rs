@@ -1447,12 +1447,6 @@ pub async fn interactive_tui(
                 );
             }
         }
-        if let Err(error) = extensions.dispatch(
-            "session_start",
-            serde_json::json!({ "type": "session_start", "reason": "startup" }),
-        ) {
-            add_note_message(&chat_container, &format!("Extension error: {error}"));
-        }
         // The extension's tools are declared to the model: a tool the
         // extension registers has to be in the session's tool set, or the
         // model cannot call it.
@@ -1559,28 +1553,6 @@ pub async fn interactive_tui(
     }
     let registry = Arc::new(command_registry);
     let mut all_slash_commands = registry.visible_entries();
-    // The session's commands are what an extension reads with
-    // `pi.getCommands()`; the host answers from the session.
-    if let Some(extensions) = js_extensions.as_ref() {
-        extensions.set_commands(
-            all_slash_commands
-                .iter()
-                .map(|entry| {
-                    serde_json::json!({
-                        "name": entry.name,
-                        "description": entry.description,
-                        "source": "extension",
-                        "sourceInfo": {
-                            "path": "",
-                            "source": "auto",
-                            "scope": "user",
-                            "origin": "top-level",
-                        },
-                    })
-                })
-                .collect(),
-        );
-    }
     all_slash_commands.extend(template_slash_commands);
     let skill_mentions = resources_arc
         .lock()
@@ -1608,6 +1580,41 @@ pub async fn interactive_tui(
     // The skill rows join the command list, so `/skill:<name>` is offered next
     // to the built-in commands and the prompt templates.
     all_slash_commands.extend(skill_slash_commands);
+    // The session's commands are what an extension reads with
+    // `pi.getCommands()`; the host answers from the session.
+    if let Some(extensions) = js_extensions.as_ref() {
+        extensions.set_commands(
+            all_slash_commands
+                .iter()
+                .map(|entry| {
+                    serde_json::json!({
+                        "name": entry.name,
+                        "description": entry.description,
+                        "source": "extension",
+                        "sourceInfo": {
+                            "path": "",
+                            "source": "auto",
+                            "scope": "user",
+                            "origin": "top-level",
+                        },
+                    })
+                })
+                .collect(),
+        );
+    }
+    // `session_start` goes out last, and it does not block the TUI: the
+    // handler may open a dialog, which the TUI has to present.
+    if let Some(extensions) = js_extensions.clone() {
+        let chat_for_start = chat_container.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Err(error) = extensions.dispatch(
+                "session_start",
+                serde_json::json!({ "type": "session_start", "reason": "startup" }),
+            ) {
+                add_note_message(&chat_for_start, &format!("Extension error: {error}"));
+            }
+        });
+    }
     // The `/skills` list shows the same skills.
     let skill_list: Vec<(String, String)> = skill_mentions
         .iter()

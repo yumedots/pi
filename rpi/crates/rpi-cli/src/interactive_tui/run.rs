@@ -713,5 +713,4 @@ pub(super) fn add_assistant_message_blocking(
     // (`packages/coding-agent/src/modes/interactive/components/assistant-message.ts`).
     container.add_child(Arc::new(Spacer::new(1)));
     container.add_child(msg);
-    container.add_child(Arc::new(Spacer::new(1)));
 }

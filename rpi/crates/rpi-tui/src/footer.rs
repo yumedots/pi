@@ -686,11 +686,11 @@ impl FooterComponent {
         self.model.lock().unwrap().clone()
     }
 
-    /// The context meter text: the block bar, the percentage and the exact
-    /// token count (`?` when the count is unknown).
+    /// The context meter text: the block bar, the percentage of the context
+    /// window that is in use and the number of tokens in use. With no usage
+    /// yet that is `0.0%` and `0 tokens` — the window's size is never shown.
     fn context_group(&self) -> (FooterGroup, Option<f64>) {
         let colors = theme().colors;
-        let window = *self.context_window.lock().unwrap();
         let tokens = *self.context_tokens.lock().unwrap();
         let percent = *self.context_percent.lock().unwrap();
 
@@ -707,10 +707,7 @@ impl FooterComponent {
             }
             _ => {
                 let bar = format_context_bar(0.0, CONTEXT_BAR_WIDTH);
-                (
-                    None,
-                    format!("{bar} ?/{} tokens", format_exact_tokens(window)),
-                )
+                (Some(0.0), format!("{bar} 0.0% 0 tokens"))
             }
         };
 
@@ -949,9 +946,10 @@ mod tests {
         footer.set_context_window(128_000);
         let row = strip_ansi(&footer.render(100)[0]);
         assert!(
-            row.starts_with("mock-1 / \u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591} ?/128,000 tokens"),
+            row.starts_with("mock-1 / \u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591} 0.0% 0 tokens"),
             "context group: {row}"
         );
+        assert!(!row.contains("128,000"), "the window size is not shown: {row}");
     }
 
     #[test]
@@ -1041,7 +1039,8 @@ mod tests {
         let footer = FooterComponent::new();
         footer.set_context_window(512_000);
         let stats = strip_ansi(&footer.render(120).join("\n"));
-        assert!(stats.contains("?/512,000 tokens"), "stats: {stats}");
+        assert!(stats.contains("0.0% 0 tokens"), "stats: {stats}");
+        assert!(!stats.contains("512,000"), "stats: {stats}");
 
         footer.set_context_tokens(Some(256_000));
         let stats = strip_ansi(&footer.render(120).join("\n"));
@@ -1053,7 +1052,8 @@ mod tests {
 
         footer.set_context_tokens(None);
         let stats = strip_ansi(&footer.render(120).join("\n"));
-        assert!(stats.contains("?/128,000 tokens"), "stats: {stats}");
+        assert!(stats.contains("0.0% 0 tokens"), "stats: {stats}");
+        assert!(!stats.contains("128,000"), "stats: {stats}");
     }
 
     #[test]

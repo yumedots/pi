@@ -1,5 +1,25 @@
-const call = (op: string, args: Record<string, unknown>): unknown =>
-	(globalThis as unknown as { __piHostCall: (op: string, args: unknown) => unknown }).__piHostCall(op, args);
+/// Ask the host to do something.
+///
+/// The arguments cross the boundary as JSON, and the answer comes back the
+/// same way: a call that does not encode its arguments is silently ignored
+/// by the host, which reads as a write that reports success and writes
+/// nothing.
+const call = (op: string, args: Record<string, unknown>): unknown => {
+	const bridge = (
+		globalThis as unknown as {
+			__piHostCall: (op: string, args: string) => string;
+		}
+	).__piHostCall;
+	const response = JSON.parse(bridge(op, JSON.stringify(args ?? {}))) as {
+		ok: boolean;
+		value?: unknown;
+		error?: string;
+	};
+	if (!response.ok) {
+		throw new Error(response.error ?? "the host refused the call");
+	}
+	return response.value;
+};
 
 const readFileSync = (path: string): string => call("fs.readFile", { path }) as string;
 const writeFileSync = (path: string, content: string): void => {

@@ -19,7 +19,84 @@ use oxc::transformer::{TransformOptions, Transformer};
 /// Turns TypeScript into JavaScript that the embedded runtime can evaluate.
 pub fn transpile(source: &str, path: &Path) -> Result<String, String> {
 	let javascript = strip_types(source, path)?;
+	let javascript = replace_import_meta(&javascript, path)?;
 	to_commonjs(&javascript)
+}
+
+/// Rewrite `import.meta` into the object the evaluator provides.
+///
+/// The extension host evaluates an extension's module as a script, and
+/// `import.meta` is a syntax error outside a module. The original's loader
+/// runs the module as a module, so an extension that reads its own URL works
+/// there and not here.
+fn replace_import_meta(javascript: &str, _path: &Path) -> Result<String, String> {
+	if !javascript.contains("import.meta") {
+		return Ok(javascript.to_string());
+	}
+	let mut out = String::with_capacity(javascript.len());
+	let bytes = javascript.as_bytes();
+	let mut index = 0;
+	while index < bytes.len() {
+		let byte = bytes[index];
+		match byte {
+			// A string or a template: copy it as it is.
+			b'"' | b'`' | b'\'' => {
+				let quote = byte;
+				let start = index;
+				index += 1;
+				while index < bytes.len() {
+					if bytes[index] == b'\\' {
+						index += 2;
+						continue;
+					}
+					if bytes[index] == quote {
+						index += 1;
+						break;
+					}
+					index += 1;
+				}
+				out.push_str(&javascript[start..index]);
+			}
+			// A comment: copy it as it is.
+			b'/' if index + 1 < bytes.len() && bytes[index + 1] == b'/' => {
+				let start = index;
+				while index < bytes.len() && bytes[index] != b'\n' {
+					index += 1;
+				}
+				out.push_str(&javascript[start..index]);
+			}
+			b'/' if index + 1 < bytes.len() && bytes[index + 1] == b'*' => {
+				let start = index;
+				index += 2;
+				while index + 1 < bytes.len() && !(bytes[index] == b'*' && bytes[index + 1] == b'/') {
+					index += 1;
+				}
+				index = (index + 2).min(bytes.len());
+				out.push_str(&javascript[start..index]);
+			}
+			_ => {
+				if javascript[index..].starts_with("import.meta") {
+					out.push_str("__piImportMeta");
+					index += "import.meta".len();
+					continue;
+				}
+				let width = utf8_width(byte);
+				out.push_str(&javascript[index..index + width]);
+				index += width;
+			}
+		}
+	}
+	Ok(out)
+}
+
+/// The width of the UTF-8 character that starts with this byte.
+fn utf8_width(byte: u8) -> usize {
+	match byte {
+		0x00..=0x7f => 1,
+		0xc0..=0xdf => 2,
+		0xe0..=0xef => 3,
+		_ => 4,
+	}
 }
 
 fn strip_types(source: &str, path: &Path) -> Result<String, String> {

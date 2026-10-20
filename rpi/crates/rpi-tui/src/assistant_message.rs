@@ -440,7 +440,7 @@ impl AssistantMessageComponent {
         if !*self.is_streaming.lock().unwrap() {
             return;
         }
-        let now = crate::clock::now_ms();
+        let now = crate::clock::wall_now_ms();
         let mut timings = self.thinking_run_timings.lock().unwrap();
         if timings.len() <= run_index {
             timings.resize(run_index + 1, ThinkingRunTiming::default());

@@ -270,6 +270,61 @@ fn shim_specifier(file_name: &str) -> String {
     stem.replace('-', "_")
 }
 
+/// An extension that writes a file writes the file.
+///
+/// A write that reports success and writes nothing is a silent data-loss
+/// bug, and the `fs` module is the one an extension reaches for it.
+#[test]
+fn an_extension_writes_a_file() {
+    let directory = tempfile::tempdir().expect("a directory");
+    let path = directory.path().join("written.txt");
+    let source = format!(
+        "import {{ writeFileSync }} from \"node:fs\";\n\
+         export default function () {{ writeFileSync({:?}, \"hello\"); }}\n",
+        path.to_string_lossy()
+    );
+
+    let host = Arc::new(ProcessHost::new());
+    let mut runtime = Runtime::new(host).expect("the runtime starts");
+    runtime
+        .load_extension("write.ts", &source)
+        .expect("the extension loads");
+
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("the file was written"),
+        "hello",
+        "the extension's write did not land"
+    );
+}
+
+/// An extension that reads `import.meta` loads.
+///
+/// The extension host evaluates an extension's module as a script, and
+/// `import.meta` is a syntax error outside a module; the transpiler rewrites
+/// it to the object the evaluator provides.
+#[test]
+fn an_extension_reads_import_meta() {
+    const SOURCE: &str = r#"
+		export default function (api) {
+			api.registerCommand("meta", {
+				description: "the module's own url",
+				handler: async () => ({ url: import.meta.url }),
+			});
+		}
+	"#;
+
+    let host = Arc::new(ProcessHost::new());
+    let mut runtime = Runtime::new(host).expect("the runtime starts");
+    runtime
+        .load_extension("meta.ts", SOURCE)
+        .expect("the extension loads");
+
+    let answer = runtime
+        .call("__piExtensionHost.runCommand", &[json!("meta"), json!("")])
+        .expect("the command runs");
+    assert_eq!(answer["url"], "file://meta.ts");
+}
+
 /// A host that records the operations the extension host asks for.
 #[derive(Default)]
 struct RecordingHost {
