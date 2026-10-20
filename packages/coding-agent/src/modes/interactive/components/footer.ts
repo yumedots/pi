@@ -35,6 +35,29 @@ function formatExactTokens(count: number): string {
 	return count.toLocaleString("en-US");
 }
 
+/** Width of the context bar in cells. */
+export const CONTEXT_BAR_WIDTH = 10;
+/** The eighth blocks, from empty to full, for the partly filled cell of the bar. */
+const BLOCK_PARTIALS = ["\u258F", "\u258E", "\u258D", "\u258C", "\u258B", "\u258A", "\u2589"];
+
+/**
+ * A filling bar for the context usage: full blocks for the used part, an empty shade for the rest.
+ *
+ * The partly filled cell uses an eighth block, so the bar shows fractions of a cell.
+ */
+export function formatContextBar(percent: number, width: number = CONTEXT_BAR_WIDTH): string {
+	const clamped = Math.max(0, Math.min(100, percent));
+	const exact = (clamped / 100) * width;
+	const full = Math.floor(exact);
+	const fraction = exact - full;
+	const partial =
+		fraction > 0
+			? BLOCK_PARTIALS[Math.min(BLOCK_PARTIALS.length - 1, Math.floor(fraction * BLOCK_PARTIALS.length))]
+			: "";
+	const empty = Math.max(0, width - full - (partial ? 1 : 0));
+	return "\u2588".repeat(full) + partial + "\u2591".repeat(empty);
+}
+
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
 	if (!home) return cwd;
 
@@ -69,6 +92,7 @@ const NERD_FONT_ICONS = {
 	context: "\uF200", // nf-fa-chart_pie
 	path: "\uF07C", // nf-fa-folder_open
 	branch: "\uF126", // nf-fa-code_fork
+	cost: "\uF155", // nf-fa-dollar
 } as const;
 
 /** Icons for the footer groups. Empty when Nerd Fonts are off. */
@@ -79,6 +103,7 @@ interface FooterIcons {
 	context?: string;
 	path?: string;
 	branch?: string;
+	cost?: string;
 }
 
 /** One group of the footer line, with an optional icon in front of it. */
@@ -135,19 +160,19 @@ interface FooterFit {
 /**
  * Fit the footer parts on one line.
  *
- * Shrink order: drop the detail stats (token counts, cache, cost) one by one, then shorten the
- * path from the left so its tail stays visible, then drop the session name, the branch, and the
- * path, then the thinking level, then the model name. The context percentage keeps its content
- * as long as possible.
+ * Shrink order: shorten the path from the left so its tail stays visible, then drop the session
+ * name, the branch, and the path, then the thinking level, then the model name. The context meter
+ * keeps its content as long as possible.
  */
 function fitFooterLine(
 	modelCandidates: string[],
 	thinkingGroup: string | undefined,
-	detailParts: string[],
-	tailGroups: FooterGroup[],
+	contextGroup: FooterGroup,
+	extraGroups: FooterGroup[],
 	cwd: string,
 	branch: string | undefined,
 	sessionName: string | undefined,
+	costGroup: FooterGroup | undefined,
 	style: FooterStyle,
 	width: number,
 ): FooterFit {
@@ -156,11 +181,12 @@ function fitFooterLine(
 		const fit = fitFooterLineWithModel(
 			model,
 			thinkingGroup,
-			detailParts,
-			tailGroups,
+			contextGroup,
+			extraGroups,
 			cwd,
 			branch,
 			sessionName,
+			costGroup,
 			style,
 			width,
 		);
@@ -174,15 +200,15 @@ function fitFooterLine(
 function fitFooterLineWithModel(
 	model: string,
 	thinkingGroup: string | undefined,
-	detailParts: string[],
-	tailGroups: FooterGroup[],
+	contextGroup: FooterGroup,
+	extraGroups: FooterGroup[],
 	cwd: string,
 	branch: string | undefined,
 	sessionName: string | undefined,
+	costGroup: FooterGroup | undefined,
 	style: FooterStyle,
 	width: number,
 ): FooterFit & { truncated: boolean } {
-	const details = [...detailParts];
 	let modelGroup = model;
 	let thinking = thinkingGroup;
 	let path = cwd;
@@ -193,8 +219,8 @@ function fitFooterLineWithModel(
 		[
 			withIcon(modelGroup, style.icons.model),
 			withIcon(thinking, style.icons.thinking),
-			withIcon(details.join(" "), style.icons.stats),
-			...tailGroups.map((group) => withIcon(group.text, group.icon)),
+			withIcon(contextGroup.text, contextGroup.icon),
+			...extraGroups.map((group) => withIcon(group.text, group.icon)),
 		]
 			.filter((part): part is string => !!part && part.length > 0)
 			.join(style.separator);
@@ -203,7 +229,7 @@ function fitFooterLineWithModel(
 		const pathGroup = [withIcon(path, style.icons.path), withIcon(pathBranch, style.icons.branch)]
 			.filter((part): part is string => !!part && part.length > 0)
 			.join(style.pathSeparator);
-		return [pathGroup, pathSession]
+		return [pathGroup, pathSession, costGroup ? withIcon(costGroup.text, costGroup.icon) : undefined]
 			.filter((part): part is string => !!part && part.length > 0)
 			.join(SESSION_SEPARATOR);
 	};
@@ -213,12 +239,6 @@ function fitFooterLineWithModel(
 
 	let left = buildLeft();
 	let right = buildRight();
-
-	// Drop the detail stats until the line fits.
-	while (details.length > 0 && !fits(left, right)) {
-		details.shift();
-		left = buildLeft();
-	}
 
 	// Drop the session name before it pushes the path out of the line.
 	if (!fits(left, right)) {
@@ -231,7 +251,8 @@ function fitFooterLineWithModel(
 		const fixedWidth =
 			visibleWidth(left) +
 			(pathBranch ? style.pathSeparator.length + visibleWidth(pathBranch) : 0) +
-			(pathSession ? SESSION_SEPARATOR.length + visibleWidth(pathSession) : 0);
+			(pathSession ? SESSION_SEPARATOR.length + visibleWidth(pathSession) : 0) +
+			(costGroup ? SESSION_SEPARATOR.length + visibleWidth(costGroup.text) : 0);
 		path = truncateCwd(cwd, width - MIN_PADDING - fixedWidth);
 		right = buildRight();
 	}
@@ -254,7 +275,10 @@ function fitFooterLineWithModel(
 	}
 	if (!fits(left, right)) {
 		truncated = true;
-		const rest = [details.join(" "), ...tailGroups.map((group) => withIcon(group.text, group.icon))]
+		const rest = [
+			withIcon(contextGroup.text, contextGroup.icon),
+			...extraGroups.map((group) => withIcon(group.text, group.icon)),
+		]
 			.filter((part): part is string => !!part && part.length > 0)
 			.join(style.separator);
 		const restWidth = visibleWidth(rest);
@@ -286,12 +310,11 @@ interface SessionStats {
 	entryCount: number;
 	limitsModel: unknown;
 	usageTotals: UsageTotals;
-	latestCacheHitRate: number | undefined;
 	contextUsage: ContextUsage | undefined;
 }
 
 /**
- * Footer component that shows pwd, token stats, and context usage.
+ * Footer component that shows pwd, the session cost, and the context usage.
  * Computes token/context stats from session, gets git branch and extension statuses from provider.
  */
 export class FooterComponent implements Component {
@@ -355,18 +378,12 @@ export class FooterComponent implements Component {
 
 		// Calculate cumulative usage from ALL session entries (not just post-compaction messages)
 		const usageTotals = createUsageTotals();
-		let latestCacheHitRate: number | undefined;
 
 		for (const entry of sessionManager.getEntries()) {
 			if (entry.type === "usage") {
 				addUsageToTotals(usageTotals, entry.usage);
 			} else if (entry.type === "message" && entry.message.role === "assistant") {
 				addUsageToTotals(usageTotals, entry.message.usage);
-
-				const latestPromptTokens =
-					entry.message.usage.input + entry.message.usage.cacheRead + entry.message.usage.cacheWrite;
-				latestCacheHitRate =
-					latestPromptTokens > 0 ? (entry.message.usage.cacheRead / latestPromptTokens) * 100 : undefined;
 			} else if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.usage) {
 				addUsageToTotals(usageTotals, entry.message.usage);
 			} else if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage) {
@@ -384,7 +401,6 @@ export class FooterComponent implements Component {
 			entryCount,
 			limitsModel,
 			usageTotals,
-			latestCacheHitRate,
 			contextUsage,
 		};
 		return this.sessionStats;
@@ -392,7 +408,7 @@ export class FooterComponent implements Component {
 
 	render(width: number): string[] {
 		const state = this.session.state;
-		const { usageTotals, latestCacheHitRate, contextUsage } = this.getSessionStats();
+		const { usageTotals, contextUsage } = this.getSessionStats();
 		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
 		const contextPercentValue = contextUsage?.percent ?? 0;
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
@@ -405,31 +421,23 @@ export class FooterComponent implements Component {
 		const branch = this.footerData.getGitBranch() ?? undefined;
 		const sessionName = this.session.sessionManager.getSessionName();
 
-		// Detail stats, dropped from the front when the line does not fit.
-		const detailParts: string[] = [];
-		if (usageTotals.input) detailParts.push(`↑${formatTokens(usageTotals.input)}`);
-		if (usageTotals.output) detailParts.push(`↓${formatTokens(usageTotals.output)}`);
-		if (usageTotals.cacheRead) detailParts.push(`R${formatTokens(usageTotals.cacheRead)}`);
-		if (usageTotals.cacheWrite) detailParts.push(`W${formatTokens(usageTotals.cacheWrite)}`);
-		if ((usageTotals.cacheRead > 0 || usageTotals.cacheWrite > 0) && latestCacheHitRate !== undefined) {
-			detailParts.push(`CH${latestCacheHitRate.toFixed(1)}%`);
-		}
-
+		// The cumulative cost of the session, shown on the right side of the line.
 		// Kimi Coding is subscription-backed despite using API-key authentication.
 		const usingSubscription = state.model
 			? state.model.provider === "kimi-coding" || this.session.modelRuntime.isUsingSubscription(state.model.provider)
 			: false;
+		let costGroup: FooterGroup | undefined;
 		if (usageTotals.cost || usingSubscription) {
-			const costStr = `$${usageTotals.cost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`;
-			detailParts.push(costStr);
+			costGroup = { text: `$${usageTotals.cost.toFixed(3)}${usingSubscription ? " (sub)" : ""}` };
 		}
 
 		// Colorize context percentage based on usage
 		let contextPercentStr: string;
+		const contextBar = formatContextBar(contextPercentValue);
 		const contextPercentDisplay =
 			contextTokens !== null && contextPercent !== "?"
-				? `${formatExactTokens(contextTokens)} tokens ${contextPercent}%`
-				: `?/${formatExactTokens(contextWindow)} tokens`;
+				? `${contextBar} ${contextPercent}% ${formatExactTokens(contextTokens)} tokens`
+				: `${contextBar} ?/${formatExactTokens(contextWindow)} tokens`;
 		if (contextPercentValue > 90) {
 			contextPercentStr = theme.fg("error", contextPercentDisplay);
 		} else if (contextPercentValue > 70) {
@@ -437,11 +445,15 @@ export class FooterComponent implements Component {
 		} else {
 			contextPercentStr = contextPercentDisplay;
 		}
-		// The context percentage and the experimental marker close the line.
+		// The context meter and the experimental marker close the line.
 		const style = this.nerdFonts ? NERD_FONT_STYLE : PLAIN_STYLE;
-		const tailGroups: FooterGroup[] = [{ text: contextPercentStr, icon: style.icons.context }];
+		const contextGroup: FooterGroup = { text: contextPercentStr, icon: style.icons.context };
+		const extraGroups: FooterGroup[] = [];
 		if (areExperimentalFeaturesEnabled()) {
-			tailGroups.push({ text: theme.bold(theme.fg("warning", "xp")) });
+			extraGroups.push({ text: theme.bold(theme.fg("warning", "xp")) });
+		}
+		if (costGroup && style.icons.cost) {
+			costGroup.icon = style.icons.cost;
 		}
 
 		// The model name starts the line, followed by the thinking level and the stats.
@@ -468,11 +480,12 @@ export class FooterComponent implements Component {
 		const { left, right } = fitFooterLine(
 			modelCandidates,
 			thinkingGroup,
-			detailParts,
-			tailGroups,
+			contextGroup,
+			extraGroups,
 			cwd,
 			branch,
 			sessionName,
+			costGroup,
 			style,
 			width,
 		);

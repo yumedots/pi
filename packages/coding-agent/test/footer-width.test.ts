@@ -2,7 +2,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";
-import { FooterComponent, formatCwdForFooter } from "../src/modes/interactive/components/footer.ts";
+import { FooterComponent, formatContextBar, formatCwdForFooter } from "../src/modes/interactive/components/footer.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
@@ -118,6 +118,24 @@ describe("formatCwdForFooter", () => {
 	});
 });
 
+describe("formatContextBar", () => {
+	it("fills the bar by the percentage", () => {
+		expect(formatContextBar(0, 10)).toBe("\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591");
+		expect(formatContextBar(50, 10)).toBe("\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591");
+		expect(formatContextBar(100, 10)).toBe("\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588");
+	});
+
+	it("shows fractions of a cell", () => {
+		expect(formatContextBar(12.3, 10)).toBe("\u2588\u258E\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591");
+		expect(formatContextBar(75, 10)).toBe("\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u258C\u2591\u2591");
+	});
+
+	it("clamps the percentage to the bar", () => {
+		expect(formatContextBar(-10, 10)).toBe("\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591");
+		expect(formatContextBar(150, 10)).toBe("\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588");
+	});
+});
+
 describe("FooterComponent width handling", () => {
 	beforeAll(() => {
 		initTheme(undefined, false);
@@ -170,7 +188,7 @@ describe("FooterComponent width handling", () => {
 		const lines = footer.render(120);
 		expect(lines).toHaveLength(1);
 		const line = stripAnsi(lines[0]);
-		expect(line).toContain("test/glm-5.1 / medium / 24,600 tokens 12.3%");
+		expect(line).toContain(`test/glm-5.1 / medium / ${formatContextBar(12.3)} 12.3% 24,600 tokens`);
 		expect(line).toContain("/tmp/project:main");
 		expect(line.indexOf("glm-5.1")).toBeLessThan(line.indexOf("/tmp/project:main"));
 	});
@@ -202,7 +220,7 @@ describe("FooterComponent width handling", () => {
 		const line = stripAnsi(footer.render(120)[0]);
 		expect(line).toContain("\uF2DB test/glm-5.1");
 		expect(line).toContain("\uF0E7 medium");
-		expect(line).toContain("\uF200 24,600 tokens 12.3%");
+		expect(line).toContain(`\uF200 ${formatContextBar(12.3)} 12.3% 24,600 tokens`);
 		expect(line).toContain("\uF07C /tmp/project");
 		expect(line).toContain("\uF126 main");
 		// The icons separate the groups, so the gap between them is wider.
@@ -235,7 +253,7 @@ describe("FooterComponent width handling", () => {
 
 		const line = stripAnsi(footer.render(40)[0]);
 		expect(visibleWidth(line)).toBeLessThanOrEqual(40);
-		expect(line).toContain("24,600 tokens 12.3%");
+		expect(line).toContain(`${formatContextBar(12.3)} 12.3% 24,600 tokens`);
 		expect(line).toContain("glm-5.1");
 	});
 
@@ -248,10 +266,10 @@ describe("FooterComponent width handling", () => {
 		const footer = new FooterComponent(session, createFooterData(1));
 
 		const line = stripAnsi(footer.render(120)[0]);
-		expect(line).toContain("?/200,000 tokens");
+		expect(line).toContain(`${formatContextBar(0)} ?/200,000 tokens`);
 	});
 
-	it("drops the detail stats before the path on a narrow line", () => {
+	it("shows the cost on the right side of the line", () => {
 		const session = createSession({
 			sessionName: "",
 			modelId: "glm-5.1",
@@ -265,11 +283,30 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		const line = stripAnsi(footer.render(60)[0]);
-		expect(visibleWidth(line)).toBeLessThanOrEqual(60);
-		expect(line).toContain("/tmp/project:main");
-		expect(line).toContain("24,600 tokens 12.3%");
+		const line = stripAnsi(footer.render(120)[0]);
+		expect(line).toContain(`${formatContextBar(12.3)} 12.3% 24,600 tokens`);
+		expect(line).toContain("/tmp/project:main • $1.234");
 		expect(line).not.toContain("↑12k");
+		expect(line).not.toContain("↓6.8k");
+	});
+
+	it("keeps the cost when the line is narrow", () => {
+		const session = createSession({
+			sessionName: "",
+			modelId: "glm-5.1",
+			usage: {
+				input: 12_345,
+				output: 6_789,
+				cacheRead: 0,
+				cacheWrite: 0,
+				cost: { total: 1.234 },
+			},
+		});
+		const footer = new FooterComponent(session, createFooterData(1));
+
+		const line = stripAnsi(footer.render(50)[0]);
+		expect(visibleWidth(line)).toBeLessThanOrEqual(50);
+		expect(line).toContain("$1.234");
 	});
 
 	it("shows the physical model a virtual model routed to", () => {
@@ -333,23 +370,6 @@ describe("FooterComponent width handling", () => {
 
 		session.sessionManager.getEntries().push({ type: "message", message: { role: "assistant", usage } } as never);
 		expect(stripAnsi(footer.render(120)[0])).toContain("$1.000");
-	});
-
-	it("shows the latest cache hit rate when cache usage is present", () => {
-		const session = createSession({
-			sessionName: "",
-			usage: {
-				input: 100,
-				output: 10,
-				cacheRead: 50,
-				cacheWrite: 50,
-				cost: { total: 0.001 },
-			},
-		});
-		const footer = new FooterComponent(session, createFooterData(1));
-
-		const statsLine = stripAnsi(footer.render(120)[0]);
-		expect(statsLine).toContain("CH25.0%");
 	});
 
 	it("marks Kimi Coding costs as subscription estimates", () => {
