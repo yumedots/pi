@@ -29,7 +29,14 @@ import { startMockServerProcess } from "./mock-server.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
 const TS = process.env.PI_PARITY_TS_ROOT ?? "/Users/gabriel/pi";
-const RUST_BIN = process.env.PI_PARITY_RUST_BIN ?? join(ROOT, "rpi/target/debug/rpi");
+// The agents build into rpi/target-agents (scripts/agent-cargo.sh); the
+// default rpi/target is the developer's, and a stale binary there would
+// measure old code. Fall back to it only if the agents' build is missing.
+const RUST_BIN =
+	process.env.PI_PARITY_RUST_BIN ??
+	(existsSync(join(ROOT, "rpi/target-agents/debug/rpi"))
+		? join(ROOT, "rpi/target-agents/debug/rpi")
+		: join(ROOT, "rpi/target/debug/rpi"));
 const HOME = process.env.PI_PARITY_HOME ?? "/tmp/pi-parity";
 const WORK = join(HOME, "settings-parity");
 const SOCKET = "pi-settings-parity";

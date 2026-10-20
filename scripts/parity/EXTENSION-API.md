@@ -30,10 +30,12 @@ original's resets, and **all 90** host operations answered — the session-backe
 session's real data. The check for the operation count is a test that reads the bundle
 (`rpi/crates/rpi-js/src/host.rs:274`), and it is green.
 
-**The remaining gap is the events.** Measured live on 2026-10-20 at 19:11, in one prompt run
-with a tool call: **the original fires 23 of the 41 categories, the port fires 9** — and the 9
-carry the original's payload keys, except `input`, which has no `streamingBehavior`. The 14 the
-port does not fire are listed in section B.1. The module surface is still short (section I).
+**The remaining gap is the events.** Measured live on 2026-10-20 at 19:40, in one prompt run
+with a tool call: **the original fires 23 of the 41 categories, the port fires 13** — and ten of
+the forty-one still do not fire (section B.1), while three fire with a payload that has fewer
+keys than the original's (`input` has no `streamingBehavior`, `tool_execution_end` has no
+`durationMs`, `tool_result` has no `details` and no `usage`). The module surface is still short
+(section I).
 
 **And two calls freeze the port** rather than merely differ: a load-time `pi.registerProvider`
 / `registerMcpServer` / `registerVirtualModel`, and a dialog (`ctx.ui.select` and its
@@ -708,15 +710,22 @@ fresh `rpi/target/debug/rpi`, in the same tmux harness:
 
 ```
 # the extension API: original vs port
-same: 87   different: 32
+same: 105   different: 14
 
-## missing on the port (3)           the three load-time registrations — they deadlock, see below
-## different values (29)             the shape differences and the stub values, listed below
+## different values (14)             the shape differences and the empty answers, listed below
 ```
 
-32 differences in total, down from 65 when this was first measured. The event side is the bigger
-gap: **the original fires 23 of the 41 categories in one prompt run, the port fires 9** (the
-table in section B.0 is the reference).
+14 differences in total, down from 65 when this was first measured. The two freezes are fixed
+and the three load-time registrations now work. The event side is still the
+bigger gap: **the original fires 23 of the 41 categories in one prompt run, the port fires 13**
+(the table in section B.0 is the reference). The ten that do not fire are
+`after_provider_response`, `agent_before_settle`, `agent_settled`, `before_agent_start`,
+`before_provider_headers`, `before_provider_request`, `context`, `context_with_system`,
+`provider_stream_event`, `resources_discover` — five of them fire on **every** LLM call on the
+original, so they are not a run-shape artefact.
+
+Three events fire with the wrong payload shape: `input` has no `streamingBehavior`,
+`tool_execution_end` has no `durationMs`, and `tool_result` has no `details` and no `usage`.
 
 **The two differences that are not shape but a freeze.** Both were found by the A/B test below,
 and both are the same root cause: the JavaScript host's `hostCall` is synchronous, and the CLI
@@ -733,14 +742,16 @@ The other 29 differences are shape or value, and they are listed in
 | row | the original | the port |
 | --- | --- | --- |
 | `ctx.getSystemPrompt()` | the prompt, a string | `"[object Object]"` — the port returns an object where the original returns a string |
-| `pi.getActiveTools()` | `["read","bash",…]` — an array | `{"tools":["read",…]}` — an object |
+| `pi.getActiveTools()` | `["read","bash","edit","write","probe_tool"]` — the extension's own tool is in the active set, so the model can call it | `["read","bash","edit","write","grep","find","ls"]` — an array now, but **without the extension's own tool**: a tool an extension registers is still not declared to the model |
 | `pi.getThinkingLevel()` | `"off"` | `{"level":"medium"}` — an object, and a different value |
 | `ctx.thinkingLevel` | a string | an object |
 | `pi.getSettings()` | the merged settings | `{}` |
-| `pi.getCommands()` | the command list, with `source` and `sourceInfo` | `[]` |
+| `pi.getCommands()` | the command list, with `source` and `sourceInfo` — the extension's own command is in it | `[]` — the session's command list is never filled, so the extension's own command is missing too |
 | `ui.getAllThemes()` | the three themes with their paths | `[]` |
 | `ui.getTheme(name)` | the theme | `null` |
 | `ui.getToolsExpanded()` | `false` | `true` |
+| `ui.custom()` | a promise (the overlay with keyboard focus) | `null` — the other four dialogs return a promise now, this one does not |
+| `pi.getMcpServers()` | the server with its `extensionPath` | the server with an **empty** `extensionPath` |
 | `pi.getSessionName()` | `undefined` | `null` |
 | the twelve `void` operations (`ui.notify`, `ui.setStatus`, `ui.setTitle`, `ui.setWorkingMessage`, `ui.setWorkingVisible`, `ui.setWorkingIndicator`, `ui.setHiddenThinkingLabel`, `ui.setEditorText`, `ui.pasteToEditor`, `ui.setEditorComponent`, `ui.setToolsExpanded`, `ui.getEditorComponent`) | `undefined` | `null` — the port's host operation answers `null` where the original answers `undefined` |
 

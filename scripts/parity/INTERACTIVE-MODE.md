@@ -1567,3 +1567,39 @@ opening path does — or to say so in the pane they already own.
 **Two corrections to my own file, both from the port and both fair:**
 * the **branch and compaction summary cards are wired** — `rpi-cli/src/interactive_tui/sessions.rs:422` and `:432` — so my "0 call sites" reading of them was a **grep artefact**: I counted `BranchSummaryCard` and `CompactionSummaryCard` by name and missed the `rpi_tui::summary_cards::` path form. The §1.1 table's count for the cards is wrong and the cards are reachable.
 * the **window title is wired** at `rpi-cli/src/interactive_tui.rs:1194`, which is what my `#{pane_title}` reading already showed.
+
+---
+
+## 10. The cross-check against the screen captures — two methods, one answer
+
+`scripts/parity/screens/INDEX.md` (the screen-capture agent's) captures **45 screens a
+side** as exact pane text and diffs them. It reaches the same conclusions as this
+audit by a completely different method — pane captures rather than code reading —
+which is worth recording, because it is the strongest evidence in the area.
+
+| the screen index says | this audit said | how |
+|---|---|---|
+| `session-search`: "rpi-cli/src/interactive_tui/session_search.rs holds the query language but **has no caller**" | B7 — the query language was ported and never wired into the session picker | call-site count |
+| `login-methods`: "rpi-cli/src/interactive_tui/radius_login.rs (RadiusLoginMenu) **is not wired into /login**" | B8 — the radius row was ported and never wired | call-site count |
+| `trust-prompt` / `trust-selector`: "**not implemented**" | the trust picker is missing; `/trust` writes a note | both |
+| `model-no-match`: the original shows "Refreshing model catalogs…", the port shows nothing | the model picker's refresh status and footer are missing | both |
+| `login-oauth-*`: "**not reachable on one side** — the port has no OAuth providers" | the auth screens are the port's own, not the original's | both |
+| `settings-list`: the original has a frame, the port does not | the settings list's frame differs | both |
+
+**Three of its rows are already stale**, because it was captured against the 19:19
+binary and the tree has moved:
+
+* **`startup`** — "line 1: ts "" vs rust " ▀▀█  v1.3.0"" is the header's **missing
+  leading blank line**, which is now fixed; the `startup` scenario is byte-identical.
+* **`model-selector`** — "line 22: ts "" vs rust "Select model"" is the port's model
+  picker having a **title line the original's does not have** (`open_model_selector`
+  passes `Some("Select model")`; the original's picker shows the search field and the
+  rows with no title). The mirror image of the original's model list missing the port's
+  extra chrome — a port fix, not an index fix.
+* **`hotkeys`**, **`changelog`** and **`quit-confirm`** all show the same footer
+  difference — the original's `0.0% 49 tokens` against the port's `?/128,000 tokens`.
+  Three rows, one cause: the footer's context readout.
+
+The index's panes were captured against `rpi/target/debug/rpi`, which is the
+developer's target directory now; re-running it needs
+`PI_PARITY_RUST_BIN=/Users/gabriel/pi-native/rpi/target-agents/debug/rpi`.

@@ -492,38 +492,6 @@ switch), and no Kitty-image bookkeeping (`previousKittyImageIds`,
 
 ---
 
-## Verification baseline (2026-10-20, 19:40, fresh binary)
-
-`cargo build --workspace` is green and the port's default is now fullscreen on every
-platform (the original's default is `tuiMode: "fullscreen"`,
-`packages/coding-agent/src/core/settings-defaults.ts:64`), so the captures compare with the
-goldens directly, without a flag:
-
-```
-cd /Users/gabriel/pi-native/rpi && cargo build -p rpi-cli
-cd /Users/gabriel/pi-native
-node scripts/parity/drive.mjs rust <scenario>
-cd scripts/parity && node compare.mjs rust <scenario>
-```
-
-(`scripts/parity/out/` is gitignored, so the captures do not dirty the tree.)
-
-| scenario | result |
-|---|---|
-| startup | **identical** to the golden |
-| panels | **identical** to the golden |
-| prompt | 1 difference: the port's transcript is one row shorter around the first user message — the original puts the echo's Spacer(1) **before** the message (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:3192`), the port puts it after (`rpi/crates/rpi-cli/src/interactive_tui/rendering.rs:544`) |
-| tool | 2 differences: the same, in the "tool call" and "answer" steps |
-| thinking | 1 difference: the same, in the "answer" step |
-| markdown | 1 difference: the same, one row around the message |
-
-The header block (the leading and the trailing Spacer, `interactive-mode.ts:1172-1174`)
-and the tmux warning's wrap width (the `Text` padding, finding 28) are fixed and now match
-the golden exactly. The remaining row is the user message's spacer — the language lead's
-and the interactive mode port's file, reported to both.
-
-Any **new** difference in these panes after a TUI library change is a regression.
-
 ## 25. The single-line input has no yank-pop (Alt+Y)
 
 **What the user sees.** In a search field (the transcript search, the session search, the
@@ -626,6 +594,93 @@ consequences had to be fixed in the same change: the `HStack` child's intrinsic 
 claimed the whole row because the rows are padded now) and two `visual_truncate`
 expectations. The crate's tests pin it, and the capture shows the tmux warning wrapping
 at 98 exactly like the golden.
+
+## 29. The tool result is drawn twice in the transcript
+
+**What the user sees.** After a tool runs, the tool's output appears twice in the
+transcript: once in the tool panel and once as the assistant's message. The original draws
+it once.
+
+**Observed.** The `tool` scenario's pane, with the mock sending a `read` call and then the
+text "The fixture file says hello." (`scripts/parity/drive.mjs:31-36`; the fixture file
+contains the same sentence, so the tool result and the assistant's message are identical):
+* golden: `[12]=" read the fixture"`, `[16]=" read tool-input.txt"`, `[17]=""`, `[18]=""`, `[19]=" The fixture file says hello."`
+* port: `[12]=" read the fixture"`, `[17]=" read tool-input.txt"`, `[18]=""`, `[19]=" The fixture file says hello."`, `[20]=""`, `[21]=" The fixture file says hello."`
+
+Everything before row 12 matches the golden exactly.
+
+The original's tool panel always adds the result renderer when there is a result
+(`packages/coding-agent/src/modes/interactive/components/tool-execution.ts:317-343`) and the
+read renderer returns the file's output with a leading newline
+(`packages/coding-agent/src/core/tools/renderers/read.ts:127-136`), so the text appears
+once, inside the panel.
+
+**Where the extra row comes from.** It is the **tool panel's own result renderer**, printed
+inline while the panel is collapsed — not a second transcript row and not the dispatch:
+* `tool_result_message_text` (`rpi/crates/rpi-cli/src/interactive_tui.rs:838`) has exactly
+  one call site in the tree, the restored-session renderer
+  (`rpi/crates/rpi-cli/src/interactive_tui/sessions.rs:372`), where the panel is rebuilt
+  from the session file; there is no live-path caller;
+* the live path does not render a tool-result text row either:
+  `rpi/crates/rpi-cli/src/interactive_tui/events.rs:311-313` ignores the `ToolResult` arm
+  of `MessageStart` ("ToolResult / other starts are echoed via the tool-execution
+  components; ignore the dupes") and `MessageUpdate` only drives the assistant message.
+
+So the panel in `rpi/crates/rpi-tui/src/tool_execution.rs` (the collapsed rendering of the
+result region, next to the reserved height) prints the result text where the original
+prints only the call row until the output is expanded (Ctrl+O).
+
+**The decisive check.** The `tool` golden is stale on the TypeScript side (captured
+against `cb87143e`, the current original is `108b350c`), so re-capture it first
+(`node scripts/parity/drive.mjs ts tool`) and compare the rows: the original shows the call
+row and then blanks, with the single "The fixture file says hello." being the assistant's
+own reply.
+
+**Check.** Parity: the `tool` scenario — the text must appear once. (The golden for that
+scenario is stale on the TypeScript side and has to be re-captured first.)
+
+## Verification baseline (2026-10-20, 20:05)
+
+`cargo build --workspace` was green at 19:40, and the port's default is now fullscreen on
+every platform (the original's default is `tuiMode: "fullscreen"`,
+`packages/coding-agent/src/core/settings-defaults.ts:64`), so the captures compare with the
+goldens directly, without a flag:
+
+```
+# The agents build in their own target directory, so a developer running
+# `cargo run` in the same tree is never blocked by an agent's build.
+cd /Users/gabriel/pi-native
+scripts/agent-cargo.sh build --workspace
+export PI_PARITY_RUST_BIN=/Users/gabriel/pi-native/rpi/target-agents/debug/rpi
+node scripts/parity/drive.mjs rust <scenario>
+cd scripts/parity && node compare.mjs rust <scenario>
+```
+
+Do not run bare `cargo` from the agents: it uses the developer's target directory and
+serialises against their `cargo run`. If a build fails with an unresolved import that the
+source plainly has, it is a stale artifact, not a source error — `cargo clean -p rpi-ai
+-p rpi-agent -p rpi-harness` and rebuild before editing anything.
+
+(`scripts/parity/out/` is gitignored, so the captures do not dirty the tree.)
+
+| scenario | result |
+|---|---|
+| startup | **identical** to the golden |
+| panels | **identical** to the golden |
+| prompt | **identical** to the golden |
+| tool | 2 steps differ by **one blank row**: the port's transcript is one row shorter before the user message (the language lead's `add_user_message`) and one row shorter for the collapsed tool result (the panel must keep the empty result region, the original's renderer returns "" and the panel still renders the row — the TUI library porter's list). The stale golden has been re-captured on the TypeScript side (`scripts/parity/out/ts-tool.json`, the original at b615b0e) and the goldens need refreshing from it |
+| thinking | 1 step differs: the `+ Thought · 0.0s` duration (the interactive mode's row) |
+| markdown | 1 step differs (the interactive mode's rows) |
+
+What closed during this session, in the TUI library: the wrap (the shared one and the
+editor's), the grapheme width, the input box cap and the hidden-line report, the fake
+cursor, the click-to-place-the-caret and the wheel over the input, the settings list
+hover, the `Text` padding, the window title escape (OSC 0) and `set_text`'s caret
+placement. What closed outside it: the header block's leading and trailing Spacer and
+the user message's spacer (the language lead), the TUI mode default (fullscreen on every
+platform).
+
+Any **new** difference in these panes after a TUI library change is a regression.
 
 ## Verified as parity (do not redo)
 

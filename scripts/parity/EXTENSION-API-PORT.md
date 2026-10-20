@@ -105,6 +105,28 @@ result (`{messages}`), so an extension cannot change the transcript before a
 call. The port's provider hook has the messages and an empty
 `transform_context` slot — the same place `before_agent_start` would go.
 
+## The extension's own tools
+
+A tool an extension registers has to be in the session's tool set, or the
+model cannot call it. The JavaScript extension's tools are declared to the
+model by `rpi/crates/rpi-cli/src/js_tools.rs`: the tool is published with the
+schema the extension gave it, and calling it runs the extension's own
+`execute` (`JsExtensions::call_tool`). The TUI adds them to the harness's
+tool set and to the active tool names when the extensions load
+(`interactive_tui.rs`).
+
+## The provider hooks
+
+The provider hooks are what publish the events that fire on every LLM call
+(`before_provider_request`, `before_provider_headers`,
+`after_provider_response`, `before_agent_start`) and the `context` events.
+The native path installs them only when a **native** plugin subscribes to one
+of them (`ExtensionProviderHooks::from_session`), so a session with only
+JavaScript extensions had no hooks at all and the events never fired. The
+hooks now also come up for the JavaScript extensions
+(`ExtensionProviderHooks::for_javascript`), and the TUI installs them when
+the extensions load.
+
 ## What still differs
 
 | gap | why | the original |
@@ -119,7 +141,36 @@ call. The port's provider hook has the messages and an empty
 | `getFlag` returns the registered default, not the parsed flag | the port's CLI does not parse extension flags | `types.ts:1758` |
 | the module surface is the contract's, not the package's | see below | `packages/coding-agent/src/index.ts` |
 | `node:child_process`'s functions throw when called | the embedded host cannot spawn a process; the module resolves, so the extension loads | `rpi/crates/rpi-js/js/shims/node-child-process.ts` |
-| the extension factory is not awaited | the runtime settles microtasks but has no timer, so an extension that registers after `await` never registers | `loader.ts:624` |
+| `context`, `context_with_system` carry no result | the port's provider hook has the messages and an empty `transform_context` slot | `types.ts:885` |
+
+**Closed since the first pass:** the extension factory is awaited (the node
+surface has a timer queue and the runtime pumps it while it settles), the
+fallback host fails closed on `agent.isProjectTrusted`, and an unmapped
+subpath of one of pi's packages resolves to an empty module instead of
+killing the extension.
+
+## The two freezes
+
+Both had the same root cause: the JavaScript host answers the extension
+synchronously, on the runtime's own thread, and the CLI answered some
+operations by waiting for the very thread that was blocked in the extension's
+call.
+
+**A load-time registration froze the port.** The host's `provider.register`,
+`mcp.register`, `model.registerVirtual` publish an event, and the event sink
+delivered it by dispatching back into the extensions — the same thread that
+was making the call. The call waited for itself. The sink now queues an
+event that is published from inside a host call and delivers it when the
+call returns (`js_emitter.rs`: `in_host_call()`, `JsEventSink::drain`).
+
+**A dialog froze the port.** The host opened the dialog and then polled for
+the answer on the runtime's thread, while the TUI — the thread that presents
+the dialog — was blocked in the extension's dispatch. The dialog is now the
+original's open/poll/cancel shape: `ui.select` opens the request and returns
+its id at once (`js_extensions.rs`: `dialog`), the extension polls with
+`ui.pollDialog` (`extension-host.ts`: `askDialog`), and the TUI's dispatch of
+a JavaScript event no longer waits for the extension
+(`interactive_tui/events.rs`: `dispatch_js_event` spawns the dispatch).
 
 ## The module surface
 
@@ -132,32 +183,67 @@ The port publishes a **subset** of each of pi's packages:
 | `@earendil-works/pi-ai` (and `/compat`) | `packages/ai/src/compat.ts` | `rpi/crates/rpi-js/js/pi-ai.ts` — 1 (`Type`) |
 | `@earendil-works/pi-agent-core` | `packages/agent/src/index.ts` | `rpi/crates/rpi-js/js/pi-agent-core.ts` — 1 (`AGENT_RUNTIME_AVAILABLE`) |
 
-**The fix is known and small: point the map at the vendored pi sources.** The
-port vendors pi's packages (`/Users/gabriel/pi-native/packages/`), and the
+**The fix is known: point the map at the vendored pi sources.** The port
+vendors pi's packages (`/Users/gabriel/pi-native/packages/`), and the
 vendored files are byte-identical to the original's — `diff
-packages/coding-agent/src/index.ts` against the original's is empty. So the
-`VIRTUAL_MODULES` map can point at `packages/coding-agent/src/index.ts`,
-`packages/tui/src/index.ts`, `packages/ai/src/compat.ts` and
-`packages/agent/src/index.ts`, and the export surface becomes pi's.
+packages/coding-agent/src/index.ts` against the original's is empty.
 
-**What blocks it today** (measured, not guessed): the vendored sources import
-node builtins and npm packages that the embedded host does not have. The
-shims now cover `node:path`, `node:fs`, `node:fs/promises`, `node:os`,
-`node:url`, `node:perf_hooks`, `node:child_process`, `node:events`,
-`node:worker_threads`, `node:module`, `node:timers/promises`, `node:crypto`,
-`node:util`, `node:readline`, `node:stream`, `node:zlib`, `node:http`,
-`node:string_decoder`, `node:stream/promises` and `node:process`
-(`rpi/crates/rpi-js/js/shims/`), and the bundler aliases them
-(`scripts/build-extension-host-bundle.mjs:34`). Still missing:
+**Two blockers were found and one of them is fixed.**
 
-- the builtins `node:readline/promises`, `node:assert` and `node:v8`;
-- the npm packages `which`, `graceful-fs`, `hosted-git-info` and
-  `standardwebhooks`.
+1. **Fixed: esbuild resolved no npm package.** The bundler runs with
+   `platform: "neutral"`, whose `mainFields` is empty, so a package with only
+   a `main` field (`which`, `graceful-fs`, `hosted-git-info`,
+   `standardwebhooks` — the port's own dependencies) never resolved, from the
+   vendored sources *or* anywhere. `scripts/build-extension-host-bundle.mjs`
+   now sets `mainFields: ["module", "main"]` and `nodePaths`, and the npm
+   packages resolve.
 
-The npm ones are the interesting half: they are in the port's root
-`node_modules` (a symlink to pi's), but esbuild does not resolve them from
-`packages/<pkg>/src/`, while it resolves them from `scripts/`. The node
-resolution path is the thing to look at.
+2. **Fixed: the embedded host had almost no node builtins.** The shims in
+   `rpi/crates/rpi-js/js/shims/` now cover `node:path`, `node:fs`,
+   `node:fs/promises`, `node:os`, `node:url`, `node:perf_hooks`,
+   `node:child_process`, `node:events`, `node:worker_threads`, `node:module`,
+   `node:timers/promises`, `node:crypto`, `node:util`, `node:readline`,
+   `node:readline/promises`, `node:stream`, `node:stream/promises`,
+   `node:stream/web`, `node:zlib`, `node:http`, `node:string_decoder`,
+   `node:process`, `node:assert`, `node:buffer`, `node:vm`, `node:net`,
+   `node:tls`, `node:tty`, `node:async_hooks`, `node:diagnostics_channel`,
+   `node:v8`, `node:sqlite`, `node:querystring`, `node:dns`, `node:http2`,
+   `node:inspector`, `node:cluster`, `node:dgram`, `node:punycode`,
+   `node:sys`, `node:trace_events`, `node:console` and `node:timers`, and the
+   bundler aliases them. With those in place **34 of pi's own modules bundle
+   cleanly** — `config.ts`, `core/sdk.ts`, `core/tools/index.ts`,
+   `core/extensions/index.ts`, `core/compaction/index.ts`,
+   `core/session-manager.ts`, `core/model-registry.ts`,
+   `modes/interactive/components/index.ts`,
+   `modes/interactive/theme/theme.ts`, `core/skills.ts`,
+   `core/settings-manager.ts`, `core/trust-manager.ts`, `core/package-manager.ts`
+   and the rest.
+
+**What is left, and why the package entry is not the answer.** Pointing
+`@earendil-works/pi-coding-agent` at the package entry pulls the **whole CLI**
+into the bundle (13.5 MB), and the bundle then replaces the global `process`
+at load: `which/which.js` then reads `process.env.OSTYPE` off a null `env`,
+and every extension fails to load. So the package entry cannot be bundled
+whole. The next step is to bundle the **individual pi modules** the examples
+need — the list is below — and re-export them from a port-side module.
+
+That module is written: `rpi/crates/rpi-js/js/pi-coding-agent.ts` re-exports
+the pieces of pi's package entry that an extension can use, from the same
+source files (the tool factories, the components, the themes, the frontmatter
+helpers, the session manager, the compaction helpers, the skill helpers).
+**It is not wired into the virtual module map yet**, because two runtime
+problems remain, both measured:
+
+1. `which/which.js` reads `process.env.OSTYPE` and finds `process.env` null:
+   the bundle replaces the global `process` when it loads. The port's node
+   surface publishes `globalThis.process` (`node_surfaces.js:145`) before the
+   bundle runs, so something in the bundle overwrites it — that is what to
+   find.
+2. `packages/coding-agent/src/config.ts` calls
+   `fileURLToPath(import.meta.url)`, and the url shim's `fileURLToPath`
+   cannot read what the bundle hands it (the error is
+   `Cannot read properties of undefined (reading 'pathname')`). The url shim
+   needs to accept the bundle's `import.meta.url` as well as a `URL`.
 
 **A subpath the host does not publish no longer kills the extension.** An
 import of `@earendil-works/pi-ai/providers/anthropic` resolves to an empty

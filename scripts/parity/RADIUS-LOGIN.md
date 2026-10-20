@@ -62,3 +62,11 @@ Port of the animated `/login` menu. The shimmer is Radius-only; no other selecto
 - The colour-order test is colour-mode agnostic: it compares the escapes produced by
   `rpi_tui::ansi::foreground_rgb`, so it passes in truecolor and in 256-colour mode
   (`PI_TRUE_COLOR=0`).
+- Verification status when this file was written: the module was compiled standalone against the
+  built `rpi-tui` rlib and all 11 tests passed (truecolor and `PI_TRUE_COLOR=0`, three repeats, no
+  flakes); `cargo check -p rpi-cli` and `cargo clippy -p rpi-cli --all-targets` report no error,
+  warning or lint for `radius_login.rs`; `rustfmt --check` is clean. The in-crate
+  `cargo test -p rpi-cli` run was blocked by other areas' stale `#[cfg(test)]` modules
+  (`provider.rs`, `session.rs`, `modes.rs`, `interactive_tui/sessions.rs` at the time) — the
+  `rpi-cli` library and the `rpi` binary build green. Re-run the command above once the
+  `rpi-cli` test target compiles.

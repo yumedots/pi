@@ -43,14 +43,14 @@ session file and prints the round trip. Run it with
 | 8 | `/export` argument and format | open |
 | 9 | `/share` | open |
 | 10 | the session directory | **landed** — the port writes `<agent dir>/sessions` now, like pi |
-| 11 | the project directory is `.rpi` | open |
+| 11 | the project directory is `.rpi` | **landed** — the project resource dir is `.pi` (`rpi-cli/src/resource_dirs.rs:46`) and the project settings file is `.pi/settings.json` (`rpi-cli/src/settings.rs:1083`), with `.rpi/settings.json` kept as a legacy fallback (`:1085`) |
 | 12 | the session picker | open |
 | 13 | `/fork` has no fork-point picker | open |
 | 14 | modelled-but-ignored settings | open |
-| 15 | project settings are not deep-merged | open |
-| 16 | the settings menu exposes 15 of 37 rows | open |
-| 17 | themes: three compiled-in palettes | open — the token set now matches (58 against 58) |
-| 18 | the project trust prompt | open |
+| 15 | project settings are not deep-merged | **partly landed** — the file is read from the right place now, but the merge still overlays only `defaultProvider`, `defaultModel`, `defaultThinkingLevel` and `theme` (`rpi-cli/src/settings.rs:1133-1146`); every other key in a project's settings file is still ignored |
+| 16 | the settings menu exposes 15 of 37 rows | **handed to the interactive mode port** — the menu now lives in `rpi-cli/src/interactive_tui/settings_menu.rs`, not in my file |
+| 17 | themes: three compiled-in palettes | open — the token set now matches (58 against 58) and the presets are still three (`rpi-tui/src/theme.rs:698`) |
+| 18 | the project trust prompt | open — there is still no "Trust project folder?" string anywhere in rpi-cli |
 | 19 | the mechanical audit's slash-command row | **fixed** in `scripts/parity/audit.mjs` |
 
 ---
@@ -374,6 +374,32 @@ Also: the port's `/exit` description is `"Quit pi"`
 (`rpi/crates/rpi-cli/src/interactive_tui/commands.rs:44-47`) where the
 original's is `Quit ${APP_NAME}` (`slash-commands.ts:53`).
 
+### 6.1 The autocomplete's command entries differ
+
+**differs** — measured with `scripts/parity/settings-parity.mjs` against the
+relinked binary.
+
+Typing `/he` in each program:
+
+| | the original | the port |
+|---|---|---|
+| the entries | `→ hotkeys     Show all keyboard shortcuts` / `  theme       <name> — Change the color theme` / `  share       Share session via a Radius artifact or a GitHub gist` / `  changelog   Show changelog entries` | `→ /help Show available commands` / `  /hotkeys Show all keyboard shortcuts` / `  /changelog Show changelog entries` |
+| the leading slash | **none** — the entries are the bare command names | **`/` on every entry** |
+| the label column | padded into a column | one space |
+| the argument hint | `<name> — Change the color theme` (the hint first, an em dash, then the description — `packages/tui/src/autocomplete.ts:356`) | the port now renders the hint the same way, but the entry is `/theme` |
+| the matched set | `hotkeys`, `theme`, `share`, `changelog` | `/help`, `/hotkeys`, `/changelog` |
+
+The original's list is the fuzzy match over the **bare** names, so the entries
+and their order differ as well as the rendering. The original's command list
+comes from `BUILTIN_SLASH_COMMANDS` (`packages/coding-agent/src/core/slash-commands.ts:21`)
+and is offered without the slash; the port offers its registry's names with
+one.
+
+**Check**: `node scripts/parity/settings-parity.mjs autocompletePosition-above`
+— it reports "the autocomplete lists hotkeys: the original shows it, the port
+hides it". The fact is the bare name, so the port's `/hotkeys` does not match
+it.
+
 ---
 
 ## 7. `/stats` has no counterpart; `/usage` is a subset
@@ -465,23 +491,26 @@ in different directories. The project directory also collects session files.
 
 ---
 
-## 11. The project directory is still `.rpi`
+## 11. The project directory — landed
 
-**differs.**
+**identical** (was `differs` when this was written).
 
 | | TypeScript | Rust |
 |---|---|---|
-| the project config directory | `.pi` — `packages/coding-agent/src/config.ts:589` (`CONFIG_DIR_NAME`) | `.rpi` — `rpi/crates/rpi-cli/src/resource_dirs.rs:44` |
-| the project resource roots | `<cwd>/.pi/{skills,prompts,themes,extensions}` — `core/resource-loader.ts:998-1001` | `<cwd>/.rpi/{skills,prompts,themes,extensions}` — `resource_dirs.rs:51` ("Only `.rpi` is read") |
-| the project settings file | `<cwd>/.pi/settings.json` — `core/settings-manager.ts:194` | `<cwd>/.rpi/settings.json` — `rpi/crates/rpi-cli/src/settings.rs:1039` |
+| the project config directory | `.pi` — `packages/coding-agent/src/config.ts:589` (`CONFIG_DIR_NAME`) | `.pi` — `rpi/crates/rpi-cli/src/resource_dirs.rs:46` |
+| the project resource roots | `<cwd>/.pi/{skills,prompts,themes,extensions}` — `core/resource-loader.ts:998-1001` | `<cwd>/.pi/{skills,prompts,themes,extensions}` — `resource_dirs.rs:50` |
+| the project settings file | `<cwd>/.pi/settings.json` — `core/settings-manager.ts:194` | `<cwd>/.pi/settings.json` — `rpi/crates/rpi-cli/src/settings.rs:1083` (`PROJECT_SETTINGS_PATH`); `<cwd>/.rpi/settings.json` is still read when pi's is absent (`:1085`) |
 | the global resource roots | `<agentDir>/{skills,prompts,themes,extensions}` — `core/resource-loader.ts:992-995` | `<agentDir>/{skills,prompts,themes,extensions}` — `resource_dirs.rs:59` — the same |
 
-**Observed**: the same `hello.md` template loaded by the original from
-`.pi/prompts/` was invisible to the port; the port needed `.rpi/prompts/`.
+**Observed** (before the change): the same `hello.md` template loaded by the
+original from `.pi/prompts/` was invisible to the port, which needed
+`.rpi/prompts/`. The port now reads the original's directory.
 
-**User terms**: a project that ships a `.pi/` folder works in the original and
-is silently ignored by the port — including its `.pi/settings.json`, which the
-original reads and the port does not.
+**What is still not shared**: the *merge*. The original deep-merges the global
+and the project settings so every key in a project's settings file applies
+(`core/settings-manager.ts:143`, `:306`); the port overlays only
+`defaultProvider`, `defaultModel`, `defaultThinkingLevel` and `theme`
+(`rpi/crates/rpi-cli/src/settings.rs:1133-1146`). See §15.
 
 ---
 
@@ -601,6 +630,56 @@ three lines in the table.
 The project fixture is written under **both** `.pi` and `.rpi`, so a case
 measures the setting and not the project-directory question in §11.
 
+### What the measurement says, against the relinked binary
+
+`node scripts/parity/settings-parity.mjs` (18 cases, both programs driven with
+the same settings file and the same keys):
+
+| case | result |
+|---|---|
+| `hideThinkingBlock` true / false | same on both sides |
+| `quietStartup` true / false | same on both sides |
+| `editorPaddingX` 0 / 2 | same on both sides |
+| `outputPad` 1 | same on both sides |
+| `outputPad` 0 | **DIFFERS — the indent differs: the original 0, the port 1** |
+| `doubleEscapeAction` none / tree | same on both sides |
+| `autocompleteMaxVisible` 3 | same on both sides |
+| `autocompleteMaxVisible` 20 | **DIFFERS** (the entries the two sides show for the same prefix differ) |
+| `autocompletePosition` above / below | **DIFFERS** (see §6.1) |
+| `enableSkillCommands` true | **DIFFERS — the skill is offered as a command: the original hides it, the port shows it** |
+| `enableSkillCommands` false | **DIFFERS — the skill is offered as a command: the original hides it, the port shows it** |
+| `defaultProjectTrust` always | same on both sides |
+| `defaultProjectTrust` ask | **DIFFERS — the trust prompt appears: the original shows it, the port hides it** |
+
+Three real differences fall out of it:
+
+1. **`outputPad: 0` is ignored by the port.** With the setting at 0 the
+   original's transcript has no left padding; the port still indents by one
+   column. With the setting at 1 the two agree, so the port is hard-wired to
+   one column. The setting is `outputPad` (`core/settings-schema.ts:377`) and
+   its default is 1 (`core/settings-defaults.ts:63`).
+2. **`enableSkillCommands` is ignored by the port** — the `skill:` entry is
+   offered with the setting on *and* off. The original's setting is
+   `enableSkillCommands` (`core/settings-schema.ts:305`, default true,
+   `core/settings-defaults.ts:33`) and the original's autocomplete matches a
+   skill command on the **bare** name — `packages/tui/src/autocomplete.ts:366`
+   matches `item.name.slice("skill:".length)` — so the original offers the
+   skill when you type `/demo`, not when you type `/skill`. The port matches
+   the full `skill:demo`, so it offers it for `/skill` and not for `/demo`.
+   Both halves of that are wrong in the port: the setting is not read, and the
+   match is against the wrong string.
+3. **The autocomplete's entries differ** — the leading slash, the label
+   column and the matched set. See §6.1.
+4. **The port has no project trust prompt.** With `defaultProjectTrust: "ask"`
+   the original opens the "Trust project folder?" dialog and the port does
+   not — there is no such string anywhere in rpi-cli. The trust *store* is
+   shared (`<agentDir>/trust.json`, `rpi/crates/rpi-cli/src/config.rs:139`) and
+   the port does gate project resources on it, but it never asks. See §18.
+
+The trust cases run **without** the harness's pre-approval
+(`trust: false` on the case), otherwise the original would never prompt and
+the case would measure nothing.
+
 ---
 
 ## 15. Project settings are not deep-merged
@@ -609,11 +688,12 @@ measures the setting and not the project-directory question in §11.
 
 | | TypeScript | Rust |
 |---|---|---|
-| the merge | `packages/coding-agent/src/core/settings-manager.ts:143` (`deepMergeSettings`), applied at `:306` — **every** key merges, project wins | `rpi/crates/rpi-cli/src/settings.rs:419` (`load_effective_model_settings`) — overlays only `defaultProvider`, `defaultModel`, `defaultThinkingLevel`, `theme`; `rpi/crates/rpi-cli/src/resource_dirs.rs:345` additionally reads only `skills`, `prompts`, `extensions` |
-| the project file | `<cwd>/.pi/settings.json` — `settings-manager.ts:194` | `<cwd>/.rpi/settings.json` — `rpi/crates/rpi-cli/src/settings.rs:409` |
+| the merge | `packages/coding-agent/src/core/settings-manager.ts:143` (`deepMergeSettings`), applied at `:306` — **every** key merges, project wins | `rpi/crates/rpi-cli/src/settings.rs:1133-1146` (`load_effective_model_settings`) — overlays only `defaultProvider`, `defaultModel`, `defaultThinkingLevel`, `theme` |
+| the project file | `<cwd>/.pi/settings.json` — `settings-manager.ts:194` | `<cwd>/.pi/settings.json` — `rpi/crates/rpi-cli/src/settings.rs:1083` — **now the same** |
 
 **User terms**: a project's `nerdFonts: true`, `outputPad: 0`,
-`treeFilterMode` and everything else in its settings file have no effect.
+`treeFilterMode` and everything else in its settings file have no effect. The
+file is now read from the right place; the merge is what is still missing.
 
 ---
 

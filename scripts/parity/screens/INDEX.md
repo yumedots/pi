@@ -15,6 +15,10 @@ Every screen of the TypeScript original and of the Rust port, captured as exact 
 - `diffs/<screen>.diff` holds the line diff of the screens that differ.
 - *Port file* names the file in the port that draws the screen, relative to
   `rpi/crates`.
+- The port's panes were captured against `rpi/target/debug/rpi` rebuilt from
+  the green tree of commit `5dfd73b1f` (2026-10-20 19:19). The tree is being
+  edited, so re-run `node scripts/parity/screens/run.mjs rust` against a fresh
+  binary and then `node scripts/parity/screens/diff.mjs` to refresh this index.
 
 | Screen | Keys (ts) | Keys (rust) | Match | First differing line | Port file |
 |---|---|---|---|---|---|
