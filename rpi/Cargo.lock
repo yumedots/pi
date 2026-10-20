@@ -3286,7 +3286,6 @@ version = "0.6.3"
 dependencies = [
  "base64 0.22.1",
  "crossterm",
- "libc",
  "pulldown-cmark",
  "regex",
  "similar",
