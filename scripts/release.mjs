@@ -258,7 +258,7 @@ if (process.env.PI_RELEASE_SKIP_TESTS === "1") {
 	console.log("Skipping tests (PI_RELEASE_SKIP_TESTS=1)\n");
 } else {
 	console.log("Running tests...");
-	run("./test.sh");
+	run("./scripts/test.sh");
 	console.log();
 }
 

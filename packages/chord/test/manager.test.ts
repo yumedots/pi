@@ -24,7 +24,7 @@ const driver = (env: Record<string, string> = {}, lock?: string): Driver =>
 	forkDriver({ entry, env: { HOST_NAME: "w1", ...env }, init: { greeting: "hi" }, lock });
 
 describe("processLock", () => {
-	// A socket path over 104 bytes failed with EINVAL on macOS when TMPDIR was deep (./test.sh below macOS's TMPDIR).
+	// A socket path over 104 bytes failed with EINVAL on macOS when TMPDIR was deep (./scripts/test.sh below macOS's TMPDIR).
 	it("admits one holder when the temporary directory is too deep for a socket path", async () => {
 		const deep = join(scratch("deep"), "a".repeat(60), "b".repeat(60));
 		mkdirSync(deep, { recursive: true });

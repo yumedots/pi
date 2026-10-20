@@ -36,7 +36,7 @@ help:
 	  '  make test-one FILE=<path>   Run a single test file' \
 	  '  make bench          Run the full benchmark and write bench/*.md' \
 	  '  make bench-compare  Write bench/compare.md from the stored results' \
-	  '  make dev            Run the fork from TypeScript sources (./pi-test.sh)' \
+	  '  make dev            Run the fork from TypeScript sources (./scripts/pi-test.sh)' \
 	  '  make release-local  Build, pack and smoke-test the published packages' \
 	  '  make app            Alias for build-binary' \
 	  '  make install-app    Install the compiled binary to $(BIN_DIR)/pi' \
@@ -90,8 +90,8 @@ check: require-bun require-install
 	@$(BUN) run check
 
 test: require-bun require-install
-	@printf '==> ./test.sh\n'
-	@./test.sh
+	@printf '==> ./scripts/test.sh\n'
+	@./scripts/test.sh
 
 test-one: require-bun require-install
 	@if [ -z "$(FILE)" ]; then \
@@ -124,7 +124,7 @@ clean:
 	@$(BUN) run clean
 
 dev:
-	@if [ -t 1 ]; then exec ./pi-test.sh $(ARGS); else set -o pipefail; ./pi-test.sh $(ARGS); fi
+	@if [ -t 1 ]; then exec ./scripts/pi-test.sh $(ARGS); else set -o pipefail; ./scripts/pi-test.sh $(ARGS); fi
 
 release-local: require-bun require-install
 	@printf '==> bun run release:local\n'

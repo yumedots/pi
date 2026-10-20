@@ -61,7 +61,7 @@ Before submitting a PR:
 
 ```bash
 bun run check
-./test.sh
+./scripts/test.sh
 ```
 
 Both must pass. The toolchain is [Bun](https://bun.sh); `make check` and

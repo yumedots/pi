@@ -53,7 +53,7 @@ jobs:
         run: bun run --filter '@earendil-works/pi-env' build:daemon
 
       - name: Test
-        run: PI_TEST_PACKAGE_MANAGER=bun ./test.sh
+        run: PI_TEST_PACKAGE_MANAGER=bun ./scripts/test.sh
 
   mcp-conformance:
     runs-on: ubuntu-latest

@@ -91,8 +91,8 @@ bun install --frozen-lockfile --ignore-scripts  # Install all dependencies witho
 bun run build         # Refresh model data, then build all packages
 bun run build:offline # Rebuild using existing model data without network access
 bun run check         # Lint, format, and type check
-./test.sh            # Run tests (skips LLM-dependent tests without API keys)
-./pi-test.sh         # Run pi from sources (can be run from any directory)
+./scripts/test.sh    # Run tests (skips LLM-dependent tests without API keys)
+./scripts/pi-test.sh # Run pi from sources (can be run from any directory)
 ```
 
 The `make` targets wrap the same commands: `make install`, `make build`,

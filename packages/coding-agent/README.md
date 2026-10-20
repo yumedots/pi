@@ -74,7 +74,7 @@ Clone the repository, install its dependencies, and run Pi from source:
 git clone https://github.com/earendil-works/pi
 cd pi
 npm install --ignore-scripts
-./pi-test.sh
+./scripts/pi-test.sh
 ```
 
 `pi-test.sh` can be called from any directory and preserves the caller's working directory.
@@ -83,7 +83,7 @@ Before submitting changes, run:
 
 ```bash
 npm run check
-./test.sh
+./scripts/test.sh
 ```
 
 Read [CONTRIBUTING.md](https://github.com/earendil-works/pi/blob/main/CONTRIBUTING.md) before opening an issue or pull request. It defines the contribution gate, issue quality bar, and required checks. Read [AGENTS.md](https://github.com/earendil-works/pi/blob/main/AGENTS.md) for repository-specific implementation, testing, dependency, and release rules.

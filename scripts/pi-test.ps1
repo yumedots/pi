@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = Split-Path -Parent $scriptDir
 $noEnv = $false
 $forwardArgs = New-Object System.Collections.Generic.List[string]
 
@@ -61,12 +62,12 @@ if ($noEnv) {
 # Bun applies the tsconfig path aliases itself, so it runs the CLI straight
 # from source. Node needs the source resolver preloaded, because it does not
 # read the tsconfig paths.
-$cliPath = Join-Path $scriptDir "packages/coding-agent/src/cli.ts"
+$cliPath = Join-Path $repoRoot "packages/coding-agent/src/cli.ts"
 if (Get-Command bun -ErrorAction SilentlyContinue) {
 	& bun $cliPath @forwardArgs
 } else {
 	# --import takes a module specifier, so pass the resolver as a file URL (Windows paths are not specifiers).
-	$resolverUrl = ([System.Uri](Join-Path $scriptDir "packages/coding-agent/src/experimental/source-resolver.ts")).AbsoluteUri
+	$resolverUrl = ([System.Uri](Join-Path $repoRoot "packages/coding-agent/src/experimental/source-resolver.ts")).AbsoluteUri
 	& node --import $resolverUrl $cliPath @forwardArgs
 }
 $exitCode = $LASTEXITCODE

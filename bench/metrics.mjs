@@ -32,7 +32,7 @@ export const profiles = {
 		tsc: "./node_modules/.bin/tsc",
 		// The repository's test runner isolates the environment. PI_TEST_PACKAGE_MANAGER
 		// selects which package manager drives the suite.
-		test: "./test.sh",
+		test: "./scripts/test.sh",
 		// The parallel build script picks its runner from the runtime it runs on.
 		// Pin it so the npm profile really drives the workspace scripts with npm.
 		buildEnv: "PI_PACKAGE_MANAGER=npm",
@@ -44,7 +44,7 @@ export const profiles = {
 		installColdPrepare: "rm -rf node_modules && rm -rf ~/.bun/install/cache",
 		installWarmPrepare: "rm -rf node_modules",
 		tsc: "./node_modules/.bin/tsc",
-		test: "PI_TEST_PACKAGE_MANAGER=bun ./test.sh",
+		test: "PI_TEST_PACKAGE_MANAGER=bun ./scripts/test.sh",
 		buildEnv: "PI_PACKAGE_MANAGER=bun",
 	},
 };
