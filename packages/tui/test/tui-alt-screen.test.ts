@@ -150,6 +150,63 @@ describe("TuiAltScreen", () => {
 		tui.stop();
 	});
 
+	it("shows the jump-to-end indicator below the transcript when it is anchored there", async () => {
+		const terminal = new VirtualTerminal(30, 6);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, {
+			scrollToEndIndicator: () => " ↓ Jump to end ",
+			scrollToEndIndicatorPlacement: "below-scroll-view",
+		});
+		const transcript = new ScrollView(
+			new Text(Array.from({ length: 8 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0),
+			{ follow: "end", primary: true },
+		);
+		tui.setLayoutRoot(
+			new VStack([
+				{ component: transcript, basis: 0, grow: 1, minSize: 1 },
+				{ component: new Text("\neditor", 0, 0), basis: "auto", minSize: 1 },
+			]),
+		);
+		tui.start();
+		await terminal.waitForRender();
+
+		terminal.sendInput("\x1b[<64;1;1M");
+		await terminal.waitForRender();
+		assert.strictEqual(transcript.isFollowingEnd, false);
+		// The label sits in the blank line below the transcript, flush to the screen edge.
+		assert.strictEqual(terminal.getViewport()[3]?.trimEnd(), "line 7");
+		assert.strictEqual(terminal.getViewport()[4], `${" ".repeat(15)} ↓ Jump to end `);
+		assert.strictEqual(terminal.getViewport()[5]?.trimEnd(), "editor");
+
+		// Clicking the label jumps to the end.
+		terminal.sendInput("\x1b[<0;20;5M");
+		terminal.sendInput("\x1b[<0;20;5m");
+		await terminal.waitForRender();
+		assert.strictEqual(transcript.isFollowingEnd, true);
+		assert.ok(!terminal.getViewport().some((line) => line.includes("Jump to end")));
+		tui.stop();
+	});
+
+	it("keeps the jump-to-end indicator on the transcript's last row when there is no room below", async () => {
+		const terminal = new VirtualTerminal(30, 4);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, {
+			scrollToEndIndicator: () => " ↓ Jump to end ",
+			scrollToEndIndicatorPlacement: "below-scroll-view",
+		});
+		const transcript = new ScrollView(
+			new Text(Array.from({ length: 8 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0),
+			{ follow: "end", primary: true },
+		);
+		tui.setLayoutRoot(transcript);
+		tui.start();
+		await terminal.waitForRender();
+
+		terminal.sendInput("\x1b[<64;1;1M");
+		await terminal.waitForRender();
+		assert.strictEqual(transcript.isFollowingEnd, false);
+		assert.strictEqual(terminal.getViewport()[3], `line 7${" ".repeat(10)}↓ Jump to end `);
+		tui.stop();
+	});
+
 	it("keeps the jump-to-end indicator at the right edge as the auto scrollbar hides and reappears", async () => {
 		// Regression test for #9136: auto scrollbar visibility must not move the indicator.
 		const terminal = new VirtualTerminal(80, 6);

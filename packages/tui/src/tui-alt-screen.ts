@@ -179,10 +179,15 @@ export interface TuiAltScreenOptions {
 	/** Style a transcript search navigation button. */
 	searchNavigationButtonStyle?: (text: string, hovered: boolean) => string;
 	/**
-	 * Render a clickable jump-to-end label. It is centered on the last row of a follow-end
+	 * Render a clickable jump-to-end label. It is painted on the last row of a follow-end
 	 * primary scroll view while that view is scrolled away from its end.
 	 */
 	scrollToEndIndicator?: () => string;
+	/**
+	 * Where the jump-to-end label is painted: on the primary scroll view's last row (default)
+	 * or on the row below it, e.g. in the blank line above an input box.
+	 */
+	scrollToEndIndicatorPlacement?: "scroll-view-end" | "below-scroll-view";
 	/** Open an OSC 8 hyperlink activated with a primary-button click. */
 	openUrl?: (url: string) => void;
 	/** Handle an unmodified secondary-button press for clipboard paste. Currently enabled on Windows only. */
@@ -256,6 +261,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly searchCurrentMatchStyle: (text: string) => string;
 	private readonly searchNavigationButtonStyle: (text: string, hovered: boolean) => string;
 	private readonly scrollToEndIndicator?: () => string;
+	private readonly scrollToEndIndicatorPlacement: "scroll-view-end" | "below-scroll-view";
 	private readonly openUrl?: (url: string) => void;
 	private readonly onRightClickPaste?: () => void;
 	private copyOnSelect: boolean;
@@ -283,6 +289,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.searchCurrentMatchStyle = options.searchCurrentMatchStyle ?? ((text) => `\x1b[1;7m${text}\x1b[22;27m`);
 		this.searchNavigationButtonStyle = options.searchNavigationButtonStyle ?? ((text) => text);
 		this.scrollToEndIndicator = options.scrollToEndIndicator;
+		this.scrollToEndIndicatorPlacement = options.scrollToEndIndicatorPlacement ?? "scroll-view-end";
 		this.openUrl = options.openUrl;
 		this.onRightClickPaste = options.onRightClickPaste;
 		this.copyOnSelect = options.copyOnSelect ?? true;
@@ -1674,12 +1681,17 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		const box = getScrollViewBox(layout, scrollView);
 		const clip = box?.clip;
 		if (!clip || clip.width <= 0 || clip.height <= 0) return screen;
-		const row = clip.y + clip.height - 1;
+		// Below the scroll view the label lands on the row of the surrounding layout, e.g. in
+		// the blank line above an input box. Without room there it stays on the last row.
+		const below = this.scrollToEndIndicatorPlacement === "below-scroll-view";
+		const row = below && clip.y + clip.height < screen.length ? clip.y + clip.height : clip.y + clip.height - 1;
 		if (row >= screen.length || isImageLine(screen[row] ?? "")) return screen;
 		// Anchor the label to the right edge, reserving the scrollbar column even while the
 		// auto scrollbar is hidden so the label does not move when the scrollbar appears.
+		// Below the scroll view the scrollbar does not reach, so the label spans to the
+		// screen edge instead.
 		const scrollbarColumn = box ? getScrollbarGeometry(box, true)?.column : undefined;
-		const rightEdge = scrollbarColumn ?? clip.x + clip.width;
+		const rightEdge = below ? width : (scrollbarColumn ?? clip.x + clip.width);
 		const label = truncateToWidth(this.scrollToEndIndicator(), rightEdge - clip.x, "");
 		const labelWidth = visibleWidth(label);
 		if (labelWidth === 0) return screen;
