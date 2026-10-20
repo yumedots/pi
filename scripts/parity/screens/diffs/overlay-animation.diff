@@ -1,0 +1,38 @@
+--- ts/overlay-animation.txt
++++ rust/overlay-animation.txt
+-                         ╭────────────────────────────────────────────────╮
++
+- Warning: tmux extended-k│ Animation Demo (~30 FPS)                       │`set -g extended-keys
++ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+- on` to ~/.tmux.conf and │                                                │
++ on` to ~/.tmux.conf and restart tmux.
+-                         │ Frame: <n>                                     │
++   ℹ Extension "/Users/gabriel/pi/packages/coding-agent/examples/extensions/overlay-qa-tests.ts"
+-                         │ FPS: 30                                        │
++ error: the extension runtime did not answer
+- /overlay-animation      │                                                │
++
+-                         │  ██████████                                    │
++   ℹ Extension error: the extension runtime is gone
+-                         │ Spinner: ◓                                     │
++
+-                         │ Color:                                         │
++   ✗ Extension error: the extension runtime is gone
+-                         │                                                │
++
+-                         │ This proves overlays can handle                │
++
+-                         │ real-time game-like rendering.                 │
++
+-                         │ (pi-doom uses same approach)                   │
++
+-                         │                                                │
++
+-                         │ Press Esc to close                             │
++
+-                         ╰────────────────────────────────────────────────╯
++
+-⠼ Working
++
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens             /private/tmp/pi-screens/work/overlay-animation
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens        /private/tmp/pi-screens/work/overlay-animation

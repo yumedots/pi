@@ -1,0 +1,22 @@
+--- ts/settings-submenu-theme.txt
++++ rust/settings-submenu-theme.txt
+-────────────────────────────────────────────────────────────────────────────────────────────────────
++
+-Theme
++
+-Select a theme, or choose automatic to follow terminal appearance.
++Theme
+-→ ✓ system     Follows the terminal's light or dark mode
++Select a theme, or choose automatic to follow terminal appearance.
+-    automatic  Use separate themes for light and dark terminal appearance
++
+-    dark
++→ ✓ dark
+-
++    monochrome
+-  Enter to select · Esc to go back
++
+-────────────────────────────────────────────────────────────────────────────────────────────────────
++  Enter to select · Esc to go back
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens        /private/tmp/pi-screens/work/settings-submenu-theme
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens   /private/tmp/pi-screens/work/settings-submenu-theme

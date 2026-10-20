@@ -1,0 +1,14 @@
+--- ts/model-search.txt
++++ rust/model-search.txt
+-
++Select model
+-
++Type to filter by name, provider, or id
+-
++> mock
+-> /model mock/mock-1
++
+-
++→ ✓ mock-1                        [mock]
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                  /private/tmp/pi-screens/work/model-search
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens             /private/tmp/pi-screens/work/model-search

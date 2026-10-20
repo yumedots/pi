@@ -1,0 +1,26 @@
+--- ts/settings-submenu-thinking.txt
++++ rust/settings-submenu-thinking.txt
+-
++   ℹ Thinking blocks shown.
+-────────────────────────────────────────────────────────────────────────────────────────────────────
++
+-> thinking
++
+-
++> thinking
+-→ Hide thinking                     false
++
+-  Default thinking level per model  none
++→ Hide thinking                     false
+-
++  Default thinking level per model  none
+-  Hide thinking blocks in assistant responses
++
+-
++  Hide thinking blocks in assistant responses
+-  Type to search · Enter/Space to change · Esc to cancel
++
+-────────────────────────────────────────────────────────────────────────────────────────────────────
++  Type to search · Enter/Space to change · Esc to cancel
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens     /private/tmp/pi-screens/work/settings-submenu-thinking
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens       …/tmp/pi-screens/work/settings-submenu-thinking

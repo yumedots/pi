@@ -1,0 +1,35 @@
+# screen: session-tree
+# side: rust
+# command: cd '/tmp/pi-screens/work/rust/session-tree' && HOME='/tmp/pi-screens/home/rust/session-tree' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/session-tree' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline  --provider mock --model mock/mock-1 --api-key parity-key
+# keys: hello world Enter /tree Enter
+# note: /tree: the session tree, with one entry in it.
+
+ ▀▀█  v1.3.0
+ █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
+ Press ctrl+o to show full startup help.
+
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+
+
+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+ on` to ~/.tmux.conf and restart tmux.
+
+ hello world
+
+
+ Hello from the parity mock.
+
+
+
+
+
+
+Session tree
+
+Type to filter by entry type, sequence, or id
+
+>
+
+→ message #2                      01a15b89-b01
+  message #9 (current)            01a15b89-b08
+mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens               /private/tmp/pi-screens/work/rust/session-tree

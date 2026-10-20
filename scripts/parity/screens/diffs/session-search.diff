@@ -1,0 +1,28 @@
+--- ts/session-search.txt
++++ rust/session-search.txt
+-
++ hello world
+- hello world
++
+-
++ Hello from the parity mock.
+- Hello from the parity mock.
++
+-  Sessions
++
+-> hello
++Resume session
+-→ hello world                                                                                  3 now
++
+-  tab scope: current · re:<pattern> regex · "phrase" exact
++Type to filter sessions
+-  ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path (off) · ctrl+r rename
++
+-
++> hello
+->
++
+-
++  No matching commands
+-mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens               /private/tmp/pi-screens/work/session-search
++mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens             /private/tmp/pi-screens/work/session-search

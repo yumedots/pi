@@ -1,0 +1,28 @@
+--- ts/trust-selector.txt
++++ rust/trust-selector.txt
+-
++   ℹ Current project marked trusted.
+-────────────────────────────────────────────────────────────────────────────────────────────────────
++
+- Project trust
++
+- /private/tmp/pi-screens/work/trust-selector
++
+- Saved decision: none
++
+- Current session: trusted
++
+- →   Trust
++
+-     Trust parent folder (/private/tmp/pi-screens/work/ts)
++
+-     Do not trust
++
+- ↑↓ navigate  enter save  escape/ctrl+c cancel
++
+-
++>
+-────────────────────────────────────────────────────────────────────────────────────────────────────
++
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                /private/tmp/pi-screens/work/trust-selector
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens           /private/tmp/pi-screens/work/trust-selector

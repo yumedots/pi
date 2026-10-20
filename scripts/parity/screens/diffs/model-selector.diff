@@ -1,0 +1,16 @@
+--- ts/model-selector.txt
++++ rust/model-selector.txt
+-
++Select model
+-  Only showing models from configured providers. Use /login to add providers.
++Type to filter by name, provider, or id
+-> Search
++
+-→ ✓ mock-1                        [mock]
++>
+-  Model catalogs refreshed.
++
+-  Enter to select · Ctrl+S to set as default · Escape/Ctrl+C to cancel
++→ ✓ mock-1                        [mock]
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                /private/tmp/pi-screens/work/model-selector
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens           /private/tmp/pi-screens/work/model-selector

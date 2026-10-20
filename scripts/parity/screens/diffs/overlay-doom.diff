@@ -1,0 +1,16 @@
+--- ts/overlay-doom.txt
++++ rust/overlay-doom.txt
+-
++   ℹ Extension "/Users/gabriel/pi/packages/coding-agent/examples/extensions/doom-overlay/index.ts"
+-
++ error: the extension runtime did not answer
+- /doom-overlay
++
+-
++   ℹ Extension error: the extension runtime is gone
+- Loading DOOM...
++   ✗ Extension error: the extension runtime is gone
+-⠹ Working
++
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                  /private/tmp/pi-screens/work/overlay-doom
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens             /private/tmp/pi-screens/work/overlay-doom

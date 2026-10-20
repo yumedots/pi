@@ -1,0 +1,18 @@
+--- ts/settings-submenu-warnings.txt
++++ rust/settings-submenu-warnings.txt
+-────────────────────────────────────────────────────────────────────────────────────────────────────
++
+-→ Anthropic extra usage  true
++
+-
++→ Anthropic extra usage  true
+-  Warn when Anthropic subscription auth may use paid extra usage
++
+-
++  Warn when Anthropic subscription auth may use paid extra usage
+-  Enter/Space to change · Esc to cancel
++
+-────────────────────────────────────────────────────────────────────────────────────────────────────
++  Enter/Space to change · Esc to cancel
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens     /private/tmp/pi-screens/work/settings-submenu-warnings
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens       …/tmp/pi-screens/work/settings-submenu-warnings

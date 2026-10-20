@@ -1,0 +1,32 @@
+--- ts/settings-submenu-theme-automatic.txt
++++ rust/settings-submenu-theme-automatic.txt
+-
++   ℹ Theme set to light.
+-────────────────────────────────────────────────────────────────────────────────────────────────────
++
+-Automatic Theme
++
+-Choose themes for terminal light and dark appearance.
++
+-Light/dark detection requires terminal support.
++
+-→ Light theme  system
++
+-  Dark theme   system
++> theme
+-  Apply        save and go back
++
+-  Change mode  switch to single theme
++→ Theme                             light
+-
++  Default thinking level per model  none
+-  Theme to use in automatic mode when the terminal is light
++
+-
++  Color theme for the interface
+-  Enter/Space to change · Esc to cancel
++
+-────────────────────────────────────────────────────────────────────────────────────────────────────
++  Type to search · Enter/Space to change · Esc to cancel
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens     …/tmp/pi-screens/work/settings-submenu-theme-automatic
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens    …/pi-screens/work/settings-submenu-theme-automatic

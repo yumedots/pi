@@ -1,0 +1,28 @@
+--- ts/session-menu.txt
++++ rust/session-menu.txt
+-
++ hello world
+- hello world
++
+-
++ Hello from the parity mock.
+- Hello from the parity mock.
++
+-  Sessions
++
+-> Search
++Resume session
+-→ hello world                                                                                  3 now
++
+-  tab scope: current · re:<pattern> regex · "phrase" exact
++Type to filter sessions
+-  ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path (off) · ctrl+r rename
++
+-
++>
+->
++
+-
++→ (no messages)                                           988B · 01a15b88
+-mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens                 /private/tmp/pi-screens/work/session-menu
++mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens               /private/tmp/pi-screens/work/session-menu

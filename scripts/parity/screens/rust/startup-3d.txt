@@ -1,0 +1,30 @@
+# screen: startup-3d
+# side: rust
+# command: cd '/tmp/pi-screens/work/rust/startup-3d' && HOME='/tmp/pi-screens/home/rust/startup-3d' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/startup-3d' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# keys: (none)
+# note: Empty session, threeDEmptySession on.
+
+
+
+
+
+
+
+                                        ⢰⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⡆
+                                        ⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⡿⠿⠿⠿⠿⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⡇    ⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⡇    ⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿    ⢸⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿    ⢸⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⡏⠉⠉⠉⠉    ⢸⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⡇        ⢸⣿⣿⣿⣿⡇
+                                        ⠸⠿⠿⠿⠿⠇        ⠸⠿⠿⠿⠿⠇
+
+
+
+
+                              Hi Gabriel, what are we building today?
+
+
+              >

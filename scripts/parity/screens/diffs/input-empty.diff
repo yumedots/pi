@@ -1,0 +1,4 @@
+--- ts/input-empty.txt
++++ rust/input-empty.txt
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                   /private/tmp/pi-screens/work/input-empty
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens              /private/tmp/pi-screens/work/input-empty

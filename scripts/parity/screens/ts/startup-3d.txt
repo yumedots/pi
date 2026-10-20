@@ -1,0 +1,30 @@
+# screen: startup-3d
+# side: ts
+# command: cd '/tmp/pi-screens/work/ts/startup-3d' && HOME='/tmp/pi-screens/home/ts/startup-3d' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/startup-3d' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# keys: (none)
+# note: Empty session, threeDEmptySession on.
+
+
+
+
+
+
+
+                                        ⢰⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⡆
+                                        ⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⡿⠿⠿⠿⠿⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⡇    ⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⡇    ⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿    ⢸⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿    ⢸⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⡏⠉⠉⠉⠉    ⢸⣿⣿⣿⣿⡇
+                                        ⢸⣿⣿⣿⣿⡇        ⢸⣿⣿⣿⣿⡇
+                                        ⠸⠿⠿⠿⠿⠇        ⠸⠿⠿⠿⠿⠇
+
+
+
+
+                              Hi Gabriel, what are we building today?
+
+
+              >

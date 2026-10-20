@@ -1,0 +1,18 @@
+--- ts/model-no-match.txt
++++ rust/model-no-match.txt
+- Refreshing model catalogs…
++
+-
++Select model
+-  Only showing models from configured providers. Use /login to add providers.
++Type to filter by name, provider, or id
+-> gpt
++
+-  No matching models
++> gpt
+-  Model catalogs refreshed.
++
+-  Enter to select · Ctrl+S to set as default · Escape/Ctrl+C to cancel
++  No matching commands
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                /private/tmp/pi-screens/work/model-no-match
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens           /private/tmp/pi-screens/work/model-no-match

@@ -1,0 +1,32 @@
+--- ts/login-methods.txt
++++ rust/login-methods.txt
+-
++Log in to provider
+-
++Type to filter providers · Enter selects · Esc cancels
+-
++>
+-
++→ ant-ling                        Not configured · API key / ANT_LING_API_KEY
+-
++  Anthropic                       Not configured · API key / ANTHROPIC_API_KEY
+-
++  azure                           Not configured · API key / AZURE_OPENAI_API_KEY
+-
++  baseten                         Not configured · API key / BASETEN_API_KEY
+-
++  cerebras                        Not configured · API key / CEREBRAS_API_KEY
+-  Select authentication method:
++  cloudflare-ai-gateway           Not configured · API key / CLOUDFLARE_API_KEY
+-> Search
++  cloudflare-workers-ai           Not configured · API key / CLOUDFLARE_API_KEY
+-→ Sign in with an account
++  deepseek                        Not configured · API key / DEEPSEEK_API_KEY
+-  Sign in with an API key
++  fireworks                       Not configured · API key / FIREWORKS_API_KEY
+-  Sign in with Radius • not configured
++  github-copilot                  Not configured · API key / COPILOT_GITHUB_TOKEN
+-↑↓ navigate  enter select  escape/ctrl+c cancel
++  (1/40)
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                 /private/tmp/pi-screens/work/login-methods
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens            /private/tmp/pi-screens/work/login-methods

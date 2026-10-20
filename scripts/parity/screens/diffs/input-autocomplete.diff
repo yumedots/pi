@@ -1,0 +1,16 @@
+--- ts/input-autocomplete.txt
++++ rust/input-autocomplete.txt
+-→ settings       Open settings menu
++
+-  model          <provider/model> — Select model (opens selector UI)
++ → /help Show available commands
+-  tree           Navigate session tree (switch branches)
++   /clear Clear the conversation
+-  thinking       <level> — Set thinking level
++   /new Clear the conversation
+-  scoped-models  Enable/disable models for Ctrl+P cycling
++   /quit Quit pi
+-  (1/31)
++   /version Show version information
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens            /private/tmp/pi-screens/work/input-autocomplete
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens       /private/tmp/pi-screens/work/input-autocomplete

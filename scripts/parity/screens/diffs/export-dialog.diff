@@ -1,0 +1,16 @@
+--- ts/export-dialog.txt
++++ rust/export-dialog.txt
+-
++ hello world
+- hello world
++
+-
++ Hello from the parity mock.
+- Hello from the parity mock.
++
+-
++   ℹ Exported session to
+- Session exported to: pi-session-<timestamp>_01a15b80-d581-75ac-b717-fb42cfd76b89.html
++ /private/tmp/pi-screens/work/export-dialog/<uuid>.md
+-mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens                /private/tmp/pi-screens/work/export-dialog
++mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens              /private/tmp/pi-screens/work/export-dialog
