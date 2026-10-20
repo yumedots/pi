@@ -30,13 +30,13 @@ struct DocPage {
 static DOCS: &[DocPage] = &[
     DocPage {
         topic: "authoring",
-        description: "Rust cdylib 扩展开发最佳实践：统一 C ABI 入口、工具生命周期、事件处理器、资源发现、rpi dev 开发与发布检查清单",
+        description: "Rust cdylib extension best practices: unified C ABI entry point, tool lifecycle, event handlers, resource discovery, rpi dev workflow, and release checklist",
         content: include_str!("../embedded-docs/extension-authoring.md"),
         aliases: &["package-authoring", "extension-authoring", "create-package", "create-extension"],
     },
     DocPage {
         topic: "guide",
-        description: "完整使用手册：安装、模型、CLI、.rpi 资源、Rust 扩展、SDK、排错和发布",
+        description: "Complete user manual: installation, models, CLI, .rpi resources, Rust extensions, SDK, troubleshooting, and release",
         content: include_str!("../embedded-docs/user-guide.md"),
         aliases: &["manual", "user-guide", "cli", "quickstart", "package", "packages", "extension", "extensions"],
     },
@@ -48,7 +48,7 @@ static DOCS: &[DocPage] = &[
     },
     DocPage {
         topic: "agent",
-        description: "用 rpi SDK 创建自己的 Agent 项目的默认结构与规范：目录布局、内嵌 Agent、cdylib 适配、工具单一登记点、prompts/skills、配置与开发循环",
+        description: "Default layout and conventions for building your own Agent project with the rpi SDK: directory layout, embedded agent, cdylib adapter, single tool registry, prompts/skills, configuration, and the development loop",
         content: include_str!("../embedded-docs/agent-project.md"),
         aliases: &[
             "agent-project",
@@ -66,7 +66,7 @@ static DOCS: &[DocPage] = &[
     },
     DocPage {
         topic: "debugging",
-        description: "Rust cdylib 扩展编写（统一 C ABI、工具生命周期、事件处理器）与 agent/扩展调试（事件日志、rpi dev-local、常见失败定位）",
+        description: "Writing Rust cdylib extensions (unified C ABI, tool lifecycle, event handlers) and debugging the agent/extensions (event log, rpi dev-local, common failures)",
         content: include_str!("../embedded-docs/rust-debugging.md"),
         aliases: &["rust", "rust-debug", "extension-debug", "troubleshoot", "debug"],
     },
@@ -256,7 +256,7 @@ mod tests {
         assert!(output.contains("authoring"));
         assert!(output.contains("- agent:"));
         assert!(output.contains("debugging"));
-        assert!(output.contains("统一 C ABI"));
+        assert!(output.contains("unified C ABI"));
         assert!(!output.contains("ABI v3/v2"));
         assert!(!output.contains("- extensions:"));
         assert!(!output.contains("- compatibility:"));
@@ -264,9 +264,10 @@ mod tests {
 
     #[tokio::test]
     async fn returns_rust_debugging_guide() {
-        let output = execute(serde_json::json!({"topic": "debugging", "query": "rpi dev"})).await;
-        assert!(output.contains("rpi dev"));
+        let output = execute(serde_json::json!({"topic": "debugging", "query": "cdylib"})).await;
         assert!(output.contains("cdylib"));
+        let dev = execute(serde_json::json!({"topic": "debugging", "query": "rpi dev"})).await;
+        assert!(dev.contains("rpi dev"));
     }
 
     #[tokio::test]
@@ -302,7 +303,7 @@ mod tests {
     #[tokio::test]
     async fn agent_aliases_resolve() {
         let output = execute(serde_json::json!({"topic": "create-agent"})).await;
-        assert!(output.contains("rpi Agent 项目结构创建指南"));
+        assert!(output.contains("rpi Agent project structure guide"));
     }
 
     #[tokio::test]
