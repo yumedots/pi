@@ -5,8 +5,8 @@
  "meta": {
   "scenario": "tool",
   "tsRoot": "/Users/gabriel/pi-native",
-  "tsCommit": "cb87143e4a1b329c3f0017e75c3b170e65fec903",
-  "repoCommit": "cb87143e4a1b329c3f0017e75c3b170e65fec903",
+  "tsCommit": "b615b0ef1a553429599854a0bf708319cf099030",
+  "repoCommit": "b615b0ef1a553429599854a0bf708319cf099030",
   "volatile": [
    "/private/tmp/pi-parity/agent",
    "/private/tmp/pi-parity/work",
