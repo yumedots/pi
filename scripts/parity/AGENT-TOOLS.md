@@ -285,6 +285,9 @@ against was 43 minutes stale). The tree was green at that point.
 | 35 | The timeout message read `Command timed out after 2s` | `Command timed out after N seconds` — pi's wording | `rpi/crates/rpi-tools/src/tools/bash.rs:330-339` against `packages/coding-agent/src/core/tools/bash.ts:379` |
 | 74 | The port's `AgentMessage` was tagged on a `kind` field, so pi's `role`-discriminated messages could not be parsed and the port wrote a field pi does not have | The tag is gone: `role` is the discriminator, an unknown role falls back to a custom message, and there is a `System` arm carrying `sections` and `toolsAdded`. pi's three message shapes now parse, and the port writes no `kind` | `rpi/crates/rpi-agent/src/message.rs:32-42` (the enum and its doc), `:56-76` (the `role`-tagged deserialiser); runtime: `{"role":"user",…}`, `{"role":"assistant",…}`, `{"role":"toolResult",…}` and `{"role":"system",…}` all parse, and the re-serialised output has **no** `kind` field |
 | 75 | The assistant message had no `durationMs`, `thinkingLevel`, `providerThinkingLevel` or `diagnostics`, and pi's values were silently dropped on read | All four exist, and pi's values survive the round trip | `rpi/crates/rpi-ai/src/types.rs:668`, `:708`, `:712`, `:715`; runtime: pi's assistant message with `"durationMs":1234,"thinkingLevel":"high"` deserialises and re-serialises with **both** fields intact |
+| 15 | `ctx.isProjectTrusted()` was hard-coded `true` | It reads the live `project_trusted` flag of the session, so it is the real decision (and false when there is no session) | `rpi/crates/rpi-cli/src/js_extensions.rs:713-715` (the JS host's answer), against `packages/coding-agent/src/core/extensions/runner.ts:929-932`. The `rpi-js` stub at `rpi/crates/rpi-js/src/host.rs:249` still answers `false` — that is the standalone `ProcessHost`, not the CLI's host. |
+| 18 | No context-overflow detection anywhere | There is: `rpi/crates/rpi-harness/src/compaction/overflow.rs` ports pi's `isContextOverflow`, and the harness compacts with `CompactionReason::Overflow` when a provider reports one | `rpi/crates/rpi-harness/src/compaction/overflow.rs:1`, `:92`; `rpi/crates/rpi-harness/src/agent_harness.rs:4395-4401` |
+| 21 | The retryability classifier was a pair of substring lists missing ~15 of pi's patterns | It is now a faithful port of pi's **two regex tables** — the non-retryable table (`GoUsageLimitError`, `insufficient_quota`, `subscription_sharing_usage_limit_exceeded`, …) and the retryable one (`server_busy`, `model is at capacity`, `520`, `service.?temporarily.?unavailable`, `upstream.?request.?failed`, `ResourceExhausted`, …) — with the non-retryable table checked first | `rpi/crates/rpi-harness/src/compaction/retry_classifier.rs:20-30` (non-retryable), `:33-60+` (retryable), `:112` (`is_retryable_assistant_error`), against `packages/ai/src/utils/retry.ts:7-29`, `:30-126` |
 
 **Still open — verified still present in the fresh source:**
 
@@ -294,13 +297,28 @@ against was 43 minutes stale). The tree was green at that point.
 | 30 | The `PI_*` session env is still not exposed to the shell and the inherited env is not stripped; the port uses `RPI_SESSION_ID` | `rpi/crates/rpi-tools/src/tools/bash.rs` (no `PI_*` handling), `rpi/crates/rpi-cli/src/session.rs:2680` |
 | 49 | `format_size` still renders `(50.0)KB` with parentheses | `rpi/crates/rpi-tools/src/truncate.rs:108-116`; a direct call still returns `(50.0)KB` where the original returns `50.0KB` (`packages/coding-agent/src/core/tools/truncate.ts:64-72`) |
 | 50 | The optional args are still `Option<u32>`/nullable, so `limit: 1.5` and `limit: -1` are still rejected where the original accepts them | `rpi/crates/rpi-tools/src/tools/read.rs:31-40`; the port's validator still rejects both (`Validation failed for tool "read"`), the original's accepts them (`packages/ai/src/utils/validation.ts:715`) |
-| 68 | The agent event union still carries `RetryScheduled`, which the original's `AgentEvent` union does not have | `rpi/crates/rpi-agent/src/events.rs:29,106` |
+| 68 | The agent event union still carries `RetryScheduled`, which the original's `AgentEvent` union does not have | `rpi/crates/rpi-agent/src/events.rs:29,98` |
 | 24 | The `Agent` class still hard-codes every hook to `None` in `build_config`, and `AgentOptions` still has no hook field, so an embedding host of `rpi-agent` still cannot install `transformContext`, `getApiKey`, `beforeToolCall`, `afterToolCall`, `finishTurn`, `prepareRequest` or `prepareNextTurn` (the original exposes all of them as mutable public fields). The hooks exist on `AgentLoopConfig` and the harness installs them; the `Agent` wrapper does not. | `rpi/crates/rpi-agent/src/agent.rs:36-45` (`AgentOptions`), `:517-533` (`build_config`) against `packages/agent/src/agent.ts:198-224`, `:470-503` |
 
 **Not re-checked in this pass** (source-level rows, not binary-level): 9, 12, 13,
-14, 15, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 31, 32, 36, 37, 38, 39, 40, 41,
-42, 43, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
-64, 65, 66, 67, 70.
+14, 22, 23, 25, 26, 27, 28, 31, 32, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
+47, 48, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 70.
+
+**Re-read against the current source in this pass** (19:20, without a binary):
+- rows 15, 18 and 21 — **closed** (see the closed table above).
+- rows 12, 13, 14 — **still open**. `EventTag::ProjectTrust` and
+  `EventTag::UserBash` are still only payload-free arms in the translator
+  (`rpi/crates/rpi-extensions/src/translate.rs:947`, `:967`) and nothing
+  dispatches a `tool_result` event to an extension.
+- rows 19, 20 — **still open**. The `prepare_request` hook now exists end to
+  end (`rpi/crates/rpi-harness/src/agent_harness.rs:637`, `:778`, `:3095`,
+  `:3877`), but **nothing installs it**: the CLI passes `prepare_request: None`
+  (`rpi/crates/rpi-cli/src/session.rs:861`, `rpi-cli/src/agent_session.rs:498`),
+  so the compaction check still runs only pre-run and after a turn that
+  produced tool results, and it still uses `estimate_context_tokens` rather
+  than the provider-reported usage (`rpi/crates/rpi-harness/src/agent_harness.rs:3708`,
+  `:3903`).
+- row 24 — **still open** (`rpi/crates/rpi-agent/src/agent.rs:517-518`).
 
 **Row 9 has moved.** The port's `Message` union now has a `System` arm carrying
 `sections` and `toolsAdded` (`rpi/crates/rpi-ai/src/types.rs:821-833`,
