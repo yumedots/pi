@@ -50,7 +50,7 @@
 - If dep metadata changes, refresh `package-lock.json` with `npm install --package-lock-only --ignore-scripts`, then regenerate `bun.lock` with `bun pm migrate`.
 - If `packages/coding-agent/install-lock/` needs regen, run `bun run install-lock:coding-agent` (verify with `--check` or `bun run check`). New deps with lifecycle scripts require review and an explicit allowlist entry in that script; never add one silently.
 - Bun blocks dependency lifecycle scripts. Nothing is trusted: the repository installs with `--ignore-scripts`, and no dependency needs its install script. Check `bun pm untrusted` before adding anything to `trustedDependencies`.
-- Pre-commit blocks lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1`. Don't bypass unless the user wants the lockfile change committed.
+- Lockfile changes are reviewed code: read the diff before committing it, and never commit one the user did not ask for.
 
 ## Node-only code paths
 

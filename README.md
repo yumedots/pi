@@ -180,7 +180,7 @@ We treat npm dependency changes as reviewed code changes.
 
 - Direct external dependencies are pinned to exact versions. Internal workspace packages remain version-ranged.
 - `.npmrc` sets `save-exact=true` and `min-release-age=2` to avoid same-day dependency releases during npm resolution. `bunfig.toml` mirrors both for Bun.
-- `package-lock.json` is the dependency ground truth. `bun.lock` is generated from it with `bun pm migrate`, and `bun run check:lockfiles` fails when the two disagree. Pre-commit blocks accidental lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1` is set.
+- `package-lock.json` is the dependency ground truth. `bun.lock` is generated from it with `bun pm migrate`, and `bun run check:lockfiles` fails when the two disagree. Lockfile changes are reviewed code: read the diff before committing it.
 - `bun run check` verifies pinned direct deps, native TypeScript import compatibility, the generated coding-agent install lock, and that both lockfiles agree.
 - The pi.dev installer installs from `packages/coding-agent/install-lock/`, generated from the root lockfile, to pin transitive deps. The npm package does not pin transitive deps.
 - Local release smoke tests and npm publication use the same tarball packer; npm publishes the validated tarballs rather than repacking workspace directories.

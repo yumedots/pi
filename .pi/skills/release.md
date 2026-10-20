@@ -36,8 +36,8 @@ Run repository commands from the repo root (two directories above this skill), u
 
 3. **Run the release script**:
    ```bash
-   PI_ALLOW_LOCKFILE_CHANGE=1 npm_config_min_release_age=0 npm run release:patch    # fixes + additions
-   PI_ALLOW_LOCKFILE_CHANGE=1 npm_config_min_release_age=0 npm run release:minor    # breaking changes
+   npm_config_min_release_age=0 npm run release:patch    # fixes + additions
+   npm_config_min_release_age=0 npm run release:minor    # breaking changes
    ```
    If the test suite already passed in `npm run release:local` and only fails from machine load, `PI_RELEASE_SKIP_TESTS=1` skips `./test.sh` in the release script; checks and the packed install check still run. Use it only with the user's approval.
 

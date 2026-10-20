@@ -55,8 +55,7 @@
 		"release:minor": "node scripts/release.mjs minor",
 		"release:major": "node scripts/release.mjs major",
 		"release:fix-links": "node scripts/release-notes.mjs fix-github-releases",
-		"bench:noop": "node -e \"\"",
-		"prepare": "husky"
+		"bench:noop": "node -e \"\""
 	},
 	"devDependencies": {
 		"@anthropic-ai/sandbox-runtime": "0.0.26",
@@ -64,7 +63,6 @@
 		"@biomejs/wasm-nodejs": "2.3.5",
 		"@types/node": "22.19.19",
 		"esbuild": "0.28.2",
-		"husky": "9.1.7",
 		"pnpm": "11.15.1",
 		"shx": "0.3.4",
 		"typescript": "7.0.2",
