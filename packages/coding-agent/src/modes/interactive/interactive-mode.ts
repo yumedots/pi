@@ -666,7 +666,6 @@ export class InteractiveMode {
 		this.editorContainer.addChild(this.editor as Component);
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
 		this.footer = new FooterComponent(this.session, this.footerDataProvider);
-		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
 		this.footer.setNerdFonts(this.settingsManager.getNerdFonts());
 		this.footerContainer = new Container();
 		this.footerContainer.addChild(this.footer);
@@ -1696,7 +1695,6 @@ export class InteractiveMode {
 			this.renderer.setWheelScrollLines(this.settingsManager.getFullscreenWheelScrollLines());
 		}
 		this.footer.setSession(this.session);
-		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
 		this.footer.setNerdFonts(this.settingsManager.getNerdFonts());
 		this.footerDataProvider.setCwd(this.sessionManager.getCwd());
 		this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
@@ -4727,7 +4725,6 @@ export class InteractiveMode {
 				{
 					onAutoCompactChange: (enabled) => {
 						this.session.setAutoCompactionEnabled(enabled);
-						this.footer.setAutoCompactEnabled(enabled);
 					},
 					onShowImagesChange: (enabled) => {
 						this.settingsManager.setShowImages(enabled);

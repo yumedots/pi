@@ -26,6 +26,7 @@ function createSession(options: {
 	toolUsage?: AssistantUsage;
 	usingSubscription?: boolean;
 	routedModel?: { model: { id: string }; thinkingLevel?: string };
+	contextUsage?: { contextWindow: number; percent: number | null; tokens: number | null };
 }): AgentSession {
 	const usage = options.usage;
 	const entries: Array<Record<string, unknown>> = [];
@@ -82,7 +83,7 @@ function createSession(options: {
 			getSessionName: () => options.sessionName,
 			getCwd: () => "/tmp/project",
 		},
-		getContextUsage: () => ({ contextWindow: 200_000, percent: 12.3 }),
+		getContextUsage: () => options.contextUsage ?? { contextWindow: 200_000, percent: 12.3, tokens: 24_600 },
 		routedModel: options.routedModel,
 		modelRuntime: {
 			isUsingSubscription: () => options.usingSubscription ?? false,
@@ -169,7 +170,7 @@ describe("FooterComponent width handling", () => {
 		const lines = footer.render(120);
 		expect(lines).toHaveLength(1);
 		const line = stripAnsi(lines[0]);
-		expect(line).toContain("test/glm-5.1 / medium / 12.3%/200k (auto)");
+		expect(line).toContain("test/glm-5.1 / medium / 24,600 tokens 12.3%");
 		expect(line).toContain("/tmp/project:main");
 		expect(line.indexOf("glm-5.1")).toBeLessThan(line.indexOf("/tmp/project:main"));
 	});
@@ -201,7 +202,7 @@ describe("FooterComponent width handling", () => {
 		const line = stripAnsi(footer.render(120)[0]);
 		expect(line).toContain("\uF2DB test/glm-5.1");
 		expect(line).toContain("\uF0E7 medium");
-		expect(line).toContain("\uF200 12.3%/200k (auto)");
+		expect(line).toContain("\uF200 24,600 tokens 12.3%");
 		expect(line).toContain("\uF07C /tmp/project");
 		expect(line).toContain("\uF126 main");
 		expect(visibleWidth(line)).toBeLessThanOrEqual(120);
@@ -232,8 +233,20 @@ describe("FooterComponent width handling", () => {
 
 		const line = stripAnsi(footer.render(40)[0]);
 		expect(visibleWidth(line)).toBeLessThanOrEqual(40);
-		expect(line).toContain("12.3%/200k (auto)");
-		expect(line).toContain("test/glm-5.1");
+		expect(line).toContain("24,600 tokens 12.3%");
+		expect(line).toContain("glm-5.1");
+	});
+
+	it("shows the context window while the used tokens are unknown", () => {
+		const session = createSession({
+			sessionName: "",
+			modelId: "glm-5.1",
+			contextUsage: { contextWindow: 200_000, percent: null, tokens: null },
+		});
+		const footer = new FooterComponent(session, createFooterData(1));
+
+		const line = stripAnsi(footer.render(120)[0]);
+		expect(line).toContain("?/200,000 tokens");
 	});
 
 	it("drops the detail stats before the path on a narrow line", () => {
@@ -253,7 +266,7 @@ describe("FooterComponent width handling", () => {
 		const line = stripAnsi(footer.render(60)[0]);
 		expect(visibleWidth(line)).toBeLessThanOrEqual(60);
 		expect(line).toContain("/tmp/project:main");
-		expect(line).toContain("12.3%/200k (auto)");
+		expect(line).toContain("24,600 tokens 12.3%");
 		expect(line).not.toContain("↑12k");
 	});
 

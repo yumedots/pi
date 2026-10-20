@@ -30,6 +30,11 @@ export function formatTokens(count: number): string {
 	return `${Math.round(count / 1000000)}M`;
 }
 
+/** Format a token count exactly, with thousand separators, for example 198,234. */
+function formatExactTokens(count: number): string {
+	return count.toLocaleString("en-US");
+}
+
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
 	if (!home) return cwd;
 
@@ -289,7 +294,6 @@ interface SessionStats {
  * Computes token/context stats from session, gets git branch and extension statuses from provider.
  */
 export class FooterComponent implements Component {
-	private autoCompactEnabled = true;
 	private nerdFonts = false;
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
@@ -302,10 +306,6 @@ export class FooterComponent implements Component {
 
 	setSession(session: AgentSession): void {
 		this.session = session;
-	}
-
-	setAutoCompactEnabled(enabled: boolean): void {
-		this.autoCompactEnabled = enabled;
 	}
 
 	/** Show Nerd Font glyphs in front of the footer groups. */
@@ -395,6 +395,7 @@ export class FooterComponent implements Component {
 		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
 		const contextPercentValue = contextUsage?.percent ?? 0;
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
+		const contextTokens = contextUsage?.tokens ?? null;
 
 		// Replace home directory with ~
 		const cwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);
@@ -424,11 +425,10 @@ export class FooterComponent implements Component {
 
 		// Colorize context percentage based on usage
 		let contextPercentStr: string;
-		const autoIndicator = this.autoCompactEnabled ? " (auto)" : "";
 		const contextPercentDisplay =
-			contextPercent === "?"
-				? `?/${formatTokens(contextWindow)}${autoIndicator}`
-				: `${contextPercent}%/${formatTokens(contextWindow)}${autoIndicator}`;
+			contextTokens !== null && contextPercent !== "?"
+				? `${formatExactTokens(contextTokens)} tokens ${contextPercent}%`
+				: `?/${formatExactTokens(contextWindow)} tokens`;
 		if (contextPercentValue > 90) {
 			contextPercentStr = theme.fg("error", contextPercentDisplay);
 		} else if (contextPercentValue > 70) {
