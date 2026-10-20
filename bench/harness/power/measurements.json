@@ -1,0 +1,106 @@
+{
+  "date": "2026-10-20T05:10:51.660Z",
+  "idleBaseline": {
+    "drainMah": 7,
+    "seconds": 120,
+    "watt": 2.55
+  },
+  "measurements": [
+    {
+      "runtime": "node",
+      "workload": "the interactive mode until its first screen",
+      "iterations": 200,
+      "elapsedMs": 130922,
+      "before": {
+        "mah": 4921,
+        "percent": 95,
+        "millivolt": 12529,
+        "onAc": false
+      },
+      "after": {
+        "mah": 4828,
+        "percent": 95,
+        "millivolt": 12464,
+        "onAc": false
+      },
+      "drainedMah": 93,
+      "energyMwh": 1159.2,
+      "averagePowerWatt": 31.87,
+      "perIterationMs": 655,
+      "energyJoule": 4172.9,
+      "joulePerRun": 20.86
+    },
+    {
+      "runtime": "bun",
+      "workload": "the interactive mode until its first screen",
+      "iterations": 200,
+      "elapsedMs": 87873,
+      "before": {
+        "mah": 4828,
+        "percent": 95,
+        "millivolt": 12464,
+        "onAc": false
+      },
+      "after": {
+        "mah": 4775,
+        "percent": 94,
+        "millivolt": 12413,
+        "onAc": false
+      },
+      "drainedMah": 53,
+      "energyMwh": 657.9,
+      "averagePowerWatt": 26.95,
+      "perIterationMs": 439,
+      "energyJoule": 2368.4,
+      "joulePerRun": 11.84
+    },
+    {
+      "runtime": "binary",
+      "workload": "the interactive mode until its first screen",
+      "iterations": 200,
+      "elapsedMs": 97443,
+      "before": {
+        "mah": 4775,
+        "percent": 94,
+        "millivolt": 12413,
+        "onAc": false
+      },
+      "after": {
+        "mah": 4740,
+        "percent": 93,
+        "millivolt": 12423,
+        "onAc": false
+      },
+      "drainedMah": 35,
+      "energyMwh": 434.8,
+      "averagePowerWatt": 16.06,
+      "perIterationMs": 487,
+      "energyJoule": 1565.3,
+      "joulePerRun": 7.83
+    },
+    {
+      "runtime": "bun",
+      "workload": "an empty program on the runtime",
+      "iterations": 4000,
+      "elapsedMs": 24383,
+      "before": {
+        "mah": 4554,
+        "percent": 91,
+        "millivolt": 12174,
+        "onAc": false
+      },
+      "after": {
+        "mah": 4545,
+        "percent": 90,
+        "millivolt": 12157,
+        "onAc": false
+      },
+      "drainedMah": 9,
+      "energyMwh": 109.4,
+      "averagePowerWatt": 16.15,
+      "perIterationMs": 6,
+      "energyJoule": 393.9,
+      "joulePerRun": 0.1
+    }
+  ]
+}

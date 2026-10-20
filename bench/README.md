@@ -28,6 +28,11 @@ the model is on.
 `node bench/harness/heap-report.mjs <snapshot>` lists the biggest holders of a
 heap snapshot.
 
+`node bench/harness/power.mjs --workload tui --iterations 200` measures the
+power on the battery: it reads the charge of the pack before and after the
+workload and reports the energy. The machine has to run on its battery for
+it, because on AC power the battery does not discharge.
+
 The turn scenario needs a model. A local llama.cpp server is enough, see
 [the token report](tokens/RESULTS.md#reproduce).
 

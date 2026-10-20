@@ -84,11 +84,22 @@ declarations and the request. The rest is the model.
 
 ### The power
 
-The machine runs on AC power during the measurement, so the battery does not
-drain: the charge reads 95% before and after, and the milliamp hour reading
-is not refreshed during a run of a minute. The drain of a run is below what
-the system reports, so the power of a run is measured with the counters of the
-processor instead, which is what the energy follows:
+The machine runs on its battery for this measurement, so the drain is real.
+`bench/harness/power.mjs` reads the charge of the pack before and after a
+workload, and the energy follows from the charge and the voltage of the pack
+(12.7 V). The workload is the same for every runtime: the interactive mode
+started until it draws its first screen, 200 times.
+
+| Runtime | 200 startups | Drain | Energy | Average power | Energy per startup |
+| --- | --- | --- | --- | --- | --- |
+| node | 130.9 s | 93 mAh | 1.16 Wh | 31.9 W | 20.9 J |
+| bun | 87.9 s | 53 mAh | 0.66 Wh | 27.0 W | 11.8 J |
+| **the compiled binary** | 97.4 s | **35 mAh** | **0.44 Wh** | **16.1 W** | **7.8 J** |
+
+The machine drains 7 mAh (2.55 W) in an idle window of two minutes with
+nothing running, so the agent's own power is about 29 W on Node, 24 W on Bun
+and 13 W in the compiled binary. The same comparison in the counters of the
+processor, which do not depend on the machine's state:
 
 | | Instructions for the first screen | Instructions for a turn |
 | --- | --- | --- |
@@ -96,14 +107,15 @@ processor instead, which is what the energy follows:
 | bun | 3609M | 3648M |
 | the compiled binary | 3267M | 3179M |
 
-**The compiled binary runs the first screen in half the instructions of Node**
-(3267M against 6377M) and the interactive mode in half the cpu time (0.33 s
-against 0.60 s). The bundle has no module graph to resolve at startup, and
-Bun's compiler is cheaper than Node's on the same code.
+**The compiled binary starts the interactive mode in 37% of the energy of
+Node** (7.8 J against 20.9 J) and in 66% of the energy of Bun from source.
+It reaches the first screen in half the instructions of Node (3267M against
+6377M) and in half the cpu time (0.33 s against 0.60 s): the bundle has no
+module graph to resolve at startup, and Bun's compiler is cheaper than Node's
+on the same code.
 
-`bench/harness/soak.mjs` reads the battery before and after a run of any
-length, so the drain of a long run is measured on a machine that runs on the
-battery.
+`bench/harness/soak.mjs` reads the battery around a run of any length, so the
+drain of a long session is measured the same way.
 
 ## Under 10 MB is not reachable on a JavaScript runtime
 
