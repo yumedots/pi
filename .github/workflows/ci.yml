@@ -55,6 +55,52 @@ jobs:
       - name: Test
         run: PI_TEST_PACKAGE_MANAGER=bun ./scripts/test.sh
 
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Cache Bun packages
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+          sudo ln -s $(which fdfind) /usr/local/bin/fd
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Build the TypeScript original
+        run: bun run build
+
+      - name: Build the Rust port
+        run: |
+          rustc --version
+          cargo build -p rpi-cli --bin rpi
+        working-directory: rpi
+
+      # Runs every parity scenario on both sides against the golden traces in
+      # scripts/parity/golden and fails when a trace differs.
+      - name: Parity
+        run: node scripts/parity/run-all.mjs
+
   mcp-conformance:
     runs-on: ubuntu-latest
     steps:
