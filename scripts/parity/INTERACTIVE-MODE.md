@@ -1500,6 +1500,47 @@ wraps at 96 columns with the blank line above it, as the original does.
   visible. The markdown itself is identical — it is the trailing spacing of the
   transcript dock.
 
+**The empty-session handover works — and after the port's `take_pane_from_empty_session`
+helper landed, the two pickers that bail early are fixed too. Finding 28 is closed.**
+Live on the 19:21 binary:
+
+```
+/tree     → " The current session has no entries to navigate."   — visible in the pane
+/session  → " No saved sessions found. Sessions are created automatically in
+             interactive mode."                                   — visible in the pane
+```
+
+**The final state, measured on the 19:21 binary:**
+
+| scenario | identical steps | differing steps |
+|---|---|---|
+| startup | 2 / 2 | — |
+| panels | 5 / 5 | — |
+| prompt | 2 / 2 | — |
+| tool | 1 / 3 | 2 × **1 row** |
+| thinking | 1 / 2 | 1 × **1 row** |
+| markdown | 1 / 2 | 1 × **1 row** |
+
+**The import path is the one that is still broken, and it is diagnosed.** The port
+reports that the restored transcript shows **no assistant reply, no thinking block and
+no tool panel** — `rpi-cli/src/interactive_tui/sessions.rs` (`render_session_history`,
+around `:281`) is the path the port's own `/import` command takes, and it is not
+rendering the entries the way the live path does. That is the interactive mode's half
+of the `ts -> rust` blocker, and it is the last check in my area.
+
+**Two differences remain in the whole interactive mode, and both are one line.**
+
+1. **One blank line before a tool call row.** The original's `read tool-input.txt` is
+   at row 16; the port's is at row 17. Everything else about the panel — the call
+   row, the result region, the assistant's reply — is identical.
+2. **The thinking summary's duration.** `+ Thought · 0.1s` against
+   `+ Thought · 0.0s` — the same formatter, a different measured elapsed time.
+
+(The markdown pane's single row is the same one-line offset seen through the
+follow-end viewport: the port's transcript is one line longer, so the viewport cuts
+one line off the top and the first list item is not visible. The markdown itself is
+identical.)
+
 **The empty-session handover works — and the two pickers that bail early are the
 remainder of finding 28.** Live on the 19:13 binary:
 
