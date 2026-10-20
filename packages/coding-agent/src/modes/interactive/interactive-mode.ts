@@ -713,7 +713,7 @@ export class InteractiveMode {
 			},
 			...(command.aliases ?? []).map((alias) => ({
 				name: alias,
-				description: `${command.description} (alias for /${command.name})`,
+				description: command.description,
 			})),
 		]);
 
