@@ -6,7 +6,7 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
-  // packages/coding-agent/src/core/extensions/types.ts
+
   var types_exports = {};
   __export(types_exports, {
     defineTool: () => defineTool,
@@ -51,7 +51,7 @@
     return event.toolName === toolName;
   }
 
-  // rpi/crates/rpi-js/js/pi-agent-core.ts
+
   var pi_agent_core_exports = {};
   __export(pi_agent_core_exports, {
     AGENT_RUNTIME_AVAILABLE: () => AGENT_RUNTIME_AVAILABLE,
@@ -60,13 +60,13 @@
   var AGENT_RUNTIME_AVAILABLE = false;
   var pi_agent_core_default = { AGENT_RUNTIME_AVAILABLE };
 
-  // rpi/crates/rpi-js/js/pi-ai.ts
+
   var pi_ai_exports = {};
   __export(pi_ai_exports, {
     Type: () => typebox_exports
   });
 
-  // ../pi/node_modules/typebox/build/index.mjs
+
   var build_exports = {};
   __export(build_exports, {
     AddImmutable: () => AddImmutable,
@@ -358,7 +358,7 @@
     default: () => build_default
   });
 
-  // ../pi/node_modules/typebox/build/system/memory/memory.mjs
+
   var memory_exports = {};
   __export(memory_exports, {
     Assign: () => Assign,
@@ -369,7 +369,7 @@
     Update: () => Update
   });
 
-  // ../pi/node_modules/typebox/build/system/memory/metrics.mjs
+
   var Metrics = {
     assign: 0,
     create: 0,
@@ -378,7 +378,7 @@
     update: 0
   };
 
-  // ../pi/node_modules/typebox/build/system/settings/settings.mjs
+
   var settings_exports = {};
   __export(settings_exports, {
     Get: () => Get,
@@ -386,7 +386,7 @@
     Set: () => Set2
   });
 
-  // ../pi/node_modules/typebox/build/guard/emit.mjs
+
   var emit_exports = {};
   __export(emit_exports, {
     And: () => And,
@@ -436,7 +436,7 @@
     Ternary: () => Ternary
   });
 
-  // ../pi/node_modules/typebox/build/guard/guard.mjs
+
   var guard_exports = {};
   __export(guard_exports, {
     Counted: () => Counted,
@@ -479,7 +479,7 @@
     Values: () => Values
   });
 
-  // ../pi/node_modules/typebox/build/guard/string.mjs
+
   function IsBetween(value, min, max) {
     return value >= min && value <= max;
   }
@@ -586,7 +586,7 @@
     }
   }
 
-  // ../pi/node_modules/typebox/build/guard/guard.mjs
+
   function IsArray(value) {
     return Array.isArray(value);
   }
@@ -742,7 +742,7 @@
     return IsArray(left) ? DeepEqualArray(left, right) : IsObject(left) ? DeepEqualObject(left, right) : IsEqual(left, right);
   }
 
-  // ../pi/node_modules/typebox/build/guard/emit.mjs
+
   var identifierRegExp = /^[\p{ID_Start}_$][\p{ID_Continue}_$\u200C\u200D]*$/u;
   function IsIdentifier(value) {
     return identifierRegExp.test(value);
@@ -886,7 +886,7 @@
     return `Guard.IsMultipleOf(${dividend}, ${divisor})`;
   }
 
-  // ../pi/node_modules/typebox/build/guard/globals.mjs
+
   var globals_exports = {};
   __export(globals_exports, {
     IsBigInt64Array: () => IsBigInt64Array,
@@ -967,10 +967,10 @@
     return value instanceof globalThis.Map;
   }
 
-  // ../pi/node_modules/typebox/build/guard/index.mjs
+
   var guard_default = guard_exports;
 
-  // ../pi/node_modules/typebox/build/system/settings/settings.mjs
+
   var settings = {
     immutableTypes: false,
     maxErrors: 8,
@@ -1003,18 +1003,18 @@
     return settings;
   }
 
-  // ../pi/node_modules/typebox/build/system/memory/freeze.mjs
+
   function Freeze(value) {
     return settings_exports.Get().immutableTypes ? Object.freeze(value) : value;
   }
 
-  // ../pi/node_modules/typebox/build/system/memory/assign.mjs
+
   function Assign(left, right) {
     Metrics.assign += 1;
     return Freeze({ ...left, ...right });
   }
 
-  // ../pi/node_modules/typebox/build/system/memory/clone.mjs
+
   function FromClassInstance(value) {
     return value;
   }
@@ -1074,7 +1074,7 @@
     return FromValue(value);
   }
 
-  // ../pi/node_modules/typebox/build/system/memory/create.mjs
+
   function MergeHidden(left, right) {
     for (const key of Object.keys(right)) {
       Object.defineProperty(left, key, {
@@ -1096,7 +1096,7 @@
     return Freeze(withHidden);
   }
 
-  // ../pi/node_modules/typebox/build/system/memory/discard.mjs
+
   function Discard(value, propertyKeys) {
     Metrics.discard += 1;
     const result = {};
@@ -1110,7 +1110,7 @@
     return Freeze(result);
   }
 
-  // ../pi/node_modules/typebox/build/system/memory/update.mjs
+
   function Update(current, hidden, enumerable) {
     Metrics.update += 1;
     const settings2 = settings_exports.Get();
@@ -1134,7 +1134,7 @@
     return Freeze(result);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/schema.mjs
+
   function IsKind(value, kind) {
     return guard_exports.IsObject(value) && guard_exports.HasPropertyKey(value, "~kind") && guard_exports.IsEqual(value["~kind"], kind);
   }
@@ -1142,7 +1142,7 @@
     return guard_exports.IsObject(value);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/deferred.mjs
+
   function Deferred(action, parameters, options) {
     return memory_exports.Create({ "~kind": "Deferred" }, { type: "deferred", action, parameters, options }, {});
   }
@@ -1150,7 +1150,7 @@
     return IsKind(value, "Deferred");
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/readonly/instantiate_add.mjs
+
   function AddReadonlyOperation(type) {
     return memory_exports.Update(type, { "~readonly": true }, {});
   }
@@ -1163,7 +1163,7 @@
     return AddReadonlyAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/optional/instantiate_add.mjs
+
   function AddOptionalOperation(type) {
     return memory_exports.Update(type, { "~optional": true }, {});
   }
@@ -1176,7 +1176,7 @@
     return AddOptionalAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/array.mjs
+
   function _Array_(items, options) {
     return memory_exports.Create({ "~kind": "Array" }, { type: "array", items }, options);
   }
@@ -1187,7 +1187,7 @@
     return memory_exports.Discard(type, ["~kind", "type", "items"]);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/constructor.mjs
+
   function Constructor(parameters, instanceType, options = {}) {
     return memory_exports.Create({ "~kind": "Constructor" }, { type: "constructor", parameters, instanceType }, options);
   }
@@ -1198,7 +1198,7 @@
     return memory_exports.Discard(type, ["~kind", "type", "parameters", "instanceType"]);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/function.mjs
+
   function _Function_(parameters, returnType, options = {}) {
     return memory_exports.Create({ ["~kind"]: "Function" }, { type: "function", parameters, returnType }, options);
   }
@@ -1209,7 +1209,7 @@
     return memory_exports.Discard(type, ["~kind", "type", "parameters", "returnType"]);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/ref.mjs
+
   function Ref(ref, options) {
     return memory_exports.Create({ ["~kind"]: "Ref" }, { $ref: ref }, options);
   }
@@ -1217,7 +1217,7 @@
     return IsKind(value, "Ref");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/generic.mjs
+
   function Generic(parameters, expression) {
     return memory_exports.Create({ "~kind": "Generic" }, { type: "generic", parameters, expression });
   }
@@ -1225,7 +1225,7 @@
     return IsKind(value, "Generic");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/any.mjs
+
   function Any(options) {
     return memory_exports.Create({ ["~kind"]: "Any" }, {}, options);
   }
@@ -1233,7 +1233,7 @@
     return IsKind(value, "Any");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/never.mjs
+
   var NeverPattern = "(?!)";
   function Never(options) {
     return memory_exports.Create({ "~kind": "Never" }, { not: {} }, options);
@@ -1242,7 +1242,7 @@
     return IsKind(value, "Never");
   }
 
-  // ../pi/node_modules/typebox/build/type/action/_add_optional.mjs
+
   function AddOptionalDeferred(type, options = {}) {
     return Deferred("AddOptional", [type], options);
   }
@@ -1250,7 +1250,7 @@
     return AddOptionalAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/_optional.mjs
+
   function Optional(type) {
     return AddOptional(type);
   }
@@ -1258,7 +1258,7 @@
     return IsSchema(value) && guard_exports.HasPropertyKey(value, "~optional");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/properties.mjs
+
   function RequiredArray(properties) {
     return guard_exports.Keys(properties).filter((key) => !IsOptional(properties[key]));
   }
@@ -1269,7 +1269,7 @@
     return guard_exports.Values(properties);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/object.mjs
+
   function _Object_(properties, options = {}) {
     const requiredKeys = RequiredArray(properties);
     const required = requiredKeys.length > 0 ? { required: requiredKeys } : {};
@@ -1282,7 +1282,7 @@
     return memory_exports.Discard(type, ["~kind", "type", "properties", "required"]);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/unknown.mjs
+
   function Unknown(options) {
     return memory_exports.Create({ ["~kind"]: "Unknown" }, {}, options);
   }
@@ -1290,7 +1290,7 @@
     return IsKind(value, "Unknown");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/cyclic.mjs
+
   function Cyclic($defs, $ref, options) {
     const defs = guard_exports.Keys($defs).reduce((result, key) => {
       return { ...result, [key]: memory_exports.Update($defs[key], {}, { $id: key }) };
@@ -1304,7 +1304,7 @@
     return memory_exports.Discard(type, ["~kind", "$defs", "$ref"]);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/unsafe.mjs
+
   function Unsafe(schema) {
     return memory_exports.Update(schema, { ["~unsafe"]: null }, {});
   }
@@ -1312,7 +1312,7 @@
     return guard_exports.IsObjectNotArray(value) && guard_exports.HasPropertyKey(value, "~unsafe") && guard_exports.IsNull(value["~unsafe"]);
   }
 
-  // ../pi/node_modules/typebox/build/system/arguments/arguments.mjs
+
   var arguments_exports = {};
   __export(arguments_exports, {
     Match: () => Match
@@ -1323,7 +1323,7 @@
     })();
   }
 
-  // ../pi/node_modules/typebox/build/type/types/infer.mjs
+
   function Infer(...args) {
     const [name, extends_] = arguments_exports.Match(args, {
       2: (name2, extends_2) => [name2, extends_2, extends_2],
@@ -1335,7 +1335,7 @@
     return IsKind(value, "Infer");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/dependent.mjs
+
   function Dependent(if_, then_, else_, options = {}) {
     return memory_exports.Create({ "~kind": "Dependent" }, { if: if_, then: then_, else: else_ }, options);
   }
@@ -1346,7 +1346,7 @@
     return memory_exports.Discard(type, ["~kind", "if", "then", "else"]);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/enum/typescript_enum_to_enum_values.mjs
+
   function IsTypeScriptEnumLike(value) {
     return guard_exports.IsObjectNotArray(value);
   }
@@ -1355,7 +1355,7 @@
     return keys.reduce((result, key) => [...result, type[key]], []);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/enum.mjs
+
   function IsEnumValue(value) {
     return guard_exports.IsString(value) || guard_exports.IsNumber(value);
   }
@@ -1367,7 +1367,7 @@
     return IsKind(value, "Enum");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/intersect.mjs
+
   function Intersect(types, options = {}) {
     return memory_exports.Create({ "~kind": "Intersect" }, { allOf: types }, options);
   }
@@ -1378,14 +1378,14 @@
     return memory_exports.Discard(type, ["~kind", "allOf"]);
   }
 
-  // ../pi/node_modules/typebox/build/system/environment/environment.mjs
+
   var environment_exports = {};
   __export(environment_exports, {
     CanEvaluate: () => CanEvaluate,
     Evaluate: () => Evaluate
   });
 
-  // ../pi/node_modules/typebox/build/system/environment/evaluate.mjs
+
   var supported = void 0;
   function TryEvaluate() {
     try {
@@ -1404,19 +1404,19 @@
     return new globalThis.Function(...args);
   }
 
-  // ../pi/node_modules/typebox/build/system/hashing/hash.mjs
+
   var hash_exports = {};
   __export(hash_exports, {
     Hash: () => Hash,
     HashCode: () => HashCode
   });
 
-  // ../pi/node_modules/typebox/build/system/unreachable/unreachable.mjs
+
   function Unreachable() {
     throw new Error("Unreachable");
   }
 
-  // ../pi/node_modules/typebox/build/system/hashing/hash.mjs
+
   function InstanceKeys(value) {
     const propertyKeys = /* @__PURE__ */ new Set();
     let current = value;
@@ -1550,7 +1550,7 @@
     return HashCode(value).toString(16).padStart(16, "0");
   }
 
-  // ../pi/node_modules/typebox/build/system/locale/en_US.mjs
+
   function en_US(error) {
     switch (error.keyword) {
       case "additionalProperties":
@@ -1621,13 +1621,13 @@
     }
   }
 
-  // ../pi/node_modules/typebox/build/system/locale/_config.mjs
+
   var locale = en_US;
   function Get2() {
     return locale;
   }
 
-  // ../pi/node_modules/typebox/build/type/types/_codec.mjs
+
   var EncodeBuilder = class {
     constructor(type, decode) {
       this.type = type;
@@ -1666,7 +1666,7 @@
     return IsSchema(value) && guard_exports.HasPropertyKey(value, "~codec") && guard_exports.IsObject(value["~codec"]) && guard_exports.HasPropertyKey(value["~codec"], "encode") && guard_exports.HasPropertyKey(value["~codec"], "decode");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/_immutable.mjs
+
   function Immutable(type) {
     return AddImmutable(type);
   }
@@ -1674,7 +1674,7 @@
     return IsSchema(value) && guard_exports.HasPropertyKey(value, "~immutable");
   }
 
-  // ../pi/node_modules/typebox/build/type/action/_add_readonly.mjs
+
   function AddReadonlyDeferred(type, options = {}) {
     return Deferred("AddReadonly", [type], options);
   }
@@ -1682,7 +1682,7 @@
     return AddReadonlyAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/_readonly.mjs
+
   function Readonly(type) {
     return AddReadonly(type);
   }
@@ -1690,7 +1690,7 @@
     return IsSchema(value) && guard_exports.HasPropertyKey(value, "~readonly");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/_refine.mjs
+
   function RefineAdd(type, refinement) {
     const refinements = IsRefine(type) ? [...type["~refine"], refinement] : [refinement];
     return memory_exports.Update(type, { "~refine": refinements }, {});
@@ -1709,7 +1709,7 @@
     return IsSchema(value) && guard_exports.HasPropertyKey(value, "~refine") && guard_exports.IsArray(value["~refine"]) && guard_exports.Every(value["~refine"], 0, (value2) => IsRefinement(value2));
   }
 
-  // ../pi/node_modules/typebox/build/type/types/bigint.mjs
+
   var BigIntPattern = "-?(?:0|[1-9][0-9]*)n";
   function BigInt2(options) {
     return memory_exports.Create({ "~kind": "BigInt" }, { type: "bigint" }, options);
@@ -1718,7 +1718,7 @@
     return IsKind(value, "BigInt");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/boolean.mjs
+
   function Boolean2(options) {
     return memory_exports.Create({ "~kind": "Boolean" }, { type: "boolean" }, options);
   }
@@ -1726,7 +1726,7 @@
     return IsKind(value, "Boolean");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/identifier.mjs
+
   function Identifier(name) {
     return memory_exports.Create({ "~kind": "Identifier" }, { name });
   }
@@ -1734,7 +1734,7 @@
     return IsKind(value, "Identifier");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/integer.mjs
+
   var IntegerPattern = "-?(?:0|[1-9][0-9]*)";
   function Integer(options) {
     return memory_exports.Create({ "~kind": "Integer" }, { type: "integer" }, options);
@@ -1743,7 +1743,7 @@
     return IsKind(value, "Integer");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/literal.mjs
+
   var InvalidLiteralValue = class extends Error {
     constructor(value) {
       super(`Invalid Literal value`);
@@ -1782,7 +1782,7 @@
     return IsKind(value, "Literal");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/null.mjs
+
   function Null(options) {
     return memory_exports.Create({ "~kind": "Null" }, { type: "null" }, options);
   }
@@ -1790,7 +1790,7 @@
     return IsKind(value, "Null");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/number.mjs
+
   var NumberPattern = "-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?";
   function Number2(options) {
     return memory_exports.Create({ "~kind": "Number" }, { type: "number" }, options);
@@ -1799,7 +1799,7 @@
     return IsKind(value, "Number");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/symbol.mjs
+
   function Symbol2(options) {
     return memory_exports.Create({ "~kind": "Symbol" }, { type: "symbol" }, options);
   }
@@ -1807,7 +1807,7 @@
     return IsKind(value, "Symbol");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/parameter.mjs
+
   function Parameter(...args) {
     const [name, extends_, equals] = arguments_exports.Match(args, {
       3: (name2, extends_2, equals2) => [name2, extends_2, equals2],
@@ -1820,7 +1820,7 @@
     return IsKind(value, "Parameter");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/string.mjs
+
   var StringPattern = ".*";
   function String2(options) {
     return memory_exports.Create({ "~kind": "String" }, { type: "string" }, options);
@@ -1829,7 +1829,7 @@
     return IsKind(value, "String");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/union.mjs
+
   function Union(anyOf, options = {}) {
     return memory_exports.Create({ "~kind": "Union" }, { anyOf }, options);
   }
@@ -1840,14 +1840,14 @@
     return memory_exports.Discard(type, ["~kind", "anyOf"]);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/patterns/pattern.mjs
+
   function ParsePatternIntoTypes(pattern) {
     const parsed = Pattern(pattern);
     const result = guard_exports.IsEqual(parsed.length, 2) ? parsed[0] : [];
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/template_literal/is_finite.mjs
+
   function FromLiteral(_value) {
     return true;
   }
@@ -1866,12 +1866,12 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/template_literal/create.mjs
+
   function TemplateLiteralCreate(pattern) {
     return memory_exports.Create({ ["~kind"]: "TemplateLiteral" }, { type: "string", pattern }, {});
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/template_literal/decode.mjs
+
   function FromLiteralPush(variants, value, result = []) {
     return guard_exports.ShiftLeft(variants, (left, right) => FromLiteralPush(right, value, [...result, `${left}${value}`]), () => result);
   }
@@ -1914,24 +1914,24 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/record_create.mjs
+
   function CreateRecord(key, value) {
     const type = "object";
     const patternProperties = { [key]: value };
     return memory_exports.Create({ ["~kind"]: "Record" }, { type, patternProperties });
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/from_key_any.mjs
+
   function FromAnyKey(value) {
     return CreateRecord(StringKey, value);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/from_key_boolean.mjs
+
   function FromBooleanKey(value) {
     return _Object_({ true: value, false: value });
   }
 
-  // ../pi/node_modules/typebox/build/type/types/tuple.mjs
+
   function Tuple(types, options = {}) {
     const [items, minItems, additionalItems] = [types, types.length, false];
     return memory_exports.Create({ ["~kind"]: "Tuple" }, { type: "array", additionalItems, items, minItems }, options);
@@ -1943,7 +1943,7 @@
     return memory_exports.Discard(type, ["~kind", "type", "items", "minItems", "additionalItems"]);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/readonly/instantiate_remove.mjs
+
   function RemoveReadonlyOperation(type) {
     return memory_exports.Discard(type, ["~readonly"]);
   }
@@ -1956,7 +1956,7 @@
     return RemoveReadonlyAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/_remove_readonly.mjs
+
   function RemoveReadonlyDeferred(type, options = {}) {
     return Deferred("RemoveReadonly", [type], options);
   }
@@ -1964,7 +1964,7 @@
     return RemoveReadonlyAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/optional/instantiate_remove.mjs
+
   function RemoveOptionalOperation(type) {
     return memory_exports.Discard(type, ["~optional"]);
   }
@@ -1977,7 +1977,7 @@
     return RemoveOptionalAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/_remove_optional.mjs
+
   function RemoveOptionalDeferred(type, options = {}) {
     return Deferred("RemoveOptional", [type], options);
   }
@@ -1985,7 +1985,7 @@
     return RemoveOptionalAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/tuple/to_object.mjs
+
   function TupleElementsToProperties(types) {
     const result = types.reduceRight((result2, right, index3) => {
       return { [index3]: right, ...result2 };
@@ -1998,7 +1998,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/evaluate/composite.mjs
+
   function CanComposite(type) {
     return IsObject3(type) || IsTuple(type);
   }
@@ -2037,7 +2037,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/evaluate/narrow.mjs
+
   function NarrowCompareRule(left, right) {
     const result = Compare(left, right);
     return guard_exports.IsEqual(result, CompareResultLeftInside) ? left : guard_exports.IsEqual(result, CompareResultRightInside) ? right : guard_exports.IsEqual(result, CompareResultEqual) ? right : Never();
@@ -2051,7 +2051,7 @@
     return IsNever(left) ? left : IsAny(left) ? left : IsUnknown(left) ? right : IsNever(right) ? right : IsAny(right) ? right : IsUnknown(right) ? left : NarrowCompositeRule(left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/evaluate/distribute.mjs
+
   function ShouldEvaluate(left, right) {
     const result = IsUnion(left) || IsUnion(right);
     return result;
@@ -2073,7 +2073,7 @@
     return guard_exports.ShiftLeft(types, (left, right) => IsUnion(left) ? Distribute(right, DistributeUnion(left.anyOf, result)) : Distribute(right, DistributeType(left, result)), () => result);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/exclude/operation.mjs
+
   function ExcludeType(left, right) {
     const check = Extends({}, left, right);
     const result = result_exports.IsExtendsTrueLike(check) ? [] : [left];
@@ -2090,7 +2090,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/evaluate/evaluate.mjs
+
   function EvaluateDependent(if_, then_, else_) {
     const intersected = EvaluateIntersect([if_, then_]);
     const excluded = ExcludeOperation(else_, if_);
@@ -2125,43 +2125,43 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/from_key_enum.mjs
+
   function FromEnumKey(values, value) {
     const unionKey = EvaluateEnum(values);
     const result = FromKey(unionKey, value);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/from_key_integer.mjs
+
   function FromIntegerKey(_key, value) {
     const result = CreateRecord(IntegerKey, value);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/from_key_intersect.mjs
+
   function FromIntersectKey(types, value) {
     const evaluatedKey = EvaluateIntersect(types);
     const result = FromKey(evaluatedKey, value);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/from_key_literal.mjs
+
   function FromLiteralKey(key, value) {
     return guard_exports.IsString(key) || guard_exports.IsNumber(key) ? _Object_({ [key]: value }) : guard_exports.IsEqual(key, false) ? _Object_({ false: value }) : guard_exports.IsEqual(key, true) ? _Object_({ true: value }) : _Object_({});
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/from_key_number.mjs
+
   function FromNumberKey(_key, value) {
     const result = CreateRecord(NumberKey, value);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/from_key_string.mjs
+
   function FromStringKey(key, value) {
     return guard_exports.HasPropertyKey(key, "pattern") && (guard_exports.IsString(key.pattern) || key.pattern instanceof RegExp) ? CreateRecord(key.pattern.toString(), value) : CreateRecord(StringKey, value);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/from_key_template_literal.mjs
+
   function FromTemplateKey(pattern, value) {
     const types = ParsePatternIntoTypes(pattern);
     const finite = IsTemplateLiteralFinite(types);
@@ -2169,7 +2169,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/evaluate/flatten.mjs
+
   function FlattenType(type) {
     const result = IsUnion(type) ? Flatten(type.anyOf) : [type];
     return result;
@@ -2178,7 +2178,7 @@
     return guard_exports.ShiftLeft(types, (left, right) => Flatten(right, [...result, ...FlattenType(left)]), () => result);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/from_key_union.mjs
+
   function StringOrNumberCheck(types) {
     return types.some((type) => IsString4(type) || IsNumber4(type) || IsInteger3(type));
   }
@@ -2201,13 +2201,13 @@
     return IsSchema(record) ? record : CreateObject(flattened, value);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/from_key.mjs
+
   function FromKey(key, value) {
     const result = IsAny(key) ? FromAnyKey(value) : IsBoolean4(key) ? FromBooleanKey(value) : IsEnum(key) ? FromEnumKey(key.enum, value) : IsInteger3(key) ? FromIntegerKey(key, value) : IsIntersect(key) ? FromIntersectKey(key.allOf, value) : IsLiteral(key) ? FromLiteralKey(key.const, value) : IsNumber4(key) ? FromNumberKey(key, value) : IsUnion(key) ? FromUnionKey(key.anyOf, value) : IsString4(key) ? FromStringKey(key, value) : IsTemplateLiteral(key) ? FromTemplateKey(key.pattern, value) : _Object_({});
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/record/instantiate.mjs
+
   function RecordAction(key, value, options) {
     const result = CanInstantiate([key]) ? memory_exports.Update(FromKey(key, value), {}, options) : RecordDeferred(key, value, options);
     return result;
@@ -2218,7 +2218,7 @@
     return RecordAction(instantiatedKey, instantiatedValue, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/record.mjs
+
   var IntegerKey = `^${IntegerPattern}$`;
   var NumberKey = `^${NumberPattern}$`;
   var StringKey = `^${StringPattern}$`;
@@ -2253,7 +2253,7 @@
     return memory_exports.Discard(type, ["~kind", "type", "patternProperties"]);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/rest.mjs
+
   function Rest(type) {
     return memory_exports.Create({ "~kind": "Rest" }, { type: "rest", items: type }, {});
   }
@@ -2261,7 +2261,7 @@
     return IsKind(value, "Rest");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/this.mjs
+
   function This(options) {
     return memory_exports.Create({ ["~kind"]: "This" }, { $ref: "#" }, options);
   }
@@ -2269,7 +2269,7 @@
     return IsKind(value, "This");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/undefined.mjs
+
   function Undefined(options) {
     return memory_exports.Create({ "~kind": "Undefined" }, { type: "undefined" }, options);
   }
@@ -2277,7 +2277,7 @@
     return IsKind(value, "Undefined");
   }
 
-  // ../pi/node_modules/typebox/build/type/types/void.mjs
+
   function Void(options) {
     return memory_exports.Create({ "~kind": "Void" }, { type: "void" }, options);
   }
@@ -2285,7 +2285,7 @@
     return IsKind(value, "Void");
   }
 
-  // ../pi/node_modules/typebox/build/type/script/mapping.mjs
+
   function IntrinsicOrCall(ref, parameters) {
     return guard_exports.IsEqual(ref, "Array") ? _Array_(parameters[0]) : guard_exports.IsEqual(ref, "Capitalize") ? CapitalizeDeferred(parameters[0]) : guard_exports.IsEqual(ref, "ConstructorParameters") ? ConstructorParametersDeferred(parameters[0]) : guard_exports.IsEqual(ref, "Evaluate") ? EvaluateDeferred(parameters[0]) : guard_exports.IsEqual(ref, "Exclude") ? ExcludeDeferred(parameters[0], parameters[1]) : guard_exports.IsEqual(ref, "Extract") ? ExtractDeferred(parameters[0], parameters[1]) : guard_exports.IsEqual(ref, "Index") ? IndexDeferred(parameters[0], parameters[1]) : guard_exports.IsEqual(ref, "InstanceType") ? InstanceTypeDeferred(parameters[0]) : guard_exports.IsEqual(ref, "Lowercase") ? LowercaseDeferred(parameters[0]) : guard_exports.IsEqual(ref, "NonNullable") ? NonNullableDeferred(parameters[0]) : guard_exports.IsEqual(ref, "Omit") ? OmitDeferred(parameters[0], parameters[1]) : guard_exports.IsEqual(ref, "Parameters") ? ParametersDeferred(parameters[0]) : guard_exports.IsEqual(ref, "Partial") ? PartialDeferred(parameters[0]) : guard_exports.IsEqual(ref, "Pick") ? PickDeferred(parameters[0], parameters[1]) : guard_exports.IsEqual(ref, "Readonly") ? ReadonlyObjectDeferred(parameters[0]) : guard_exports.IsEqual(ref, "KeyOf") ? KeyOfDeferred(parameters[0]) : guard_exports.IsEqual(ref, "Record") ? RecordDeferred(parameters[0], parameters[1]) : guard_exports.IsEqual(ref, "Required") ? RequiredDeferred(parameters[0]) : guard_exports.IsEqual(ref, "ReturnType") ? ReturnTypeDeferred(parameters[0]) : guard_exports.IsEqual(ref, "Uncapitalize") ? UncapitalizeDeferred(parameters[0]) : guard_exports.IsEqual(ref, "Uppercase") ? UppercaseDeferred(parameters[0]) : CallConstruct(Ref(ref), parameters);
   }
@@ -2713,7 +2713,7 @@
     return input;
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/internal/match.mjs
+
   function IsMatch(value) {
     return IsEqual(value.length, 2);
   }
@@ -2721,7 +2721,7 @@
     return IsMatch(input) ? ok(input[0], input[1]) : fail();
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/internal/take.mjs
+
   function TakeVariant(variant, input) {
     return IsEqual(input.indexOf(variant), 0) ? [variant, input.slice(variant.length)] : [];
   }
@@ -2734,7 +2734,7 @@
     return [];
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/internal/char.mjs
+
   function Range(start, end) {
     return Array.from({ length: end - start + 1 }, (_, i) => String.fromCharCode(start + i));
   }
@@ -2754,7 +2754,7 @@
   var DollarSign = "$";
   var Hyphen = "-";
 
-  // ../pi/node_modules/typebox/build/type/script/token/internal/trim.mjs
+
   var LineComment = "//";
   var OpenComment = "/*";
   var CloseComment = "*/";
@@ -2780,12 +2780,12 @@
     return trimmed.startsWith(OpenComment) ? Trim(DiscardMultilineComment(trimmed.slice(2))) : trimmed.startsWith(LineComment) ? Trim(DiscardLineComment(trimmed.slice(2))) : trimmed;
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/internal/optional.mjs
+
   function Optional2(value, input) {
     return Match2(Take([value], input), (Optional4, Rest2) => [Optional4, Rest2], () => ["", input]);
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/internal/many.mjs
+
   function IsDiscard(discard, input) {
     return discard.includes(input);
   }
@@ -2793,7 +2793,7 @@
     return Match2(Take(allowed, input), (Char, Rest2) => IsDiscard(discard, Char) ? Many(allowed, discard, Rest2, result) : Many(allowed, discard, Rest2, `${result}${Char}`), () => [result, input]);
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/unsigned_integer.mjs
+
   function TakeNonZero(input) {
     return Take(NonZero, input);
   }
@@ -2813,7 +2813,7 @@
     return TakeUnsignedInteger(Trim(input));
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/integer.mjs
+
   function TakeSign(input) {
     return Optional2(Hyphen, input);
   }
@@ -2829,7 +2829,7 @@
     return TakeSignedInteger(Trim(input));
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/bigint.mjs
+
   function TakeBigInt(input) {
     return Match2(
       Integer2(input),
@@ -2842,7 +2842,7 @@
     return TakeBigInt(input);
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/const.mjs
+
   function TakeConst(const_, input) {
     return Take([const_], input);
   }
@@ -2850,7 +2850,7 @@
     return IsEqual(const_, "") ? ["", input] : const_.startsWith(NewLine) ? TakeConst(const_, TrimWhitespace(input)) : const_.startsWith(WhiteSpace) ? TakeConst(const_, input) : TakeConst(const_, Trim(input));
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/ident.mjs
+
   var Initial = [...Alpha, UnderScore, DollarSign];
   function TakeInitial(input) {
     return Take(Initial, input);
@@ -2871,7 +2871,7 @@
     return TakeIdent(Trim(input));
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/unsigned_number.mjs
+
   var AllowedDigits2 = [...Digit, UnderScore];
   function IsLeadingDot(input) {
     return IsMatch(Take([Dot], input));
@@ -2907,7 +2907,7 @@
     return TakeUnsignedNumber(Trim(input));
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/number.mjs
+
   function TakeSign2(input) {
     return Optional2(Hyphen, input);
   }
@@ -2923,7 +2923,7 @@
     return TakeSignedNumber(Trim(input));
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/until.mjs
+
   function TakeOne(input) {
     const result = IsEqual(input, "") ? [] : [input.slice(0, 1), input.slice(1)];
     return result;
@@ -2939,7 +2939,7 @@
     );
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/span.mjs
+
   function MultiLine(start, end, input) {
     return Match2(
       Take([start], input),
@@ -2970,7 +2970,7 @@
     return multiLine ? MultiLine(start, end, Trim(input)) : SingleLine(start, end, Trim(input));
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/string.mjs
+
   function TakeInitial2(quotes, input) {
     return Take(quotes, input);
   }
@@ -2984,12 +2984,12 @@
     return TakeString(quotes, Trim(input));
   }
 
-  // ../pi/node_modules/typebox/build/type/script/token/until_1.mjs
+
   function Until_1(end, input) {
     return Match2(Until(end, input), (Until2, UntilRest) => IsEqual(Until2, "") ? [] : [Until2, UntilRest], () => []);
   }
 
-  // ../pi/node_modules/typebox/build/type/script/parser.mjs
+
   var If2 = (result, left, right = () => []) => result.length === 2 ? left(result) : right();
   var GenericParameterExtendsEquals = (input) => If2(If2(Ident(input), ([_0, input2]) => If2(Const("extends", input2), ([_1, input3]) => If2(Type(input3), ([_2, input4]) => If2(Const("=", input4), ([_3, input5]) => If2(Type(input5), ([_4, input6]) => [[_0, _1, _2, _3, _4], input6]))))), ([_0, input2]) => [GenericParameterExtendsEqualsMapping(_0), input2]);
   var GenericParameterExtends = (input) => If2(If2(Ident(input), ([_0, input2]) => If2(Const("extends", input2), ([_1, input3]) => If2(Type(input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [GenericParameterExtendsMapping(_0), input2]);
@@ -3119,14 +3119,14 @@
   var Module = (input) => If2(If2(ModuleDeclaration(input), ([_0, input2]) => If2(ModuleDeclarationList(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [ModuleMapping(_0), input2]);
   var Script = (input) => If2(If2(Module(input), ([_0, input2]) => [_0, input2], () => If2(GenericType(input), ([_0, input2]) => [_0, input2], () => If2(Type(input), ([_0, input2]) => [_0, input2], () => []))), ([_0, input2]) => [ScriptMapping(_0), input2]);
 
-  // ../pi/node_modules/typebox/build/type/engine/patterns/template.mjs
+
   function ParseTemplateIntoTypes(template) {
     const parsed = TemplateLiteralTypes(`\`${template}\``);
     const result = guard_exports.IsEqual(parsed.length, 2) ? parsed[0] : Unreachable();
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/template_literal/encode.mjs
+
   function JoinString(input) {
     return input.join("|");
   }
@@ -3183,7 +3183,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/template_literal/instantiate.mjs
+
   function TemplateLiteralAction(types, options) {
     const result = CanInstantiate(types) ? memory_exports.Update(TemplateLiteralEncode(types), {}, options) : TemplateLiteralDeferred(types, options);
     return result;
@@ -3193,7 +3193,7 @@
     return TemplateLiteralAction(instantiatedTypes, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/types/template_literal.mjs
+
   function TemplateLiteralDeferred(types, options = {}) {
     return Deferred("TemplateLiteral", [types], options);
   }
@@ -3215,7 +3215,7 @@
     return IsKind(value, "TemplateLiteral");
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/result.mjs
+
   var result_exports = {};
   __export(result_exports, {
     ExtendsFalse: () => ExtendsFalse,
@@ -3252,7 +3252,7 @@
     return IsExtendsTrueLike(result) ? true_(result.inferred) : false_();
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/extends_right.mjs
+
   function ExtendsRightInfer(inferred, name, left, right) {
     return Match3(ExtendsLeft(inferred, left, right), (checkInferred) => ExtendsTrue(memory_exports.Assign(memory_exports.Assign(inferred, checkInferred), { [name]: left })), () => ExtendsFalse());
   }
@@ -3280,12 +3280,12 @@
     return IsAny(right) ? ExtendsRightAny(inferred, left) : IsDependent(right) ? ExtendsRightDependent(inferred, left, right.if, right.then, right.else) : IsEnum(right) ? ExtendsRightEnum(inferred, left, right.enum) : IsInfer(right) ? ExtendsRightInfer(inferred, right.name, left, right.extends) : IsIntersect(right) ? ExtendsRightIntersect(inferred, left, right.allOf) : IsTemplateLiteral(right) ? ExtendsRightTemplateLiteral(inferred, left, right.pattern) : IsUnion(right) ? ExtendsRightUnion(inferred, left, right.anyOf) : IsUnknown(right) ? ExtendsTrue(inferred) : ExtendsFalse();
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/any.mjs
+
   function ExtendsAny(inferred, left, right) {
     return IsInfer(right) ? ExtendsRight(inferred, left, right) : IsAny(right) ? ExtendsTrue(inferred) : IsUnknown(right) ? ExtendsTrue(inferred) : ExtendsUnion(inferred);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/array.mjs
+
   function ExtendsImmutable(left, right) {
     const isImmutableLeft = IsImmutable(left);
     const isImmutableRight = IsImmutable(right);
@@ -3295,17 +3295,17 @@
     return IsArray3(right) ? ExtendsImmutable(arrayLeft, right) ? ExtendsLeft(inferred, left, right.items) : ExtendsFalse() : ExtendsRight(inferred, arrayLeft, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/bigint.mjs
+
   function ExtendsBigInt(inferred, left, right) {
     return IsBigInt3(right) ? ExtendsTrue(inferred) : ExtendsRight(inferred, left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/boolean.mjs
+
   function ExtendsBoolean(inferred, left, right) {
     return IsBoolean4(right) ? ExtendsTrue(inferred) : ExtendsRight(inferred, left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/parameters.mjs
+
   function ParameterCompare(inferred, left, leftRest, right, rightRest) {
     const checkLeft = IsInfer(right) ? left : right;
     const checkRight = IsInfer(right) ? right : left;
@@ -3323,44 +3323,44 @@
     return ParametersLeft(inferred, left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/return_type.mjs
+
   function ExtendsReturnType(inferred, left, right) {
     return IsVoid(right) ? ExtendsTrue(inferred) : ExtendsLeft(inferred, left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/constructor.mjs
+
   function ExtendsConstructor(inferred, parameters, returnType, right) {
     return IsAny(right) ? ExtendsTrue(inferred) : IsUnknown(right) ? ExtendsTrue(inferred) : IsConstructor3(right) ? Match3(ExtendsParameters(inferred, parameters, right["parameters"]), (inferred2) => ExtendsReturnType(inferred2, returnType, right["instanceType"]), () => ExtendsFalse()) : ExtendsFalse();
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/dependent.mjs
+
   function ExtendsDependent(inferred, if_, then_, else_, right) {
     return Match3(ExtendsLeft(inferred, if_, right), () => ExtendsLeft(inferred, then_, right), () => ExtendsLeft(inferred, else_, right));
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/enum.mjs
+
   function ExtendsEnum(inferred, left, right) {
     const evaluated = EvaluateEnum(left);
     return ExtendsLeft(inferred, evaluated, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/function.mjs
+
   function ExtendsFunction(inferred, parameters, returnType, right) {
     return IsAny(right) ? ExtendsTrue(inferred) : IsUnknown(right) ? ExtendsTrue(inferred) : IsFunction3(right) ? Match3(ExtendsParameters(inferred, parameters, right["parameters"]), (inferred2) => ExtendsReturnType(inferred2, returnType, right["returnType"]), () => ExtendsFalse()) : ExtendsFalse();
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/integer.mjs
+
   function ExtendsInteger(inferred, left, right) {
     return IsInteger3(right) ? ExtendsTrue(inferred) : IsNumber4(right) ? ExtendsTrue(inferred) : ExtendsRight(inferred, left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/intersect.mjs
+
   function ExtendsIntersect(inferred, left, right) {
     const evaluated = EvaluateIntersect(left);
     return ExtendsLeft(inferred, evaluated, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/literal.mjs
+
   function ExtendsLiteralValue(inferred, left, right) {
     return left === right ? ExtendsTrue(inferred) : ExtendsFalse();
   }
@@ -3380,22 +3380,22 @@
     return guard_exports.IsBigInt(left.const) ? ExtendsLiteralBigInt(inferred, left.const, right) : guard_exports.IsBoolean(left.const) ? ExtendsLiteralBoolean(inferred, left.const, right) : guard_exports.IsNumber(left.const) ? ExtendsLiteralNumber(inferred, left.const, right) : guard_exports.IsString(left.const) ? ExtendsLiteralString(inferred, left.const, right) : Unreachable();
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/never.mjs
+
   function ExtendsNever(inferred, left, right) {
     return IsInfer(right) ? ExtendsRight(inferred, left, right) : ExtendsTrue(inferred);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/null.mjs
+
   function ExtendsNull(inferred, left, right) {
     return IsNull3(right) ? ExtendsTrue(inferred) : ExtendsRight(inferred, left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/number.mjs
+
   function ExtendsNumber(inferred, left, right) {
     return IsNumber4(right) ? ExtendsTrue(inferred) : ExtendsRight(inferred, left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/object.mjs
+
   function ExtendsPropertyOptional(inferred, left, right) {
     return IsOptional(left) ? IsOptional(right) ? ExtendsTrue(inferred) : ExtendsFalse() : ExtendsTrue(inferred);
   }
@@ -3446,7 +3446,7 @@
     return IsRecord(right) ? ExtendsObjectToRecord(inferred, left, RecordPattern(right), RecordValue(right)) : IsObject3(right) ? ExtendsObjectToObject(inferred, left, right.properties) : ExtendsRight(inferred, _Object_(left), right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/record.mjs
+
   function FromObject3(inferred, properties) {
     return guard_exports.IsEqual(guard_exports.Keys(properties).length, 0) ? ExtendsTrue(inferred) : ExtendsFalse();
   }
@@ -3457,23 +3457,23 @@
     return IsRecord(right) ? FromRecord(inferred, RecordPatternToType(leftPattern), leftValue, RecordPatternToType(RecordPattern(right)), RecordValue(right)) : IsObject3(right) ? FromObject3(inferred, right.properties) : IsAny(right) ? ExtendsTrue(inferred) : IsUnknown(right) ? ExtendsTrue(inferred) : ExtendsFalse();
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/string.mjs
+
   function ExtendsString(inferred, left, right) {
     return IsString4(right) ? ExtendsTrue(inferred) : ExtendsRight(inferred, left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/symbol.mjs
+
   function ExtendsSymbol(inferred, left, right) {
     return IsSymbol3(right) ? ExtendsTrue(inferred) : ExtendsRight(inferred, left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/template_literal.mjs
+
   function ExtendsTemplateLiteral(inferred, left, right) {
     const evaluated = EvaluateTemplateLiteral(left);
     return ExtendsLeft(inferred, evaluated, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/inference.mjs
+
   function Inferrable(name, type) {
     return memory_exports.Create({ "~kind": "Inferrable" }, { name, type }, {});
   }
@@ -3498,7 +3498,7 @@
     return guard_exports.IsArray(results) ? ExtendsTrue(memory_exports.Assign(inferred, { [name]: Union(results) })) : ExtendsFalse();
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/tuple.mjs
+
   function Reverse(types) {
     return [...types].reverse();
   }
@@ -3540,12 +3540,12 @@
     return IsTuple(right) ? ExtendsTupleToTuple(inferred, instantiatedLeft, right.items) : IsArray3(right) ? ExtendsTupleToArray(inferred, instantiatedLeft, right.items) : ExtendsRight(inferred, Tuple(instantiatedLeft), right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/undefined.mjs
+
   function ExtendsUndefined(inferred, left, right) {
     return IsVoid(right) ? ExtendsTrue(inferred) : IsUndefined3(right) ? ExtendsTrue(inferred) : ExtendsRight(inferred, left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/union.mjs
+
   function ExtendsUnionSome(inferred, type, unionTypes) {
     return guard_exports.ShiftLeft(unionTypes, (head, tail) => Match3(ExtendsLeft(inferred, type, head), (inferred2) => ExtendsTrue(inferred2), () => ExtendsUnionSome(inferred, type, tail)), () => ExtendsFalse());
   }
@@ -3557,22 +3557,22 @@
     return IsInferable(inferrable) ? InferUnionResult(inferred, inferrable.name, left, inferrable.type) : IsUnion(right) ? ExtendsUnionLeft(inferred, left, right.anyOf) : ExtendsUnionLeft(inferred, left, [right]);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/unknown.mjs
+
   function ExtendsUnknown(inferred, left, right) {
     return IsInfer(right) ? ExtendsRight(inferred, left, right) : IsAny(right) ? ExtendsTrue(inferred) : IsUnknown(right) ? ExtendsTrue(inferred) : ExtendsFalse();
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/void.mjs
+
   function ExtendsVoid(inferred, left, right) {
     return IsVoid(right) ? ExtendsTrue(inferred) : ExtendsRight(inferred, left, right);
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/extends_left.mjs
+
   function ExtendsLeft(inferred, left, right) {
     return IsAny(left) ? ExtendsAny(inferred, left, right) : IsArray3(left) ? ExtendsArray(inferred, left, left.items, right) : IsBigInt3(left) ? ExtendsBigInt(inferred, left, right) : IsBoolean4(left) ? ExtendsBoolean(inferred, left, right) : IsConstructor3(left) ? ExtendsConstructor(inferred, left.parameters, left.instanceType, right) : IsDependent(left) ? ExtendsDependent(inferred, left.if, left.then, left.else, right) : IsEnum(left) ? ExtendsEnum(inferred, left.enum, right) : IsFunction3(left) ? ExtendsFunction(inferred, left.parameters, left.returnType, right) : IsInteger3(left) ? ExtendsInteger(inferred, left, right) : IsIntersect(left) ? ExtendsIntersect(inferred, left.allOf, right) : IsLiteral(left) ? ExtendsLiteral(inferred, left, right) : IsNever(left) ? ExtendsNever(inferred, left, right) : IsNull3(left) ? ExtendsNull(inferred, left, right) : IsNumber4(left) ? ExtendsNumber(inferred, left, right) : IsObject3(left) ? ExtendsObject(inferred, left.properties, right) : IsRecord(left) ? ExtendsRecord(inferred, RecordPattern(left), RecordValue(left), right) : IsString4(left) ? ExtendsString(inferred, left, right) : IsSymbol3(left) ? ExtendsSymbol(inferred, left, right) : IsTemplateLiteral(left) ? ExtendsTemplateLiteral(inferred, left.pattern, right) : IsTuple(left) ? ExtendsTuple(inferred, left.items, right) : IsUndefined3(left) ? ExtendsUndefined(inferred, left, right) : IsUnion(left) ? ExtendsUnion2(inferred, left.anyOf, right) : IsUnknown(left) ? ExtendsUnknown(inferred, left, right) : IsVoid(left) ? ExtendsVoid(inferred, left, right) : ExtendsFalse();
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/interface/instantiate.mjs
+
   function InterfaceOperation(heritage, properties) {
     const result = EvaluateIntersect([...heritage, _Object_(properties)]);
     return result;
@@ -3587,7 +3587,7 @@
     return InterfaceAction(instantiatedHeritage, instantiatedProperties, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/interface.mjs
+
   function InterfaceDeferred(heritage, properties, options = {}) {
     return Deferred("Interface", [heritage, properties], options);
   }
@@ -3598,7 +3598,7 @@
     return InterfaceAction(heritage, properties, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/cyclic/check.mjs
+
   function FromRef(stack, context, ref) {
     return stack.includes(ref) ? true : FromType3([...stack, ref], context, context[ref]);
   }
@@ -3617,7 +3617,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/cyclic/candidates.mjs
+
   function ResolveCandidateKeys(context, keys) {
     return keys.reduce((result, left) => {
       return CyclicCheck([left], context, context[left]) ? [...result, left] : result;
@@ -3629,7 +3629,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/cyclic/dependencies.mjs
+
   function FromRef2(context, ref, result) {
     return result.includes(ref) ? result : ref in context ? FromType4(context, context[ref], [...result, ref]) : Unreachable();
   }
@@ -3650,7 +3650,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/cyclic/extends.mjs
+
   function FromRef3(_ref) {
     return Any();
   }
@@ -3674,7 +3674,7 @@
     return CyclicAnyFromParameters(type.$defs, type.$ref);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/cyclic/instantiate.mjs
+
   function CyclicInterface(context, heritage, properties) {
     const instantiatedHeritage = InstantiateTypes(context, State([], []), heritage);
     const instantiatedProperties = InstantiateProperties({}, State([], []), properties);
@@ -3696,7 +3696,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/cyclic/target.mjs
+
   function Resolve(defs, ref) {
     return ref in defs ? IsRef(defs[ref]) ? Resolve(defs, defs[ref].$ref) : defs[ref] : Never();
   }
@@ -3705,7 +3705,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/extends/extends.mjs
+
   function Canonical(type) {
     return IsCyclic(type) ? CyclicExtends(type) : IsUnsafe(type) ? Unknown() : type;
   }
@@ -3715,7 +3715,7 @@
     return ExtendsLeft(inferred, canonicalLeft, canonicalRight);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/evaluate/compare.mjs
+
   var CompareResultEqual = 0;
   var CompareResultDisjoint = 1;
   var CompareResultLeftInside = 2;
@@ -3725,7 +3725,7 @@
     return result_exports.IsExtendsTrueLike(extendsCheck[0]) && result_exports.IsExtendsTrueLike(extendsCheck[1]) ? CompareResultEqual : result_exports.IsExtendsTrueLike(extendsCheck[0]) && result_exports.IsExtendsFalse(extendsCheck[1]) ? CompareResultLeftInside : result_exports.IsExtendsFalse(extendsCheck[0]) && result_exports.IsExtendsTrueLike(extendsCheck[1]) ? CompareResultRightInside : CompareResultDisjoint;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/evaluate/broaden.mjs
+
   function BroadenFilter(type, types, result = [], all = types) {
     return guard_exports.ShiftLeft(types, (left, right) => {
       const compare = Compare(type, left);
@@ -3757,7 +3757,7 @@
     return flattened;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/evaluate/instantiate.mjs
+
   function EvaluateAction(type, options) {
     const result = memory_exports.Update(EvaluateType(type), {}, options);
     return result;
@@ -3767,7 +3767,7 @@
     return EvaluateAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/call/distribute_arguments.mjs
+
   function CollectDistributionNames(expression, result = []) {
     return (
       // Conditional
@@ -3807,7 +3807,7 @@
     return IsDeferred(expression) && guard_exports.IsEqual(expression.action, "Conditional") ? Distribute2(zippedArguments) : IsDeferred(expression) && guard_exports.IsEqual(expression.action, "Mapped") ? Distribute2(zippedArguments) : [arguments_];
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/call/resolve_target.mjs
+
   function FromNotResolvable() {
     return ["(not-resolvable)", Never()];
   }
@@ -3827,7 +3827,7 @@
     return FromType6(context, "(anonymous)", target, arguments_);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/call/resolve_arguments.mjs
+
   function AssertArgumentExtends(name, type, extends_) {
     if (IsInfer(type) || IsCall(type) || result_exports.IsExtendsTrueLike(Extends({}, type, extends_)))
       return;
@@ -3851,7 +3851,7 @@
     return BindParameters(context, state2, parameters, arguments_);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/call/instantiate.mjs
+
   var instantiationDepth = 0;
   var instantiationCount = 0;
   function InstantiationAssert() {
@@ -3908,7 +3908,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/types/call.mjs
+
   function CallConstruct(target, arguments_) {
     return memory_exports.Create({ ["~kind"]: "Call" }, { type: "call", target, arguments: arguments_ }, {});
   }
@@ -3919,7 +3919,7 @@
     return IsKind(value, "Call");
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/immutable/instantiate_remove.mjs
+
   function RemoveImmutableOperation(type) {
     return memory_exports.Discard(type, ["~immutable"]);
   }
@@ -3932,35 +3932,35 @@
     return RemoveImmutableAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/intrinsics/mapping.mjs
+
   function ApplyMapping(mapping, value) {
     return mapping(value);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/intrinsics/from_literal.mjs
+
   function FromLiteral3(mapping, value) {
     return guard_exports.IsString(value) ? Literal(ApplyMapping(mapping, value)) : Literal(value);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/intrinsics/from_template_literal.mjs
+
   function FromTemplateLiteral(mapping, pattern) {
     const evaluated = EvaluateTemplateLiteral(pattern);
     const result = FromType7(mapping, evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/intrinsics/from_union.mjs
+
   function FromUnion2(mapping, types) {
     const result = types.map((type) => FromType7(mapping, type));
     return Union(result);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/intrinsics/from_type.mjs
+
   function FromType7(mapping, type) {
     return IsLiteral(type) ? FromLiteral3(mapping, type.const) : IsTemplateLiteral(type) ? FromTemplateLiteral(mapping, type.pattern) : IsUnion(type) ? FromUnion2(mapping, type.anyOf) : type;
   }
 
-  // ../pi/node_modules/typebox/build/type/action/capitalize.mjs
+
   function CapitalizeDeferred(type, options = {}) {
     return Deferred("Capitalize", [type], options);
   }
@@ -3968,7 +3968,7 @@
     return CapitalizeAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/lowercase.mjs
+
   function LowercaseDeferred(type, options = {}) {
     return Deferred("Lowercase", [type], options);
   }
@@ -3976,7 +3976,7 @@
     return LowercaseAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/uncapitalize.mjs
+
   function UncapitalizeDeferred(type, options = {}) {
     return Deferred("Uncapitalize", [type], options);
   }
@@ -3984,7 +3984,7 @@
     return UncapitalizeAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/uppercase.mjs
+
   function UppercaseDeferred(type, options = {}) {
     return Deferred("Uppercase", [type], options);
   }
@@ -3992,7 +3992,7 @@
     return UppercaseAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/intrinsics/instantiate.mjs
+
   var CapitalizeMapping = (input) => input[0].toUpperCase() + input.slice(1);
   var LowercaseMapping = (input) => input.toLowerCase();
   var UncapitalizeMapping = (input) => input[0].toLowerCase() + input.slice(1);
@@ -4030,7 +4030,7 @@
     return UppercaseAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/conditional.mjs
+
   function ConditionalDeferred(left, right, true_, false_, options = {}) {
     return Deferred("Conditional", [left, right, true_, false_], options);
   }
@@ -4038,7 +4038,7 @@
     return ConditionalAction({}, State([], []), left, right, true_, false_, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/conditional/instantiate.mjs
+
   function ConditionalOperation(context, state2, left, right, true_, false_) {
     const extendsResult = Extends(context, left, right);
     return result_exports.IsExtendsUnion(extendsResult) ? Union([InstantiateType(extendsResult.inferred, state2, true_), InstantiateType(context, state2, false_)]) : result_exports.IsExtendsTrue(extendsResult) ? InstantiateType(extendsResult.inferred, state2, true_) : InstantiateType(context, state2, false_);
@@ -4053,7 +4053,7 @@
     return ConditionalAction(context, state2, instantiatedLeft, instantiatedRight, true_, false_, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/constructor_parameters.mjs
+
   function ConstructorParametersDeferred(type, options = {}) {
     return Deferred("ConstructorParameters", [type], options);
   }
@@ -4061,7 +4061,7 @@
     return ConstructorParametersAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/constructor_parameters/instantiate.mjs
+
   function ConstructorParametersOperation(type) {
     const parameters = IsConstructor3(type) ? type["parameters"] : [];
     const instantiatedParameters = InstantiateElements({}, State([], []), parameters);
@@ -4077,7 +4077,7 @@
     return ConstructorParametersAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/exclude.mjs
+
   function ExcludeDeferred(left, right, options = {}) {
     return Deferred("Exclude", [left, right], options);
   }
@@ -4085,7 +4085,7 @@
     return ExcludeAction(left, right, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/exclude/instantiate.mjs
+
   function ExcludeAction(left, right, options) {
     const result = CanInstantiate([left, right]) ? memory_exports.Update(ExcludeOperation(left, right), {}, options) : ExcludeDeferred(left, right, options);
     return result;
@@ -4096,7 +4096,7 @@
     return ExcludeAction(instantiatedLeft, instantiatedRight, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/extract.mjs
+
   function ExtractDeferred(left, right, options = {}) {
     return Deferred("Extract", [left, right], options);
   }
@@ -4104,7 +4104,7 @@
     return ExtractAction(left, right, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/extract/operation.mjs
+
   function ExtractType(left, right) {
     const check = Extends({}, left, right);
     const result = result_exports.IsExtendsTrueLike(check) ? [left] : [];
@@ -4121,7 +4121,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/extract/instantiate.mjs
+
   function ExtractAction(left, right, options) {
     const result = CanInstantiate([left, right]) ? memory_exports.Update(ExtractOperation(left, right), {}, options) : ExtractDeferred(left, right, options);
     return result;
@@ -4132,7 +4132,7 @@
     return ExtractAction(instantiatedLeft, instantiatedRight, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/helpers/keys_to_indexer.mjs
+
   function KeysToLiterals(keys) {
     return keys.reduce((result, left) => {
       return IsLiteralValue(left) ? [...result, Literal(left)] : result;
@@ -4144,7 +4144,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/action/indexed.mjs
+
   function IndexDeferred(type, indexer, options = {}) {
     return Deferred("Index", [type, indexer], options);
   }
@@ -4153,21 +4153,21 @@
     return IndexAction(type, indexer, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/object/from_cyclic.mjs
+
   function FromCyclic(defs, ref) {
     const target = CyclicTarget(defs, ref);
     const result = FromType8(target);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/object/from_dependent.mjs
+
   function FromDependent(if_, then_, else_) {
     const evaluated = EvaluateDependent(if_, then_, else_);
     const result = FromType8(evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/object/from_intersect.mjs
+
   function CollapseIntersectProperties(left, right) {
     const leftKeys = guard_exports.Keys(left).filter((key) => !guard_exports.HasPropertyKey(right, key));
     const rightKeys = guard_exports.Keys(right).filter((key) => !guard_exports.HasPropertyKey(left, key));
@@ -4185,19 +4185,19 @@
     }, {});
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/object/from_object.mjs
+
   function FromObject4(properties) {
     return properties;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/object/from_tuple.mjs
+
   function FromTuple(types) {
     const object = TupleToObject(Tuple(types));
     const result = FromType8(object);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/object/from_union.mjs
+
   function CollapseUnionProperties(left, right) {
     const sharedKeys = guard_exports.Keys(left).filter((key) => key in right);
     const result = sharedKeys.reduce((result2, key) => {
@@ -4212,26 +4212,26 @@
     return guard_exports.ShiftLeft(types, (left, right) => ReduceVariants(right, FromType8(left)), () => Unreachable());
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/object/from_type.mjs
+
   function FromType8(type) {
     return IsCyclic(type) ? FromCyclic(type.$defs, type.$ref) : IsDependent(type) ? FromDependent(type.if, type.then, type.else) : IsIntersect(type) ? FromIntersect(type.allOf) : IsUnion(type) ? FromUnion3(type.anyOf) : IsTuple(type) ? FromTuple(type.items) : IsObject3(type) ? FromObject4(type.properties) : {};
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/object/collapse.mjs
+
   function CollapseToObject(type) {
     const properties = FromType8(type);
     const result = _Object_(properties);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/helpers/keys.mjs
+
   var integerKeyPattern = new RegExp("^(?:0|[1-9][0-9]*)$");
   function ConvertToIntegerKey(value) {
     const normal = `${value}`;
     return integerKeyPattern.test(normal) ? parseInt(normal) : value;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexed/from_array.mjs
+
   function NormalizeLiteral(value) {
     return Literal(ConvertToIntegerKey(value));
   }
@@ -4251,66 +4251,66 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexable/from_cyclic.mjs
+
   function FromCyclic2(defs, ref) {
     const target = CyclicTarget(defs, ref);
     const result = FromType9(target);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexable/from_dependent.mjs
+
   function FromDependent2(if_, then_, else_) {
     const evaluated = EvaluateDependent(if_, then_, else_);
     const result = FromType9(evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexable/from_enum.mjs
+
   function FromEnum(values) {
     const evaluated = EvaluateEnum(values);
     const result = FromType9(evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexable/from_intersect.mjs
+
   function FromIntersect2(types) {
     const evaluated = EvaluateIntersect(types);
     const result = FromType9(evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexable/from_literal.mjs
+
   function FromLiteral4(value) {
     const result = [`${value}`];
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexable/from_template_literal.mjs
+
   function FromTemplateLiteral2(pattern) {
     const evaluated = EvaluateTemplateLiteral(pattern);
     const result = FromType9(evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexable/from_union.mjs
+
   function FromUnion4(types) {
     return types.reduce((result, left) => {
       return [...result, ...FromType9(left)];
     }, []);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexable/from_type.mjs
+
   function FromType9(type) {
     return IsCyclic(type) ? FromCyclic2(type.$defs, type.$ref) : IsDependent(type) ? FromDependent2(type.if, type.then, type.else) : IsEnum(type) ? FromEnum(type.enum) : IsIntersect(type) ? FromIntersect2(type.allOf) : IsLiteral(type) ? FromLiteral4(type.const) : IsTemplateLiteral(type) ? FromTemplateLiteral2(type.pattern) : IsUnion(type) ? FromUnion4(type.anyOf) : [];
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexable/to_indexable_keys.mjs
+
   function ToIndexableKeys(type) {
     const result = FromType9(type);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/this/expand_this.mjs
+
   function FromTypes5(properties, types) {
     return types.map((type) => FromType10(properties, type));
   }
@@ -4322,7 +4322,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexed/from_object.mjs
+
   function IndexProperty(properties, key) {
     const selectedType = key in properties ? properties[key] : Never();
     const result = ExpandThis(properties, selectedType);
@@ -4356,7 +4356,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexed/array_indexer.mjs
+
   function ConvertLiteral(value) {
     return Literal(ConvertToIntegerKey(value));
   }
@@ -4367,7 +4367,7 @@
     return IsIntersect(type) ? Intersect(ArrayIndexerTypes(type.allOf)) : IsUnion(type) ? Union(ArrayIndexerTypes(type.anyOf)) : IsLiteral(type) ? ConvertLiteral(type.const) : type;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexed/from_tuple.mjs
+
   function IndexElementsWithIndexer(types, indexer) {
     return types.reduceRight((result, right, index3) => {
       const check = Extends({}, Literal(index3), indexer);
@@ -4389,12 +4389,12 @@
     );
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexed/from_type.mjs
+
   function FromType11(type, indexer) {
     return IsArray3(type) ? FromArray3(type.items, indexer) : IsObject3(type) ? FromObject5(type.properties, indexer) : IsTuple(type) ? FromTuple2(type.items, indexer) : Never();
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexed/instantiate.mjs
+
   function NormalizeType(type) {
     const result = IsCyclic(type) || IsDependent(type) || IsIntersect(type) || IsUnion(type) ? CollapseToObject(type) : type;
     return result;
@@ -4409,7 +4409,7 @@
     return IndexAction(instantiatedType, instantiatedIndexer, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/instance_type.mjs
+
   function InstanceTypeDeferred(type, options = {}) {
     return Deferred("InstanceType", [type], options);
   }
@@ -4417,7 +4417,7 @@
     return InstanceTypeAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/instance_type/instantiate.mjs
+
   function InstanceTypeOperation(type) {
     return IsConstructor3(type) ? type["instanceType"] : Never();
   }
@@ -4430,7 +4430,7 @@
     return InstanceTypeAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/keyof.mjs
+
   function KeyOfDeferred(type, options = {}) {
     return Deferred("KeyOf", [type], options);
   }
@@ -4438,17 +4438,17 @@
     return KeyOfAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/keyof/from_any.mjs
+
   function FromAny() {
     return Union([Number2(), String2(), Symbol2()]);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/keyof/from_array.mjs
+
   function FromArray4(_type) {
     return Number2();
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/keyof/from_object.mjs
+
   function FromPropertyKeys(keys) {
     const result = keys.reduce((result2, left) => {
       return IsLiteralValue(left) ? [...result2, Literal(ConvertToIntegerKey(left))] : Unreachable();
@@ -4462,23 +4462,23 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/keyof/from_record.mjs
+
   function FromRecord2(type) {
     return RecordKey(type);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/keyof/from_tuple.mjs
+
   function FromTuple3(types) {
     const result = types.map((_, index3) => Literal(index3));
     return EvaluateUnionFast(result);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/keyof/from_type.mjs
+
   function FromType12(type) {
     return IsAny(type) ? FromAny() : IsArray3(type) ? FromArray4(type.items) : IsObject3(type) ? FromObject6(type.properties) : IsRecord(type) ? FromRecord2(type) : IsTuple(type) ? FromTuple3(type.items) : Never();
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/keyof/instantiate.mjs
+
   function NormalizeType2(type) {
     const result = IsCyclic(type) || IsDependent(type) || IsIntersect(type) || IsUnion(type) ? CollapseToObject(type) : type;
     return result;
@@ -4491,7 +4491,7 @@
     return KeyOfAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/mapped.mjs
+
   function MappedDeferred(identifier, type, as, property, options = {}) {
     return Deferred("Mapped", [identifier, type, as, property], options);
   }
@@ -4499,7 +4499,7 @@
     return MappedAction({}, State([], []), identifier, type, as, property, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/mapped/mapped_variants.mjs
+
   function FromTemplateLiteral3(pattern) {
     const evaluated = EvaluateTemplateLiteral(pattern);
     const result = FromType13(evaluated);
@@ -4528,7 +4528,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/mapped/mapped_operation.mjs
+
   function CanonicalAs(instantiatedAs) {
     const result = IsTemplateLiteral(instantiatedAs) ? EvaluateTemplateLiteral(instantiatedAs.pattern) : instantiatedAs;
     return result;
@@ -4558,7 +4558,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/mapped/instantiate.mjs
+
   function MappedAction(context, state2, identifier, type, as, property, options) {
     const result = CanInstantiate([type]) ? memory_exports.Update(MappedOperation(context, state2, identifier, type, as, property), {}, options) : MappedDeferred(identifier, type, as, property, options);
     return result;
@@ -4568,7 +4568,7 @@
     return MappedAction(context, state2, identifier, instantiatedType, as, property, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/module/instantiate.mjs
+
   function InstantiateCyclics(context, declarations, cyclicKeys) {
     const declarationContext = memory_exports.Assign(context, declarations);
     const declarationKeys = guard_exports.Keys(declarations).filter((key) => cyclicKeys.includes(key));
@@ -4595,7 +4595,7 @@
     return instantiatedModule;
   }
 
-  // ../pi/node_modules/typebox/build/type/action/non_nullable.mjs
+
   function NonNullableDeferred(type, options = {}) {
     return Deferred("NonNullable", [type], options);
   }
@@ -4603,7 +4603,7 @@
     return NonNullableAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/non_nullable/instantiate.mjs
+
   function NonNullableOperation(type) {
     const excluded = Union([Null(), Undefined()]);
     return ExcludeAction(type, excluded, {});
@@ -4617,7 +4617,7 @@
     return NonNullableAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/omit.mjs
+
   function OmitDeferred(type, indexer, options = {}) {
     return Deferred("Omit", [type, indexer], options);
   }
@@ -4626,14 +4626,14 @@
     return OmitAction(type, indexer, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/indexable/to_indexable.mjs
+
   function ToIndexable(type) {
     const collapsed = CollapseToObject(type);
     const result = IsObject3(collapsed) ? collapsed.properties : Unreachable();
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/omit/from_type.mjs
+
   function FromKeys(properties, keys) {
     const result = guard_exports.Keys(properties).reduce((result2, key) => {
       return keys.includes(key) ? result2 : { ...result2, [key]: properties[key] };
@@ -4648,7 +4648,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/omit/instantiate.mjs
+
   function OmitAction(type, indexer, options) {
     const result = CanInstantiate([type, indexer]) ? memory_exports.Update(FromType14(type, indexer), {}, options) : OmitDeferred(type, indexer, options);
     return result;
@@ -4659,7 +4659,7 @@
     return OmitAction(instantiatedType, instantiatedIndexer, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/parameters.mjs
+
   function ParametersDeferred(type, options = {}) {
     return Deferred("Parameters", [type], options);
   }
@@ -4667,7 +4667,7 @@
     return ParametersAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/parameters/instantiate.mjs
+
   function ParametersOperation(type) {
     const parameters = IsFunction3(type) ? type["parameters"] : [];
     const instantiatedParameters = InstantiateElements({}, State([], []), parameters);
@@ -4683,7 +4683,7 @@
     return ParametersAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/partial.mjs
+
   function PartialDeferred(type, options = {}) {
     return Deferred("Partial", [type], options);
   }
@@ -4691,7 +4691,7 @@
     return PartialAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/partial/from_cyclic.mjs
+
   function FromCyclic3(defs, ref) {
     const target = CyclicTarget(defs, ref);
     const partial = FromType15(target);
@@ -4699,27 +4699,27 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/partial/from_dependent.mjs
+
   function FromDependent3(if_, then_, else_) {
     const evaluated = EvaluateDependent(if_, then_, else_);
     const result = FromType15(evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/partial/from_intersect.mjs
+
   function FromIntersect3(types) {
     const evaluated = EvaluateIntersect(types);
     const result = FromType15(evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/partial/from_union.mjs
+
   function FromUnion6(types) {
     const result = types.map((type) => FromType15(type));
     return Union(result);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/partial/from_object.mjs
+
   function FromObject7(properties) {
     const mapped = guard_exports.Keys(properties).reduce((result2, left) => {
       return { ...result2, [left]: AddOptional(properties[left]) };
@@ -4728,12 +4728,12 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/partial/from_type.mjs
+
   function FromType15(type) {
     return IsCyclic(type) ? FromCyclic3(type.$defs, type.$ref) : IsDependent(type) ? FromDependent3(type.if, type.then, type.else) : IsIntersect(type) ? FromIntersect3(type.allOf) : IsUnion(type) ? FromUnion6(type.anyOf) : IsObject3(type) ? FromObject7(type.properties) : _Object_({});
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/partial/instantiate.mjs
+
   function PartialAction(type, options) {
     const result = CanInstantiate([type]) ? memory_exports.Update(FromType15(type), {}, options) : PartialDeferred(type, options);
     return result;
@@ -4743,7 +4743,7 @@
     return PartialAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/pick.mjs
+
   function PickDeferred(type, indexer, options = {}) {
     return Deferred("Pick", [type, indexer], options);
   }
@@ -4752,7 +4752,7 @@
     return PickAction(type, indexer, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/pick/from_type.mjs
+
   function FromKeys2(properties, keys) {
     const result = guard_exports.Keys(properties).reduce((result2, key) => {
       return keys.includes(key) ? memory_exports.Assign(result2, { [key]: properties[key] }) : result2;
@@ -4767,7 +4767,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/pick/instantiate.mjs
+
   function PickAction(type, indexer, options) {
     const result = CanInstantiate([type, indexer]) ? memory_exports.Update(FromType16(type, indexer), {}, options) : PickDeferred(type, indexer, options);
     return result;
@@ -4778,7 +4778,7 @@
     return PickAction(instantiatedType, instantiatedIndexer, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/readonly_object.mjs
+
   function ReadonlyObjectDeferred(type, options = {}) {
     return Deferred("ReadonlyObject", [type], options);
   }
@@ -4787,13 +4787,13 @@
   }
   var ReadonlyType = ReadonlyObject;
 
-  // ../pi/node_modules/typebox/build/type/engine/readonly_object/from_array.mjs
+
   function FromArray5(type) {
     const result = AddImmutable(_Array_(type));
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/readonly_object/from_cyclic.mjs
+
   function FromCyclic4(defs, ref) {
     const target = CyclicTarget(defs, ref);
     const partial = FromType17(target);
@@ -4801,21 +4801,21 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/readonly_object/from_dependent.mjs
+
   function FromDependent4(if_, then_, else_) {
     const evaluated = EvaluateDependent(if_, then_, else_);
     const result = FromType17(evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/readonly_object/from_intersect.mjs
+
   function FromIntersect4(types) {
     const evaluated = EvaluateIntersect(types);
     const result = FromType17(evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/readonly_object/from_object.mjs
+
   function FromObject8(properties) {
     const mapped = guard_exports.Keys(properties).reduce((result2, left) => {
       return { ...result2, [left]: AddReadonly(properties[left]) };
@@ -4824,24 +4824,24 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/readonly_object/from_tuple.mjs
+
   function FromTuple4(types) {
     const result = AddImmutable(Tuple(types));
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/readonly_object/from_union.mjs
+
   function FromUnion7(types) {
     const result = types.map((type) => FromType17(type));
     return Union(result);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/readonly_object/from_type.mjs
+
   function FromType17(type) {
     return IsArray3(type) ? FromArray5(type.items) : IsCyclic(type) ? FromCyclic4(type.$defs, type.$ref) : IsDependent(type) ? FromDependent4(type.if, type.then, type.else) : IsIntersect(type) ? FromIntersect4(type.allOf) : IsObject3(type) ? FromObject8(type.properties) : IsTuple(type) ? FromTuple4(type.items) : IsUnion(type) ? FromUnion7(type.anyOf) : type;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/readonly_object/instantiate.mjs
+
   function ReadonlyObjectAction(type, options) {
     const result = CanInstantiate([type]) ? memory_exports.Update(FromType17(type), {}, options) : ReadonlyObjectDeferred(type);
     return result;
@@ -4851,12 +4851,12 @@
     return ReadonlyObjectAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/ref/instantiate.mjs
+
   function RefInstantiate(context, state2, type, ref) {
     return state2.visited.includes(ref) ? type : ref in context ? InstantiateType(context, State(state2["callstack"], [...state2["visited"], ref]), context[ref]) : type;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/required/from_cyclic.mjs
+
   function FromCyclic5(defs, ref) {
     const target = CyclicTarget(defs, ref);
     const partial = FromType18(target);
@@ -4864,27 +4864,27 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/required/from_dependent.mjs
+
   function FromDependent5(if_, then_, else_) {
     const evaluated = EvaluateDependent(if_, then_, else_);
     const result = FromType18(evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/required/from_intersect.mjs
+
   function FromIntersect5(types) {
     const evaluated = EvaluateIntersect(types);
     const result = FromType18(evaluated);
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/required/from_union.mjs
+
   function FromUnion8(types) {
     const result = types.map((type) => FromType18(type));
     return Union(result);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/required/from_object.mjs
+
   function FromObject9(properties) {
     const mapped = guard_exports.Keys(properties).reduce((result2, left) => {
       return { ...result2, [left]: RemoveOptional(properties[left]) };
@@ -4893,12 +4893,12 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/required/from_type.mjs
+
   function FromType18(type) {
     return IsCyclic(type) ? FromCyclic5(type.$defs, type.$ref) : IsDependent(type) ? FromDependent5(type.if, type.then, type.else) : IsIntersect(type) ? FromIntersect5(type.allOf) : IsUnion(type) ? FromUnion8(type.anyOf) : IsObject3(type) ? FromObject9(type.properties) : _Object_({});
   }
 
-  // ../pi/node_modules/typebox/build/type/action/required.mjs
+
   function RequiredDeferred(type, options = {}) {
     return Deferred("Required", [type], options);
   }
@@ -4906,7 +4906,7 @@
     return RequiredAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/required/instantiate.mjs
+
   function RequiredAction(type, options) {
     const result = CanInstantiate([type]) ? memory_exports.Update(FromType18(type), {}, options) : RequiredDeferred(type, options);
     return result;
@@ -4916,7 +4916,7 @@
     return RequiredAction(instaniatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/return_type.mjs
+
   function ReturnTypeDeferred(type, options = {}) {
     return Deferred("ReturnType", [type], options);
   }
@@ -4924,7 +4924,7 @@
     return ReturnTypeAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/return_type/instantiate.mjs
+
   function ReturnTypeOperation(type) {
     return IsFunction3(type) ? type["returnType"] : Never();
   }
@@ -4937,7 +4937,7 @@
     return ReturnTypeAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/with.mjs
+
   function WithDeferred(type, options) {
     return Deferred("With", [type, options], {});
   }
@@ -4945,7 +4945,7 @@
     return WithAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/with/instantiate.mjs
+
   function WithAction(type, options) {
     const result = CanInstantiate([type]) ? memory_exports.Update(type, {}, options) : WithDeferred(type, options);
     return result;
@@ -4955,7 +4955,7 @@
     return WithAction(instaniatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/rest/spread.mjs
+
   function SpreadElement(type) {
     const result = IsRest(type) ? IsTuple(type.items) ? RestSpread(type.items.items) : IsInfer(type.items) ? [type] : IsRef(type.items) ? [type] : [Never()] : [type];
     return result;
@@ -4967,7 +4967,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/instantiate.mjs
+
   function State(callstack, visited2) {
     return { callstack, visited: visited2 };
   }
@@ -5015,7 +5015,7 @@
     return InstantiateType(context, State([], []), type);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/immutable/instantiate_add.mjs
+
   function AddImmutableOperation(type) {
     return memory_exports.Update(type, { "~immutable": true }, {});
   }
@@ -5028,7 +5028,7 @@
     return AddImmutableAction(instantiatedType, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/_add_immutable.mjs
+
   function AddImmutableDeferred(type, options = {}) {
     return Deferred("AddImmutable", [type], options);
   }
@@ -5036,7 +5036,7 @@
     return AddImmutableAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/_remove_immutable.mjs
+
   function RemoveImmutableDeferred(type, options = {}) {
     return Deferred("RemoveImmutable", [type], options);
   }
@@ -5044,7 +5044,7 @@
     return RemoveImmutableAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/evaluate.mjs
+
   function EvaluateDeferred(type, options = {}) {
     return Deferred("Evaluate", [type], options);
   }
@@ -5052,7 +5052,7 @@
     return EvaluateAction(type, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/action/module.mjs
+
   function ModuleDeferred(declarations, options = {}) {
     return Deferred("Module", [declarations], options);
   }
@@ -5060,7 +5060,7 @@
     return ModuleInstantiate({}, State([], []), declarations, options);
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/priority/priority.mjs
+
   function Comparer(left, right) {
     const compareResult = Compare(left, right);
     return guard_exports.IsEqual(compareResult, CompareResultRightInside) ? 1 : guard_exports.IsEqual(compareResult, CompareResultDisjoint) ? 1 : 0;
@@ -5076,14 +5076,14 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/engine/template_literal/is_pattern.mjs
+
   function IsTemplateLiteralPattern(pattern) {
     const types = ParsePatternIntoTypes(pattern);
     const result = guard_exports.IsEqual(types.length, 0) ? false : true;
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/type/script/script.mjs
+
   function Script2(...args) {
     const [context, input, options] = arguments_exports.Match(args, {
       2: (script, options2) => guard_exports.IsString(script) ? [{}, script, options2] : [script, options2, {}],
@@ -5095,7 +5095,7 @@
     return memory_exports.Update(parsed, {}, options);
   }
 
-  // ../pi/node_modules/typebox/build/typebox.mjs
+
   var typebox_exports = {};
   __export(typebox_exports, {
     Any: () => Any,
@@ -5217,10 +5217,10 @@
     With: () => With2
   });
 
-  // ../pi/node_modules/typebox/build/index.mjs
+
   var build_default = typebox_exports;
 
-  // rpi/crates/rpi-js/js/pi-tui.ts
+
   var pi_tui_exports = {};
   __export(pi_tui_exports, {
     Box: () => Box,
@@ -5242,7 +5242,7 @@
     wrapTextWithAnsi: () => wrapTextWithAnsi
   });
 
-  // ../pi/node_modules/get-east-asian-width/lookup-data.js
+
   var ambiguousMinimalCodePoint = 161;
   var ambiguousMaximumCodePoint = 1114109;
   var ambiguousRanges = [161, 161, 164, 164, 167, 168, 170, 170, 173, 174, 176, 180, 182, 186, 188, 191, 198, 198, 208, 208, 215, 216, 222, 225, 230, 230, 232, 234, 236, 237, 240, 240, 242, 243, 247, 250, 252, 252, 254, 254, 257, 257, 273, 273, 275, 275, 283, 283, 294, 295, 299, 299, 305, 307, 312, 312, 319, 322, 324, 324, 328, 331, 333, 333, 338, 339, 358, 359, 363, 363, 462, 462, 464, 464, 466, 466, 468, 468, 470, 470, 472, 472, 474, 474, 476, 476, 593, 593, 609, 609, 708, 708, 711, 711, 713, 715, 717, 717, 720, 720, 728, 731, 733, 733, 735, 735, 768, 879, 913, 929, 931, 937, 945, 961, 963, 969, 1025, 1025, 1040, 1103, 1105, 1105, 8208, 8208, 8211, 8214, 8216, 8217, 8220, 8221, 8224, 8226, 8228, 8231, 8240, 8240, 8242, 8243, 8245, 8245, 8251, 8251, 8254, 8254, 8308, 8308, 8319, 8319, 8321, 8324, 8364, 8364, 8451, 8451, 8453, 8453, 8457, 8457, 8467, 8467, 8470, 8470, 8481, 8482, 8486, 8486, 8491, 8491, 8531, 8532, 8539, 8542, 8544, 8555, 8560, 8569, 8585, 8585, 8592, 8601, 8632, 8633, 8658, 8658, 8660, 8660, 8679, 8679, 8704, 8704, 8706, 8707, 8711, 8712, 8715, 8715, 8719, 8719, 8721, 8721, 8725, 8725, 8730, 8730, 8733, 8736, 8739, 8739, 8741, 8741, 8743, 8748, 8750, 8750, 8756, 8759, 8764, 8765, 8776, 8776, 8780, 8780, 8786, 8786, 8800, 8801, 8804, 8807, 8810, 8811, 8814, 8815, 8834, 8835, 8838, 8839, 8853, 8853, 8857, 8857, 8869, 8869, 8895, 8895, 8978, 8978, 9312, 9449, 9451, 9547, 9552, 9587, 9600, 9615, 9618, 9621, 9632, 9633, 9635, 9641, 9650, 9651, 9654, 9655, 9660, 9661, 9664, 9665, 9670, 9672, 9675, 9675, 9678, 9681, 9698, 9701, 9711, 9711, 9733, 9734, 9737, 9737, 9742, 9743, 9756, 9756, 9758, 9758, 9792, 9792, 9794, 9794, 9824, 9825, 9827, 9829, 9831, 9834, 9836, 9837, 9839, 9839, 9886, 9887, 9919, 9919, 9926, 9933, 9935, 9939, 9941, 9953, 9955, 9955, 9960, 9961, 9963, 9969, 9972, 9972, 9974, 9977, 9979, 9980, 9982, 9983, 10045, 10045, 10102, 10111, 11094, 11097, 12872, 12879, 57344, 63743, 65024, 65039, 65533, 65533, 127232, 127242, 127248, 127277, 127280, 127337, 127344, 127373, 127375, 127376, 127387, 127404, 917760, 917999, 983040, 1048573, 1048576, 1114109];
@@ -5253,7 +5253,7 @@
   var wideMaximumCodePoint = 262141;
   var wideRanges = [4352, 4447, 8986, 8987, 9001, 9002, 9193, 9196, 9200, 9200, 9203, 9203, 9725, 9726, 9748, 9749, 9776, 9783, 9800, 9811, 9855, 9855, 9866, 9871, 9875, 9875, 9889, 9889, 9898, 9899, 9917, 9918, 9924, 9925, 9934, 9934, 9940, 9940, 9962, 9962, 9970, 9971, 9973, 9973, 9978, 9978, 9981, 9981, 9989, 9989, 9994, 9995, 10024, 10024, 10060, 10060, 10062, 10062, 10067, 10069, 10071, 10071, 10133, 10135, 10160, 10160, 10175, 10175, 11035, 11036, 11088, 11088, 11093, 11093, 11904, 11929, 11931, 12019, 12032, 12245, 12272, 12287, 12289, 12350, 12353, 12438, 12441, 12543, 12549, 12591, 12593, 12686, 12688, 12773, 12783, 12830, 12832, 12871, 12880, 42124, 42128, 42182, 43360, 43388, 44032, 55203, 63744, 64255, 65040, 65049, 65072, 65106, 65108, 65126, 65128, 65131, 94176, 94180, 94192, 94198, 94208, 101589, 101631, 101662, 101760, 101874, 110576, 110579, 110581, 110587, 110589, 110590, 110592, 110882, 110898, 110898, 110928, 110930, 110933, 110933, 110948, 110951, 110960, 111355, 119552, 119638, 119648, 119670, 126980, 126980, 127183, 127183, 127374, 127374, 127377, 127386, 127488, 127490, 127504, 127547, 127552, 127560, 127568, 127569, 127584, 127589, 127744, 127776, 127789, 127797, 127799, 127868, 127870, 127891, 127904, 127946, 127951, 127955, 127968, 127984, 127988, 127988, 127992, 128062, 128064, 128064, 128066, 128252, 128255, 128317, 128331, 128334, 128336, 128359, 128378, 128378, 128405, 128406, 128420, 128420, 128507, 128591, 128640, 128709, 128716, 128716, 128720, 128722, 128725, 128728, 128732, 128735, 128747, 128748, 128756, 128764, 128992, 129003, 129008, 129008, 129292, 129338, 129340, 129349, 129351, 129535, 129648, 129660, 129664, 129674, 129678, 129734, 129736, 129736, 129741, 129756, 129759, 129770, 129775, 129784, 131072, 196605, 196608, 262141];
 
-  // ../pi/node_modules/get-east-asian-width/utilities.js
+
   var isInRange = (ranges, codePoint) => {
     let low = 0;
     let high = Math.floor(ranges.length / 2) - 1;
@@ -5271,7 +5271,7 @@
     return false;
   };
 
-  // ../pi/node_modules/get-east-asian-width/lookup.js
+
   var commonCjkCodePoint = 19968;
   var [wideFastPathStart, wideFastPathEnd] = /* @__PURE__ */ findWideFastPathRange(wideRanges);
   function findWideFastPathRange(ranges) {
@@ -5312,7 +5312,7 @@
     return isInRange(wideRanges, codePoint);
   };
 
-  // ../pi/node_modules/get-east-asian-width/index.js
+
   function validate(codePoint) {
     if (!Number.isSafeInteger(codePoint)) {
       throw new TypeError(`Expected a code point, got \`${typeof codePoint}\`.`);
@@ -5326,7 +5326,7 @@
     return 1;
   }
 
-  // packages/tui/src/utils.ts
+
   var graphemeSegmenter = new Intl.Segmenter(void 0, { granularity: "grapheme" });
   var wordSegmenter = new Intl.Segmenter(void 0, { granularity: "word" });
   function couldBeEmoji(segment) {
@@ -6165,7 +6165,7 @@
   }
   var pooledStyleTracker = new AnsiCodeTracker();
 
-  // packages/tui/src/components/text.ts
+
   var Text = class {
     text;
     paddingX;
@@ -6247,10 +6247,10 @@
     }
   };
 
-  // rpi/crates/rpi-js/js/shims/node-perf-hooks.ts
+
   var performance = globalThis.performance;
 
-  // packages/tui/src/keys.ts
+
   var _kittyProtocolActive = false;
   var Key = {
     // Special keys
@@ -7094,7 +7094,7 @@
   }
   var KITTY_PRINTABLE_ALLOWED_MODIFIERS = MODIFIERS.shift | LOCK_MASK;
 
-  // rpi/crates/rpi-js/js/shims/node-path.ts
+
   var modules = globalThis.__piNodeModules;
   var path = modules["node:path"];
   var sep = path.sep;
@@ -7107,7 +7107,7 @@
   var relative = path.relative;
   var isAbsolute = path.isAbsolute;
 
-  // rpi/crates/rpi-js/js/shims/node-child-process.ts
+
   var unavailable = (name) => () => {
     throw new Error(`${name} is not available in the embedded extension host`);
   };
@@ -7117,7 +7117,7 @@
   var spawn = unavailable("spawn");
   var spawnSync = unavailable("spawnSync");
 
-  // packages/tui/src/tui.ts
+
   function dispatchMouseEvent(component, event) {
     const result = component.handleMouse?.(event);
     if (!result) return void 0;
@@ -7278,7 +7278,7 @@
     }
   };
 
-  // packages/tui/src/components/box.ts
+
   var Box = class {
     children = [];
     paddingX;
@@ -7393,7 +7393,7 @@
     }
   };
 
-  // packages/tui/src/keybindings.ts
+
   var TUI_KEYBINDINGS = {
     "tui.editor.cursorUp": { defaultKeys: "up", description: "Move cursor up" },
     "tui.editor.cursorDown": { defaultKeys: "down", description: "Move cursor down" },
@@ -7618,7 +7618,7 @@
     return globalKeybindings;
   }
 
-  // packages/tui/src/components/list-hover.ts
+
   function applyHover(event, list) {
     if (event.type !== "move") return false;
     const index3 = list.indexAtRow(event.y);
@@ -7626,7 +7626,7 @@
     return list.select(index3);
   }
 
-  // packages/tui/src/components/select-list.ts
+
   var DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
   var PRIMARY_COLUMN_GAP = 2;
   var MIN_DESCRIPTION_WIDTH = 10;
@@ -7865,7 +7865,7 @@
     }
   };
 
-  // packages/tui/src/fuzzy.ts
+
   function fuzzyMatch(query, text) {
     const queryLower = query.toLowerCase();
     const textLower = text.toLowerCase();
@@ -7954,7 +7954,7 @@
     return results.map((r) => r.item);
   }
 
-  // ../pi/node_modules/typebox/build/compile/index.mjs
+
   var compile_exports = {};
   __export(compile_exports, {
     Code: () => Code,
@@ -7963,12 +7963,12 @@
     default: () => compile_default
   });
 
-  // ../pi/node_modules/typebox/build/schema/types/_refine.mjs
+
   function IsRefine2(value) {
     return guard_exports.HasPropertyKey(value, "~refine") && guard_exports.IsArray(value["~refine"]) && guard_exports.Every(value["~refine"], 0, (value2) => guard_exports.IsObject(value2) && guard_exports.HasPropertyKey(value2, "check") && guard_exports.HasPropertyKey(value2, "error") && guard_exports.IsFunction(value2.check) && guard_exports.IsFunction(value2.error));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/schema.mjs
+
   function IsSchemaObject2(value) {
     return guard_exports.IsObject(value) && !guard_exports.IsArray(value);
   }
@@ -7979,107 +7979,107 @@
     return IsSchemaObject2(value) || IsSchemaBoolean(value);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/additionalItems.mjs
+
   function IsAdditionalItems(schema) {
     return guard_exports.HasPropertyKey(schema, "additionalItems") && IsSchema2(schema.additionalItems);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/additionalProperties.mjs
+
   function IsAdditionalProperties(schema) {
     return guard_exports.HasPropertyKey(schema, "additionalProperties") && IsSchema2(schema.additionalProperties);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/allOf.mjs
+
   function IsAllOf(schema) {
     return guard_exports.HasPropertyKey(schema, "allOf") && guard_exports.IsArray(schema.allOf) && schema.allOf.every((value) => IsSchema2(value));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/anchor.mjs
+
   function IsAnchor(schema) {
     return guard_exports.HasPropertyKey(schema, "$anchor") && guard_exports.IsString(schema.$anchor);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/anyOf.mjs
+
   function IsAnyOf(schema) {
     return guard_exports.HasPropertyKey(schema, "anyOf") && guard_exports.IsArray(schema.anyOf) && schema.anyOf.every((value) => IsSchema2(value));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/const.mjs
+
   function IsConst(value) {
     return guard_exports.HasPropertyKey(value, "const");
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/contains.mjs
+
   function IsContains(schema) {
     return guard_exports.HasPropertyKey(schema, "contains") && IsSchema2(schema.contains);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/default.mjs
+
   function IsDefault(schema) {
     return guard_exports.HasPropertyKey(schema, "default");
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/dependencies.mjs
+
   function IsDependencies(schema) {
     return guard_exports.HasPropertyKey(schema, "dependencies") && guard_exports.IsObject(schema.dependencies) && Object.values(schema.dependencies).every((value) => IsSchema2(value) || guard_exports.IsArray(value) && value.every((value2) => guard_exports.IsString(value2)));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/dependentRequired.mjs
+
   function IsDependentRequired(schema) {
     return guard_exports.HasPropertyKey(schema, "dependentRequired") && guard_exports.IsObject(schema.dependentRequired) && Object.values(schema.dependentRequired).every((value) => guard_exports.IsArray(value) && value.every((value2) => guard_exports.IsString(value2)));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/dependentSchemas.mjs
+
   function IsDependentSchemas(schema) {
     return guard_exports.HasPropertyKey(schema, "dependentSchemas") && guard_exports.IsObject(schema.dependentSchemas) && Object.values(schema.dependentSchemas).every((value) => IsSchema2(value));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/dynamicAnchor.mjs
+
   function IsDynamicAnchor(schema) {
     return guard_exports.HasPropertyKey(schema, "$dynamicAnchor") && guard_exports.IsString(schema.$dynamicAnchor);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/dynamicRef.mjs
+
   function IsDynamicRef(schema) {
     return guard_exports.HasPropertyKey(schema, "$dynamicRef") && guard_exports.IsString(schema.$dynamicRef);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/else.mjs
+
   function IsElse(schema) {
     return guard_exports.HasPropertyKey(schema, "else") && IsSchema2(schema.else);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/enum.mjs
+
   function IsEnum2(schema) {
     return guard_exports.HasPropertyKey(schema, "enum") && guard_exports.IsArray(schema.enum);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/exclusiveMaximum.mjs
+
   function IsExclusiveMaximum(schema) {
     return guard_exports.HasPropertyKey(schema, "exclusiveMaximum") && (guard_exports.IsNumber(schema.exclusiveMaximum) || guard_exports.IsBigInt(schema.exclusiveMaximum));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/exclusiveMinimum.mjs
+
   function IsExclusiveMinimum(schema) {
     return guard_exports.HasPropertyKey(schema, "exclusiveMinimum") && (guard_exports.IsNumber(schema.exclusiveMinimum) || guard_exports.IsBigInt(schema.exclusiveMinimum));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/format.mjs
+
   function IsFormat(schema) {
     return guard_exports.HasPropertyKey(schema, "format") && guard_exports.IsString(schema.format);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/id.mjs
+
   function IsId(schema) {
     return guard_exports.HasPropertyKey(schema, "$id") && guard_exports.IsString(schema.$id);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/if.mjs
+
   function IsIf(schema) {
     return guard_exports.HasPropertyKey(schema, "if") && IsSchema2(schema.if);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/items.mjs
+
   function IsItems(schema) {
     return guard_exports.HasPropertyKey(schema, "items") && (IsSchema2(schema.items) || guard_exports.IsArray(schema.items) && schema.items.every((value) => {
       return IsSchema2(value);
@@ -8089,97 +8089,97 @@
     return IsItems(schema) && guard_exports.IsArray(schema.items);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/maximum.mjs
+
   function IsMaximum(schema) {
     return guard_exports.HasPropertyKey(schema, "maximum") && (guard_exports.IsNumber(schema.maximum) || guard_exports.IsBigInt(schema.maximum));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/maxContains.mjs
+
   function IsMaxContains(schema) {
     return guard_exports.HasPropertyKey(schema, "maxContains") && guard_exports.IsNumber(schema.maxContains);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/maxItems.mjs
+
   function IsMaxItems(schema) {
     return guard_exports.HasPropertyKey(schema, "maxItems") && guard_exports.IsNumber(schema.maxItems);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/maxLength.mjs
+
   function IsMaxLength4(schema) {
     return guard_exports.HasPropertyKey(schema, "maxLength") && guard_exports.IsNumber(schema.maxLength);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/maxProperties.mjs
+
   function IsMaxProperties(schema) {
     return guard_exports.HasPropertyKey(schema, "maxProperties") && guard_exports.IsNumber(schema.maxProperties);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/minimum.mjs
+
   function IsMinimum(schema) {
     return guard_exports.HasPropertyKey(schema, "minimum") && (guard_exports.IsNumber(schema.minimum) || guard_exports.IsBigInt(schema.minimum));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/minContains.mjs
+
   function IsMinContains(schema) {
     return guard_exports.HasPropertyKey(schema, "minContains") && guard_exports.IsNumber(schema.minContains);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/minItems.mjs
+
   function IsMinItems(schema) {
     return guard_exports.HasPropertyKey(schema, "minItems") && guard_exports.IsNumber(schema.minItems);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/minLength.mjs
+
   function IsMinLength4(schema) {
     return guard_exports.HasPropertyKey(schema, "minLength") && guard_exports.IsNumber(schema.minLength);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/minProperties.mjs
+
   function IsMinProperties(schema) {
     return guard_exports.HasPropertyKey(schema, "minProperties") && guard_exports.IsNumber(schema.minProperties);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/multipleOf.mjs
+
   function IsMultipleOf2(schema) {
     return guard_exports.HasPropertyKey(schema, "multipleOf") && (guard_exports.IsNumber(schema.multipleOf) || guard_exports.IsBigInt(schema.multipleOf));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/not.mjs
+
   function IsNot(schema) {
     return guard_exports.HasPropertyKey(schema, "not") && IsSchema2(schema.not);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/oneOf.mjs
+
   function IsOneOf(schema) {
     return guard_exports.HasPropertyKey(schema, "oneOf") && guard_exports.IsArray(schema.oneOf) && schema.oneOf.every((value) => IsSchema2(value));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/pattern.mjs
+
   function IsPattern(schema) {
     return guard_exports.HasPropertyKey(schema, "pattern") && (guard_exports.IsString(schema.pattern) || schema.pattern instanceof RegExp);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/patternProperties.mjs
+
   function IsPatternProperties(schema) {
     return guard_exports.HasPropertyKey(schema, "patternProperties") && guard_exports.IsObject(schema.patternProperties) && Object.values(schema.patternProperties).every((value) => IsSchema2(value));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/prefixItems.mjs
+
   function IsPrefixItems(schema) {
     return guard_exports.HasPropertyKey(schema, "prefixItems") && guard_exports.IsArray(schema.prefixItems) && schema.prefixItems.every((schema2) => IsSchema2(schema2));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/properties.mjs
+
   function IsProperties(schema) {
     return guard_exports.HasPropertyKey(schema, "properties") && guard_exports.IsObject(schema.properties) && Object.values(schema.properties).every((value) => IsSchema2(value));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/propertyNames.mjs
+
   function IsPropertyNames(schema) {
     return guard_exports.HasPropertyKey(schema, "propertyNames") && (guard_exports.IsObject(schema.propertyNames) || IsSchema2(schema.propertyNames));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/recursiveAnchor.mjs
+
   function IsRecursiveAnchor(schema) {
     return guard_exports.HasPropertyKey(schema, "$recursiveAnchor") && guard_exports.IsBoolean(schema.$recursiveAnchor);
   }
@@ -8187,47 +8187,47 @@
     return IsRecursiveAnchor(schema) && guard_exports.IsEqual(schema.$recursiveAnchor, true);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/recursiveRef.mjs
+
   function IsRecursiveRef(schema) {
     return guard_exports.HasPropertyKey(schema, "$recursiveRef") && guard_exports.IsString(schema.$recursiveRef);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/ref.mjs
+
   function IsRef2(schema) {
     return guard_exports.HasPropertyKey(schema, "$ref") && guard_exports.IsString(schema.$ref);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/required.mjs
+
   function IsRequired(schema) {
     return guard_exports.HasPropertyKey(schema, "required") && guard_exports.IsArray(schema.required) && schema.required.every((value) => guard_exports.IsString(value));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/then.mjs
+
   function IsThen(schema) {
     return guard_exports.HasPropertyKey(schema, "then") && IsSchema2(schema.then);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/type.mjs
+
   function IsType(schema) {
     return guard_exports.HasPropertyKey(schema, "type") && (guard_exports.IsString(schema.type) || guard_exports.IsArray(schema.type) && schema.type.every((value) => guard_exports.IsString(value)));
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/uniqueItems.mjs
+
   function IsUniqueItems(schema) {
     return guard_exports.HasPropertyKey(schema, "uniqueItems") && guard_exports.IsBoolean(schema.uniqueItems);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/unevaluatedItems.mjs
+
   function IsUnevaluatedItems(schema) {
     return guard_exports.HasPropertyKey(schema, "unevaluatedItems") && IsSchema2(schema.unevaluatedItems);
   }
 
-  // ../pi/node_modules/typebox/build/schema/types/unevaluatedProperties.mjs
+
   function IsUnevaluatedProperties(schema) {
     return guard_exports.HasPropertyKey(schema, "unevaluatedProperties") && IsSchema2(schema.unevaluatedProperties);
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/_context.mjs
+
   function HasUnevaluatedFromObject(value) {
     return IsUnevaluatedItems(value) || IsUnevaluatedProperties(value) || guard_exports.Some(guard_exports.Keys(value), (key) => HasUnevaluatedFromUnknown(value[key]));
   }
@@ -8333,7 +8333,7 @@
     }
   };
 
-  // ../pi/node_modules/typebox/build/schema/engine/_externals.mjs
+
   var state = {
     identifier: "External",
     variables: []
@@ -8350,7 +8350,7 @@
     return { ...state };
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/_refine.mjs
+
   function BuildRefine(_stack, _context, schema, value) {
     const refinements = CreateVariable(schema["~refine"].map((refinement) => refinement));
     return emit_exports.Every(refinements, emit_exports.Constant(0), ["refinement", "_"], emit_exports.Call(emit_exports.Member("refinement", "check"), [value]));
@@ -8369,13 +8369,13 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/_unique.mjs
+
   var index = 0;
   function Unique() {
     return `var_${index++}`;
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/additionalItems.mjs
+
   function IsValid(schema) {
     return IsItems(schema) && guard_exports.IsArray(schema.items);
   }
@@ -8416,12 +8416,12 @@
     return isAdditionalItems;
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/_regexp.mjs
+
   function UnicodeRegExp(pattern) {
     return new RegExp(pattern, "u");
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/additionalProperties.mjs
+
   function IsAdditionalPropertiesIgnored(context, additionalProperties) {
     return !context.UseUnevaluated() && (guard_exports.IsEqual(additionalProperties, true) || guard_exports.IsObject(additionalProperties) && guard_exports.IsEqual(guard_exports.Keys(additionalProperties).length, 0));
   }
@@ -8484,7 +8484,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/_reducer.mjs
+
   function Reducer(stack, context, schemas, value, check) {
     const results = emit_exports.ConstDeclaration("results", "[]");
     const context_n = schemas.map((_schema, index3) => emit_exports.ConstDeclaration(`context_${index3}`, emit_exports.New("CheckContext", [])));
@@ -8494,7 +8494,7 @@
     return emit_exports.Call(emit_exports.ArrowFunction([], emit_exports.Statements([results, ...context_n, ...condition_n, ...checks, returns])), []);
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/allOf.mjs
+
   function BuildAllOfStandard(stack, context, schema, value) {
     return Reducer(stack, context, schema.allOf, value, emit_exports.IsEqual(emit_exports.Member("results", "length"), emit_exports.Constant(schema.allOf.length)));
   }
@@ -8527,7 +8527,7 @@
     return isAllOf;
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/anyOf.mjs
+
   function BuildAnyOfStandard(stack, context, schema, value) {
     return Reducer(stack, context, schema.anyOf, value, emit_exports.IsGreaterThan(emit_exports.Member("results", "length"), emit_exports.Constant(0)));
   }
@@ -8565,7 +8565,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/boolean.mjs
+
   function BuildSchemaBoolean(_stack, _context, schema, _value) {
     return schema ? emit_exports.Constant(true) : emit_exports.Constant(false);
   }
@@ -8581,7 +8581,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/const.mjs
+
   function BuildConst(_stack, _context, schema, value) {
     return guard_exports.IsValueLike(schema.const) ? emit_exports.IsEqual(value, emit_exports.Constant(schema.const)) : emit_exports.IsDeepEqual(value, CreateVariable(schema.const));
   }
@@ -8597,7 +8597,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/contains.mjs
+
   function IsValid2(schema) {
     return !(IsMinContains(schema) && guard_exports.IsEqual(schema.minContains, 0));
   }
@@ -8634,7 +8634,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/dependencies.mjs
+
   function BuildDependencies(stack, context, schema, value) {
     const isLength = emit_exports.IsEqual(emit_exports.Member(emit_exports.Keys(value), "length"), emit_exports.Constant(0));
     const isEveryDependency = emit_exports.ReduceAnd(guard_exports.Entries(schema.dependencies).map(([key, schema2]) => {
@@ -8666,7 +8666,7 @@
     return isLength || isEvery;
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/dependentRequired.mjs
+
   function BuildDependentRequired(_stack, _context, schema, value) {
     const isLength = emit_exports.IsEqual(emit_exports.Member(emit_exports.Keys(value), "length"), emit_exports.Constant(0));
     const isEvery = emit_exports.ReduceAnd(guard_exports.Entries(schema.dependentRequired).map(([key, keys]) => {
@@ -8696,7 +8696,7 @@
     return isLength || isEveryEntry;
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/dependentSchemas.mjs
+
   function BuildDependentSchemas(stack, context, schema, value) {
     const isLength = emit_exports.IsEqual(emit_exports.Member(emit_exports.Keys(value), "length"), emit_exports.Constant(0));
     const isEvery = emit_exports.ReduceAnd(guard_exports.Entries(schema.dependentSchemas).map(([key, schema2]) => {
@@ -8722,7 +8722,7 @@
     return isLength || isEvery;
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/dynamicRef.mjs
+
   function BuildDynamicRef(stack, context, schema, value) {
     const target = stack.DynamicRef(schema) ?? false;
     return CreateFunction(stack, context, target, value);
@@ -8736,7 +8736,7 @@
     return IsSchema2(target) && ErrorSchema(stack, context, "#", instancePath, target, value);
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/enum.mjs
+
   function BuildEnum(_stack, _context, schema, value) {
     return emit_exports.ReduceOr(schema.enum.map((option) => {
       if (guard_exports.IsValueLike(option))
@@ -8757,7 +8757,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/exclusiveMaximum.mjs
+
   function BuildExclusiveMaximum(_stack, _context, schema, value) {
     return emit_exports.IsLessThan(value, emit_exports.Constant(schema.exclusiveMaximum));
   }
@@ -8773,7 +8773,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/exclusiveMinimum.mjs
+
   function BuildExclusiveMinimum(_stack, _context, schema, value) {
     return emit_exports.IsGreaterThan(value, emit_exports.Constant(schema.exclusiveMinimum));
   }
@@ -8789,7 +8789,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/format/format.mjs
+
   var format_exports = {};
   __export(format_exports, {
     Clear: () => Clear,
@@ -8822,7 +8822,7 @@
     Test: () => Test
   });
 
-  // ../pi/node_modules/typebox/build/format/date.mjs
+
   var DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   var DATE = /^(\d\d\d\d)-(\d\d)-(\d\d)$/;
   function IsLeapYear(year) {
@@ -8838,7 +8838,7 @@
     return month >= 1 && month <= 12 && day >= 1 && day <= (month === 2 && IsLeapYear(year) ? 29 : DAYS[month]);
   }
 
-  // ../pi/node_modules/typebox/build/format/time.mjs
+
   var TIME = /^(\d\d):(\d\d):(\d\d)(?:\.\d+)?(?:([Zz])|([+-])(\d\d):(\d\d))?$/;
   function IsTime(value, strictTimeZone = true) {
     const matches = TIME.exec(value);
@@ -8866,25 +8866,25 @@
     return (totalUtcMin % 1440 + 1440) % 1440 === 1439;
   }
 
-  // ../pi/node_modules/typebox/build/format/date_time.mjs
+
   function IsDateTime(value) {
     const dateTime = value.split(/T/i);
     return dateTime.length === 2 && IsDate2(dateTime[0]) && IsTime(dateTime[1]);
   }
 
-  // ../pi/node_modules/typebox/build/format/duration.mjs
+
   var Duration = /^P((\d+Y(\d+M(\d+D)?)?|\d+M(\d+D)?|\d+D)(T(\d+H(\d+M(\d+S)?)?|\d+M(\d+S)?|\d+S))?|T(\d+H(\d+M(\d+S)?)?|\d+M(\d+S)?|\d+S)|\d+W)$/;
   function IsDuration(value) {
     return Duration.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/email.mjs
+
   var Email = /^(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[^"\\]|\\[\x20-\x7e])*")@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*|\[(?:IPv6:[a-f0-9:]+|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3})\])$/i;
   function IsEmail(value) {
     return Email.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/idna/pattern/pattern.mjs
+
   var RE_RULE_HYPHEN_PLACEMENT = /^(?!-).*(?<!-)$/;
   var RE_RULE_NOT_RESERVED_ACE = /^(?!..--)/;
   var RE_ASCII_LDH = /^[a-zA-Z0-9-]*$/;
@@ -8922,12 +8922,12 @@
     RE_PVALID_EXCEPTIONS
   ].map((regexp) => regexp.source).join("|"), "u");
 
-  // ../pi/node_modules/typebox/build/format/idna/label/ascii.mjs
+
   function IsAsciiLabel(value) {
     return RE_RULE_HYPHEN_PLACEMENT.test(value) && RE_RULE_NOT_RESERVED_ACE.test(value) && RE_ASCII_LDH.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/idna/format/puny.mjs
+
   var PUNYCODE_BASE = 36;
   var PUNYCODE_TMIN = 1;
   var PUNYCODE_TMAX = 26;
@@ -9043,7 +9043,7 @@
     return result.join("");
   }
 
-  // ../pi/node_modules/typebox/build/format/idna/format/bidi.mjs
+
   var RE_RTL_ALLOWED = /^(?:R|AL|AN|EN|ES|CS|ET|ON|BN|NSM)$/;
   var RE_LTR_ALLOWED = /^(?:L|EN|ES|CS|ET|ON|BN|NSM)$/;
   var RE_RTL_CLASSES = /^(?:R|AL|AN)$/;
@@ -9098,7 +9098,7 @@
     return true;
   }
 
-  // ../pi/node_modules/typebox/build/format/idna/label/unicode.mjs
+
   function ExceedsMaxALabelLength(value) {
     return RE_NON_ASCII.test(value) && Encode2(value).length + 4 > 63;
   }
@@ -9164,7 +9164,7 @@
     return true;
   }
 
-  // ../pi/node_modules/typebox/build/format/idna/label/puny.mjs
+
   function IsPunyLabel(value) {
     if (!IsAcePrefixed(value))
       return false;
@@ -9181,7 +9181,7 @@
     }
   }
 
-  // ../pi/node_modules/typebox/build/format/idna/hostname.mjs
+
   function IsValidLabelLength(value) {
     return value.length > 0 && value.length <= 63;
   }
@@ -9196,7 +9196,7 @@
     return value.split(".").every((label) => IsLabel(label));
   }
 
-  // ../pi/node_modules/typebox/build/format/idna/idn-hostname.mjs
+
   function IsValidLabelLength2(value) {
     return value.length > 0 && value.length <= 63;
   }
@@ -9217,42 +9217,42 @@
     return labels.every((label) => IsLabel2(label) && (!hasBidiChars || SatisfiesBidiRule(label)));
   }
 
-  // ../pi/node_modules/typebox/build/format/hostname.mjs
+
   function IsHostname2(value) {
     return IsHostname(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/idn_email.mjs
+
   var IdnEmail = /^(?:[A-Za-z0-9!#$%&'*+\/=?^_`{|}~\u{0080}-\u{10FFFF}-]+(?:\.[A-Za-z0-9!#$%&'*+\/=?^_`{|}~\u{0080}-\u{10FFFF}-]+)*|"(?:[^"\\]|\\.)*")@[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,62})(?<!-)(?:\.[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,62})(?<!-))*$/iu;
   function IsIdnEmail(value) {
     return IdnEmail.test(value.normalize("NFC"));
   }
 
-  // ../pi/node_modules/typebox/build/format/idn_hostname.mjs
+
   function IsIdnHostname2(value) {
     return IsIdnHostname(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/ipv4.mjs
+
   var IPv4 = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
   function IsIPv4(value) {
     return IPv4.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/ipv6.mjs
+
   var IPv6 = /^(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:)?[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)$/i;
   function IsIPv6(value) {
     return IPv6.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/iri_reference.mjs
+
   var InvalidIriChars = /[\x00-\x20\x7F\\]|%(?![0-9a-fA-F]{2})/;
   var MalformedScheme = /^[a-zA-Z][a-zA-Z0-9+\-.]*\/\//;
   function IsIriReference(value) {
     return !InvalidIriChars.test(value) && !MalformedScheme.test(value) && URL.canParse(value, "http://example.com");
   }
 
-  // ../pi/node_modules/typebox/build/format/iri.mjs
+
   var IpvFutureMatchMaxLength = 2048;
   var IpvFutureMatch = /\[[vV][0-9a-fA-F]+\.[^\]]+\]/;
   var InvalidIriChars2 = /[\x00-\x20<>\^`{|}\\]/;
@@ -9268,19 +9268,19 @@
     return URL.canParse(NarrowIpvFuture(value));
   }
 
-  // ../pi/node_modules/typebox/build/format/json_pointer_uri_fragment.mjs
+
   var JsonPointerUriFragment = /^#(?:\/(?:[a-z0-9_\-.!$&'()*+,;:=@]|%[0-9a-f]{2}|~0|~1)*)*$/i;
   function IsJsonPointerUriFragment(value) {
     return JsonPointerUriFragment.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/json_pointer.mjs
+
   var JsonPointer = /^(?:\/(?:[^~/]|~0|~1)*)*$/;
   function IsJsonPointer(value) {
     return JsonPointer.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/regex.mjs
+
   function IsRegex(value) {
     try {
       new RegExp(value, "u");
@@ -9290,42 +9290,42 @@
     }
   }
 
-  // ../pi/node_modules/typebox/build/format/relative_json_pointer.mjs
+
   var RelativeJsonPointer = /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/;
   function IsRelativeJsonPointer(value) {
     return RelativeJsonPointer.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/uri_reference.mjs
+
   var UriReference = /^(?:[a-z][a-z0-9+\-.]*:(?:\/\/(?:(?:[-a-z0-9._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:[\da-f]{1,4}:){6}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|::(?:[\da-f]{1,4}:){5}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:[\da-f]{1,4})?::(?:[\da-f]{1,4}:){4}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,1}[\da-f]{1,4})?::(?:[\da-f]{1,4}:){3}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,2}[\da-f]{1,4})?::(?:[\da-f]{1,4}:){2}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,3}[\da-f]{1,4})?::[\da-f]{1,4}:(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,4}[\da-f]{1,4})?::(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,5}[\da-f]{1,4})?::[\da-f]{1,4}|(?:(?:[\da-f]{1,4}:){0,6}[\da-f]{1,4})?::)|v[0-9a-f]+\.[-a-z0-9._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)|(?:[-a-z0-9._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:\/\/(?:(?:[-a-z0-9._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:[\da-f]{1,4}:){6}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|::(?:[\da-f]{1,4}:){5}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:[\da-f]{1,4})?::(?:[\da-f]{1,4}:){4}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,1}[\da-f]{1,4})?::(?:[\da-f]{1,4}:){3}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,2}[\da-f]{1,4})?::(?:[\da-f]{1,4}:){2}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,3}[\da-f]{1,4})?::[\da-f]{1,4}:(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,4}[\da-f]{1,4})?::(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,5}[\da-f]{1,4})?::[\da-f]{1,4}|(?:(?:[\da-f]{1,4}:){0,6}[\da-f]{1,4})?::)|v[0-9a-f]+\.[-a-z0-9._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)|(?:[-a-z0-9._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[-a-z0-9._~!$&'()*+,;=@]|%[0-9a-f]{2})+(?:\/(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?)(?:\?(?:[-a-z0-9._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[-a-z0-9._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
   function IsUriReference(value) {
     return UriReference.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/uri_template.mjs
+
   var UriTemplate = /^(?:(?:[^\x00-\x20"<>%\\^`{|}\x7f]|%[0-9a-f]{2})|\{[+#./;?&=,!@|]?(?:[a-z0-9_]|%[0-9a-f]{2})+(?:\.(?:[a-z0-9_]|%[0-9a-f]{2})+)*(?::[1-9]\d{0,3}|\*)?(?:,(?:[a-z0-9_]|%[0-9a-f]{2})+(?:\.(?:[a-z0-9_]|%[0-9a-f]{2})+)*(?::[1-9]\d{0,3}|\*)?)*\})*$/i;
   function IsUriTemplate(value) {
     return UriTemplate.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/uri.mjs
+
   var Uri = /^[a-z][a-z0-9+\-.]*:(?:\/\/(?:(?:[-a-z0-9._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:[\da-f]{1,4}:){6}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|::(?:[\da-f]{1,4}:){5}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:[\da-f]{1,4})?::(?:[\da-f]{1,4}:){4}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,1}[\da-f]{1,4})?::(?:[\da-f]{1,4}:){3}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,2}[\da-f]{1,4})?::(?:[\da-f]{1,4}:){2}(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,3}[\da-f]{1,4})?::[\da-f]{1,4}:(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,4}[\da-f]{1,4})?::(?:[\da-f]{1,4}:[\da-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d))|(?:(?:[\da-f]{1,4}:){0,5}[\da-f]{1,4})?::[\da-f]{1,4}|(?:(?:[\da-f]{1,4}:){0,6}[\da-f]{1,4})?::)|v[0-9a-f]+\.[-a-z0-9._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)|(?:[-a-z0-9._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[-a-z0-9._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[-a-z0-9._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[-a-z0-9._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
   function IsUri(value) {
     return Uri.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/url.mjs
+
   function IsUrl(value) {
     return URL.canParse(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/uuid.mjs
+
   var Uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
   function IsUuid(value) {
     return Uuid.test(value);
   }
 
-  // ../pi/node_modules/typebox/build/format/_registry.mjs
+
   var formats = /* @__PURE__ */ new Map();
   function Clear() {
     formats.clear();
@@ -9371,7 +9371,7 @@
   }
   Reset2();
 
-  // ../pi/node_modules/typebox/build/schema/engine/format.mjs
+
   function BuildFormat(_stack, _context, schema, value) {
     return emit_exports.Call(emit_exports.Member("Format", "Test"), [emit_exports.Constant(schema.format), value]);
   }
@@ -9387,7 +9387,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/if.mjs
+
   function BuildIf(stack, context, schema, value) {
     const thenSchema = IsThen(schema) ? schema.then : true;
     const elseSchema = IsElse(schema) ? schema.else : true;
@@ -9418,7 +9418,7 @@
     return isIf;
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/items.mjs
+
   function BuildItemsSizedStandard(stack, context, schema, value) {
     return emit_exports.ReduceAnd(schema.items.map((schema2, index3) => {
       const isLength = emit_exports.IsLessEqualThan(emit_exports.Member(value, "length"), emit_exports.Constant(index3));
@@ -9487,7 +9487,7 @@
     return IsItemsSized(schema) ? ErrorItemsSized(stack, context, schemaPath, instancePath, schema, value) : ErrorItemsUnsized(stack, context, schemaPath, instancePath, schema, value);
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/maxContains.mjs
+
   function IsValid3(schema) {
     return IsContains(schema);
   }
@@ -9514,7 +9514,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/maximum.mjs
+
   function BuildMaximum(_stack, _context, schema, value) {
     return emit_exports.IsLessEqualThan(value, emit_exports.Constant(schema.maximum));
   }
@@ -9530,7 +9530,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/maxItems.mjs
+
   function BuildMaxItems(_stack, _context, schema, value) {
     return emit_exports.IsLessEqualThan(emit_exports.Member(value, "length"), emit_exports.Constant(schema.maxItems));
   }
@@ -9546,7 +9546,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/maxLength.mjs
+
   function BuildMaxLength(_stack, _context, schema, value) {
     return emit_exports.IsMaxLength(value, emit_exports.Constant(schema.maxLength));
   }
@@ -9562,7 +9562,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/maxProperties.mjs
+
   function BuildMaxProperties(_stack, _context, schema, value) {
     return emit_exports.IsLessEqualThan(emit_exports.Member(emit_exports.Keys(value), "length"), emit_exports.Constant(schema.maxProperties));
   }
@@ -9578,7 +9578,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/minContains.mjs
+
   function IsValid4(schema) {
     return IsContains(schema);
   }
@@ -9612,7 +9612,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/minimum.mjs
+
   function BuildMinimum(_stack, _context, schema, value) {
     return emit_exports.IsGreaterEqualThan(value, emit_exports.Constant(schema.minimum));
   }
@@ -9628,7 +9628,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/minItems.mjs
+
   function BuildMinItems(_stack, _context, schema, value) {
     return emit_exports.IsGreaterEqualThan(emit_exports.Member(value, "length"), emit_exports.Constant(schema.minItems));
   }
@@ -9644,7 +9644,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/minLength.mjs
+
   function BuildMinLength(_stack, _context, schema, value) {
     return emit_exports.IsMinLength(value, emit_exports.Constant(schema.minLength));
   }
@@ -9660,7 +9660,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/minProperties.mjs
+
   function BuildMinProperties(_stack, _context, schema, value) {
     return emit_exports.IsGreaterEqualThan(emit_exports.Member(emit_exports.Keys(value), "length"), emit_exports.Constant(schema.minProperties));
   }
@@ -9676,7 +9676,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/multipleOf.mjs
+
   function BuildMultipleOf(_stack, _context, schema, value) {
     return emit_exports.MultipleOf(value, emit_exports.Constant(schema.multipleOf));
   }
@@ -9692,7 +9692,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/not.mjs
+
   function BuildNotStandard(stack, context, schema, value) {
     return Reducer(stack, context, [schema.not], value, emit_exports.Not(emit_exports.IsEqual(emit_exports.Member("results", "length"), emit_exports.Constant(1))));
   }
@@ -9717,7 +9717,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/oneOf.mjs
+
   function BuildOneOfStandard(stack, context, schema, value) {
     return Reducer(stack, context, schema.oneOf, value, emit_exports.IsEqual(emit_exports.Member("results", "length"), emit_exports.Constant(1)));
   }
@@ -9761,7 +9761,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/pattern.mjs
+
   function BuildPattern(_stack, _context, schema, value) {
     const regexp = CreateVariable(guard_exports.IsString(schema.pattern) ? UnicodeRegExp(schema.pattern) : schema.pattern);
     return emit_exports.Call(emit_exports.Member(regexp, "test"), [value]);
@@ -9779,7 +9779,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/patternProperties.mjs
+
   function BuildPatternProperties(stack, context, schema, value) {
     return emit_exports.ReduceAnd(guard_exports.Entries(schema.patternProperties).map(([pattern, schema2]) => {
       const [key, prop] = [Unique(), Unique()];
@@ -9811,7 +9811,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/prefixItems.mjs
+
   function BuildPrefixItems(stack, context, schema, value) {
     return emit_exports.ReduceAnd(schema.prefixItems.map((schema2, index3) => {
       const isLength = emit_exports.IsLessEqualThan(emit_exports.Member(value, "length"), emit_exports.Constant(index3));
@@ -9834,7 +9834,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/_exact_optional.mjs
+
   function IsExactOptional(required, key) {
     return required.includes(key) || settings_exports.Get().exactOptionalPropertyTypes;
   }
@@ -9845,7 +9845,7 @@
     return guard_exports.IsUndefined(value[key]);
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/properties.mjs
+
   function BuildProperties(stack, context, schema, value) {
     const required = IsRequired(schema) ? schema.required : [];
     const everyKey = guard_exports.Entries(schema.properties).map(([key, schema2]) => {
@@ -9877,7 +9877,7 @@
     return isProperties;
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/propertyNames.mjs
+
   function BuildPropertyNames(stack, context, schema, value) {
     const [key, _index] = [Unique(), Unique()];
     return emit_exports.Every(emit_exports.Keys(value), emit_exports.Constant(0), [key, _index], BuildSchema(stack, context, schema.propertyNames, key));
@@ -9903,7 +9903,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/recursiveRef.mjs
+
   function BuildRecursiveRef(stack, context, schema, value) {
     const target = stack.RecursiveRef(schema) ?? false;
     return CreateFunction(stack, context, target, value);
@@ -9917,7 +9917,7 @@
     return IsSchema2(target) && ErrorSchema(stack, context, "#", instancePath, target, value);
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/ref.mjs
+
   function BuildRefStandard(stack, context, target, value) {
     const interior = emit_exports.ArrowFunction(["context", "value"], CreateFunction(stack, context, target, "value"));
     const exterior = emit_exports.ArrowFunction(["context", "value"], emit_exports.Statements([
@@ -9954,7 +9954,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/required.mjs
+
   function BuildRequired(_stack, _context, schema, value) {
     return emit_exports.ReduceAnd(schema.required.map((key) => emit_exports.HasPropertyKey(value, emit_exports.Constant(key))));
   }
@@ -9977,7 +9977,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/type.mjs
+
   function BuildTypeName(_stack, _context, type, value) {
     return (
       // jsonschema
@@ -10018,7 +10018,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/unevaluatedItems.mjs
+
   function BuildUnevaluatedItems(stack, context, schema, value) {
     const [index3, item] = [Unique(), Unique()];
     const indices = emit_exports.Call(emit_exports.Member("context", "GetIndices"), []);
@@ -10055,7 +10055,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/unevaluatedProperties.mjs
+
   function BuildUnevaluatedProperties(stack, context, schema, value) {
     const [key, prop] = [Unique(), Unique()];
     const keys = emit_exports.Call(emit_exports.Member("context", "GetKeys"), []);
@@ -10092,7 +10092,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/uniqueItems.mjs
+
   function IsValid5(schema) {
     return !guard_exports.IsEqual(schema.uniqueItems, false);
   }
@@ -10130,7 +10130,7 @@
     });
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/schema.mjs
+
   function HasTypeName(schema, typename) {
     return IsType(schema) && (guard_exports.IsArray(schema.type) && guard_exports.IsGreaterThan(schema.type.length, 0) && guard_exports.Every(schema.type, 0, (type) => guard_exports.IsEqual(type, typename)) || guard_exports.IsEqual(schema.type, typename));
   }
@@ -10299,7 +10299,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/_functions.mjs
+
   var index2 = [0];
   var names = /* @__PURE__ */ new Map();
   var funcs = /* @__PURE__ */ new Map();
@@ -10341,7 +10341,7 @@
     return call;
   }
 
-  // ../pi/node_modules/typebox/build/schema/resolve/resolve.mjs
+
   var resolve_exports = {};
   __export(resolve_exports, {
     Base: () => Base2,
@@ -10354,7 +10354,7 @@
     Resource: () => Resource
   });
 
-  // ../pi/node_modules/typebox/build/schema/pointer/pointer.mjs
+
   var pointer_exports = {};
   __export(pointer_exports, {
     Delete: () => Delete,
@@ -10441,7 +10441,7 @@
     return value;
   }
 
-  // ../pi/node_modules/typebox/build/schema/resolve/resolve.mjs
+
   var DefaultBase = "https://json-schema.org";
   function FindDynamicAnchor(schema, name) {
     if (guard_exports.IsObject(schema) && IsDynamicAnchor(schema) && guard_exports.IsEqual(schema.$dynamicAnchor, name)) {
@@ -10657,7 +10657,7 @@
     return DynamicRef(stackframe.context, stackframe.root, stackframe.lexicalBase, stackframe.lexicalSchema, dynamicRef, stackframe.dynamicAnchors);
   }
 
-  // ../pi/node_modules/typebox/build/schema/engine/_stack.mjs
+
   var __classPrivateFieldGet = function(receiver, state2, kind, f) {
     if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
     if (typeof state2 === "function" ? receiver !== state2 || !f : !state2.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
@@ -10871,7 +10871,7 @@
     this.resolvedResources.delete(target);
   };
 
-  // ../pi/node_modules/typebox/build/schema/build.mjs
+
   function CreateCode(build) {
     const functions = build.Functions().join(";\n");
     const statements = build.UseUnevaluated() ? ["const context = new CheckContext({}, {})", `return ${build.Entry()}`] : [`return ${build.Entry()}`];
@@ -10960,7 +10960,7 @@
     return new BuildResult(context, schema, externals, functions, call, build.UseUnevaluated());
   }
 
-  // ../pi/node_modules/typebox/build/schema/errors.mjs
+
   function Errors(...args) {
     const [context, schema, value] = arguments_exports.Match(args, {
       3: (context2, schema2, value2) => [context2, schema2, value2],
@@ -10975,7 +10975,7 @@
     return [result, localized];
   }
 
-  // ../pi/node_modules/typebox/build/schema/check.mjs
+
   function Check(...args) {
     const [context, schema, value] = arguments_exports.Match(args, {
       3: (context2, schema2, value2) => [context2, schema2, value2],
@@ -10986,7 +10986,7 @@
     return CheckSchema(stack, checkContext, schema, value);
   }
 
-  // ../pi/node_modules/typebox/build/compile/code.mjs
+
   function TsIgnore() {
     return `// @ts-ignore`;
   }
@@ -11032,7 +11032,7 @@
     return { External: build.External(), Code: code };
   }
 
-  // ../pi/node_modules/typebox/build/value/index.mjs
+
   var value_exports2 = {};
   __export(value_exports2, {
     Assert: () => Assert,
@@ -11073,7 +11073,7 @@
     default: () => value_default
   });
 
-  // ../pi/node_modules/typebox/build/value/check/check.mjs
+
   function Check2(...args) {
     const [context, type, value] = arguments_exports.Match(args, {
       3: (context2, type2, value2) => [context2, type2, value2],
@@ -11082,7 +11082,7 @@
     return Check(context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/errors/errors.mjs
+
   function Errors2(...args) {
     const [context, type, value] = arguments_exports.Match(args, {
       3: (context2, type2, value2) => [context2, type2, value2],
@@ -11092,7 +11092,7 @@
     return errors;
   }
 
-  // ../pi/node_modules/typebox/build/value/assert/assert.mjs
+
   var AssertError = class extends Error {
     constructor(source, value, errors) {
       super(source);
@@ -11114,19 +11114,19 @@
       throw new AssertError("Assert", value, Errors2(context, type, value));
   }
 
-  // ../pi/node_modules/typebox/build/value/clean/from_array.mjs
+
   function FromArray7(context, type, value) {
     if (!guard_exports.IsArray(value))
       return value;
     return value.map((value2) => FromType19(context, type.items, value2));
   }
 
-  // ../pi/node_modules/typebox/build/value/clean/from_cyclic.mjs
+
   function FromCyclic6(context, type, value) {
     return FromType19({ ...context, ...type.$defs }, Ref(type.$ref), value);
   }
 
-  // ../pi/node_modules/typebox/build/value/clean/from_intersect.mjs
+
   function EvaluateIntersection(context, type) {
     const additionalProperties = guard_exports.HasPropertyKey(type, "unevaluatedProperties") ? { additionalProperties: type.unevaluatedProperties } : {};
     const instantiated = Instantiate(context, type);
@@ -11138,13 +11138,13 @@
     return FromType19(context, evaluated, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/clean/additional.mjs
+
   function GetAdditionalProperties(type) {
     const additionalProperties = guard_exports.HasPropertyKey(type, "additionalProperties") ? type.additionalProperties : void 0;
     return additionalProperties;
   }
 
-  // ../pi/node_modules/typebox/build/value/clean/from_object.mjs
+
   function FromObject11(context, type, value) {
     if (!guard_exports.IsObject(value) || guard_exports.IsArray(value))
       return value;
@@ -11167,7 +11167,7 @@
     return value;
   }
 
-  // ../pi/node_modules/typebox/build/value/clean/from_record.mjs
+
   function FromRecord3(context, type, value) {
     if (!guard_exports.IsObject(value))
       return value;
@@ -11191,12 +11191,12 @@
     return value;
   }
 
-  // ../pi/node_modules/typebox/build/value/clean/from_ref.mjs
+
   function FromRef5(context, type, value) {
     return guard_exports.HasPropertyKey(context, type.$ref) ? FromType19(context, context[type.$ref], value) : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/clean/from_tuple.mjs
+
   function FromTuple5(context, schema, value) {
     if (!guard_exports.IsArray(value))
       return value;
@@ -11207,12 +11207,12 @@
     return guard_exports.IsGreaterThan(value.length, length) ? value.slice(0, length) : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/clone/clone.mjs
+
   function Clone2(value) {
     return Clone(value);
   }
 
-  // ../pi/node_modules/typebox/build/value/clean/from_union.mjs
+
   function FromUnion9(context, type, value) {
     for (const schema of type.anyOf) {
       const clean = FromType19(context, schema, Clone2(value));
@@ -11222,12 +11222,12 @@
     return value;
   }
 
-  // ../pi/node_modules/typebox/build/value/clean/from_type.mjs
+
   function FromType19(context, type, value) {
     return IsArray3(type) ? FromArray7(context, type, value) : IsCyclic(type) ? FromCyclic6(context, type, value) : IsIntersect(type) ? FromIntersect6(context, type, value) : IsObject3(type) ? FromObject11(context, type, value) : IsRecord(type) ? FromRecord3(context, type, value) : IsRef(type) ? FromRef5(context, type, value) : IsTuple(type) ? FromTuple5(context, type, value) : IsUnion(type) ? FromUnion9(context, type, value) : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/shared/union_priority_sort.mjs
+
   function Modifiers(type, next) {
     for (const key of guard_default.Keys(type)) {
       if (guard_default.HasPropertyKey(next, key))
@@ -11257,7 +11257,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/value/clean/clean.mjs
+
   function Clean(...args) {
     const [context, type, value] = arguments_exports.Match(args, {
       3: (context2, type2, value2) => [context2, type2, value2],
@@ -11267,7 +11267,7 @@
     return FromType19(context, sorted, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/try/try.mjs
+
   var try_exports = {};
   __export(try_exports, {
     Fail: () => Fail,
@@ -11282,7 +11282,7 @@
     TryUndefined: () => TryUndefined
   });
 
-  // ../pi/node_modules/typebox/build/value/convert/try/try_result.mjs
+
   function IsOk(value) {
     return guard_exports.IsObject(value) && guard_exports.HasPropertyKey(value, "value");
   }
@@ -11293,12 +11293,12 @@
     return void 0;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/try/try_array.mjs
+
   function TryArray(value) {
     return guard_exports.IsArray(value) ? Ok(value) : Ok([value]);
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/try/try_bigint.mjs
+
   function FromBoolean2(value) {
     return guard_exports.IsEqual(value, true) ? Ok(BigInt(1)) : Ok(BigInt(0));
   }
@@ -11322,7 +11322,7 @@
     return guard_exports.IsBigInt(value) ? Ok(value) : guard_exports.IsBoolean(value) ? FromBoolean2(value) : guard_exports.IsNumber(value) ? Ok(BigInt(Math.trunc(value))) : guard_exports.IsNull(value) ? Ok(BigInt(0)) : guard_exports.IsString(value) ? FromString2(value) : guard_exports.IsUndefined(value) ? Ok(BigInt(0)) : Fail();
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/try/try_boolean.mjs
+
   function FromBigInt2(value) {
     return guard_exports.IsEqual(value, BigInt(0)) ? Ok(false) : guard_exports.IsEqual(value, BigInt(1)) ? Ok(true) : Fail();
   }
@@ -11336,7 +11336,7 @@
     return guard_exports.IsBigInt(value) ? FromBigInt2(value) : guard_exports.IsBoolean(value) ? Ok(value) : guard_exports.IsNumber(value) ? FromNumber2(value) : guard_exports.IsNull(value) ? Ok(false) : guard_exports.IsString(value) ? FromString3(value) : guard_exports.IsUndefined(value) ? Ok(false) : Fail();
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/try/try_null.mjs
+
   function FromBigInt3(value) {
     return guard_exports.IsEqual(value, BigInt(0)) ? Ok(null) : Fail();
   }
@@ -11355,7 +11355,7 @@
     return guard_exports.IsBigInt(value) ? FromBigInt3(value) : guard_exports.IsBoolean(value) ? FromBoolean3(value) : guard_exports.IsNumber(value) ? FromNumber3(value) : guard_exports.IsNull(value) ? Ok(null) : guard_exports.IsString(value) ? FromString4(value) : guard_exports.IsUndefined(value) ? Ok(null) : Fail();
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/try/try_number.mjs
+
   var maxBigInt = BigInt(Number.MAX_SAFE_INTEGER);
   var minBigInt = BigInt(Number.MIN_SAFE_INTEGER);
   function FromBigInt4(value) {
@@ -11382,12 +11382,12 @@
     return guard_exports.IsBigInt(value) ? FromBigInt4(value) : guard_exports.IsBoolean(value) ? FromBoolean4(value) : guard_exports.IsNumber(value) ? Ok(value) : guard_exports.IsNull(value) ? Ok(0) : guard_exports.IsString(value) ? FromString5(value) : guard_exports.IsUndefined(value) ? Ok(0) : Fail();
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/try/try_string.mjs
+
   function TryString(value) {
     return guard_exports.IsBigInt(value) ? Ok(value.toString()) : guard_exports.IsBoolean(value) ? Ok(value.toString()) : guard_exports.IsNumber(value) ? Ok(value.toString()) : guard_exports.IsNull(value) ? Ok("null") : guard_exports.IsString(value) ? Ok(value) : guard_exports.IsUndefined(value) ? Ok("") : Fail();
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/try/try_undefined.mjs
+
   function FromBigInt5(value) {
     return guard_exports.IsEqual(value, BigInt(0)) ? Ok(void 0) : Fail();
   }
@@ -11406,48 +11406,48 @@
     return guard_exports.IsBigInt(value) ? FromBigInt5(value) : guard_exports.IsBoolean(value) ? FromBoolean5(value) : guard_exports.IsNumber(value) ? FromNumber4(value) : guard_exports.IsNull(value) ? Ok(void 0) : guard_exports.IsString(value) ? FromString6(value) : guard_exports.IsUndefined(value) ? Ok(value) : Fail();
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_array.mjs
+
   function FromArray8(context, type, value) {
     const result = try_exports.TryArray(value);
     return result.value.map((value2) => FromType21(context, type.items, value2));
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_bigint.mjs
+
   function FromBigInt6(_context, _type, value) {
     const result = try_exports.TryBigInt(value);
     return try_exports.IsOk(result) ? result.value : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_boolean.mjs
+
   function FromBoolean6(_context, _type, value) {
     const result = try_exports.TryBoolean(value);
     return try_exports.IsOk(result) ? result.value : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_cyclic.mjs
+
   function FromCyclic7(context, type, value) {
     return FromType21({ ...context, ...type.$defs }, Ref(type.$ref), value);
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_enum.mjs
+
   function FromEnum3(context, type, value) {
     return FromType21(context, Evaluate2(type), value);
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_integer.mjs
+
   function FromInteger(_context, _type, value) {
     const result = try_exports.TryNumber(value);
     return try_exports.IsOk(result) ? Math.trunc(result.value) : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_intersect.mjs
+
   function FromIntersect7(context, type, value) {
     const instantiated = Instantiate(context, type);
     const evaluated = Evaluate2(instantiated);
     return FromType21(context, evaluated, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_literal.mjs
+
   function FromLiteralBigInt(_context, type, value) {
     const result = try_exports.TryBigInt(value);
     return try_exports.IsOk(result) && guard_exports.IsEqual(type.const, result.value) ? result.value : value;
@@ -11470,19 +11470,19 @@
     return IsLiteralBigInt(type) ? FromLiteralBigInt(context, type, value) : IsLiteralBoolean(type) ? FromLiteralBoolean(context, type, value) : IsLiteralNumber(type) ? FromLiteralNumber(context, type, value) : IsLiteralString(type) ? FromLiteralString(context, type, value) : Unreachable();
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_null.mjs
+
   function FromNull2(_context, _type, value) {
     const result = try_exports.TryNull(value);
     return try_exports.IsOk(result) ? result.value : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_number.mjs
+
   function FromNumber5(_context, _type, value) {
     const result = try_exports.TryNumber(value);
     return try_exports.IsOk(result) ? result.value : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_additional.mjs
+
   function FromAdditionalProperties(context, entries, additionalProperties, value) {
     const keys = guard_exports.Keys(value);
     for (const [regexp, _] of entries) {
@@ -11495,12 +11495,12 @@
     return value;
   }
 
-  // ../pi/node_modules/typebox/build/value/shared/optional_undefined.mjs
+
   function IsOptionalUndefined(property, key, value) {
     return IsOptional(property) && guard_exports.IsUndefined(value[key]);
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_object.mjs
+
   function FromProperties5(context, type, value) {
     const entries = guard_exports.EntriesRegExp(type.properties);
     const keys = guard_exports.Keys(value);
@@ -11517,7 +11517,7 @@
     return guard_exports.IsObjectNotArray(value) ? FromProperties5(context, type, value) : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_record.mjs
+
   function FromPatternProperties(context, type, value) {
     const entries = guard_exports.EntriesRegExp(type.patternProperties);
     const keys = guard_exports.Keys(value);
@@ -11534,23 +11534,23 @@
     return guard_exports.IsObjectNotArray(value) ? FromPatternProperties(context, type, value) : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_ref.mjs
+
   function FromRef6(context, type, value) {
     return guard_exports.HasPropertyKey(context, type.$ref) ? FromType21(context, context[type.$ref], value) : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_string.mjs
+
   function FromString7(_context, _type, value) {
     const result = try_exports.TryString(value);
     return try_exports.IsOk(result) ? result.value : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_template_literal.mjs
+
   function FromTemplateLiteral4(context, type, value) {
     return FromType21(context, Evaluate2(type), value);
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_tuple.mjs
+
   function FromTuple6(context, type, value) {
     if (!guard_exports.IsArray(value))
       return value;
@@ -11560,13 +11560,13 @@
     return value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_undefined.mjs
+
   function FromUndefined2(_context, _type, value) {
     const result = try_exports.TryUndefined(value);
     return try_exports.IsOk(result) ? result.value : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_union.mjs
+
   function FromUnion10(context, type, value) {
     const matched = type.anyOf.some((type2) => Check2(context, type2, value));
     if (matched)
@@ -11576,18 +11576,18 @@
     return guard_exports.IsUndefined(selected) ? value : selected;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_void.mjs
+
   function FromVoid(_context, _type, value) {
     const result = try_exports.TryUndefined(value);
     return try_exports.IsOk(result) ? void 0 : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/from_type.mjs
+
   function FromType21(context, type, value) {
     return IsArray3(type) ? FromArray8(context, type, value) : IsBigInt3(type) ? FromBigInt6(context, type, value) : IsBoolean4(type) ? FromBoolean6(context, type, value) : IsCyclic(type) ? FromCyclic7(context, type, value) : IsEnum(type) ? FromEnum3(context, type, value) : IsInteger3(type) ? FromInteger(context, type, value) : IsIntersect(type) ? FromIntersect7(context, type, value) : IsLiteral(type) ? FromLiteral6(context, type, value) : IsNull3(type) ? FromNull2(context, type, value) : IsNumber4(type) ? FromNumber5(context, type, value) : IsObject3(type) ? FromObject12(context, type, value) : IsRecord(type) ? FromRecord4(context, type, value) : IsRef(type) ? FromRef6(context, type, value) : IsString4(type) ? FromString7(context, type, value) : IsTemplateLiteral(type) ? FromTemplateLiteral4(context, type, value) : IsTuple(type) ? FromTuple6(context, type, value) : IsUndefined3(type) ? FromUndefined2(context, type, value) : IsUnion(type) ? FromUnion10(context, type, value) : IsVoid(type) ? FromVoid(context, type, value) : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/convert/convert.mjs
+
   function Convert(...args) {
     const [context, type, value] = arguments_exports.Match(args, {
       3: (context2, type2, value2) => [context2, type2, value2],
@@ -11596,7 +11596,7 @@
     return FromType21(context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/default/from_array.mjs
+
   function FromArray9(context, type, value) {
     if (!guard_exports.IsArray(value))
       return value;
@@ -11606,26 +11606,26 @@
     return value;
   }
 
-  // ../pi/node_modules/typebox/build/value/default/from_cyclic.mjs
+
   function FromCyclic8(context, type, value) {
     return FromType22({ ...context, ...type.$defs }, Ref(type.$ref), value);
   }
 
-  // ../pi/node_modules/typebox/build/value/default/from_default.mjs
+
   function FromDefault(type, value) {
     if (!guard_exports.IsUndefined(value))
       return value;
     return guard_exports.IsFunction(type.default) ? type.default() : Clone2(type.default);
   }
 
-  // ../pi/node_modules/typebox/build/value/default/from_intersect.mjs
+
   function FromIntersect8(context, type, value) {
     const instantiated = Instantiate(context, type);
     const evaluated = Evaluate2(instantiated);
     return FromType22(context, evaluated, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/default/from_object.mjs
+
   function FromObject13(context, type, value) {
     if (!guard_exports.IsObject(value))
       return value;
@@ -11647,7 +11647,7 @@
     return value;
   }
 
-  // ../pi/node_modules/typebox/build/value/default/from_record.mjs
+
   function FromRecord5(context, type, value) {
     if (!guard_exports.IsObject(value))
       return value;
@@ -11667,12 +11667,12 @@
     return value;
   }
 
-  // ../pi/node_modules/typebox/build/value/default/from_ref.mjs
+
   function FromRef7(context, type, value) {
     return guard_exports.HasPropertyKey(context, type.$ref) ? FromType22(context, context[type.$ref], value) : value;
   }
 
-  // ../pi/node_modules/typebox/build/value/default/from_tuple.mjs
+
   function FromTuple7(context, schema, value) {
     if (!guard_exports.IsArray(value))
       return value;
@@ -11684,7 +11684,7 @@
     return value;
   }
 
-  // ../pi/node_modules/typebox/build/value/default/from_union.mjs
+
   function FromUnion11(context, schema, value) {
     for (const inner of schema.anyOf) {
       const result = FromType22(context, inner, Clone2(value));
@@ -11695,13 +11695,13 @@
     return value;
   }
 
-  // ../pi/node_modules/typebox/build/value/default/from_type.mjs
+
   function FromType22(context, type, value) {
     const defaulted = IsDefault(type) ? FromDefault(type, value) : value;
     return IsArray3(type) ? FromArray9(context, type, defaulted) : IsCyclic(type) ? FromCyclic8(context, type, defaulted) : IsIntersect(type) ? FromIntersect8(context, type, defaulted) : IsObject3(type) ? FromObject13(context, type, defaulted) : IsRecord(type) ? FromRecord5(context, type, defaulted) : IsRef(type) ? FromRef7(context, type, defaulted) : IsTuple(type) ? FromTuple7(context, type, defaulted) : IsUnion(type) ? FromUnion11(context, type, defaulted) : defaulted;
   }
 
-  // ../pi/node_modules/typebox/build/value/default/default.mjs
+
   function Default(...args) {
     const [context, type, value] = arguments_exports.Match(args, {
       3: (context2, type2, value2) => [context2, type2, value2],
@@ -11710,7 +11710,7 @@
     return FromType22(context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/pipeline/pipeline.mjs
+
   function Pipeline(pipeline) {
     return (...args) => {
       const [context, type, value] = arguments_exports.Match(args, {
@@ -11721,7 +11721,7 @@
     };
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/callback.mjs
+
   function Decode3(_context, type, value) {
     return type["~codec"].decode(value);
   }
@@ -11734,7 +11734,7 @@
     return guard_exports.IsEqual(direction, "Decode") ? Decode3(context, type, value) : Encode3(context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/from_array.mjs
+
   function Decode4(direction, context, type, value) {
     if (!guard_exports.IsArray(value))
       return value;
@@ -11756,13 +11756,13 @@
     return guard_exports.IsEqual(direction, "Decode") ? Decode4(direction, context, type, value) : Encode4(direction, context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/from_cyclic.mjs
+
   function FromCyclic9(direction, context, type, value) {
     value = FromType23(direction, { ...context, ...type.$defs }, Ref(type.$ref), value);
     return Callback(direction, context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/from_intersect.mjs
+
   function MergeInteriors(interiors) {
     return interiors.reduce((results, interior) => ({ ...results, ...interior }), {});
   }
@@ -11794,7 +11794,7 @@
     return guard_exports.IsEqual(direction, "Decode") ? Decode5(direction, context, type, value) : Encode5(direction, context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/from_object.mjs
+
   function Decode6(direction, context, type, value) {
     if (!guard_exports.IsObjectNotArray(value))
       return value;
@@ -11820,7 +11820,7 @@
     return guard_exports.IsEqual(direction, "Decode") ? Decode6(direction, context, type, value) : Encode6(direction, context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/from_record.mjs
+
   function Decode7(direction, context, type, value) {
     if (!guard_exports.IsObjectNotArray(value))
       return value;
@@ -11848,7 +11848,7 @@
     return guard_exports.IsEqual(direction, "Decode") ? Decode7(direction, context, type, value) : Encode7(direction, context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/from_ref.mjs
+
   function ResolveRef2(direction, context, type, value) {
     return guard_exports.HasPropertyKey(context, type.$ref) ? FromType23(direction, context, context[type.$ref], value) : value;
   }
@@ -11856,7 +11856,7 @@
     return guard_exports.IsEqual(direction, "Decode") ? Callback(direction, context, type, ResolveRef2(direction, context, type, value)) : ResolveRef2(direction, context, type, Callback(direction, context, type, value));
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/from_tuple.mjs
+
   function Decode8(direction, context, type, value) {
     if (!guard_exports.IsArray(value))
       return value;
@@ -11878,7 +11878,7 @@
     return guard_exports.IsEqual(direction, "Decode") ? Decode8(direction, context, type, value) : Encode8(direction, context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/from_union.mjs
+
   function Decode9(direction, context, type, value) {
     for (const schema of type.anyOf) {
       if (!Check2(context, schema, value))
@@ -11902,12 +11902,12 @@
     return guard_exports.IsEqual(direction, "Decode") ? Decode9(direction, context, type, value) : Encode9(direction, context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/from_type.mjs
+
   function FromType23(direction, context, type, value) {
     return IsArray3(type) ? FromArray10(direction, context, type, value) : IsCyclic(type) ? FromCyclic9(direction, context, type, value) : IsIntersect(type) ? FromIntersect9(direction, context, type, value) : IsObject3(type) ? FromObject14(direction, context, type, value) : IsRecord(type) ? FromRecord6(direction, context, type, value) : IsRef(type) ? FromRef8(direction, context, type, value) : IsTuple(type) ? FromTuple8(direction, context, type, value) : IsUnion(type) ? FromUnion12(direction, context, type, value) : Callback(direction, context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/decode.mjs
+
   var DecodeError = class extends AssertError {
     constructor(value, errors) {
       super("Decode", value, errors);
@@ -11938,7 +11938,7 @@
     return Decoder(context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/encode.mjs
+
   var EncodeError = class extends AssertError {
     constructor(value, errors) {
       super("Encode", value, errors);
@@ -11969,7 +11969,7 @@
     return Encoder(context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/codec/has.mjs
+
   function FromArray11(context, type) {
     return IsCodec(type) || FromType24(context, type.items);
   }
@@ -12012,7 +12012,7 @@
     return FromType24(context, type);
   }
 
-  // ../pi/node_modules/typebox/build/value/create/error.mjs
+
   var CreateError = class extends Error {
     constructor(type, message) {
       super(message);
@@ -12020,12 +12020,12 @@
     }
   };
 
-  // ../pi/node_modules/typebox/build/value/create/from_default.mjs
+
   function FromDefault2(_context, schema) {
     return guard_exports.IsFunction(schema.default) ? schema.default(schema) : guard_exports.IsObject(schema.default) ? Clone2(schema.default) : schema.default;
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_array.mjs
+
   function FromArray12(context, type) {
     if (IsUniqueItems(type) && !IsDefault(type))
       throw new CreateError(type, "Arrays with uniqueItems constraints must specify a default annotation");
@@ -12033,17 +12033,17 @@
     return Array.from({ length }, () => FromType25(context, type.items));
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_bigint.mjs
+
   function FromBigInt7(_context, type) {
     return IsExclusiveMinimum(type) ? BigInt(type.exclusiveMinimum) + BigInt(1) : IsMinimum(type) ? BigInt(type.minimum) : BigInt(0);
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_boolean.mjs
+
   function FromBoolean7(_context, _type) {
     return false;
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_constructor.mjs
+
   function FromConstructor2(context, type) {
     const instanceType = FromType25(context, type.instanceType);
     return class {
@@ -12053,55 +12053,55 @@
     };
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_cyclic.mjs
+
   function FromCyclic11(context, type) {
     return FromType25({ ...context, ...type.$defs }, Ref(type.$ref));
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_enum.mjs
+
   function FromEnum4(context, type) {
     return FromType25(context, Evaluate2(type));
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_function.mjs
+
   function FromFunction2(context, type) {
     const returnType = FromType25(context, type.returnType);
     return () => returnType;
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_integer.mjs
+
   function FromInteger2(_context, type) {
     return IsExclusiveMinimum(type) && guard_exports.IsNumber(type.exclusiveMinimum) ? type.exclusiveMinimum + 1 : IsMinimum(type) ? type.minimum : 0;
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_intersect.mjs
+
   function FromIntersect11(context, type) {
     const instantiated = Instantiate(context, type);
     const evaluated = Evaluate2(instantiated);
     return FromType25(context, evaluated);
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_literal.mjs
+
   function FromLiteral7(_context, type) {
     return type.const;
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_never.mjs
+
   function FromNever(_context, type) {
     throw new CreateError(type, "Cannot create TNever types");
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_null.mjs
+
   function FromNull3(_context, _type) {
     return null;
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_number.mjs
+
   function FromNumber6(_context, type) {
     return IsExclusiveMinimum(type) && guard_exports.IsNumber(type.exclusiveMinimum) ? type.exclusiveMinimum + 1 : IsMinimum(type) ? type.minimum : 0;
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_object.mjs
+
   function FromObject16(context, type) {
     const required = guard_exports.IsUndefined(type.required) ? [] : type.required;
     return required.reduce((result, key) => {
@@ -12109,21 +12109,21 @@
     }, {});
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_record.mjs
+
   function FromRecord8(_context, type) {
     if (IsMinProperties(type) && !IsDefault(type))
       throw new CreateError(type, "Record with the minProperties constraint must have a default annotation");
     return {};
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_ref.mjs
+
   function FromRef10(context, type) {
     return guard_exports.HasPropertyKey(context, type.$ref) ? FromType25(context, context[type.$ref]) : (() => {
       throw new CreateError(type, "Unable to deref Ref");
     })();
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_string.mjs
+
   function FromString8(_context, type) {
     const needsDefault = (IsPattern(type) || IsFormat(type)) && !IsDefault(type);
     if (needsDefault)
@@ -12132,12 +12132,12 @@
     return "".padEnd(minLength);
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_symbol.mjs
+
   function FromSymbol2(_context, _type) {
     return /* @__PURE__ */ Symbol();
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_template_literal.mjs
+
   function FromTemplateLiteral5(context, type) {
     const decoded = TemplateLiteralDecode(type.pattern);
     if (IsString4(decoded))
@@ -12145,17 +12145,17 @@
     return FromType25(context, decoded);
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_tuple.mjs
+
   function FromTuple10(context, type) {
     return Array.from({ length: type.minItems }, (_, i) => FromType25(context, type.items[i]));
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_undefined.mjs
+
   function FromUndefined3(_context, _type) {
     return void 0;
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_union.mjs
+
   function FromUnion14(context, type) {
     if (guard_exports.IsEqual(type.anyOf.length, 0)) {
       throw Error("Unable to create Union with no variants");
@@ -12163,12 +12163,12 @@
     return FromType25(context, type.anyOf[0]);
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_void.mjs
+
   function FromVoid2(_context, _type) {
     return void 0;
   }
 
-  // ../pi/node_modules/typebox/build/value/create/from_type.mjs
+
   function FromType25(context, type) {
     return (
       // -----------------------------------------------------
@@ -12183,7 +12183,7 @@
     );
   }
 
-  // ../pi/node_modules/typebox/build/value/create/create.mjs
+
   function Create2(...args) {
     const [context, type] = arguments_exports.Match(args, {
       2: (context2, type2) => [context2, type2],
@@ -12192,17 +12192,17 @@
     return FromType25(context, type);
   }
 
-  // ../pi/node_modules/typebox/build/value/equal/equal.mjs
+
   function Equal(left, right) {
     return guard_exports.IsDeepEqual(left, right);
   }
 
-  // ../pi/node_modules/typebox/build/value/hash/hash.mjs
+
   function Hash2(value) {
     return hash_exports.Hash(value);
   }
 
-  // ../pi/node_modules/typebox/build/value/parse/parse.mjs
+
   var ParseError = class extends AssertError {
     constructor(value, errors) {
       super("Parse", value, errors);
@@ -12233,7 +12233,7 @@
     throw new ParseError(value, Errors2(context, type, value));
   }
 
-  // ../pi/node_modules/typebox/build/value/delta/diff.mjs
+
   function CreateUpdate(path2, value) {
     return { type: "update", path: path2, value };
   }
@@ -12320,7 +12320,7 @@
     return [...FromValue4("", current, next)];
   }
 
-  // ../pi/node_modules/typebox/build/value/delta/edit.mjs
+
   var Insert2 = _Object_({
     type: Literal("insert"),
     path: String2(),
@@ -12337,7 +12337,7 @@
   });
   var Edit = Union([Insert2, Update2, Delete2]);
 
-  // ../pi/node_modules/typebox/build/value/delta/patch.mjs
+
   function IsRoot(edits) {
     return edits.length > 0 && edits[0].path === "" && edits[0].type === "update";
   }
@@ -12369,7 +12369,7 @@
     return clone;
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/error.mjs
+
   var RepairError = class extends Error {
     constructor(context, type, value, message) {
       super(message);
@@ -12379,7 +12379,7 @@
     }
   };
 
-  // ../pi/node_modules/typebox/build/value/repair/from_array.mjs
+
   function MakeUnique(values) {
     const [hashes, result] = [/* @__PURE__ */ new Set(), []];
     for (const value of values) {
@@ -12406,19 +12406,19 @@
     return unique;
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/from_enum.mjs
+
   function FromEnum5(context, type, value) {
     return FromType26(context, Evaluate2(type), value);
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/from_intersect.mjs
+
   function FromIntersect12(context, type, value) {
     const instantiated = Instantiate(context, type);
     const evaluated = Evaluate2(instantiated);
     return FromType26(context, evaluated, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/from_object.mjs
+
   function FromObject18(context, type, value) {
     if (Check2(context, type, value))
       return value;
@@ -12442,7 +12442,7 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/from_record.mjs
+
   function FromRecord9(context, type, value) {
     if (Check2(context, type, value))
       return value;
@@ -12468,20 +12468,20 @@
     return result;
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/from_ref.mjs
+
   function FromRef11(context, type, value) {
     return guard_exports.HasPropertyKey(context, type.$ref) ? FromType26(context, context[type.$ref], value) : (() => {
       throw new RepairError(context, type, value, "Unable to de-reference target type");
     })();
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/from_template_literal.mjs
+
   function FromTemplateLiteral6(context, type, value) {
     const decoded = TemplateLiteralDecode(type.pattern);
     return FromType26(context, decoded, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/from_tuple.mjs
+
   function FromTuple11(context, schema, value) {
     if (Check2(context, schema, value))
       return value;
@@ -12490,7 +12490,7 @@
     return schema.items.map((schema2, index3) => FromType26(context, schema2, value[index3]));
   }
 
-  // ../pi/node_modules/typebox/build/value/shared/union_score_select.mjs
+
   function Deref(context, type, value) {
     return IsRef(type) ? guard_exports.HasPropertyKey(context, type.$ref) ? Deref(context, context[type.$ref], value) : (() => {
       throw new Error("Unable to Deref target");
@@ -12521,7 +12521,7 @@
     return select;
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/from_union.mjs
+
   function RepairUnion(context, type, value) {
     const union = Union(Flatten(type.anyOf));
     const schema = UnionScoreSelect(context, union, value);
@@ -12535,7 +12535,7 @@
     return RepairUnion(context, type, value);
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/from_unknown.mjs
+
   function FromUnknown2(context, type, value) {
     if (Check2(context, type, value))
       return value;
@@ -12545,7 +12545,7 @@
     return Create2(context, type);
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/from_type.mjs
+
   function AssertRepairableValue(context, type, value) {
     const unsupported = globals_exports.IsDate(value) || globals_exports.IsMap(value) || globals_exports.IsSet(value) || globals_exports.IsTypeArray(value) || guard_exports.IsConstructor(value) || guard_exports.IsFunction(value);
     if (unsupported) {
@@ -12572,7 +12572,7 @@
     return FinalizeRepair(context, type, repaired);
   }
 
-  // ../pi/node_modules/typebox/build/value/repair/repair.mjs
+
   function Repair(...args) {
     const [context, type, value] = arguments_exports.Match(args, {
       3: (context2, type2, value2) => [context2, type2, value2],
@@ -12583,7 +12583,7 @@
     return repaired;
   }
 
-  // ../pi/node_modules/typebox/build/value/value.mjs
+
   var value_exports = {};
   __export(value_exports, {
     Assert: () => Assert,
@@ -12606,10 +12606,10 @@
     Repair: () => Repair
   });
 
-  // ../pi/node_modules/typebox/build/value/index.mjs
+
   var value_default = value_exports;
 
-  // ../pi/node_modules/typebox/build/compile/validator.mjs
+
   var Validator = class {
     /** Constructs a Validator. */
     constructor(context, type) {
@@ -12695,7 +12695,7 @@
     }
   };
 
-  // ../pi/node_modules/typebox/build/compile/compile.mjs
+
   function Compile(...args) {
     const [context, type] = arguments_exports.Match(args, {
       2: (context2, type2) => [context2, type2],
@@ -12704,10 +12704,10 @@
     return new Validator(context, type);
   }
 
-  // ../pi/node_modules/typebox/build/compile/index.mjs
+
   var compile_default = Compile;
 
-  // rpi/crates/rpi-js/js/extension-host.ts
+
   var globals = globalThis;
   var hostCall = (op, args) => {
     const response = JSON.parse(globals.__piHostCall(op, JSON.stringify(args ?? {})));

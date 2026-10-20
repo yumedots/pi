@@ -131,6 +131,11 @@ const result = await build({
 	plugins: [virtualModulePlugin],
 	metafile: true,
 	logLevel: "warning",
+	// esbuild writes the resolved path of every input into the bundle as a
+	// comment, so the output would depend on where node_modules happens to
+	// live. The bundle has to be byte-reproducible, because CI rebuilds it and
+	// fails when it differs.
+	legalComments: "none",
 });
 
 const builtins = new Set();
@@ -145,5 +150,9 @@ if (builtins.size > 0) {
 	throw new Error(`the bundle needs node built-ins the host does not provide: ${[...builtins].join(", ")}`);
 }
 
-writeFileSync(output, result.outputFiles[0].text);
-console.log(`built ${output} (${(result.outputFiles[0].text.length / 1024).toFixed(1)} KiB)`);
+const bundle = result.outputFiles[0].text.replace(
+	/^[ \t]*\/\/[ \t]+[\w@.~/-]*[\w@~-]\.(?:mjs|cjs|jsx|js|ts|tsx|json)[ \t]*$/gm,
+	"",
+);
+writeFileSync(output, bundle);
+console.log(`built ${output} (${(bundle.length / 1024).toFixed(1)} KiB)`);
