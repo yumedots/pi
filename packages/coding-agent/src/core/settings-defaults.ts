@@ -62,7 +62,7 @@ export const SETTINGS_DEFAULTS = {
 	},
 	cacheWarming: "streaming",
 	tuiMode: "fullscreen",
-	fullscreenExitOutput: "transcript",
+	fullscreenExitOutput: "resume-hint",
 	fullscreenScrollbar: "auto",
 	fullscreenCopyOnSelect: true,
 	fullscreenWheelScrollLines: 1,

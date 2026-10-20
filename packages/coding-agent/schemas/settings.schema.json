@@ -391,7 +391,7 @@
         },
         "showTerminalProgress": {
           "type": "boolean",
-          "description": "Show OSC 9;4 terminal progress indicators.",
+          "description": "Show a progress line while the agent works.",
           "default": false
         },
         "hyperlinks": {
@@ -724,7 +724,7 @@
         }
       ],
       "description": "No effect in regular TUI mode.",
-      "default": "transcript"
+      "default": "resume-hint"
     },
     "fullscreenScrollbar": {
       "anyOf": [

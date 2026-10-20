@@ -153,6 +153,7 @@ describe("InteractiveMode compaction events", () => {
 			clearStatusIndicator: vi.fn(),
 			flushCompactionQueue: vi.fn().mockResolvedValue(undefined),
 			settingsManager: { getShowTerminalProgress: () => false },
+			progressBar: { start: vi.fn(), complete: vi.fn() },
 			ui: { requestRender: vi.fn(), terminal: { setProgress: vi.fn() } },
 		};
 
@@ -207,8 +208,8 @@ describe("InteractiveMode compaction events", () => {
 			workingVisible: true,
 			showWorkingStatusIndicator: vi.fn(),
 			clearStatusIndicator: vi.fn(),
-			settingsManager: { getShowTerminalProgress: () => true },
-			ui: { requestRender: vi.fn(), terminal: { setProgress: vi.fn() } },
+			progressBar: { start: vi.fn(), complete: vi.fn() },
+			ui: { requestRender: vi.fn() },
 		};
 		const handleEvent = Reflect.get(InteractiveMode.prototype, "handleEvent") as (
 			this: typeof fakeThis,
@@ -217,7 +218,7 @@ describe("InteractiveMode compaction events", () => {
 
 		await handleEvent.call(fakeThis, { type: "turn_start" });
 
-		expect(fakeThis.ui.terminal.setProgress).toHaveBeenCalledWith(true);
+		expect(fakeThis.progressBar.start).toHaveBeenCalledTimes(1);
 		expect(fakeThis.showWorkingStatusIndicator).toHaveBeenCalledTimes(1);
 		expect(fakeThis.clearStatusIndicator).not.toHaveBeenCalled();
 		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(1);

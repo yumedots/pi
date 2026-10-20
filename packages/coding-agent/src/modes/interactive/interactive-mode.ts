@@ -160,6 +160,7 @@ import {
 	OAuthSelectorComponent,
 } from "./components/oauth-selector.ts";
 import { piLogoLines, piWordmark, supportsPiLogo } from "./components/pi-logo.ts";
+import { AgentProgressBar } from "./components/progress-bar.ts";
 import { createLoginMenuSelector } from "./components/radius-login-selector.ts";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
 import { SessionMenuComponent } from "./components/session-menu.ts";
@@ -465,6 +466,9 @@ export class InteractiveMode {
 	private documentContainer: Container;
 	private transcriptScrollView: TuiLayouts.ScrollView | undefined;
 	private fullscreenLayoutRoot: Component | undefined;
+	private progressBar: AgentProgressBar;
+	/** True while the agent runs, so a compaction inside a run does not end the progress bar. */
+	private agentRunActive = false;
 	private pendingMessagesContainer: Container;
 	private statusContainer: Container;
 	private defaultEditor: CustomEditor;
@@ -646,6 +650,8 @@ export class InteractiveMode {
 		});
 		this.ui = createInteractiveTuiReference(() => this.renderer);
 		this.ui.setClearOnShrink(this.settingsManager.getClearOnShrink());
+		this.progressBar = new AgentProgressBar(this.ui);
+		this.updateProgressBar();
 		this.headerContainer = new Container();
 		this.resourceDiagnosticsContainer = new Container();
 		this.chatContainer = new Container();
@@ -881,6 +887,8 @@ export class InteractiveMode {
 			this.documentContainer,
 			this.pendingMessagesContainer,
 			this.statusContainer,
+			// Regular mode scrolls its content, so the bar goes above the input box.
+			this.progressBar,
 			this.widgetContainerAbove,
 			this.warningContainer,
 			this.editorContainer,
@@ -969,16 +977,24 @@ export class InteractiveMode {
 		tui.requestRender(true);
 	}
 
+	/**
+	 * The progress bar is on top of the screen in fullscreen mode. Regular mode
+	 * scrolls its content, so the bar sits above the input box there.
+	 */
+	private updateProgressBar(): void {
+		this.progressBar.setEnabled(this.settingsManager.getShowTerminalProgress());
+	}
+
 	private stopInteractiveTui(fullscreenExitOutput: FullscreenExitOutput): void {
 		if (this.renderer.mode === "fullscreen" && fullscreenExitOutput === "transcript") {
 			while (this.renderer.hasOverlayEntries) this.renderer.hideOverlay();
-			this.switchTuiMode("regular", false, false);
+			this.switchTuiMode("regular", false);
 			this.renderer.renderNow();
 		}
 		this.ui.stop({ preserveScreen: this.renderer.mode === "fullscreen" });
 	}
 
-	private switchTuiMode(mode: TuiMode, restoreProgress = true, startRenderer = true): boolean {
+	private switchTuiMode(mode: TuiMode, startRenderer = true): boolean {
 		const previousUi = this.renderer;
 		if (mode === previousUi.mode) return true;
 		if (previousUi.hasOverlayEntries) return false;
@@ -1014,6 +1030,7 @@ export class InteractiveMode {
 		}
 		this.renderer = nextUi;
 		this.options.tuiMode = mode;
+		this.updateProgressBar();
 		this.mountInteractiveTui(nextUi, components);
 		nextUi.invalidate();
 		nextUi.setFocus(focus);
@@ -1021,13 +1038,6 @@ export class InteractiveMode {
 		nextUi.start();
 		this.themeController.rebindTui();
 		this.rebindExtensionTerminalInputListeners();
-		if (
-			restoreProgress &&
-			this.settingsManager.getShowTerminalProgress() &&
-			(this.session.isStreaming || this.session.isCompacting)
-		) {
-			terminal.setProgress(true);
-		}
 		return true;
 	}
 
@@ -1068,6 +1078,7 @@ export class InteractiveMode {
 			scrollbar: this.settingsManager.getFullscreenScrollbar(),
 			scrollbarTrackStyle: (text) => theme.fg("scrollbarTrack", text),
 			scrollbarThumbStyle: (text) => theme.fg("scrollbarThumb", text),
+			progress: this.progressBar,
 		});
 		this.transcriptScrollView = viewport.transcript;
 		this.fullscreenLayoutRoot = viewport.root;
@@ -3255,9 +3266,8 @@ export class InteractiveMode {
 				break;
 
 			case "turn_start":
-				if (this.settingsManager.getShowTerminalProgress()) {
-					this.ui.terminal.setProgress(true);
-				}
+				this.agentRunActive = true;
+				this.progressBar.start();
 				if (this.workingVisible) {
 					if (this.activeStatusIndicator?.kind !== "working") {
 						this.showWorkingStatusIndicator();
@@ -3484,9 +3494,8 @@ export class InteractiveMode {
 			}
 
 			case "agent_end":
-				if (this.settingsManager.getShowTerminalProgress()) {
-					this.ui.terminal.setProgress(false);
-				}
+				this.agentRunActive = false;
+				this.progressBar.complete();
 				this.clearStatusIndicator("working");
 				if (this.streamingComponent) {
 					this.chatContainer.removeChild(this.streamingComponent);
@@ -3503,9 +3512,8 @@ export class InteractiveMode {
 				break;
 
 			case "compaction_start": {
-				if (this.settingsManager.getShowTerminalProgress()) {
-					this.ui.terminal.setProgress(true);
-				}
+				// A compaction inside a run is part of that run, so the bar keeps going.
+				if (!this.agentRunActive) this.progressBar.start();
 				// Keep editor active; submissions are queued during compaction.
 				this.autoCompactionEscapeHandler = this.defaultEditor.onEscape;
 				this.defaultEditor.onEscape = () => {
@@ -3523,9 +3531,7 @@ export class InteractiveMode {
 			}
 
 			case "compaction_end": {
-				if (this.settingsManager.getShowTerminalProgress()) {
-					this.ui.terminal.setProgress(false);
-				}
+				if (!this.agentRunActive) this.progressBar.complete();
 				if (this.autoCompactionEscapeHandler) {
 					this.defaultEditor.onEscape = this.autoCompactionEscapeHandler;
 					this.autoCompactionEscapeHandler = undefined;
@@ -4992,6 +4998,7 @@ export class InteractiveMode {
 					},
 					onShowTerminalProgressChange: (enabled) => {
 						this.settingsManager.setShowTerminalProgress(enabled);
+						this.updateProgressBar();
 					},
 					onTuiModeChange: (mode) => {
 						if (!this.switchTuiMode(mode)) {
@@ -7072,9 +7079,7 @@ export class InteractiveMode {
 
 	stop(fullscreenExitOutput = this.settingsManager.getFullscreenExitOutput()): void {
 		this.disposeActiveSelector();
-		if (this.settingsManager.getShowTerminalProgress()) {
-			this.ui.terminal.setProgress(false);
-		}
+		this.progressBar.dispose();
 		this.clearStatusIndicator();
 		this.themeController.disableAutoSync();
 		this.clearExtensionTerminalInputListeners();

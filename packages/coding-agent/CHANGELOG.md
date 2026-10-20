@@ -19,6 +19,8 @@
 - Added the `autocompletePosition` setting, so the slash-command menu can float above the input (default) or sit below it
 - Added the `projectContextMaxChars` setting, which cuts the project context (`AGENTS.md` and friends) in the system prompt. The context is sent with every request, so it is the largest part of the prompt. The cut says how much was left out, and the model can read the file for the rest
 - Added the `nerdFonts` setting, which puts Nerd Font glyphs in front of the footer groups: a chip for the model, a bolt for the thinking level, a chart for the context usage, a folder for the path, and a branch for the git branch. It is off by default, because the glyphs need a patched font
+- The `terminal.showTerminalProgress` setting now draws a progress line while the agent works. The line fills with the time the run has taken, against an estimate from the runs of the session. It sits on top of the screen in fullscreen mode and above the input box in regular mode
+- The terminal progress indicator no longer sends OSC 9;4. Terminals that draw it, such as Ghostty, showed a second line above the progress bar
 
 ### Changed
 

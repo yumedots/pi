@@ -12,6 +12,8 @@ export interface ChatViewportOptions {
 	readonly scrollbar?: ScrollViewScrollbar;
 	readonly scrollbarTrackStyle?: (text: string) => string;
 	readonly scrollbarThumbStyle?: (text: string) => string;
+	/** Progress bar pinned to the top of the screen. */
+	readonly progress?: Component;
 }
 
 export interface ChatViewport {
@@ -41,6 +43,9 @@ export function createChatViewport(options: ChatViewportOptions): ChatViewport {
 	return {
 		transcript,
 		root: new VStack([
+			...(options.progress === undefined
+				? []
+				: [{ component: options.progress, basis: "auto" as const, grow: 0, shrink: 0 }]),
 			{ component: transcript, basis: 0, grow: 1, shrink: 1, minSize: 1 },
 			{ component: dock, basis: "auto", grow: 0, shrink: 1, minSize: 1 },
 		]),

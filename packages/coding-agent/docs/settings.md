@@ -96,7 +96,7 @@ See [Compaction Reference](compaction.md) for trigger, summarization, and valida
 | `theme` | string | `"system"` | Built-in or custom theme name. `system` follows the terminal's light or dark mode. |
 | `quietStartup` | boolean \| `"header"` | `false` | `true` hides the startup header. `"header"` keeps the header (version and key hints) but hides the model scope line. |
 | `tuiMode` | `"regular" \| "fullscreen"` | `"fullscreen"` | Interactive terminal UI mode. |
-| `fullscreenExitOutput` | `"transcript" \| "resume-hint"` | `"transcript"` | Output printed when fullscreen mode exits. |
+| `fullscreenExitOutput` | `"transcript" \| "resume-hint"` | `"resume-hint"` | Output printed when fullscreen mode exits: the transcript, or only the session resume hint. |
 | `fullscreenScrollbar` | `"auto" \| "always" \| "hidden"` | `"auto"` | Fullscreen transcript scrollbar behavior. |
 | `fullscreenCopyOnSelect` | boolean | `true` | Copy selected text automatically in fullscreen mode. |
 | `fullscreenWheelScrollLines` | `1` | number | `1` | Lines per mouse-wheel event in fullscreen mode, from 1 to 100. The default scrolls one line per event. `"auto"` moves one line per event in local macOS terminals, which already accelerate wheel and trackpad input; elsewhere, and over SSH, it speeds up fast wheel spins to at most 6 lines per event. Alt+wheel moves five times as far. |
@@ -110,7 +110,7 @@ See [Compaction Reference](compaction.md) for trigger, summarization, and valida
 | `terminal.showImages` | boolean | `true` | Display inline images when supported. |
 | `terminal.imageWidthCells` | number | `60` | Preferred inline image width in terminal cells. |
 | `terminal.clearOnShrink` | boolean | `false` | Clear empty rows when rendered content shrinks. |
-| `terminal.showTerminalProgress` | boolean | `false` | Show OSC 9;4 progress in the terminal tab. |
+| `terminal.showTerminalProgress` | boolean | `false` | Show a progress line while the agent works. In fullscreen mode the line is on top of the screen, in regular mode above the input box. |
 | `terminal.hyperlinks` | `boolean \| "auto"` | `"auto"` | Override OSC 8 hyperlink detection. |
 | `terminal.images` | `"kitty" \| "iterm2" \| "auto" \| false` | `"auto"` | Override inline-image protocol detection. |
 | `terminal.trueColor` | `boolean \| "auto"` | `"auto"` | Override true-color detection. |

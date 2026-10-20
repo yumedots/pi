@@ -764,13 +764,6 @@ export class SettingsSelectorComponent extends Container {
 			},
 		];
 
-		// The exit output only matters for people who changed it, so keep the row out of
-		// the menu until it differs from the default.
-		if (config.fullscreenExitOutput === SETTINGS_DEFAULTS.fullscreenExitOutput) {
-			const exitOutputIndex = items.findIndex((item) => item.id === "fullscreen-exit-output");
-			if (exitOutputIndex !== -1) items.splice(exitOutputIndex, 1);
-		}
-
 		// Only show image toggle if terminal supports it
 		if (supportsImages) {
 			// Insert after autocompact
@@ -894,7 +887,7 @@ export class SettingsSelectorComponent extends Container {
 		items.splice(clearOnShrinkIndex + 1, 0, {
 			id: "terminal-progress",
 			label: "Terminal progress",
-			description: "Show OSC 9;4 progress indicators in the terminal tab bar",
+			description: "Show a progress line while the agent works",
 			currentValue: config.showTerminalProgress ? "true" : "false",
 			values: ["true", "false"],
 		});

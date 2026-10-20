@@ -170,6 +170,7 @@ describe("createInteractiveTui", () => {
 					settingsManager: {
 						getFullscreenCopyOnSelect: () => boolean;
 						getFullscreenWheelScrollLines: () => WheelScrollLines;
+						getShowTerminalProgress: () => boolean;
 					};
 				};
 			};
@@ -179,11 +180,16 @@ describe("createInteractiveTui", () => {
 			options: { tuiMode?: TuiMode };
 			themeController: { rebindTui: () => void };
 			extensionTerminalInputSubscriptions: Set<never>;
+			progressBar: { setEnabled: (enabled: boolean) => void };
 		};
 		const context = Object.assign(Object.create(InteractiveMode.prototype), {
 			runtimeHost: {
 				session: {
-					settingsManager: { getFullscreenCopyOnSelect: () => true, getFullscreenWheelScrollLines: () => "auto" },
+					settingsManager: {
+						getFullscreenCopyOnSelect: () => true,
+						getFullscreenWheelScrollLines: () => "auto",
+						getShowTerminalProgress: () => false,
+					},
 				},
 			},
 			renderer,
@@ -192,6 +198,7 @@ describe("createInteractiveTui", () => {
 			options: { tuiMode: "regular" as TuiMode },
 			themeController: { rebindTui: () => {} },
 			extensionTerminalInputSubscriptions: new Set<never>(),
+			progressBar: { setEnabled: vi.fn() },
 		}) as SwitchContext;
 		stableUi = createInteractiveTuiReference(() => context.renderer);
 		context.ui = stableUi;
@@ -202,7 +209,7 @@ describe("createInteractiveTui", () => {
 
 		renderer.start();
 		await terminal.waitForRender();
-		expect(switchTuiMode.call(context, "fullscreen", false)).toBe(true);
+		expect(switchTuiMode.call(context, "fullscreen")).toBe(true);
 		await terminal.waitForRender();
 
 		expect(stableUi.mode).toBe("fullscreen");
@@ -212,10 +219,16 @@ describe("createInteractiveTui", () => {
 		expect(invalidatedModes).toEqual(["fullscreen"]);
 		expect([terminal.startCount, terminal.stopCount]).toEqual([2, 1]);
 
+		const writesBeforeStop = terminal.writes.length;
 		stopInteractiveTui.call(context, "resume-hint");
 
 		expect(stableUi.mode).toBe("fullscreen");
 		expect([terminal.startCount, terminal.stopCount]).toEqual([2, 2]);
+		// The frame is discarded with the alternate screen instead of being copied
+		// into the normal scrollback.
+		const stopWrites = terminal.writes.slice(writesBeforeStop).join("");
+		expect(stopWrites).toContain("\x1b[?1049l");
+		expect(stopWrites).not.toContain("content");
 	});
 });
 

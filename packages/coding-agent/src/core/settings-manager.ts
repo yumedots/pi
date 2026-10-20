@@ -1265,8 +1265,8 @@ export class SettingsManager {
 	}
 
 	getFullscreenExitOutput(): FullscreenExitOutput {
-		return this.settings.fullscreenExitOutput === "resume-hint"
-			? "resume-hint"
+		return this.settings.fullscreenExitOutput === "transcript"
+			? "transcript"
 			: SETTINGS_DEFAULTS.fullscreenExitOutput;
 	}
 

@@ -28,7 +28,7 @@ describe("SettingsSelectorComponent", () => {
 		const onCopyOnSelectChange = vi.fn();
 		const onWheelScrollLinesChange = vi.fn();
 		const config = {
-			// Not the default, so the row is in the menu.
+			// The default value; the row stays in the menu so it can be turned on.
 			fullscreenExitOutput: "resume-hint",
 			fullscreenScrollbar: "auto",
 			fullscreenCopyOnSelect: true,
@@ -64,9 +64,9 @@ describe("SettingsSelectorComponent", () => {
 		expect(onWheelScrollLinesChange.mock.calls.flat()).toEqual([10, "auto", 1]);
 	});
 
-	it("hides the fullscreen exit output while it holds the default", () => {
+	it("lists the fullscreen exit output while it holds the default", () => {
 		const config = {
-			fullscreenExitOutput: "transcript",
+			fullscreenExitOutput: "resume-hint",
 			warnings: {},
 			defaultModel: "not set",
 			availableDefaultModels: [],
@@ -79,8 +79,8 @@ describe("SettingsSelectorComponent", () => {
 		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
 		for (const character of "Fullscreen exit output") list.handleInput(character);
 		const output = stripAnsi(list.render(120).join("\n"));
-		expect(output).toContain("No matching settings");
-		expect(output).not.toContain("Print the transcript or only a session resume hint");
+		expect(output).not.toContain("No matching settings");
+		expect(output).toContain("Print the transcript or only a session resume hint");
 	});
 
 	it("cycles through share destinations", () => {

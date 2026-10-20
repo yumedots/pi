@@ -92,7 +92,7 @@ const TerminalSettingsSchema = Type.Object({
 	),
 	showTerminalProgress: Type.Optional(
 		Type.Boolean({
-			description: "Show OSC 9;4 terminal progress indicators.",
+			description: "Show a progress line while the agent works.",
 			default: SETTINGS_DEFAULTS.terminal.showTerminalProgress,
 		}),
 	),
