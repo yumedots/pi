@@ -47,7 +47,8 @@ describe("empty session screen", () => {
 		// 1 logo line, 1 blank, 1 greeting, 1 blank, 1 input line, centered in 12 rows.
 		expect(lines.length).toBe(8);
 		expect(lines[3]).toBe("logo");
-		expect(stripAnsi(lines[5])).toBe("Hi there");
+		// The greeting is centered in the width.
+		expect(stripAnsi(lines[5])).toBe("      Hi there");
 		expect(lines[7]).toBe("     input");
 	});
 

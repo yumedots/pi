@@ -1,4 +1,4 @@
-import type { Component, TuiMouseEvent, TuiMouseEventResult } from "@earendil-works/pi-tui";
+import { type Component, type TuiMouseEvent, type TuiMouseEventResult, visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.ts";
 import type { Centered } from "./centered.ts";
 
@@ -24,7 +24,8 @@ export class EmptySessionScreen implements Component {
 
 	render(width: number): string[] {
 		this.logoLines = this.logo.render(width);
-		const greeting = [theme.fg("muted", this.greeting)];
+		const pad = " ".repeat(Math.max(0, Math.floor((width - visibleWidth(this.greeting)) / 2)));
+		const greeting = [theme.fg("muted", `${pad}${this.greeting}`)];
 		const editorLines = this.editor.render(width);
 		const content = [...this.logoLines, "", ...greeting, "", ...editorLines];
 		const height = Math.max(content.length, this.availableHeight());

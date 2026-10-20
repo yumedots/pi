@@ -4765,7 +4765,14 @@ export class InteractiveMode {
 		this.activeSelectorToken = token;
 		this.activeSelectorDispose = dispose;
 		this.editorContainer.clear();
-		this.editorContainer.addChild(created.component);
+		if (this.emptySessionActive) {
+			// On the empty-session screen the selector opens below the input box, so it does
+			// not cover the logo. The editor stays in place above it.
+			this.editorContainer.addChild(this.editor as Component);
+			this.editorContainer.addChild(created.component);
+		} else {
+			this.editorContainer.addChild(created.component);
+		}
 		this.ui.setFocus(created.focus);
 		this.ui.requestRender();
 	}
