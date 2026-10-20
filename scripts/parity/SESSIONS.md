@@ -33,7 +33,7 @@ session file and prints the round trip. Run it with
 
 | # | Finding | State |
 |---|---|---|
-| 1 | the session file format | **decided**: the port writes pi's version 3 format exactly (`{"type":"session","version":3,…}` + the flat entry list with the original's entry types), and reads it. The port's lane/operation log leaves the disk. In flight with the session port. |
+| 1 | the session file format | **mostly landed** — the port writes pi's version 3 header and the flat entry list, and the session directory has moved to `<agent dir>/sessions`. Measured: `rust -> ts: ok`, `ts -> rust: BROKEN` — the port's messages carry an extra `kind` discriminator its deserializer requires, so the original's messages cannot be read. See §1.7. |
 | 2 | prompt templates not expanded | in flight with the session port |
 | 3 | skills not invocable | in flight with the session port |
 | 4 | the port's skill validator adds a rule the original does not have | in flight with the session port |
@@ -42,7 +42,7 @@ session file and prints the round trip. Run it with
 | 7 | `/stats` has no counterpart | open |
 | 8 | `/export` argument and format | open |
 | 9 | `/share` | open |
-| 10 | the session directory | open — the agent directory is shared with pi now, the session directory is not |
+| 10 | the session directory | **landed** — the port writes `<agent dir>/sessions` now, like pi |
 | 11 | the project directory is `.rpi` | open |
 | 12 | the session picker | open |
 | 13 | `/fork` has no fork-point picker | open |
@@ -188,6 +188,50 @@ The original's file for the same prompt is six lines: the header, a
 (the streamed frames are persisted), it cannot be read by pi, pi's files cannot
 be read by the port, and the original's share viewer cannot render a port
 session.
+
+### 1.7 The format, measured against the fresh binary
+
+The format work has landed: the port now writes the original's shape —
+`{"type":"session","version":3,"id":…,"timestamp":"<ISO>","cwd":…}` and the flat
+entry list with `type`/`id`/`parentId`/`timestamp`
+(`rpi/crates/rpi-harness/src/session/types.rs:219`, the writer in
+`rpi/crates/rpi-harness/src/session/jsonl/`). The session directory has also
+moved to the original's place, `<agent dir>/sessions`.
+
+`node scripts/parity/session-compat.mjs`, against the relinked binary
+(`rpi/target/debug/rpi`, 18:49), says:
+
+```
+ts -> rust: BROKEN (the transcript lost: user turn, assistant reply, thinking block)
+rust -> ts: ok (the session opened and the transcript survived)
+```
+
+**The blocker** is the message discriminator. The port writes an extra `kind`
+field on every message and its deserializer requires it
+(`rpi/crates/rpi-agent/src/message.rs:26` — `#[serde(tag = "kind",
+rename_all = "snake_case")]`). The original's discriminator is `role`, with the
+values `user` / `assistant` / `toolResult`
+(`packages/agent/src/agent-loop.ts:932`, `packages/ai/src/types.ts:562`), and
+the original's messages have no `kind`. So the port cannot deserialise the
+original's `message` entries and the import renders an empty transcript.
+
+The message keys, from a mechanical diff of the two files (one prompt, the
+same mock model):
+
+| message | original | port |
+|---|---|---|
+| user | `content, role, timestamp` | `content, **kind**, role, timestamp` |
+| assistant | `api, content, durationMs, model, provider, rawStopReason, responseId, role, stopReason, **thinkingLevel**, timestamp, usage` | `api, content, **kind**, model, provider, rawStopReason, responseId, **responseModel**, role, stopReason, timestamp, usage` |
+| tool result | `content, details, durationMs, isError, role, timestamp, toolCallId, toolName` | the same **plus `kind`** |
+| system | `content, role, **sections**, timestamp, **toolsAdded**` | **absent** — the port writes no system entry |
+| usage | `cacheRead, cacheWrite, cost, input, output, **reasoning**, totalTokens` | the same **without `reasoning`** |
+| cost | integers (`0`) | floats (`0.0`) |
+| entry id | 8 hex characters (`session-manager.ts:1220`) | a full UUID |
+
+The missing **system entry** is a content difference the original relies on:
+its `/share` writes a `pi.share` entry carrying the system prompt and the tool
+schemas (`packages/coding-agent/src/modes/interactive/session-share.ts:25`),
+and a port session has neither.
 
 ---
 

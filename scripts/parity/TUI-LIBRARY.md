@@ -492,7 +492,7 @@ switch), and no Kitty-image bookkeeping (`previousKittyImageIds`,
 
 ---
 
-## Verification baseline (2026-10-20, 19:05, fresh binary)
+## Verification baseline (2026-10-20, 19:40, fresh binary)
 
 `cargo build --workspace` is green and the port's default is now fullscreen on every
 platform (the original's default is `tuiMode: "fullscreen"`,
@@ -512,16 +512,15 @@ cd scripts/parity && node compare.mjs rust <scenario>
 |---|---|
 | startup | **identical** to the golden |
 | panels | **identical** to the golden |
-| prompt | 1 difference: the port's transcript is missing the original's leading blank row above the header block, so the visible content sits one row higher; and the tmux warning wraps at 99 columns instead of 98 (the TUI library's `Text`, finding 28) |
-| tool | 2 differences: the same two, in the "tool call" and "answer" steps |
-| thinking | 1 difference: the same two, in the "answer" step |
-| markdown | 1 difference: the same one-row offset |
+| prompt | 1 difference: the port's transcript is one row shorter around the first user message — the original puts the echo's Spacer(1) **before** the message (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:3192`), the port puts it after (`rpi/crates/rpi-cli/src/interactive_tui/rendering.rs:544`) |
+| tool | 2 differences: the same, in the "tool call" and "answer" steps |
+| thinking | 1 difference: the same, in the "answer" step |
+| markdown | 1 difference: the same, one row around the message |
 
-The missing leading blank row is the original's `this.headerContainer.addChild(new Spacer(1))`
-(`packages/coding-agent/src/modes/interactive/interactive-mode.ts:1172`); the port's
-`add_welcome_message` (`rpi/crates/rpi-cli/src/interactive_tui/rendering.rs:11`) has no
-leading spacer. That is the language lead's file, not the TUI library. Reported there with
-the exact rows.
+The header block (the leading and the trailing Spacer, `interactive-mode.ts:1172-1174`)
+and the tmux warning's wrap width (the `Text` padding, finding 28) are fixed and now match
+the golden exactly. The remaining row is the user message's spacer — the language lead's
+and the interactive mode port's file, reported to both.
 
 Any **new** difference in these panes after a TUI library change is a regression.
 
@@ -618,6 +617,15 @@ port paints its panels with a `Box` instead, so nothing is broken today, but the
 **Check.** Rust: a test that `Text::new("…", 1, 0)` at width 100 wraps at 98 and the row
 is 100 columns with a trailing margin. Parity: the `prompt` scenario — the tmux warning
 row must become 96 columns and wrap after "…`set -g extended-keys".
+
+**Status.** Fixed (2026-10-20): `rpi/crates/rpi-tui/src/text.rs` now insets both sides
+(`padding_x = min(padding_x, (width - 1) / 2)`, `content_width = width - padding_x * 2`),
+pads every row to the full width, turns tabs into three spaces, draws nothing for a blank
+text and supports a background (`set_background`, the original's `setCustomBgFn`). Two
+consequences had to be fixed in the same change: the `HStack` child's intrinsic width (it
+claimed the whole row because the rows are padded now) and two `visual_truncate`
+expectations. The crate's tests pin it, and the capture shows the tmux warning wrapping
+at 98 exactly like the golden.
 
 ## Verified as parity (do not redo)
 

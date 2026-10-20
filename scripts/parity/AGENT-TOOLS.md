@@ -108,6 +108,12 @@ does it differently, the user sees the difference; **P3** = wording or shape.
 | 68 | P3 | The `AgentEvent` union has no retry event; the retry lives at the session level | The port puts a `RetryScheduled` event in the **agent** event union | An extra event in the agent stream (a duplicate of row 39's shape difference) | `packages/agent/src/types.ts:516-539` | `rpi/crates/rpi-agent/src/events.rs:29-36` | read both |
 | 69 | P3 | The `edit` tool's legacy `oldText`/`newText` arguments (a single object instead of `edits[]`) are folded by `prepareArguments` | Folded too (`prepare_arguments` + the port's own folding) — **same behaviour** | — | `packages/coding-agent/src/core/tools/edit.ts:112-141`, `:158` | `rpi/crates/rpi-tools/src/tools/edit.rs:222-278`, `rpi/crates/rpi-agent/src/agent_tool.rs:44-47`, invoked `rpi/crates/rpi-agent/src/agent_loop.rs:947` | read both — no difference |
 | 70 | P3 | The mutation queue keys on `realpath`, falling back on `ENOENT`/`ENOTDIR` | Keys on `canonical_path`, falling back only on `not_found`/`not_supported` | An `ENOTDIR` path errors instead of falling back | `packages/coding-agent/src/core/tools/file-mutation-queue.ts:14-24` | `rpi/crates/rpi-tools/src/file_mutation_queue.rs:78-96` | read both |
+| 74 | P1 | The agent's message union is discriminated on `role` — `user` / `assistant` / `toolResult`, plus `role: "custom"` with a `customType` field. The port's `AgentMessage` is tagged on a `kind` field pi never writes, and cannot parse pi's messages | `{"role":"user",…}`, `{"role":"assistant",…}` and `{"role":"toolResult",…}` all fail to deserialise with `missing field 'kind'`; the port writes `{"kind":"user","role":"user",…}` | **pi's session files cannot be imported into the port** — the transcript renders empty, because every `message` entry fails to parse. Rust -> pi works; pi -> Rust does not. | `packages/ai/src/types.ts:641` (`Message = SystemMessage \| UserMessage \| AssistantMessage \| ToolResultMessage`), `packages/coding-agent/src/core/messages.ts:46-53` (`CustomMessage` with `role: "custom"`) | `rpi/crates/rpi-agent/src/message.rs:26` (`#[serde(tag = "kind", rename_all = "snake_case")]`), `rpi/crates/rpi-agent/src/message.rs:84-86` | A runtime proof: pi's three message shapes fed to the port's `AgentMessage` — all three return `ERR missing field 'kind'`; the port's own `User` message serialises to `{"kind":"user","role":"user","content":"hello","timestamp":…}`. Found by the session port, verified here. `AgentMessage` appears in 66 files, so the change lands with the crate commit, not separately. |
+| 75 | P2 | The assistant message carries `durationMs` (set by the event stream on the final message of a response) and `thinkingLevel` (the level the agent loop requested), plus `providerThinkingLevel` and `diagnostics` | The port's `AssistantMessage` has no `durationMs`, no `thinkingLevel`, no `providerThinkingLevel` and no `diagnostics`; pi's `durationMs` and `thinkingLevel` are **silently dropped on read** (serde ignores the unknown fields) and never written | pi's session file records how long each response took and at what thinking level; the port's does not, and the port cannot read pi's values back | `packages/ai/src/types.ts:575-579`, `:591-596` | `rpi/crates/rpi-ai/src/types.rs:666-688` | A runtime proof: pi's assistant message `{"role":"assistant",…,"durationMs":1234,"thinkingLevel":"high"}` deserialises into the port's `AssistantMessage`, and re-serialising it **loses both fields**. The port's `Usage` already has `reasoning` (`rpi-ai/src/types.rs:325`) and accepts pi's `cost` object unchanged, so the usage half of the session lead's diff is already closed. |
+
+Rows 71-73 were found in the second pass, after the tool-level contract landed:
+the tool result is now correct but the transcript pane still renders it wrongly.
+They are set out in full in section 7.
 
 ---
 
@@ -254,6 +260,57 @@ running program, so a rebuild can close them:
 
 ---
 
+## 6. Re-capture, second pass — against a freshly linked binary
+
+Run at 18:49 on 2026-10-20, after `cargo build -p rpi-cli --bin rpi` relinked
+`target/debug/rpi` (the binary every earlier port-side observation was taken
+against was 43 minutes stale). The tree was green at that point.
+
+**Closed — verified against the fresh binary:**
+
+| Row | Was | Now | Evidence |
+|---|---|---|---|
+| 1 | `grep`/`find`/`ls` not registered; `--tools grep` enabled nothing | Registered. `--tools grep` → the prompt lists only `- grep: Search file contents for patterns (respects .gitignore)` | `rpi --offline --no-session --tools grep --debug-system-prompt -p hi`; port `rpi/crates/rpi-cli/src/session.rs` `build_tools()` |
+| 2 | `docs` was a default tool | Gone. The default prompt lists `read, bash, edit, write, grep, find, ls` — pi's seven | the same command without `--tools` |
+| 3 | The prompt's tool list was a hard-coded string, always all five | The list now follows the active tool set and carries pi's per-tool guidelines. `--tools read` → "Available tools:\n- read: Read file contents" plus "- Use read to examine files instead of cat or sed." and pi's other rules; the original's `In addition to the tools above…` line is present | `rpi --offline --no-session --tools read --debug-system-prompt -p hi` |
+| 10 | Project trust failed **open** | Fails **closed**: an untrusted project prints `Warning: current-project settings, resources, and discovered extensions are explicitly disabled (use --approve or /trust yes to re-enable)`; `--approve` re-enables it | the same command in a directory with a project `.pi/extensions/`; port `rpi/crates/rpi-cli/src/session.rs:1971-1982` (`resolve_project_trust` now consults `has_trust_requiring_project_resources`, `nearest_project_trust_decision` and `default_project_trust`) |
+| 11 | `defaultProjectTrust` missing | Read: `rpi/crates/rpi-cli/src/session.rs:1986-1991` (`default_project_trust()`), surfaced in the settings menu at `rpi/crates/rpi-cli/src/interactive_tui/settings_menu.rs:772-775` | source read |
+| 16 | The agent retry budget defaulted to 10 | Defaults to **3** (2 s, 4 s, 8 s), matching pi | `rpi/crates/rpi-harness/src/types.rs:298-310` (the comment cites `settings-defaults.ts`) |
+| 17 | The provider-retry settings were parsed and ignored | Wired: the harness passes `snap.stream_options.max_retries` into the stream options | `rpi/crates/rpi-harness/src/agent_harness.rs:3955`; `rpi/crates/rpi-cli/src/settings.rs:91` (`provider`) |
+| 4, 6, 7 | `prepareRequest` and `finishTurn` missing; the tool result had no `isError`/`structuredContent`/`outputSchema` | Present with pi's names and shapes: `AgentLoopConfig.prepare_request`/`finish_turn` (`rpi/crates/rpi-agent/src/hooks.rs:134-135`), `AgentToolResult.is_error`/`structured_content` (`rpi/crates/rpi-agent/src/types.rs:46-54`), `AgentTool.output_schema`/`prompt_snippet`/`prompt_guidelines` (`rpi/crates/rpi-agent/src/agent_tool.rs:46-58`) | source read |
+| 5 | `finishTurn` returning `{action:"continue"}` did not exist | Exists **and** is honoured the way the original does: the decision is held in `explicit_continuation` and, when no tool calls, steering or follow-up satisfied it, the loop performs one context-only turn | `rpi/crates/rpi-agent/src/agent_loop.rs:243-245`, `:469-475`, `:486-491` against `packages/agent/src/agent-loop.ts:286-298`, `:310-314` |
+| 8 | No `durationMs` on `tool_execution_end` or on the tool-result message | Both carry it now: `AgentEvent::ToolExecutionEnd.duration_ms` and `ToolResultMessage.duration_ms` | `rpi/crates/rpi-agent/src/events.rs:82-90`, `rpi/crates/rpi-ai/src/types.rs:640` |
+| 33 | A failing `bash` threw `tool error: …` and lost its details | It returns a result with `is_error: true`, the `details` payload and a `structured_content`, and the text is pi's `appendStatus` shape (`hello\n\n\nCommand exited with code 3`) | `rpi/crates/rpi-tools/src/tools/bash.rs:362-369`; a direct `bash.execute` now returns `Ok(is_error=true, content="hello\n\n\nCommand exited with code 3", details={})` where the original returns `isError:true` with the same text (`packages/coding-agent/src/core/tools/bash.ts:358`, `:401-406`) |
+| 34 | `bash` treated a command with no exit code as a success | It reports `Command terminated without an exit code`, as the original does | `rpi/crates/rpi-tools/src/tools/bash.rs:344-348` against `packages/coding-agent/src/core/tools/bash.ts:386-388` |
+| 35 | The timeout message read `Command timed out after 2s` | `Command timed out after N seconds` — pi's wording | `rpi/crates/rpi-tools/src/tools/bash.rs:330-339` against `packages/coding-agent/src/core/tools/bash.ts:379` |
+
+**Still open — verified still present in the fresh source:**
+
+| Row | Still | Evidence |
+|---|---|---|
+| 29 | The bash tool still gets a 120 s default timeout the original does not have | `rpi/crates/rpi-cli/src/session.rs:2080-2094` (`RPI_BASH_TIMEOUT`, `unwrap_or(120.0)`) |
+| 30 | The `PI_*` session env is still not exposed to the shell and the inherited env is not stripped; the port uses `RPI_SESSION_ID` | `rpi/crates/rpi-tools/src/tools/bash.rs` (no `PI_*` handling), `rpi/crates/rpi-cli/src/session.rs:2680` |
+| 49 | `format_size` still renders `(50.0)KB` with parentheses | `rpi/crates/rpi-tools/src/truncate.rs:108-116`; a direct call still returns `(50.0)KB` where the original returns `50.0KB` (`packages/coding-agent/src/core/tools/truncate.ts:64-72`) |
+| 50 | The optional args are still `Option<u32>`/nullable, so `limit: 1.5` and `limit: -1` are still rejected where the original accepts them | `rpi/crates/rpi-tools/src/tools/read.rs:31-40`; the port's validator still rejects both (`Validation failed for tool "read"`), the original's accepts them (`packages/ai/src/utils/validation.ts:715`) |
+| 68 | The agent event union still carries `RetryScheduled`, which the original's `AgentEvent` union does not have | `rpi/crates/rpi-agent/src/events.rs:29,106` |
+| 24 | The `Agent` class still hard-codes every hook to `None` in `build_config`, and `AgentOptions` still has no hook field, so an embedding host of `rpi-agent` still cannot install `transformContext`, `getApiKey`, `beforeToolCall`, `afterToolCall`, `finishTurn`, `prepareRequest` or `prepareNextTurn` (the original exposes all of them as mutable public fields). The hooks exist on `AgentLoopConfig` and the harness installs them; the `Agent` wrapper does not. | `rpi/crates/rpi-agent/src/agent.rs:36-45` (`AgentOptions`), `:517-533` (`build_config`) against `packages/agent/src/agent.ts:198-224`, `:470-503` |
+
+**Not re-checked in this pass** (source-level rows, not binary-level): 9, 12, 13,
+14, 15, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 31, 32, 36, 37, 38, 39, 40, 41,
+42, 43, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+64, 65, 66, 67, 70. They are source-level findings and are unaffected by a
+rebuild. (Rows 34 and 35 were re-read and closed — see the closed table above.)
+
+**One of them is closed by decision, not by code:** row 22 (the nested-tool-call
+surface — the original's `runToolCall` and `ctx.executeTool()`) is closed by the
+lead's decision "No nested tool calls until the original has them". The port
+still has no nested tool calls, and that is now correct.
+
+**One of them the porter's change touched and that I re-read:** row 24, above —
+still open.
+
+---
+
 ## 7. The tool result reaches the user, but the pane does not show it
 
 The tool-level contract (rows 6, 7, 8, 33, 34, 35) is now pi's. The
@@ -292,54 +349,3 @@ rendering of it is not.
 - The failing-`bash` rendering is measured end to end on both sides with the
   same mock provider and a tmux capture (`/tmp/bashfail-probe.mjs`), because
   that is the only way to see what the user sees.
-
-
-Run at 18:49 on 2026-10-20, after `cargo build -p rpi-cli --bin rpi` relinked
-`target/debug/rpi` (the binary every earlier port-side observation was taken
-against was 43 minutes stale). The tree was green at that point.
-
-**Closed — verified against the fresh binary:**
-
-| Row | Was | Now | Evidence |
-|---|---|---|---|
-| 1 | `grep`/`find`/`ls` not registered; `--tools grep` enabled nothing | Registered. `--tools grep` → the prompt lists only `- grep: Search file contents for patterns (respects .gitignore)` | `rpi --offline --no-session --tools grep --debug-system-prompt -p hi`; port `rpi/crates/rpi-cli/src/session.rs` `build_tools()` |
-| 2 | `docs` was a default tool | Gone. The default prompt lists `read, bash, edit, write, grep, find, ls` — pi's seven | the same command without `--tools` |
-| 3 | The prompt's tool list was a hard-coded string, always all five | The list now follows the active tool set and carries pi's per-tool guidelines. `--tools read` → "Available tools:\n- read: Read file contents" plus "- Use read to examine files instead of cat or sed." and pi's other rules; the original's `In addition to the tools above…` line is present | `rpi --offline --no-session --tools read --debug-system-prompt -p hi` |
-| 10 | Project trust failed **open** | Fails **closed**: an untrusted project prints `Warning: current-project settings, resources, and discovered extensions are explicitly disabled (use --approve or /trust yes to re-enable)`; `--approve` re-enables it | the same command in a directory with a project `.pi/extensions/`; port `rpi/crates/rpi-cli/src/session.rs:1971-1982` (`resolve_project_trust` now consults `has_trust_requiring_project_resources`, `nearest_project_trust_decision` and `default_project_trust`) |
-| 11 | `defaultProjectTrust` missing | Read: `rpi/crates/rpi-cli/src/session.rs:1986-1991` (`default_project_trust()`), surfaced in the settings menu at `rpi/crates/rpi-cli/src/interactive_tui/settings_menu.rs:772-775` | source read |
-| 16 | The agent retry budget defaulted to 10 | Defaults to **3** (2 s, 4 s, 8 s), matching pi | `rpi/crates/rpi-harness/src/types.rs:298-310` (the comment cites `settings-defaults.ts`) |
-| 17 | The provider-retry settings were parsed and ignored | Wired: the harness passes `snap.stream_options.max_retries` into the stream options | `rpi/crates/rpi-harness/src/agent_harness.rs:3955`; `rpi/crates/rpi-cli/src/settings.rs:91` (`provider`) |
-| 4, 6, 7 | `prepareRequest` and `finishTurn` missing; the tool result had no `isError`/`structuredContent`/`outputSchema` | Present with pi's names and shapes: `AgentLoopConfig.prepare_request`/`finish_turn` (`rpi/crates/rpi-agent/src/hooks.rs:134-135`), `AgentToolResult.is_error`/`structured_content` (`rpi/crates/rpi-agent/src/types.rs:46-54`), `AgentTool.output_schema`/`prompt_snippet`/`prompt_guidelines` (`rpi/crates/rpi-agent/src/agent_tool.rs:46-58`) | source read |
-| 5 | `finishTurn` returning `{action:"continue"}` did not exist | Exists **and** is honoured the way the original does: the decision is held in `explicit_continuation` and, when no tool calls, steering or follow-up satisfied it, the loop performs one context-only turn | `rpi/crates/rpi-agent/src/agent_loop.rs:243-245`, `:469-475`, `:486-491` against `packages/agent/src/agent-loop.ts:286-298`, `:310-314` |
-| 8 | No `durationMs` on `tool_execution_end` or on the tool-result message | Both carry it now: `AgentEvent::ToolExecutionEnd.duration_ms` and `ToolResultMessage.duration_ms` | `rpi/crates/rpi-agent/src/events.rs:82-90`, `rpi/crates/rpi-ai/src/types.rs:640` |
-| 33 | A failing `bash` threw `tool error: …` and lost its details | It returns a result with `is_error: true`, the `details` payload and a `structured_content`, and the text is pi's `appendStatus` shape (`hello\n\n\nCommand exited with code 3`) | `rpi/crates/rpi-tools/src/tools/bash.rs:362-369`; a direct `bash.execute` now returns `Ok(is_error=true, content="hello\n\n\nCommand exited with code 3", details={})` where the original returns `isError:true` with the same text (`packages/coding-agent/src/core/tools/bash.ts:358`, `:401-406`) |
-| 34 | `bash` treated a command with no exit code as a success | It reports `Command terminated without an exit code`, as the original does | `rpi/crates/rpi-tools/src/tools/bash.rs:344-348` against `packages/coding-agent/src/core/tools/bash.ts:386-388` |
-| 35 | The timeout message read `Command timed out after 2s` | `Command timed out after N seconds` — pi's wording | `rpi/crates/rpi-tools/src/tools/bash.rs:330-339` against `packages/coding-agent/src/core/tools/bash.ts:379` |
-
-**Still open — verified still present in the fresh source:**
-
-| Row | Still | Evidence |
-|---|---|---|
-| 29 | The bash tool still gets a 120 s default timeout the original does not have | `rpi/crates/rpi-cli/src/session.rs:2080-2094` (`RPI_BASH_TIMEOUT`, `unwrap_or(120.0)`) |
-| 30 | The `PI_*` session env is still not exposed to the shell and the inherited env is not stripped; the port uses `RPI_SESSION_ID` | `rpi/crates/rpi-tools/src/tools/bash.rs` (no `PI_*` handling), `rpi/crates/rpi-cli/src/session.rs:2680` |
-| 49 | `format_size` still renders `(50.0)KB` with parentheses | `rpi/crates/rpi-tools/src/truncate.rs:108-116`; a direct call still returns `(50.0)KB` where the original returns `50.0KB` (`packages/coding-agent/src/core/tools/truncate.ts:64-72`) |
-| 50 | The optional args are still `Option<u32>`/nullable, so `limit: 1.5` and `limit: -1` are still rejected where the original accepts them | `rpi/crates/rpi-tools/src/tools/read.rs:31-40`; the port's validator still rejects both (`Validation failed for tool "read"`), the original's accepts them (`packages/ai/src/utils/validation.ts:715`) |
-| 68 | The agent event union still carries `RetryScheduled`, which the original's `AgentEvent` union does not have | `rpi/crates/rpi-agent/src/events.rs:29,106` |
-| 24 | The `Agent` class still hard-codes every hook to `None` in `build_config`, and `AgentOptions` still has no hook field, so an embedding host of `rpi-agent` still cannot install `transformContext`, `getApiKey`, `beforeToolCall`, `afterToolCall`, `finishTurn`, `prepareRequest` or `prepareNextTurn` (the original exposes all of them as mutable public fields). The hooks exist on `AgentLoopConfig` and the harness installs them; the `Agent` wrapper does not. | `rpi/crates/rpi-agent/src/agent.rs:36-45` (`AgentOptions`), `:517-533` (`build_config`) against `packages/agent/src/agent.ts:198-224`, `:470-503` |
-
-**Not re-checked in this pass** (source-level rows, not binary-level): 9, 12, 13,
-14, 15, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 31, 32, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
-61, 62, 63, 64, 65, 66, 67, 70. They are source-level findings and are
-unaffected by a rebuild.
-
-**One of them is closed by decision, not by code:** row 22 (the nested-tool-call
-surface — the original's `runToolCall` and `ctx.executeTool()`) is closed by the
-lead's decision "No nested tool calls until the original has them". The port
-still has no nested tool calls, and that is now correct.
-
-**One of them the porter's change touched and that I re-read:** row 24, above —
-still open.
-
-
-
