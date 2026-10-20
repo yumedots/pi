@@ -171,6 +171,16 @@ impl Host for ProcessHost {
 				let real = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
 				Ok(json!(real.to_string_lossy()))
 			}
+			"fs.mkdtemp" => {
+				let prefix = string_arg(&args, "prefix")?;
+				let prefix = self.resolve(&prefix)?;
+				let parent = prefix.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
+				std::fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
+				let name = format!("tmp-{}", uuid_like());
+				let path = parent.join(name);
+				std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+				Ok(json!(path.to_string_lossy()))
+			}
 			"fs.mkdir" => {
 				let path = string_arg(&args, "path")?;
 				let path = self.resolve(&path)?;
@@ -322,6 +332,15 @@ impl Host for ProcessHost {
 			other => Err(format!("unknown host operation: {other}")),
 		}
 	}
+}
+
+/// A short random suffix for a temporary directory.
+fn uuid_like() -> String {
+	let stamp = std::time::SystemTime::now()
+		.duration_since(std::time::UNIX_EPOCH)
+		.map(|elapsed| elapsed.as_nanos())
+		.unwrap_or(0);
+	format!("{stamp:x}")
 }
 
 fn string_arg(args: &Value, key: &str) -> Result<String, String> {

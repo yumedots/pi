@@ -14,6 +14,7 @@ export const copyFile = promises.copyFile;
 export const access = promises.access;
 export const realpath = promises.realpath;
 export const appendFile = promises.appendFile;
+export const mkdtemp = promises.mkdtemp;
 
 export default {
 	readFile,
@@ -30,4 +31,5 @@ export default {
 	access,
 	realpath,
 	appendFile,
+	mkdtemp,
 };

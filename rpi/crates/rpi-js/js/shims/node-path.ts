@@ -50,7 +50,10 @@ const variant = {
 	format: path.format,
 };
 
+/// The namespaced path of a file (Windows only; the same path elsewhere).
+export const toNamespacedPath = (value: string): string => value;
+
 export const win32 = variant;
 export const posix = variant;
 
-export default { ...path, win32, posix };
+export default { ...path, win32, posix, toNamespacedPath };

@@ -45,12 +45,14 @@ const nodeShims = {
 	"node:timers/promises": join(shimDir, "timers-promises.ts"),
 	"node:crypto": join(shimDir, "node-crypto.ts"),
 	"node:util": join(shimDir, "node-util.ts"),
+	"node:util/types": join(shimDir, "node-util.ts"),
 	"node:readline": join(shimDir, "node-readline.ts"),
 	"node:stream": join(shimDir, "node-stream.ts"),
 	"node:zlib": join(shimDir, "node-zlib.ts"),
 	"node:http": join(shimDir, "node-http.ts"),
 	"node:string_decoder": join(shimDir, "node-string-decoder.ts"),
 	"node:stream/promises": join(shimDir, "node-stream-promises.ts"),
+	"node:stream/web": join(shimDir, "node-stream-web.ts"),
 	"node:process": join(shimDir, "node-process.ts"),
 	"node:assert": join(shimDir, "node-assert.ts"),
 	"node:readline/promises": join(shimDir, "node-readline-promises.ts"),
@@ -64,6 +66,17 @@ const nodeShims = {
 	"node:tls": join(shimDir, "node-tls.ts"),
 	"node:diagnostics_channel": join(shimDir, "node-diagnostics-channel.ts"),
 	"node:buffer": join(shimDir, "node-buffer.ts"),
+	"node:console": join(shimDir, "node-console.ts"),
+	"node:timers": join(shimDir, "node-timers.ts"),
+	"node:querystring": join(shimDir, "node-querystring.ts"),
+	"node:dns": join(shimDir, "node-dns.ts"),
+	"node:http2": join(shimDir, "node-http2.ts"),
+	"node:inspector": join(shimDir, "node-inspector.ts"),
+	"node:cluster": join(shimDir, "node-cluster.ts"),
+	"node:dgram": join(shimDir, "node-dgram.ts"),
+	"node:punycode": join(shimDir, "node-punycode.ts"),
+	"node:sys": join(shimDir, "node-sys.ts"),
+	"node:trace-events": join(shimDir, "node-trace-events.ts"),
 };
 
 const virtualModulePlugin = {
@@ -77,7 +90,7 @@ const virtualModulePlugin = {
 		context.onResolve(
 			{
 				filter:
-					/^(node:)?(path|os|url|perf_hooks|child_process|fs(\/promises)?|events|worker_threads|module|timers\/promises|crypto|util|readline(\/promises)?|stream(\/promises)?|zlib|http|string_decoder|process|assert|constants|tty|async_hooks|v8|sqlite|vm|net|tls|diagnostics_channel|buffer)$/
+					/^(node:)?(path|os|url|perf_hooks|child_process|fs(\/promises)?|events|worker_threads|module|timers\/promises|crypto|util(\/types)?|readline(\/promises)?|stream(\/promises|\/web)?|zlib|http|string_decoder|process|assert|constants|tty|async_hooks|v8|sqlite|vm|net|tls|diagnostics_channel|buffer|console|timers|querystring|dns|http2|inspector|cluster|dgram|punycode|sys|trace-events)$/
 			},
 			(args) => {
 				const name = args.path.replace(/^node:/, "");

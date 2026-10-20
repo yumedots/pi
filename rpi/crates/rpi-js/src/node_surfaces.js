@@ -138,6 +138,10 @@
 		path,
 	};
 
+	// CommonJS packages reach for `global`; in the browser platform it is
+	// the global object itself.
+	globalThis.global = globalThis;
+
 	globalThis.process = {
 		env: call("process.env", {}),
 		argv: call("process.argv", {}),

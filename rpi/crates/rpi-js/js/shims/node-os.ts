@@ -4,6 +4,24 @@ export const platform = () => process.platform;
 export const arch = () => process.arch;
 export const EOL = "\n";
 
+export const hostname = (): string => "localhost";
+export const userInfo = (): { username: string; homedir: string; shell: string } => ({
+	username: process.env.USER ?? process.env.LOGNAME ?? "user",
+	homedir: homedir(),
+	shell: process.env.SHELL ?? "/bin/sh",
+});
+export const release = (): string => "";
+export const version = (): string => "";
+export const uptime = (): number => 0;
+export const loadavg = (): number[] => [0, 0, 0];
+export const networkInterfaces = (): Record<string, unknown> => ({});
+export const cpus = (): unknown[] => [];
+export const endianness = (): string => "LE";
+export const type = (): string => "Linux";
+export const freemem = (): number => 0;
+export const totalmem = (): number => 0;
+export const devNull = "/dev/null";
+
 /// The error numbers Node's `constants` module publishes.
 export const constants = {
 	E2BIG: 7,
@@ -31,4 +49,24 @@ export const constants = {
 	ESPIPE: 29,
 	EXDEV: 18,
 };
-export default { homedir, tmpdir, platform, arch, EOL, constants };
+export default {
+	homedir,
+	tmpdir,
+	platform,
+	arch,
+	hostname,
+	userInfo,
+	release,
+	version,
+	uptime,
+	loadavg,
+	networkInterfaces,
+	cpus,
+	endianness,
+	type,
+	freemem,
+	totalmem,
+	devNull,
+	EOL,
+	constants,
+};

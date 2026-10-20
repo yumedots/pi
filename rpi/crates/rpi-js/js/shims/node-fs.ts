@@ -68,6 +68,23 @@ export const createWriteStream = (path: string) => {
 		on: () => undefined,
 	};
 };
+export const mkdtempSync = (prefix: string): string =>
+	call("fs.mkdtemp", { prefix }) as string;
+export const unwatchFile = (_path: string): void => undefined;
+export const watchFile = (_path: string, _listener: (...args: unknown[]) => void): (() => void) => () => undefined;
+export const lstatSync = (path: string) => statSync(path);
+export const fstatSync = (descriptor: number) => statSync(String(descriptor));
+export const readlinkSync = (path: string): string => path;
+export const symlinkSync = (_target: string, _path: string): void => undefined;
+export const rmdirSync = (path: string): void => {
+	call("fs.rmdir", { path });
+};
+export const truncateSync = (path: string, length: number): void => {
+	call("fs.truncate", { path, length });
+};
+export const chownSync = (_path: string, _uid: number, _gid: number): void => undefined;
+export const utimesSync = (_path: string, _atime: number, _mtime: number): void => undefined;
+export const writeSync = (_descriptor: number, content: string): number => content.length;
 export const readSync = (descriptor: number, _buffer: unknown, _offset?: number, _length?: number, _position?: number): number => {
 	void descriptor;
 	return 0;
@@ -125,6 +142,8 @@ export const open = async (
 	};
 };
 
+export const mkdtemp = async (prefix: string): Promise<string> => mkdtempSync(prefix);
+
 export const promises = {
 	readFile,
 	writeFile,
@@ -139,6 +158,7 @@ export const promises = {
 	rename,
 	copyFile,
 	appendFile,
+	mkdtemp,
 };
 
 export default {
@@ -178,6 +198,18 @@ export default {
 	createWriteStream,
 	globSync,
 	readSync,
+	mkdtempSync,
+	unwatchFile,
+	watchFile,
+	lstatSync,
+	fstatSync,
+	readlinkSync,
+	symlinkSync,
+	rmdirSync,
+	truncateSync,
+	chownSync,
+	utimesSync,
+	writeSync,
 	rmSync,
 	promises,
 };

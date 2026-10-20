@@ -1151,28 +1151,28 @@
   }
 
 
-  function AddReadonlyOperation(type) {
-    return memory_exports.Update(type, { "~readonly": true }, {});
+  function AddReadonlyOperation(type2) {
+    return memory_exports.Update(type2, { "~readonly": true }, {});
   }
-  function AddReadonlyAction(type, options) {
-    const result = memory_exports.Update(AddReadonlyOperation(type), {}, options);
+  function AddReadonlyAction(type2, options) {
+    const result = memory_exports.Update(AddReadonlyOperation(type2), {}, options);
     return result;
   }
-  function AddReadonlyInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function AddReadonlyInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return AddReadonlyAction(instantiatedType, options);
   }
 
 
-  function AddOptionalOperation(type) {
-    return memory_exports.Update(type, { "~optional": true }, {});
+  function AddOptionalOperation(type2) {
+    return memory_exports.Update(type2, { "~optional": true }, {});
   }
-  function AddOptionalAction(type, options) {
-    const result = memory_exports.Update(AddOptionalOperation(type), {}, options);
+  function AddOptionalAction(type2, options) {
+    const result = memory_exports.Update(AddOptionalOperation(type2), {}, options);
     return result;
   }
-  function AddOptionalInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function AddOptionalInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return AddOptionalAction(instantiatedType, options);
   }
 
@@ -1183,8 +1183,8 @@
   function IsArray3(value) {
     return IsKind(value, "Array");
   }
-  function ArrayOptions(type) {
-    return memory_exports.Discard(type, ["~kind", "type", "items"]);
+  function ArrayOptions(type2) {
+    return memory_exports.Discard(type2, ["~kind", "type", "items"]);
   }
 
 
@@ -1194,8 +1194,8 @@
   function IsConstructor3(value) {
     return IsKind(value, "Constructor");
   }
-  function ConstructorOptions(type) {
-    return memory_exports.Discard(type, ["~kind", "type", "parameters", "instanceType"]);
+  function ConstructorOptions(type2) {
+    return memory_exports.Discard(type2, ["~kind", "type", "parameters", "instanceType"]);
   }
 
 
@@ -1205,8 +1205,8 @@
   function IsFunction3(value) {
     return IsKind(value, "Function");
   }
-  function FunctionOptions(type) {
-    return memory_exports.Discard(type, ["~kind", "type", "parameters", "returnType"]);
+  function FunctionOptions(type2) {
+    return memory_exports.Discard(type2, ["~kind", "type", "parameters", "returnType"]);
   }
 
 
@@ -1243,16 +1243,16 @@
   }
 
 
-  function AddOptionalDeferred(type, options = {}) {
-    return Deferred("AddOptional", [type], options);
+  function AddOptionalDeferred(type2, options = {}) {
+    return Deferred("AddOptional", [type2], options);
   }
-  function AddOptional(type, options = {}) {
-    return AddOptionalAction(type, options);
+  function AddOptional(type2, options = {}) {
+    return AddOptionalAction(type2, options);
   }
 
 
-  function Optional(type) {
-    return AddOptional(type);
+  function Optional(type2) {
+    return AddOptional(type2);
   }
   function IsOptional(value) {
     return IsSchema(value) && guard_exports.HasPropertyKey(value, "~optional");
@@ -1278,8 +1278,8 @@
   function IsObject3(value) {
     return IsKind(value, "Object");
   }
-  function ObjectOptions(type) {
-    return memory_exports.Discard(type, ["~kind", "type", "properties", "required"]);
+  function ObjectOptions(type2) {
+    return memory_exports.Discard(type2, ["~kind", "type", "properties", "required"]);
   }
 
 
@@ -1300,8 +1300,8 @@
   function IsCyclic(value) {
     return IsKind(value, "Cyclic");
   }
-  function CyclicOptions(type) {
-    return memory_exports.Discard(type, ["~kind", "$defs", "$ref"]);
+  function CyclicOptions(type2) {
+    return memory_exports.Discard(type2, ["~kind", "$defs", "$ref"]);
   }
 
 
@@ -1342,17 +1342,17 @@
   function IsDependent(value) {
     return IsKind(value, "Dependent");
   }
-  function DependentOptions(type) {
-    return memory_exports.Discard(type, ["~kind", "if", "then", "else"]);
+  function DependentOptions(type2) {
+    return memory_exports.Discard(type2, ["~kind", "if", "then", "else"]);
   }
 
 
   function IsTypeScriptEnumLike(value) {
     return guard_exports.IsObjectNotArray(value);
   }
-  function TypeScriptEnumToEnumValues(type) {
-    const keys = guard_exports.Keys(type).filter((key) => isNaN(key));
-    return keys.reduce((result, key) => [...result, type[key]], []);
+  function TypeScriptEnumToEnumValues(type2) {
+    const keys = guard_exports.Keys(type2).filter((key) => isNaN(key));
+    return keys.reduce((result, key) => [...result, type2[key]], []);
   }
 
 
@@ -1374,8 +1374,8 @@
   function IsIntersect(value) {
     return IsKind(value, "Intersect");
   }
-  function IntersectOptions(type) {
-    return memory_exports.Discard(type, ["~kind", "allOf"]);
+  function IntersectOptions(type2) {
+    return memory_exports.Discard(type2, ["~kind", "allOf"]);
   }
 
 
@@ -1629,36 +1629,36 @@
 
 
   var EncodeBuilder = class {
-    constructor(type, decode) {
-      this.type = type;
+    constructor(type2, decode) {
+      this.type = type2;
       this.decode = decode;
     }
     Encode(callback) {
-      const type = this.type;
-      const decode = IsCodec(type) ? (value) => this.decode(type["~codec"].decode(value)) : this.decode;
-      const encode = IsCodec(type) ? (value) => type["~codec"].encode(callback(value)) : callback;
+      const type2 = this.type;
+      const decode = IsCodec(type2) ? (value) => this.decode(type2["~codec"].decode(value)) : this.decode;
+      const encode = IsCodec(type2) ? (value) => type2["~codec"].encode(callback(value)) : callback;
       const codec = { decode, encode };
       return memory_exports.Update(this.type, { "~codec": codec }, {});
     }
   };
   var DecodeBuilder = class {
-    constructor(type) {
-      this.type = type;
+    constructor(type2) {
+      this.type = type2;
     }
     Decode(callback) {
       return new EncodeBuilder(this.type, callback);
     }
   };
-  function Codec(type) {
-    return new DecodeBuilder(type);
+  function Codec(type2) {
+    return new DecodeBuilder(type2);
   }
-  function Decode(type, callback) {
-    return Codec(type).Decode(callback).Encode(() => {
+  function Decode(type2, callback) {
+    return Codec(type2).Decode(callback).Encode(() => {
       throw Error("Encode not implemented");
     });
   }
-  function Encode(type, callback) {
-    return Codec(type).Decode(() => {
+  function Encode(type2, callback) {
+    return Codec(type2).Decode(() => {
       throw Error("Decode not implemented");
     }).Encode(callback);
   }
@@ -1667,40 +1667,40 @@
   }
 
 
-  function Immutable(type) {
-    return AddImmutable(type);
+  function Immutable(type2) {
+    return AddImmutable(type2);
   }
   function IsImmutable(value) {
     return IsSchema(value) && guard_exports.HasPropertyKey(value, "~immutable");
   }
 
 
-  function AddReadonlyDeferred(type, options = {}) {
-    return Deferred("AddReadonly", [type], options);
+  function AddReadonlyDeferred(type2, options = {}) {
+    return Deferred("AddReadonly", [type2], options);
   }
-  function AddReadonly(type, options = {}) {
-    return AddReadonlyAction(type, options);
+  function AddReadonly(type2, options = {}) {
+    return AddReadonlyAction(type2, options);
   }
 
 
-  function Readonly(type) {
-    return AddReadonly(type);
+  function Readonly(type2) {
+    return AddReadonly(type2);
   }
   function IsReadonly(value) {
     return IsSchema(value) && guard_exports.HasPropertyKey(value, "~readonly");
   }
 
 
-  function RefineAdd(type, refinement) {
-    const refinements = IsRefine(type) ? [...type["~refine"], refinement] : [refinement];
-    return memory_exports.Update(type, { "~refine": refinements }, {});
+  function RefineAdd(type2, refinement) {
+    const refinements = IsRefine(type2) ? [...type2["~refine"], refinement] : [refinement];
+    return memory_exports.Update(type2, { "~refine": refinements }, {});
   }
   function Refine(...args) {
-    const [type, check, error] = arguments_exports.Match(args, {
-      3: (type2, check2, error2) => [type2, check2, error2],
-      2: (type2, check2) => [type2, check2, () => "Refine Error"]
+    const [type2, check, error] = arguments_exports.Match(args, {
+      3: (type3, check2, error2) => [type3, check2, error2],
+      2: (type3, check2) => [type3, check2, () => "Refine Error"]
     });
-    return RefineAdd(type, { check, error });
+    return RefineAdd(type2, { check, error });
   }
   function IsRefinement(value) {
     return guard_exports.IsObjectNotArray(value) && guard_exports.HasPropertyKey(value, "check") && guard_exports.HasPropertyKey(value, "error") && guard_exports.IsFunction(value.check) && guard_exports.IsFunction(value.error);
@@ -1836,8 +1836,8 @@
   function IsUnion(value) {
     return IsKind(value, "Union");
   }
-  function UnionOptions(type) {
-    return memory_exports.Discard(type, ["~kind", "anyOf"]);
+  function UnionOptions(type2) {
+    return memory_exports.Discard(type2, ["~kind", "anyOf"]);
   }
 
 
@@ -1858,8 +1858,8 @@
     const result = guard_exports.IsEqual(types.length, 0) ? false : FromTypesReduce(types);
     return result;
   }
-  function FromType(type) {
-    return IsUnion(type) ? FromTypes(type.anyOf) : IsLiteral(type) ? FromLiteral(type.const) : false;
+  function FromType(type2) {
+    return IsUnion(type2) ? FromTypes(type2.anyOf) : IsLiteral(type2) ? FromLiteral(type2.const) : false;
   }
   function IsTemplateLiteralFinite(types) {
     const result = FromTypes(types);
@@ -1881,8 +1881,8 @@
   function FromUnion(variants, types, result = []) {
     return guard_exports.ShiftLeft(types, (left, right) => FromUnion(variants, right, [...result, ...FromType2(variants, left)]), () => result);
   }
-  function FromType2(variants, type) {
-    const result = IsUnion(type) ? FromUnion(variants, type.anyOf) : IsLiteral(type) ? FromLiteral2(variants, type.const) : Unreachable();
+  function FromType2(variants, type2) {
+    const result = IsUnion(type2) ? FromUnion(variants, type2.anyOf) : IsLiteral(type2) ? FromLiteral2(variants, type2.const) : Unreachable();
     return result;
   }
   function DecodeFromSpan(variants, types) {
@@ -1916,9 +1916,9 @@
 
 
   function CreateRecord(key, value) {
-    const type = "object";
+    const type2 = "object";
     const patternProperties = { [key]: value };
-    return memory_exports.Create({ ["~kind"]: "Record" }, { type, patternProperties });
+    return memory_exports.Create({ ["~kind"]: "Record" }, { type: type2, patternProperties });
   }
 
 
@@ -1939,50 +1939,50 @@
   function IsTuple(value) {
     return IsKind(value, "Tuple");
   }
-  function TupleOptions(type) {
-    return memory_exports.Discard(type, ["~kind", "type", "items", "minItems", "additionalItems"]);
+  function TupleOptions(type2) {
+    return memory_exports.Discard(type2, ["~kind", "type", "items", "minItems", "additionalItems"]);
   }
 
 
-  function RemoveReadonlyOperation(type) {
-    return memory_exports.Discard(type, ["~readonly"]);
+  function RemoveReadonlyOperation(type2) {
+    return memory_exports.Discard(type2, ["~readonly"]);
   }
-  function RemoveReadonlyAction(type, options) {
-    const result = memory_exports.Update(RemoveReadonlyOperation(type), {}, options);
+  function RemoveReadonlyAction(type2, options) {
+    const result = memory_exports.Update(RemoveReadonlyOperation(type2), {}, options);
     return result;
   }
-  function RemoveReadonlyInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function RemoveReadonlyInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return RemoveReadonlyAction(instantiatedType, options);
   }
 
 
-  function RemoveReadonlyDeferred(type, options = {}) {
-    return Deferred("RemoveReadonly", [type], options);
+  function RemoveReadonlyDeferred(type2, options = {}) {
+    return Deferred("RemoveReadonly", [type2], options);
   }
-  function RemoveReadonly(type, options = {}) {
-    return RemoveReadonlyAction(type, options);
+  function RemoveReadonly(type2, options = {}) {
+    return RemoveReadonlyAction(type2, options);
   }
 
 
-  function RemoveOptionalOperation(type) {
-    return memory_exports.Discard(type, ["~optional"]);
+  function RemoveOptionalOperation(type2) {
+    return memory_exports.Discard(type2, ["~optional"]);
   }
-  function RemoveOptionalAction(type, options) {
-    const result = memory_exports.Update(RemoveOptionalOperation(type), {}, options);
+  function RemoveOptionalAction(type2, options) {
+    const result = memory_exports.Update(RemoveOptionalOperation(type2), {}, options);
     return result;
   }
-  function RemoveOptionalInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function RemoveOptionalInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return RemoveOptionalAction(instantiatedType, options);
   }
 
 
-  function RemoveOptionalDeferred(type, options = {}) {
-    return Deferred("RemoveOptional", [type], options);
+  function RemoveOptionalDeferred(type2, options = {}) {
+    return Deferred("RemoveOptional", [type2], options);
   }
-  function RemoveOptional(type, options = {}) {
-    return RemoveOptionalAction(type, options);
+  function RemoveOptional(type2, options = {}) {
+    return RemoveOptionalAction(type2, options);
   }
 
 
@@ -1992,15 +1992,15 @@
     }, {});
     return result;
   }
-  function TupleToObject(type) {
-    const properties = TupleElementsToProperties(type.items);
+  function TupleToObject(type2) {
+    const properties = TupleElementsToProperties(type2.items);
     const result = _Object_(properties);
     return result;
   }
 
 
-  function CanComposite(type) {
-    return IsObject3(type) || IsTuple(type);
+  function CanComposite(type2) {
+    return IsObject3(type2) || IsTuple(type2);
   }
   function IsReadonlyProperty(left, right) {
     return IsReadonly(left) ? IsReadonly(right) ? true : false : false;
@@ -2025,8 +2025,8 @@
     }, {});
     return result;
   }
-  function GetProperties(type) {
-    const result = IsObject3(type) ? type.properties : IsTuple(type) ? TupleElementsToProperties(type.items) : {};
+  function GetProperties(type2) {
+    const result = IsObject3(type2) ? type2.properties : IsTuple(type2) ? TupleElementsToProperties(type2.items) : {};
     return result;
   }
   function Composite(left, right) {
@@ -2063,8 +2063,8 @@
     const result = shouldEvaluate ? EvaluateIntersect([evaluatedLeft, evaluatedRight]) : Narrow(evaluatedLeft, evaluatedRight);
     return result;
   }
-  function DistributeType(type, types, result = []) {
-    return guard_exports.ShiftLeft(types, (left, right) => DistributeType(type, right, [...result, DistributeOperation(left, type)]), () => guard_exports.IsEqual(result.length, 0) ? [type] : result);
+  function DistributeType(type2, types, result = []) {
+    return guard_exports.ShiftLeft(types, (left, right) => DistributeType(type2, right, [...result, DistributeOperation(left, type2)]), () => guard_exports.IsEqual(result.length, 0) ? [type2] : result);
   }
   function DistributeUnion(types, distribution, result = []) {
     return guard_exports.ShiftLeft(types, (left, right) => DistributeUnion(right, distribution, [...result, ...Distribute([left], distribution)]), () => result);
@@ -2116,8 +2116,8 @@
     const result = EvaluateUnionFast(broadend);
     return result;
   }
-  function EvaluateType(type) {
-    const result = IsDependent(type) ? EvaluateDependent(type.if, type.then, type.else) : IsEnum(type) ? EvaluateEnum(type.enum) : IsIntersect(type) ? EvaluateIntersect(type.allOf) : IsTemplateLiteral(type) ? EvaluateTemplateLiteral(type.pattern) : IsUnion(type) ? EvaluateUnion(type.anyOf) : type;
+  function EvaluateType(type2) {
+    const result = IsDependent(type2) ? EvaluateDependent(type2.if, type2.then, type2.else) : IsEnum(type2) ? EvaluateEnum(type2.enum) : IsIntersect(type2) ? EvaluateIntersect(type2.allOf) : IsTemplateLiteral(type2) ? EvaluateTemplateLiteral(type2.pattern) : IsUnion(type2) ? EvaluateUnion(type2.anyOf) : type2;
     return result;
   }
   function EvaluateUnionFast(types) {
@@ -2170,8 +2170,8 @@
   }
 
 
-  function FlattenType(type) {
-    const result = IsUnion(type) ? Flatten(type.anyOf) : [type];
+  function FlattenType(type2) {
+    const result = IsUnion(type2) ? Flatten(type2.anyOf) : [type2];
     return result;
   }
   function Flatten(types, result = []) {
@@ -2180,7 +2180,7 @@
 
 
   function StringOrNumberCheck(types) {
-    return types.some((type) => IsString4(type) || IsNumber4(type) || IsInteger3(type));
+    return types.some((type2) => IsString4(type2) || IsNumber4(type2) || IsInteger3(type2));
   }
   function TryBuildRecord(types, value) {
     return guard_exports.IsEqual(StringOrNumberCheck(types), true) ? CreateRecord(StringKey, value) : void 0;
@@ -2235,27 +2235,27 @@
     const result = guard_exports.IsEqual(pattern, StringKey) ? String2() : guard_exports.IsEqual(pattern, IntegerKey) ? Integer() : guard_exports.IsEqual(pattern, NumberKey) ? Number2() : TemplateLiteralDecodeUnsafe(pattern);
     return result;
   }
-  function RecordPattern(type) {
-    return guard_exports.Keys(type.patternProperties)[0];
+  function RecordPattern(type2) {
+    return guard_exports.Keys(type2.patternProperties)[0];
   }
-  function RecordKey(type) {
-    const pattern = RecordPattern(type);
+  function RecordKey(type2) {
+    const pattern = RecordPattern(type2);
     const result = RecordPatternToType(pattern);
     return result;
   }
-  function RecordValue(type) {
-    return type.patternProperties[RecordPattern(type)];
+  function RecordValue(type2) {
+    return type2.patternProperties[RecordPattern(type2)];
   }
   function IsRecord(value) {
     return IsKind(value, "Record");
   }
-  function RecordOptions(type) {
-    return memory_exports.Discard(type, ["~kind", "type", "patternProperties"]);
+  function RecordOptions(type2) {
+    return memory_exports.Discard(type2, ["~kind", "type", "patternProperties"]);
   }
 
 
-  function Rest(type) {
-    return memory_exports.Create({ "~kind": "Rest" }, { type: "rest", items: type }, {});
+  function Rest(type2) {
+    return memory_exports.Create({ "~kind": "Rest" }, { type: "rest", items: type2 }, {});
   }
   function IsRest(value) {
     return IsKind(value, "Rest");
@@ -2426,15 +2426,15 @@
       return guard_exports.IsEqual(_left.length, 1) ? IndexDeferred(result, _left[0]) : guard_exports.IsEqual(_left.length, 0) ? _Array_(result) : Unreachable2();
     }, Type2);
   }
-  function FactorExtends(type, extend) {
-    return guard_exports.IsEqual(extend.length, 3) ? ConditionalDeferred(type, extend[0], extend[1], extend[2]) : type;
+  function FactorExtends(type2, extend) {
+    return guard_exports.IsEqual(extend.length, 3) ? ConditionalDeferred(type2, extend[0], extend[1], extend[2]) : type2;
   }
-  function FactorWith(type, withClause) {
-    return guard_exports.IsArray(withClause) && guard_exports.IsEqual(withClause.length, 0) ? type : WithDeferred(type, withClause);
+  function FactorWith(type2, withClause) {
+    return guard_exports.IsArray(withClause) && guard_exports.IsEqual(withClause.length, 0) ? type2 : WithDeferred(type2, withClause);
   }
   function FactorMapping(input) {
-    const [keyOf, type, indexArray, extend, withClause] = input;
-    return FactorWith(keyOf ? FactorExtends(KeyOfDeferred(FactorIndexArray(type, indexArray)), extend) : FactorExtends(FactorIndexArray(type, indexArray), extend), withClause);
+    const [keyOf, type2, indexArray, extend, withClause] = input;
+    return FactorWith(keyOf ? FactorExtends(KeyOfDeferred(FactorIndexArray(type2, indexArray)), extend) : FactorExtends(FactorIndexArray(type2, indexArray), extend), withClause);
   }
   function ExprBinaryMapping(left, rest) {
     return guard_exports.IsEqual(rest.length, 3) ? (() => {
@@ -2500,9 +2500,9 @@
     return input.length > 0;
   }
   function PropertyMapping(input) {
-    const [isReadonly, key, isOptional, _colon, type] = input;
+    const [isReadonly, key, isOptional, _colon, type2] = input;
     return {
-      [key]: isReadonly && isOptional ? AddReadonlyDeferred(AddOptionalDeferred(type)) : isReadonly && !isOptional ? AddReadonlyDeferred(type) : !isReadonly && isOptional ? AddOptionalDeferred(type) : type
+      [key]: isReadonly && isOptional ? AddReadonlyDeferred(AddOptionalDeferred(type2)) : isReadonly && !isOptional ? AddReadonlyDeferred(type2) : !isReadonly && isOptional ? AddOptionalDeferred(type2) : type2
     };
   }
   function PropertyDelimiterMapping(input) {
@@ -2531,8 +2531,8 @@
   function ElementBaseMapping(input) {
     if (!guard_exports.IsArray(input) || !guard_exports.IsEqual(input.length, 3))
       return input;
-    const [isReadonly, type, isOptional] = input;
-    return isReadonly && isOptional ? AddReadonlyDeferred(AddOptionalDeferred(type)) : isReadonly && !isOptional ? AddReadonlyDeferred(type) : !isReadonly && isOptional ? AddOptionalDeferred(type) : type;
+    const [isReadonly, type2, isOptional] = input;
+    return isReadonly && isOptional ? AddReadonlyDeferred(AddOptionalDeferred(type2)) : isReadonly && !isOptional ? AddReadonlyDeferred(type2) : !isReadonly && isOptional ? AddOptionalDeferred(type2) : type2;
   }
   function ElementMapping(input) {
     return guard_exports.IsEqual(input.length, 2) ? Rest(input[1]) : guard_exports.IsEqual(input.length, 1) ? input[0] : Unreachable2();
@@ -2570,14 +2570,14 @@
   function _Constructor_Mapping(input) {
     return Constructor(input[2], input[5]);
   }
-  function ApplyReadonly(state2, type) {
-    return guard_exports.IsEqual(state2, "remove") ? RemoveReadonlyDeferred(type) : guard_exports.IsEqual(state2, "add") ? AddReadonlyDeferred(type) : type;
+  function ApplyReadonly(state2, type2) {
+    return guard_exports.IsEqual(state2, "remove") ? RemoveReadonlyDeferred(type2) : guard_exports.IsEqual(state2, "add") ? AddReadonlyDeferred(type2) : type2;
   }
   function MappedReadonlyMapping(input) {
     return guard_exports.IsEqual(input.length, 2) && guard_exports.IsEqual(input[0], "-") ? "remove" : guard_exports.IsEqual(input.length, 2) && guard_exports.IsEqual(input[0], "+") ? "add" : guard_exports.IsEqual(input.length, 1) ? "add" : "none";
   }
-  function ApplyOptional(state2, type) {
-    return guard_exports.IsEqual(state2, "remove") ? RemoveOptionalDeferred(type) : guard_exports.IsEqual(state2, "add") ? AddOptionalDeferred(type) : type;
+  function ApplyOptional(state2, type2) {
+    return guard_exports.IsEqual(state2, "remove") ? RemoveOptionalDeferred(type2) : guard_exports.IsEqual(state2, "add") ? AddOptionalDeferred(type2) : type2;
   }
   function MappedOptionalMapping(input) {
     return guard_exports.IsEqual(input.length, 2) && guard_exports.IsEqual(input[0], "-") ? "remove" : guard_exports.IsEqual(input.length, 2) && guard_exports.IsEqual(input[0], "+") ? "add" : guard_exports.IsEqual(input.length, 1) ? "add" : "none";
@@ -3166,8 +3166,8 @@
   function EncodeUnion(types, right, pattern, result = []) {
     return guard_exports.ShiftLeft(types, (head, tail) => EncodeUnion(tail, right, pattern, [...result, EncodeType(head, [], "")]), () => EncodeTypes(right, `${pattern}(${JoinString(result)})`));
   }
-  function EncodeType(type, right, pattern) {
-    return IsEnum(type) ? EncodeEnum(type.enum, right, pattern) : IsInteger3(type) ? EncodeInteger(right, pattern) : IsLiteral(type) ? EncodeLiteral(type.const, right, pattern) : IsBigInt3(type) ? EncodeBigInt(right, pattern) : IsBoolean4(type) ? EncodeBoolean(right, pattern) : IsNumber4(type) ? EncodeNumber(right, pattern) : IsString4(type) ? EncodeString(right, pattern) : IsTemplateLiteral(type) ? EncodeTemplateLiteral(type.pattern, right, pattern) : IsTemplateLiteralDeferred(type) ? EncodeTemplateLiteralDeferred(type.parameters[0], right, pattern) : IsUnion(type) ? EncodeUnion(type.anyOf, right, pattern) : NeverPattern;
+  function EncodeType(type2, right, pattern) {
+    return IsEnum(type2) ? EncodeEnum(type2.enum, right, pattern) : IsInteger3(type2) ? EncodeInteger(right, pattern) : IsLiteral(type2) ? EncodeLiteral(type2.const, right, pattern) : IsBigInt3(type2) ? EncodeBigInt(right, pattern) : IsBoolean4(type2) ? EncodeBoolean(right, pattern) : IsNumber4(type2) ? EncodeNumber(right, pattern) : IsString4(type2) ? EncodeString(right, pattern) : IsTemplateLiteral(type2) ? EncodeTemplateLiteral(type2.pattern, right, pattern) : IsTemplateLiteralDeferred(type2) ? EncodeTemplateLiteralDeferred(type2.parameters[0], right, pattern) : IsUnion(type2) ? EncodeUnion(type2.anyOf, right, pattern) : NeverPattern;
   }
   function EncodeTypes(types, pattern) {
     return guard_exports.ShiftLeft(types, (left, right) => EncodeType(left, right, pattern), () => pattern);
@@ -3208,8 +3208,8 @@
     return TemplateLiteralFromTypes(types);
   }
   function TemplateLiteral2(input, options = {}) {
-    const type = guard_exports.IsString(input) ? TemplateLiteralFromString(input) : TemplateLiteralFromTypes(input);
-    return memory_exports.Update(type, {}, options);
+    const type2 = guard_exports.IsString(input) ? TemplateLiteralFromString(input) : TemplateLiteralFromTypes(input);
+    return memory_exports.Update(type2, {}, options);
   }
   function IsTemplateLiteral(value) {
     return IsKind(value, "TemplateLiteral");
@@ -3434,8 +3434,8 @@
       };
     }, left);
   }
-  function ExtendsRecordComparer(properties, keys, type, result) {
-    return guard_exports.ShiftLeft(keys, (left, right) => Match3(ExtendsLeft({}, properties[left], type), (inferred) => ExtendsRecordComparer(properties, right, type, RecordMergeInferred(result, inferred)), () => ExtendsFalse()), () => ExtendsTrue(result));
+  function ExtendsRecordComparer(properties, keys, type2, result) {
+    return guard_exports.ShiftLeft(keys, (left, right) => Match3(ExtendsLeft({}, properties[left], type2), (inferred) => ExtendsRecordComparer(properties, right, type2, RecordMergeInferred(result, inferred)), () => ExtendsFalse()), () => ExtendsTrue(result));
   }
   function ExtendsObjectToRecord(inferred, properties, _pattern, value) {
     const keys = guard_exports.Keys(properties);
@@ -3474,17 +3474,17 @@
   }
 
 
-  function Inferrable(name, type) {
-    return memory_exports.Create({ "~kind": "Inferrable" }, { name, type }, {});
+  function Inferrable(name, type2) {
+    return memory_exports.Create({ "~kind": "Inferrable" }, { name, type: type2 }, {});
   }
   function IsInferable(value) {
     return guard_exports.IsObject(value) && guard_exports.HasPropertyKey(value, "~kind") && guard_exports.HasPropertyKey(value, "name") && guard_exports.HasPropertyKey(value, "type") && guard_exports.IsEqual(value["~kind"], "Inferrable") && guard_exports.IsString(value.name) && guard_exports.IsObject(value.type);
   }
-  function TryRestInferable(type) {
-    return IsRest(type) ? IsInfer(type.items) ? IsArray3(type.items.extends) ? Inferrable(type.items.name, type.items.extends.items) : IsUnknown(type.items.extends) ? Inferrable(type.items.name, type.items.extends) : void 0 : Unreachable() : void 0;
+  function TryRestInferable(type2) {
+    return IsRest(type2) ? IsInfer(type2.items) ? IsArray3(type2.items.extends) ? Inferrable(type2.items.name, type2.items.extends.items) : IsUnknown(type2.items.extends) ? Inferrable(type2.items.name, type2.items.extends) : void 0 : Unreachable() : void 0;
   }
-  function TryInferable(type) {
-    return IsInfer(type) ? Inferrable(type.name, type.extends) : void 0;
+  function TryInferable(type2) {
+    return IsInfer(type2) ? Inferrable(type2.name, type2.extends) : void 0;
   }
   function TryInferResults(rest, right, result = []) {
     return guard_exports.ShiftLeft(rest, (head, tail) => Match3(ExtendsLeft({}, head, right), () => TryInferResults(tail, right, [...result, head]), () => void 0), () => result);
@@ -3546,8 +3546,8 @@
   }
 
 
-  function ExtendsUnionSome(inferred, type, unionTypes) {
-    return guard_exports.ShiftLeft(unionTypes, (head, tail) => Match3(ExtendsLeft(inferred, type, head), (inferred2) => ExtendsTrue(inferred2), () => ExtendsUnionSome(inferred, type, tail)), () => ExtendsFalse());
+  function ExtendsUnionSome(inferred, type2, unionTypes) {
+    return guard_exports.ShiftLeft(unionTypes, (head, tail) => Match3(ExtendsLeft(inferred, type2, head), (inferred2) => ExtendsTrue(inferred2), () => ExtendsUnionSome(inferred, type2, tail)), () => ExtendsFalse());
   }
   function ExtendsUnionLeft(inferred, left, right) {
     return guard_exports.ShiftLeft(left, (head, tail) => Match3(ExtendsUnionSome(inferred, head, right), (inferred2) => ExtendsUnionLeft(inferred2, tail, right), () => ExtendsFalse()), () => ExtendsTrue(inferred));
@@ -3609,11 +3609,11 @@
   function FromTypes2(stack, context, types) {
     return guard_exports.ShiftLeft(types, (left, right) => FromType3(stack, context, left) ? true : FromTypes2(stack, context, right), () => false);
   }
-  function FromType3(stack, context, type) {
-    return IsRef(type) ? FromRef(stack, context, type.$ref) : IsArray3(type) ? FromType3(stack, context, type.items) : IsConstructor3(type) ? FromTypes2(stack, context, [...type.parameters, type.instanceType]) : IsFunction3(type) ? FromTypes2(stack, context, [...type.parameters, type.returnType]) : IsInterfaceDeferred(type) ? FromProperties(stack, context, type.parameters[1]) : IsIntersect(type) ? FromTypes2(stack, context, type.allOf) : IsObject3(type) ? FromProperties(stack, context, type.properties) : IsUnion(type) ? FromTypes2(stack, context, type.anyOf) : IsTuple(type) ? FromTypes2(stack, context, type.items) : IsRecord(type) ? FromType3(stack, context, RecordValue(type)) : false;
+  function FromType3(stack, context, type2) {
+    return IsRef(type2) ? FromRef(stack, context, type2.$ref) : IsArray3(type2) ? FromType3(stack, context, type2.items) : IsConstructor3(type2) ? FromTypes2(stack, context, [...type2.parameters, type2.instanceType]) : IsFunction3(type2) ? FromTypes2(stack, context, [...type2.parameters, type2.returnType]) : IsInterfaceDeferred(type2) ? FromProperties(stack, context, type2.parameters[1]) : IsIntersect(type2) ? FromTypes2(stack, context, type2.allOf) : IsObject3(type2) ? FromProperties(stack, context, type2.properties) : IsUnion(type2) ? FromTypes2(stack, context, type2.anyOf) : IsTuple(type2) ? FromTypes2(stack, context, type2.items) : IsRecord(type2) ? FromType3(stack, context, RecordValue(type2)) : false;
   }
-  function CyclicCheck(stack, context, type) {
-    const result = FromType3(stack, context, type);
+  function CyclicCheck(stack, context, type2) {
+    const result = FromType3(stack, context, type2);
     return result;
   }
 
@@ -3642,11 +3642,11 @@
       return FromType4(context, left, result2);
     }, result);
   }
-  function FromType4(context, type, result) {
-    return IsRef(type) ? FromRef2(context, type.$ref, result) : IsArray3(type) ? FromType4(context, type.items, result) : IsConstructor3(type) ? FromTypes3(context, [...type.parameters, type.instanceType], result) : IsFunction3(type) ? FromTypes3(context, [...type.parameters, type.returnType], result) : IsInterfaceDeferred(type) ? FromProperties2(context, type.parameters[1], result) : IsIntersect(type) ? FromTypes3(context, type.allOf, result) : IsObject3(type) ? FromProperties2(context, type.properties, result) : IsUnion(type) ? FromTypes3(context, type.anyOf, result) : IsTuple(type) ? FromTypes3(context, type.items, result) : IsRecord(type) ? FromType4(context, RecordValue(type), result) : result;
+  function FromType4(context, type2, result) {
+    return IsRef(type2) ? FromRef2(context, type2.$ref, result) : IsArray3(type2) ? FromType4(context, type2.items, result) : IsConstructor3(type2) ? FromTypes3(context, [...type2.parameters, type2.instanceType], result) : IsFunction3(type2) ? FromTypes3(context, [...type2.parameters, type2.returnType], result) : IsInterfaceDeferred(type2) ? FromProperties2(context, type2.parameters[1], result) : IsIntersect(type2) ? FromTypes3(context, type2.allOf, result) : IsObject3(type2) ? FromProperties2(context, type2.properties, result) : IsUnion(type2) ? FromTypes3(context, type2.anyOf, result) : IsTuple(type2) ? FromTypes3(context, type2.items, result) : IsRecord(type2) ? FromType4(context, RecordValue(type2), result) : result;
   }
-  function CyclicDependencies(context, key, type) {
-    const result = FromType4(context, type, [key]);
+  function CyclicDependencies(context, key, type2) {
+    const result = FromType4(context, type2, [key]);
     return result;
   }
 
@@ -3664,14 +3664,14 @@
       return [...result, FromType5(left)];
     }, []);
   }
-  function FromType5(type) {
-    return IsRef(type) ? FromRef3(type.$ref) : IsArray3(type) ? _Array_(FromType5(type.items), ArrayOptions(type)) : IsConstructor3(type) ? Constructor(FromTypes4(type.parameters), FromType5(type.instanceType)) : IsFunction3(type) ? _Function_(FromTypes4(type.parameters), FromType5(type.returnType)) : IsIntersect(type) ? Intersect(FromTypes4(type.allOf)) : IsObject3(type) ? _Object_(FromProperties3(type.properties)) : IsRecord(type) ? Record(RecordKey(type), FromType5(RecordValue(type))) : IsUnion(type) ? Union(FromTypes4(type.anyOf)) : IsTuple(type) ? Tuple(FromTypes4(type.items)) : type;
+  function FromType5(type2) {
+    return IsRef(type2) ? FromRef3(type2.$ref) : IsArray3(type2) ? _Array_(FromType5(type2.items), ArrayOptions(type2)) : IsConstructor3(type2) ? Constructor(FromTypes4(type2.parameters), FromType5(type2.instanceType)) : IsFunction3(type2) ? _Function_(FromTypes4(type2.parameters), FromType5(type2.returnType)) : IsIntersect(type2) ? Intersect(FromTypes4(type2.allOf)) : IsObject3(type2) ? _Object_(FromProperties3(type2.properties)) : IsRecord(type2) ? Record(RecordKey(type2), FromType5(RecordValue(type2))) : IsUnion(type2) ? Union(FromTypes4(type2.anyOf)) : IsTuple(type2) ? Tuple(FromTypes4(type2.items)) : type2;
   }
   function CyclicAnyFromParameters(defs, ref) {
     return ref in defs ? FromType5(defs[ref]) : Unknown();
   }
-  function CyclicExtends(type) {
-    return CyclicAnyFromParameters(type.$defs, type.$ref);
+  function CyclicExtends(type2) {
+    return CyclicAnyFromParameters(type2.$defs, type2.$ref);
   }
 
 
@@ -3684,13 +3684,13 @@
   function CyclicDefinitions(context, dependencies) {
     const keys = guard_exports.Keys(context).filter((key) => dependencies.includes(key));
     return keys.reduce((result, key) => {
-      const type = context[key];
-      const instantiatedType = IsInterfaceDeferred(type) ? CyclicInterface(context, type.parameters[0], type.parameters[1]) : type;
+      const type2 = context[key];
+      const instantiatedType = IsInterfaceDeferred(type2) ? CyclicInterface(context, type2.parameters[0], type2.parameters[1]) : type2;
       return { ...result, [key]: instantiatedType };
     }, {});
   }
-  function InstantiateCyclic(context, ref, type) {
-    const dependencies = CyclicDependencies(context, ref, type);
+  function InstantiateCyclic(context, ref, type2) {
+    const dependencies = CyclicDependencies(context, ref, type2);
     const definitions = CyclicDefinitions(context, dependencies);
     const result = Cyclic(definitions, ref);
     return result;
@@ -3706,8 +3706,8 @@
   }
 
 
-  function Canonical(type) {
-    return IsCyclic(type) ? CyclicExtends(type) : IsUnsafe(type) ? Unknown() : type;
+  function Canonical(type2) {
+    return IsCyclic(type2) ? CyclicExtends(type2) : IsUnsafe(type2) ? Unknown() : type2;
   }
   function Extends(inferred, left, right) {
     const canonicalLeft = Canonical(left);
@@ -3726,14 +3726,14 @@
   }
 
 
-  function BroadenFilter(type, types, result = [], all = types) {
+  function BroadenFilter(type2, types, result = [], all = types) {
     return guard_exports.ShiftLeft(types, (left, right) => {
-      const compare = Compare(type, left);
-      return guard_exports.IsEqual(compare, CompareResultLeftInside) || guard_exports.IsEqual(compare, CompareResultEqual) ? all : guard_exports.IsEqual(compare, CompareResultDisjoint) ? BroadenFilter(type, right, [...result, left], all) : BroadenFilter(type, right, result, all);
-    }, () => [...result, type]);
+      const compare = Compare(type2, left);
+      return guard_exports.IsEqual(compare, CompareResultLeftInside) || guard_exports.IsEqual(compare, CompareResultEqual) ? all : guard_exports.IsEqual(compare, CompareResultDisjoint) ? BroadenFilter(type2, right, [...result, left], all) : BroadenFilter(type2, right, result, all);
+    }, () => [...result, type2]);
   }
-  function BroadenType(type, types, result) {
-    const evaluated = EvaluateType(type);
+  function BroadenType(type2, types, result) {
+    const evaluated = EvaluateType(type2);
     return IsAny(evaluated) ? [evaluated] : (
       // terminate (always the most broad)
       IsUnknown(evaluated) ? [evaluated] : (
@@ -3758,12 +3758,12 @@
   }
 
 
-  function EvaluateAction(type, options) {
-    const result = memory_exports.Update(EvaluateType(type), {}, options);
+  function EvaluateAction(type2, options) {
+    const result = memory_exports.Update(EvaluateType(type2), {}, options);
     return result;
   }
-  function EvaluateInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function EvaluateInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return EvaluateAction(instantiatedType, options);
   }
 
@@ -3780,15 +3780,15 @@
   function ZipDistributionArray(arguments_, distributionArray, result = []) {
     return guard_exports.ShiftLeft(arguments_, (argumentLeft, argumentRight) => guard_exports.ShiftLeft(distributionArray, (booleanLeft, booleanRight) => ZipDistributionArray(argumentRight, booleanRight, [...result, [booleanLeft, argumentLeft]]), () => result), () => result);
   }
-  function CanonicalArgument(type) {
-    return IsTemplateLiteral(type) ? EvaluateTemplateLiteral(type.pattern) : IsEnum(type) ? EvaluateEnum(type.enum) : type;
+  function CanonicalArgument(type2) {
+    return IsTemplateLiteral(type2) ? EvaluateTemplateLiteral(type2.pattern) : IsEnum(type2) ? EvaluateEnum(type2.enum) : type2;
   }
-  function Expand(type) {
-    const canonicalArgument = CanonicalArgument(type);
+  function Expand(type2) {
+    const canonicalArgument = CanonicalArgument(type2);
     return IsUnion(canonicalArgument) ? [...canonicalArgument.anyOf] : [canonicalArgument];
   }
-  function Append(current, type) {
-    return current.reduce((result, left) => [...result, [...left, type]], []);
+  function Append(current, type2) {
+    return current.reduce((result, left) => [...result, [...left, type2]], []);
   }
   function Cross(current, variants) {
     return variants.reduce((result, left) => {
@@ -3828,14 +3828,14 @@
   }
 
 
-  function AssertArgumentExtends(name, type, extends_) {
-    if (IsInfer(type) || IsCall(type) || result_exports.IsExtendsTrueLike(Extends({}, type, extends_)))
+  function AssertArgumentExtends(name, type2, extends_) {
+    if (IsInfer(type2) || IsCall(type2) || result_exports.IsExtendsTrueLike(Extends({}, type2, extends_)))
       return;
-    const cause = { parameter: name, expect: extends_, actual: type };
+    const cause = { parameter: name, expect: extends_, actual: type2 };
     throw new Error(`Argument for parameter ${name} does not satisfy constraint`, { cause });
   }
-  function BindArgument(context, state2, name, extends_, type) {
-    const instantiatedArgument = InstantiateType(context, state2, type);
+  function BindArgument(context, state2, name, extends_, type2) {
+    const instantiatedArgument = InstantiateType(context, state2, type2);
     AssertArgumentExtends(name, instantiatedArgument, extends_);
     return memory_exports.Assign(context, { [name]: instantiatedArgument });
   }
@@ -3903,8 +3903,8 @@
     const instantiatedArguments = InstantiateTypes(context, state2, arguments_);
     const resolved = ResolveTarget(context, target, arguments_);
     const name = resolved[0];
-    const type = resolved[1];
-    const result = IsGeneric(type) ? IsTailCall(state2, name) ? CallConstruct(Ref(name), instantiatedArguments) : CallImmediate(context, state2, Ref(name), type.parameters, type.expression, instantiatedArguments) : CallConstruct(target, instantiatedArguments);
+    const type2 = resolved[1];
+    const result = IsGeneric(type2) ? IsTailCall(state2, name) ? CallConstruct(Ref(name), instantiatedArguments) : CallImmediate(context, state2, Ref(name), type2.parameters, type2.expression, instantiatedArguments) : CallConstruct(target, instantiatedArguments);
     return result;
   }
 
@@ -3920,15 +3920,15 @@
   }
 
 
-  function RemoveImmutableOperation(type) {
-    return memory_exports.Discard(type, ["~immutable"]);
+  function RemoveImmutableOperation(type2) {
+    return memory_exports.Discard(type2, ["~immutable"]);
   }
-  function RemoveImmutableAction(type, options) {
-    const result = memory_exports.Update(RemoveImmutableOperation(type), {}, options);
+  function RemoveImmutableAction(type2, options) {
+    const result = memory_exports.Update(RemoveImmutableOperation(type2), {}, options);
     return result;
   }
-  function RemoveImmutableInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function RemoveImmutableInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return RemoveImmutableAction(instantiatedType, options);
   }
 
@@ -3951,45 +3951,45 @@
 
 
   function FromUnion2(mapping, types) {
-    const result = types.map((type) => FromType7(mapping, type));
+    const result = types.map((type2) => FromType7(mapping, type2));
     return Union(result);
   }
 
 
-  function FromType7(mapping, type) {
-    return IsLiteral(type) ? FromLiteral3(mapping, type.const) : IsTemplateLiteral(type) ? FromTemplateLiteral(mapping, type.pattern) : IsUnion(type) ? FromUnion2(mapping, type.anyOf) : type;
+  function FromType7(mapping, type2) {
+    return IsLiteral(type2) ? FromLiteral3(mapping, type2.const) : IsTemplateLiteral(type2) ? FromTemplateLiteral(mapping, type2.pattern) : IsUnion(type2) ? FromUnion2(mapping, type2.anyOf) : type2;
   }
 
 
-  function CapitalizeDeferred(type, options = {}) {
-    return Deferred("Capitalize", [type], options);
+  function CapitalizeDeferred(type2, options = {}) {
+    return Deferred("Capitalize", [type2], options);
   }
-  function Capitalize(type, options = {}) {
-    return CapitalizeAction(type, options);
-  }
-
-
-  function LowercaseDeferred(type, options = {}) {
-    return Deferred("Lowercase", [type], options);
-  }
-  function Lowercase(type, options = {}) {
-    return LowercaseAction(type, options);
+  function Capitalize(type2, options = {}) {
+    return CapitalizeAction(type2, options);
   }
 
 
-  function UncapitalizeDeferred(type, options = {}) {
-    return Deferred("Uncapitalize", [type], options);
+  function LowercaseDeferred(type2, options = {}) {
+    return Deferred("Lowercase", [type2], options);
   }
-  function Uncapitalize(type, options = {}) {
-    return UncapitalizeAction(type, options);
+  function Lowercase(type2, options = {}) {
+    return LowercaseAction(type2, options);
   }
 
 
-  function UppercaseDeferred(type, options = {}) {
-    return Deferred("Uppercase", [type], options);
+  function UncapitalizeDeferred(type2, options = {}) {
+    return Deferred("Uncapitalize", [type2], options);
   }
-  function Uppercase(type, options = {}) {
-    return UppercaseAction(type, options);
+  function Uncapitalize(type2, options = {}) {
+    return UncapitalizeAction(type2, options);
+  }
+
+
+  function UppercaseDeferred(type2, options = {}) {
+    return Deferred("Uppercase", [type2], options);
+  }
+  function Uppercase(type2, options = {}) {
+    return UppercaseAction(type2, options);
   }
 
 
@@ -3997,36 +3997,36 @@
   var LowercaseMapping = (input) => input.toLowerCase();
   var UncapitalizeMapping = (input) => input[0].toLowerCase() + input.slice(1);
   var UppercaseMapping = (input) => input.toUpperCase();
-  function CapitalizeAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(FromType7(CapitalizeMapping, type), {}, options) : CapitalizeDeferred(type, options);
+  function CapitalizeAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(FromType7(CapitalizeMapping, type2), {}, options) : CapitalizeDeferred(type2, options);
     return result;
   }
-  function LowercaseAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(FromType7(LowercaseMapping, type), {}, options) : LowercaseDeferred(type, options);
+  function LowercaseAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(FromType7(LowercaseMapping, type2), {}, options) : LowercaseDeferred(type2, options);
     return result;
   }
-  function UncapitalizeAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(FromType7(UncapitalizeMapping, type), {}, options) : UncapitalizeDeferred(type, options);
+  function UncapitalizeAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(FromType7(UncapitalizeMapping, type2), {}, options) : UncapitalizeDeferred(type2, options);
     return result;
   }
-  function UppercaseAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(FromType7(UppercaseMapping, type), {}, options) : UppercaseDeferred(type, options);
+  function UppercaseAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(FromType7(UppercaseMapping, type2), {}, options) : UppercaseDeferred(type2, options);
     return result;
   }
-  function CapitalizeInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function CapitalizeInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return CapitalizeAction(instantiatedType, options);
   }
-  function LowercaseInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function LowercaseInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return LowercaseAction(instantiatedType, options);
   }
-  function UncapitalizeInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function UncapitalizeInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return UncapitalizeAction(instantiatedType, options);
   }
-  function UppercaseInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function UppercaseInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return UppercaseAction(instantiatedType, options);
   }
 
@@ -4054,26 +4054,26 @@
   }
 
 
-  function ConstructorParametersDeferred(type, options = {}) {
-    return Deferred("ConstructorParameters", [type], options);
+  function ConstructorParametersDeferred(type2, options = {}) {
+    return Deferred("ConstructorParameters", [type2], options);
   }
-  function ConstructorParameters(type, options = {}) {
-    return ConstructorParametersAction(type, options);
+  function ConstructorParameters(type2, options = {}) {
+    return ConstructorParametersAction(type2, options);
   }
 
 
-  function ConstructorParametersOperation(type) {
-    const parameters = IsConstructor3(type) ? type["parameters"] : [];
+  function ConstructorParametersOperation(type2) {
+    const parameters = IsConstructor3(type2) ? type2["parameters"] : [];
     const instantiatedParameters = InstantiateElements({}, State([], []), parameters);
     const result = Tuple(instantiatedParameters);
     return result;
   }
-  function ConstructorParametersAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(ConstructorParametersOperation(type), {}, options) : ConstructorParametersDeferred(type, options);
+  function ConstructorParametersAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(ConstructorParametersOperation(type2), {}, options) : ConstructorParametersDeferred(type2, options);
     return result;
   }
-  function ConstructorParametersInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function ConstructorParametersInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return ConstructorParametersAction(instantiatedType, options);
   }
 
@@ -4145,12 +4145,12 @@
   }
 
 
-  function IndexDeferred(type, indexer, options = {}) {
-    return Deferred("Index", [type, indexer], options);
+  function IndexDeferred(type2, indexer, options = {}) {
+    return Deferred("Index", [type2, indexer], options);
   }
-  function Index(type, indexer_or_keys, options = {}) {
+  function Index(type2, indexer_or_keys, options = {}) {
     const indexer = guard_exports.IsArray(indexer_or_keys) ? KeysToIndexer(indexer_or_keys) : indexer_or_keys;
-    return IndexAction(type, indexer, options);
+    return IndexAction(type2, indexer, options);
   }
 
 
@@ -4213,13 +4213,13 @@
   }
 
 
-  function FromType8(type) {
-    return IsCyclic(type) ? FromCyclic(type.$defs, type.$ref) : IsDependent(type) ? FromDependent(type.if, type.then, type.else) : IsIntersect(type) ? FromIntersect(type.allOf) : IsUnion(type) ? FromUnion3(type.anyOf) : IsTuple(type) ? FromTuple(type.items) : IsObject3(type) ? FromObject4(type.properties) : {};
+  function FromType8(type2) {
+    return IsCyclic(type2) ? FromCyclic(type2.$defs, type2.$ref) : IsDependent(type2) ? FromDependent(type2.if, type2.then, type2.else) : IsIntersect(type2) ? FromIntersect(type2.allOf) : IsUnion(type2) ? FromUnion3(type2.anyOf) : IsTuple(type2) ? FromTuple(type2.items) : IsObject3(type2) ? FromObject4(type2.properties) : {};
   }
 
 
-  function CollapseToObject(type) {
-    const properties = FromType8(type);
+  function CollapseToObject(type2) {
+    const properties = FromType8(type2);
     const result = _Object_(properties);
     return result;
   }
@@ -4236,17 +4236,17 @@
     return Literal(ConvertToIntegerKey(value));
   }
   function NormalizeIndexerTypes(types) {
-    return types.map((type) => NormalizeIndexer(type));
+    return types.map((type2) => NormalizeIndexer(type2));
   }
-  function NormalizeIndexer(type) {
-    return IsIntersect(type) ? Intersect(NormalizeIndexerTypes(type.allOf)) : IsUnion(type) ? Union(NormalizeIndexerTypes(type.anyOf)) : IsLiteral(type) ? NormalizeLiteral(type.const) : type;
+  function NormalizeIndexer(type2) {
+    return IsIntersect(type2) ? Intersect(NormalizeIndexerTypes(type2.allOf)) : IsUnion(type2) ? Union(NormalizeIndexerTypes(type2.anyOf)) : IsLiteral(type2) ? NormalizeLiteral(type2.const) : type2;
   }
-  function FromArray3(type, indexer) {
+  function FromArray3(type2, indexer) {
     const normalizedIndexer = NormalizeIndexer(indexer);
     const check = Extends({}, normalizedIndexer, Number2());
     const result = (
       // indexer
-      result_exports.IsExtendsTrueLike(check) ? type : IsLiteral(indexer) && guard_exports.IsEqual(indexer.const, "length") ? Number2() : Never()
+      result_exports.IsExtendsTrueLike(check) ? type2 : IsLiteral(indexer) && guard_exports.IsEqual(indexer.const, "length") ? Number2() : Never()
     );
     return result;
   }
@@ -4300,25 +4300,25 @@
   }
 
 
-  function FromType9(type) {
-    return IsCyclic(type) ? FromCyclic2(type.$defs, type.$ref) : IsDependent(type) ? FromDependent2(type.if, type.then, type.else) : IsEnum(type) ? FromEnum(type.enum) : IsIntersect(type) ? FromIntersect2(type.allOf) : IsLiteral(type) ? FromLiteral4(type.const) : IsTemplateLiteral(type) ? FromTemplateLiteral2(type.pattern) : IsUnion(type) ? FromUnion4(type.anyOf) : [];
+  function FromType9(type2) {
+    return IsCyclic(type2) ? FromCyclic2(type2.$defs, type2.$ref) : IsDependent(type2) ? FromDependent2(type2.if, type2.then, type2.else) : IsEnum(type2) ? FromEnum(type2.enum) : IsIntersect(type2) ? FromIntersect2(type2.allOf) : IsLiteral(type2) ? FromLiteral4(type2.const) : IsTemplateLiteral(type2) ? FromTemplateLiteral2(type2.pattern) : IsUnion(type2) ? FromUnion4(type2.anyOf) : [];
   }
 
 
-  function ToIndexableKeys(type) {
-    const result = FromType9(type);
+  function ToIndexableKeys(type2) {
+    const result = FromType9(type2);
     return result;
   }
 
 
   function FromTypes5(properties, types) {
-    return types.map((type) => FromType10(properties, type));
+    return types.map((type2) => FromType10(properties, type2));
   }
-  function FromType10(properties, type) {
-    return IsArray3(type) ? _Array_(FromType10(properties, type.items)) : IsConstructor3(type) ? Constructor(FromTypes5(properties, type.parameters), FromType10(properties, type.instanceType)) : IsFunction3(type) ? _Function_(FromTypes5(properties, type.parameters), FromType10(properties, type.returnType)) : IsTuple(type) ? Tuple(FromTypes5(properties, type.items)) : IsUnion(type) ? Union(FromTypes5(properties, type.anyOf)) : IsIntersect(type) ? Intersect(FromTypes5(properties, type.allOf)) : IsThis(type) ? _Object_(properties) : type;
+  function FromType10(properties, type2) {
+    return IsArray3(type2) ? _Array_(FromType10(properties, type2.items)) : IsConstructor3(type2) ? Constructor(FromTypes5(properties, type2.parameters), FromType10(properties, type2.instanceType)) : IsFunction3(type2) ? _Function_(FromTypes5(properties, type2.parameters), FromType10(properties, type2.returnType)) : IsTuple(type2) ? Tuple(FromTypes5(properties, type2.items)) : IsUnion(type2) ? Union(FromTypes5(properties, type2.anyOf)) : IsIntersect(type2) ? Intersect(FromTypes5(properties, type2.allOf)) : IsThis(type2) ? _Object_(properties) : type2;
   }
-  function ExpandThis(properties, type) {
-    const result = FromType10(properties, type);
+  function ExpandThis(properties, type2) {
+    const result = FromType10(properties, type2);
     return result;
   }
 
@@ -4361,10 +4361,10 @@
     return Literal(ConvertToIntegerKey(value));
   }
   function ArrayIndexerTypes(types) {
-    return types.map((type) => FormatArrayIndexer(type));
+    return types.map((type2) => FormatArrayIndexer(type2));
   }
-  function FormatArrayIndexer(type) {
-    return IsIntersect(type) ? Intersect(ArrayIndexerTypes(type.allOf)) : IsUnion(type) ? Union(ArrayIndexerTypes(type.anyOf)) : IsLiteral(type) ? ConvertLiteral(type.const) : type;
+  function FormatArrayIndexer(type2) {
+    return IsIntersect(type2) ? Intersect(ArrayIndexerTypes(type2.allOf)) : IsUnion(type2) ? Union(ArrayIndexerTypes(type2.anyOf)) : IsLiteral(type2) ? ConvertLiteral(type2.const) : type2;
   }
 
 
@@ -4390,52 +4390,52 @@
   }
 
 
-  function FromType11(type, indexer) {
-    return IsArray3(type) ? FromArray3(type.items, indexer) : IsObject3(type) ? FromObject5(type.properties, indexer) : IsTuple(type) ? FromTuple2(type.items, indexer) : Never();
+  function FromType11(type2, indexer) {
+    return IsArray3(type2) ? FromArray3(type2.items, indexer) : IsObject3(type2) ? FromObject5(type2.properties, indexer) : IsTuple(type2) ? FromTuple2(type2.items, indexer) : Never();
   }
 
 
-  function NormalizeType(type) {
-    const result = IsCyclic(type) || IsDependent(type) || IsIntersect(type) || IsUnion(type) ? CollapseToObject(type) : type;
+  function NormalizeType(type2) {
+    const result = IsCyclic(type2) || IsDependent(type2) || IsIntersect(type2) || IsUnion(type2) ? CollapseToObject(type2) : type2;
     return result;
   }
-  function IndexAction(type, indexer, options) {
-    const result = CanInstantiate([type, indexer]) ? memory_exports.Update(FromType11(NormalizeType(type), indexer), {}, options) : IndexDeferred(type, indexer, options);
+  function IndexAction(type2, indexer, options) {
+    const result = CanInstantiate([type2, indexer]) ? memory_exports.Update(FromType11(NormalizeType(type2), indexer), {}, options) : IndexDeferred(type2, indexer, options);
     return result;
   }
-  function IndexInstantiate(context, state2, type, indexer, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function IndexInstantiate(context, state2, type2, indexer, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     const instantiatedIndexer = InstantiateType(context, state2, indexer);
     return IndexAction(instantiatedType, instantiatedIndexer, options);
   }
 
 
-  function InstanceTypeDeferred(type, options = {}) {
-    return Deferred("InstanceType", [type], options);
+  function InstanceTypeDeferred(type2, options = {}) {
+    return Deferred("InstanceType", [type2], options);
   }
-  function InstanceType(type, options = {}) {
-    return InstanceTypeAction(type, options);
+  function InstanceType(type2, options = {}) {
+    return InstanceTypeAction(type2, options);
   }
 
 
-  function InstanceTypeOperation(type) {
-    return IsConstructor3(type) ? type["instanceType"] : Never();
+  function InstanceTypeOperation(type2) {
+    return IsConstructor3(type2) ? type2["instanceType"] : Never();
   }
-  function InstanceTypeAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(InstanceTypeOperation(type), {}, options) : InstanceTypeDeferred(type, options);
+  function InstanceTypeAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(InstanceTypeOperation(type2), {}, options) : InstanceTypeDeferred(type2, options);
     return result;
   }
-  function InstanceTypeInstantiate(context, state2, type, options = {}) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function InstanceTypeInstantiate(context, state2, type2, options = {}) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return InstanceTypeAction(instantiatedType, options);
   }
 
 
-  function KeyOfDeferred(type, options = {}) {
-    return Deferred("KeyOf", [type], options);
+  function KeyOfDeferred(type2, options = {}) {
+    return Deferred("KeyOf", [type2], options);
   }
-  function KeyOf2(type, options = {}) {
-    return KeyOfAction(type, options);
+  function KeyOf2(type2, options = {}) {
+    return KeyOfAction(type2, options);
   }
 
 
@@ -4463,8 +4463,8 @@
   }
 
 
-  function FromRecord2(type) {
-    return RecordKey(type);
+  function FromRecord2(type2) {
+    return RecordKey(type2);
   }
 
 
@@ -4474,29 +4474,29 @@
   }
 
 
-  function FromType12(type) {
-    return IsAny(type) ? FromAny() : IsArray3(type) ? FromArray4(type.items) : IsObject3(type) ? FromObject6(type.properties) : IsRecord(type) ? FromRecord2(type) : IsTuple(type) ? FromTuple3(type.items) : Never();
+  function FromType12(type2) {
+    return IsAny(type2) ? FromAny() : IsArray3(type2) ? FromArray4(type2.items) : IsObject3(type2) ? FromObject6(type2.properties) : IsRecord(type2) ? FromRecord2(type2) : IsTuple(type2) ? FromTuple3(type2.items) : Never();
   }
 
 
-  function NormalizeType2(type) {
-    const result = IsCyclic(type) || IsDependent(type) || IsIntersect(type) || IsUnion(type) ? CollapseToObject(type) : type;
+  function NormalizeType2(type2) {
+    const result = IsCyclic(type2) || IsDependent(type2) || IsIntersect(type2) || IsUnion(type2) ? CollapseToObject(type2) : type2;
     return result;
   }
-  function KeyOfAction(type, options) {
-    return CanInstantiate([type]) ? memory_exports.Update(FromType12(NormalizeType2(type)), {}, options) : KeyOfDeferred(type, options);
+  function KeyOfAction(type2, options) {
+    return CanInstantiate([type2]) ? memory_exports.Update(FromType12(NormalizeType2(type2)), {}, options) : KeyOfDeferred(type2, options);
   }
-  function KeyOfInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function KeyOfInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return KeyOfAction(instantiatedType, options);
   }
 
 
-  function MappedDeferred(identifier, type, as, property, options = {}) {
-    return Deferred("Mapped", [identifier, type, as, property], options);
+  function MappedDeferred(identifier, type2, as, property, options = {}) {
+    return Deferred("Mapped", [identifier, type2, as, property], options);
   }
-  function Mapped(identifier, type, as, property, options = {}) {
-    return MappedAction({}, State([], []), identifier, type, as, property, options);
+  function Mapped(identifier, type2, as, property, options = {}) {
+    return MappedAction({}, State([], []), identifier, type2, as, property, options);
   }
 
 
@@ -4519,12 +4519,12 @@
     const result = guard_exports.IsNumber(value) ? [Literal(`${value}`)] : [Literal(value)];
     return result;
   }
-  function FromType13(type) {
-    const result = IsEnum(type) ? FromEnum2(type.enum) : IsLiteral(type) ? FromLiteral5(type.const) : IsTemplateLiteral(type) ? FromTemplateLiteral3(type.pattern) : IsUnion(type) ? FromUnion5(type.anyOf) : [type];
+  function FromType13(type2) {
+    const result = IsEnum(type2) ? FromEnum2(type2.enum) : IsLiteral(type2) ? FromLiteral5(type2.const) : IsTemplateLiteral(type2) ? FromTemplateLiteral3(type2.pattern) : IsUnion(type2) ? FromUnion5(type2.anyOf) : [type2];
     return result;
   }
-  function MappedVariants(type) {
-    const result = FromType13(type);
+  function MappedVariants(type2) {
+    const result = FromType13(type2);
     return result;
   }
 
@@ -4550,8 +4550,8 @@
       return [...result, _Object_(left)];
     }, []);
   }
-  function MappedOperation(context, state2, identifier, type, as, property) {
-    const variants = MappedVariants(type);
+  function MappedOperation(context, state2, identifier, type2, as, property) {
+    const variants = MappedVariants(type2);
     const mappedProperties = MappedProperties(context, state2, identifier, variants, as, property);
     const mappedObjects = MappedObjects(mappedProperties);
     const result = EvaluateIntersect(mappedObjects);
@@ -4559,12 +4559,12 @@
   }
 
 
-  function MappedAction(context, state2, identifier, type, as, property, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(MappedOperation(context, state2, identifier, type, as, property), {}, options) : MappedDeferred(identifier, type, as, property, options);
+  function MappedAction(context, state2, identifier, type2, as, property, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(MappedOperation(context, state2, identifier, type2, as, property), {}, options) : MappedDeferred(identifier, type2, as, property, options);
     return result;
   }
-  function MappedInstantiate(context, state2, identifier, type, as, property, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function MappedInstantiate(context, state2, identifier, type2, as, property, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return MappedAction(context, state2, identifier, instantiatedType, as, property, options);
   }
 
@@ -4596,39 +4596,39 @@
   }
 
 
-  function NonNullableDeferred(type, options = {}) {
-    return Deferred("NonNullable", [type], options);
+  function NonNullableDeferred(type2, options = {}) {
+    return Deferred("NonNullable", [type2], options);
   }
-  function NonNullable(type, options = {}) {
-    return NonNullableAction(type, options);
+  function NonNullable(type2, options = {}) {
+    return NonNullableAction(type2, options);
   }
 
 
-  function NonNullableOperation(type) {
+  function NonNullableOperation(type2) {
     const excluded = Union([Null(), Undefined()]);
-    return ExcludeAction(type, excluded, {});
+    return ExcludeAction(type2, excluded, {});
   }
-  function NonNullableAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(NonNullableOperation(type), {}, options) : NonNullableDeferred(type, options);
+  function NonNullableAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(NonNullableOperation(type2), {}, options) : NonNullableDeferred(type2, options);
     return result;
   }
-  function NonNullableInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function NonNullableInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return NonNullableAction(instantiatedType, options);
   }
 
 
-  function OmitDeferred(type, indexer, options = {}) {
-    return Deferred("Omit", [type, indexer], options);
+  function OmitDeferred(type2, indexer, options = {}) {
+    return Deferred("Omit", [type2, indexer], options);
   }
-  function Omit(type, indexer_or_keys, options = {}) {
+  function Omit(type2, indexer_or_keys, options = {}) {
     const indexer = guard_exports.IsArray(indexer_or_keys) ? KeysToIndexer(indexer_or_keys) : indexer_or_keys;
-    return OmitAction(type, indexer, options);
+    return OmitAction(type2, indexer, options);
   }
 
 
-  function ToIndexable(type) {
-    const collapsed = CollapseToObject(type);
+  function ToIndexable(type2) {
+    const collapsed = CollapseToObject(type2);
     const result = IsObject3(collapsed) ? collapsed.properties : Unreachable();
     return result;
   }
@@ -4640,8 +4640,8 @@
     }, {});
     return result;
   }
-  function FromType14(type, indexer) {
-    const indexable = ToIndexable(type);
+  function FromType14(type2, indexer) {
+    const indexable = ToIndexable(type2);
     const indexableKeys = ToIndexableKeys(indexer);
     const omitted = FromKeys(indexable, indexableKeys);
     const result = _Object_(omitted);
@@ -4649,46 +4649,46 @@
   }
 
 
-  function OmitAction(type, indexer, options) {
-    const result = CanInstantiate([type, indexer]) ? memory_exports.Update(FromType14(type, indexer), {}, options) : OmitDeferred(type, indexer, options);
+  function OmitAction(type2, indexer, options) {
+    const result = CanInstantiate([type2, indexer]) ? memory_exports.Update(FromType14(type2, indexer), {}, options) : OmitDeferred(type2, indexer, options);
     return result;
   }
-  function OmitInstantiate(context, state2, type, indexer, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function OmitInstantiate(context, state2, type2, indexer, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     const instantiatedIndexer = InstantiateType(context, state2, indexer);
     return OmitAction(instantiatedType, instantiatedIndexer, options);
   }
 
 
-  function ParametersDeferred(type, options = {}) {
-    return Deferred("Parameters", [type], options);
+  function ParametersDeferred(type2, options = {}) {
+    return Deferred("Parameters", [type2], options);
   }
-  function Parameters(type, options = {}) {
-    return ParametersAction(type, options);
+  function Parameters(type2, options = {}) {
+    return ParametersAction(type2, options);
   }
 
 
-  function ParametersOperation(type) {
-    const parameters = IsFunction3(type) ? type["parameters"] : [];
+  function ParametersOperation(type2) {
+    const parameters = IsFunction3(type2) ? type2["parameters"] : [];
     const instantiatedParameters = InstantiateElements({}, State([], []), parameters);
     const result = Tuple(instantiatedParameters);
     return result;
   }
-  function ParametersAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(ParametersOperation(type), {}, options) : ParametersDeferred(type, options);
+  function ParametersAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(ParametersOperation(type2), {}, options) : ParametersDeferred(type2, options);
     return result;
   }
-  function ParametersInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function ParametersInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return ParametersAction(instantiatedType, options);
   }
 
 
-  function PartialDeferred(type, options = {}) {
-    return Deferred("Partial", [type], options);
+  function PartialDeferred(type2, options = {}) {
+    return Deferred("Partial", [type2], options);
   }
-  function Partial(type, options = {}) {
-    return PartialAction(type, options);
+  function Partial(type2, options = {}) {
+    return PartialAction(type2, options);
   }
 
 
@@ -4715,7 +4715,7 @@
 
 
   function FromUnion6(types) {
-    const result = types.map((type) => FromType15(type));
+    const result = types.map((type2) => FromType15(type2));
     return Union(result);
   }
 
@@ -4729,27 +4729,27 @@
   }
 
 
-  function FromType15(type) {
-    return IsCyclic(type) ? FromCyclic3(type.$defs, type.$ref) : IsDependent(type) ? FromDependent3(type.if, type.then, type.else) : IsIntersect(type) ? FromIntersect3(type.allOf) : IsUnion(type) ? FromUnion6(type.anyOf) : IsObject3(type) ? FromObject7(type.properties) : _Object_({});
+  function FromType15(type2) {
+    return IsCyclic(type2) ? FromCyclic3(type2.$defs, type2.$ref) : IsDependent(type2) ? FromDependent3(type2.if, type2.then, type2.else) : IsIntersect(type2) ? FromIntersect3(type2.allOf) : IsUnion(type2) ? FromUnion6(type2.anyOf) : IsObject3(type2) ? FromObject7(type2.properties) : _Object_({});
   }
 
 
-  function PartialAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(FromType15(type), {}, options) : PartialDeferred(type, options);
+  function PartialAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(FromType15(type2), {}, options) : PartialDeferred(type2, options);
     return result;
   }
-  function PartialInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function PartialInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return PartialAction(instantiatedType, options);
   }
 
 
-  function PickDeferred(type, indexer, options = {}) {
-    return Deferred("Pick", [type, indexer], options);
+  function PickDeferred(type2, indexer, options = {}) {
+    return Deferred("Pick", [type2, indexer], options);
   }
-  function Pick(type, indexer_or_keys, options = {}) {
+  function Pick(type2, indexer_or_keys, options = {}) {
     const indexer = guard_exports.IsArray(indexer_or_keys) ? KeysToIndexer(indexer_or_keys) : indexer_or_keys;
-    return PickAction(type, indexer, options);
+    return PickAction(type2, indexer, options);
   }
 
 
@@ -4759,8 +4759,8 @@
     }, {});
     return result;
   }
-  function FromType16(type, indexer) {
-    const indexable = ToIndexable(type);
+  function FromType16(type2, indexer) {
+    const indexable = ToIndexable(type2);
     const keys = ToIndexableKeys(indexer);
     const applied = FromKeys2(indexable, keys);
     const result = _Object_(applied);
@@ -4768,28 +4768,28 @@
   }
 
 
-  function PickAction(type, indexer, options) {
-    const result = CanInstantiate([type, indexer]) ? memory_exports.Update(FromType16(type, indexer), {}, options) : PickDeferred(type, indexer, options);
+  function PickAction(type2, indexer, options) {
+    const result = CanInstantiate([type2, indexer]) ? memory_exports.Update(FromType16(type2, indexer), {}, options) : PickDeferred(type2, indexer, options);
     return result;
   }
-  function PickInstantiate(context, state2, type, indexer, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function PickInstantiate(context, state2, type2, indexer, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     const instantiatedIndexer = InstantiateType(context, state2, indexer);
     return PickAction(instantiatedType, instantiatedIndexer, options);
   }
 
 
-  function ReadonlyObjectDeferred(type, options = {}) {
-    return Deferred("ReadonlyObject", [type], options);
+  function ReadonlyObjectDeferred(type2, options = {}) {
+    return Deferred("ReadonlyObject", [type2], options);
   }
-  function ReadonlyObject(type, options = {}) {
-    return ReadonlyObjectAction(type, options);
+  function ReadonlyObject(type2, options = {}) {
+    return ReadonlyObjectAction(type2, options);
   }
   var ReadonlyType = ReadonlyObject;
 
 
-  function FromArray5(type) {
-    const result = AddImmutable(_Array_(type));
+  function FromArray5(type2) {
+    const result = AddImmutable(_Array_(type2));
     return result;
   }
 
@@ -4832,28 +4832,28 @@
 
 
   function FromUnion7(types) {
-    const result = types.map((type) => FromType17(type));
+    const result = types.map((type2) => FromType17(type2));
     return Union(result);
   }
 
 
-  function FromType17(type) {
-    return IsArray3(type) ? FromArray5(type.items) : IsCyclic(type) ? FromCyclic4(type.$defs, type.$ref) : IsDependent(type) ? FromDependent4(type.if, type.then, type.else) : IsIntersect(type) ? FromIntersect4(type.allOf) : IsObject3(type) ? FromObject8(type.properties) : IsTuple(type) ? FromTuple4(type.items) : IsUnion(type) ? FromUnion7(type.anyOf) : type;
+  function FromType17(type2) {
+    return IsArray3(type2) ? FromArray5(type2.items) : IsCyclic(type2) ? FromCyclic4(type2.$defs, type2.$ref) : IsDependent(type2) ? FromDependent4(type2.if, type2.then, type2.else) : IsIntersect(type2) ? FromIntersect4(type2.allOf) : IsObject3(type2) ? FromObject8(type2.properties) : IsTuple(type2) ? FromTuple4(type2.items) : IsUnion(type2) ? FromUnion7(type2.anyOf) : type2;
   }
 
 
-  function ReadonlyObjectAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(FromType17(type), {}, options) : ReadonlyObjectDeferred(type);
+  function ReadonlyObjectAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(FromType17(type2), {}, options) : ReadonlyObjectDeferred(type2);
     return result;
   }
-  function ReadonlyObjectInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function ReadonlyObjectInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return ReadonlyObjectAction(instantiatedType, options);
   }
 
 
-  function RefInstantiate(context, state2, type, ref) {
-    return state2.visited.includes(ref) ? type : ref in context ? InstantiateType(context, State(state2["callstack"], [...state2["visited"], ref]), context[ref]) : type;
+  function RefInstantiate(context, state2, type2, ref) {
+    return state2.visited.includes(ref) ? type2 : ref in context ? InstantiateType(context, State(state2["callstack"], [...state2["visited"], ref]), context[ref]) : type2;
   }
 
 
@@ -4880,7 +4880,7 @@
 
 
   function FromUnion8(types) {
-    const result = types.map((type) => FromType18(type));
+    const result = types.map((type2) => FromType18(type2));
     return Union(result);
   }
 
@@ -4894,70 +4894,70 @@
   }
 
 
-  function FromType18(type) {
-    return IsCyclic(type) ? FromCyclic5(type.$defs, type.$ref) : IsDependent(type) ? FromDependent5(type.if, type.then, type.else) : IsIntersect(type) ? FromIntersect5(type.allOf) : IsUnion(type) ? FromUnion8(type.anyOf) : IsObject3(type) ? FromObject9(type.properties) : _Object_({});
+  function FromType18(type2) {
+    return IsCyclic(type2) ? FromCyclic5(type2.$defs, type2.$ref) : IsDependent(type2) ? FromDependent5(type2.if, type2.then, type2.else) : IsIntersect(type2) ? FromIntersect5(type2.allOf) : IsUnion(type2) ? FromUnion8(type2.anyOf) : IsObject3(type2) ? FromObject9(type2.properties) : _Object_({});
   }
 
 
-  function RequiredDeferred(type, options = {}) {
-    return Deferred("Required", [type], options);
+  function RequiredDeferred(type2, options = {}) {
+    return Deferred("Required", [type2], options);
   }
-  function Required(type, options = {}) {
-    return RequiredAction(type, options);
+  function Required(type2, options = {}) {
+    return RequiredAction(type2, options);
   }
 
 
-  function RequiredAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(FromType18(type), {}, options) : RequiredDeferred(type, options);
+  function RequiredAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(FromType18(type2), {}, options) : RequiredDeferred(type2, options);
     return result;
   }
-  function RequiredInstantiate(context, state2, type, options) {
-    const instaniatedType = InstantiateType(context, state2, type);
+  function RequiredInstantiate(context, state2, type2, options) {
+    const instaniatedType = InstantiateType(context, state2, type2);
     return RequiredAction(instaniatedType, options);
   }
 
 
-  function ReturnTypeDeferred(type, options = {}) {
-    return Deferred("ReturnType", [type], options);
+  function ReturnTypeDeferred(type2, options = {}) {
+    return Deferred("ReturnType", [type2], options);
   }
-  function ReturnType(type, options = {}) {
-    return ReturnTypeAction(type, options);
+  function ReturnType(type2, options = {}) {
+    return ReturnTypeAction(type2, options);
   }
 
 
-  function ReturnTypeOperation(type) {
-    return IsFunction3(type) ? type["returnType"] : Never();
+  function ReturnTypeOperation(type2) {
+    return IsFunction3(type2) ? type2["returnType"] : Never();
   }
-  function ReturnTypeAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(ReturnTypeOperation(type), {}, options) : ReturnTypeDeferred(type, options);
+  function ReturnTypeAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(ReturnTypeOperation(type2), {}, options) : ReturnTypeDeferred(type2, options);
     return result;
   }
-  function ReturnTypeInstantiate(context, state2, type, options = {}) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function ReturnTypeInstantiate(context, state2, type2, options = {}) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return ReturnTypeAction(instantiatedType, options);
   }
 
 
-  function WithDeferred(type, options) {
-    return Deferred("With", [type, options], {});
+  function WithDeferred(type2, options) {
+    return Deferred("With", [type2, options], {});
   }
-  function With2(type, options) {
-    return WithAction(type, options);
+  function With2(type2, options) {
+    return WithAction(type2, options);
   }
 
 
-  function WithAction(type, options) {
-    const result = CanInstantiate([type]) ? memory_exports.Update(type, {}, options) : WithDeferred(type, options);
+  function WithAction(type2, options) {
+    const result = CanInstantiate([type2]) ? memory_exports.Update(type2, {}, options) : WithDeferred(type2, options);
     return result;
   }
-  function WithInstantiate(context, state2, type, options) {
-    const instaniatedType = InstantiateType(context, state2, type);
+  function WithInstantiate(context, state2, type2, options) {
+    const instaniatedType = InstantiateType(context, state2, type2);
     return WithAction(instaniatedType, options);
   }
 
 
-  function SpreadElement(type) {
-    const result = IsRest(type) ? IsTuple(type.items) ? RestSpread(type.items.items) : IsInfer(type.items) ? [type] : IsRef(type.items) ? [type] : [Never()] : [type];
+  function SpreadElement(type2) {
+    const result = IsRest(type2) ? IsTuple(type2.items) ? RestSpread(type2.items.items) : IsInfer(type2.items) ? [type2] : IsRef(type2.items) ? [type2] : [Never()] : [type2];
     return result;
   }
   function RestSpread(types) {
@@ -4985,12 +4985,12 @@
     return result;
   }
   function InstantiateTypes(context, state2, types) {
-    return types.map((type) => InstantiateType(context, state2, type));
+    return types.map((type2) => InstantiateType(context, state2, type2));
   }
-  function WithModifiers(type, instantiatedType) {
-    const withOptional = IsOptional(type) ? AddOptionalAction(instantiatedType, {}) : instantiatedType;
-    const withReadonly = IsReadonly(type) ? AddReadonlyAction(withOptional, {}) : withOptional;
-    const withImmutable = IsImmutable(type) ? AddImmutableAction(withReadonly, {}) : withReadonly;
+  function WithModifiers(type2, instantiatedType) {
+    const withOptional = IsOptional(type2) ? AddOptionalAction(instantiatedType, {}) : instantiatedType;
+    const withReadonly = IsReadonly(type2) ? AddReadonlyAction(withOptional, {}) : withOptional;
+    const withImmutable = IsImmutable(type2) ? AddImmutableAction(withReadonly, {}) : withReadonly;
     return withImmutable;
   }
   function InstantiateDeferred(context, state2, action, parameters, options) {
@@ -5002,54 +5002,54 @@
       )
     );
   }
-  function InstantiateImmediate(context, state2, type) {
-    const instantiatedType = IsRef(type) ? RefInstantiate(context, state2, type, type.$ref) : IsArray3(type) ? _Array_(InstantiateType(context, state2, type.items), ArrayOptions(type)) : IsCall(type) ? CallInstantiate(context, state2, type.target, type.arguments) : IsConstructor3(type) ? Constructor(InstantiateTypes(context, state2, type.parameters), InstantiateType(context, state2, type.instanceType), ConstructorOptions(type)) : IsFunction3(type) ? _Function_(InstantiateTypes(context, state2, type.parameters), InstantiateType(context, state2, type.returnType), FunctionOptions(type)) : IsDependent(type) ? Dependent(InstantiateType(context, state2, type.if), InstantiateType(context, state2, type.then), InstantiateType(context, state2, type.else), DependentOptions(type)) : IsIntersect(type) ? Intersect(InstantiateTypes(context, state2, type.allOf), IntersectOptions(type)) : IsObject3(type) ? _Object_(InstantiateProperties(context, state2, type.properties), ObjectOptions(type)) : IsRecord(type) ? RecordFromPattern(RecordPattern(type), InstantiateType(context, state2, RecordValue(type))) : IsRest(type) ? Rest(InstantiateType(context, state2, type.items)) : IsTuple(type) ? Tuple(InstantiateElements(context, state2, type.items), TupleOptions(type)) : IsUnion(type) ? Union(InstantiateTypes(context, state2, type.anyOf), UnionOptions(type)) : type;
-    const withModifiers = WithModifiers(type, instantiatedType);
+  function InstantiateImmediate(context, state2, type2) {
+    const instantiatedType = IsRef(type2) ? RefInstantiate(context, state2, type2, type2.$ref) : IsArray3(type2) ? _Array_(InstantiateType(context, state2, type2.items), ArrayOptions(type2)) : IsCall(type2) ? CallInstantiate(context, state2, type2.target, type2.arguments) : IsConstructor3(type2) ? Constructor(InstantiateTypes(context, state2, type2.parameters), InstantiateType(context, state2, type2.instanceType), ConstructorOptions(type2)) : IsFunction3(type2) ? _Function_(InstantiateTypes(context, state2, type2.parameters), InstantiateType(context, state2, type2.returnType), FunctionOptions(type2)) : IsDependent(type2) ? Dependent(InstantiateType(context, state2, type2.if), InstantiateType(context, state2, type2.then), InstantiateType(context, state2, type2.else), DependentOptions(type2)) : IsIntersect(type2) ? Intersect(InstantiateTypes(context, state2, type2.allOf), IntersectOptions(type2)) : IsObject3(type2) ? _Object_(InstantiateProperties(context, state2, type2.properties), ObjectOptions(type2)) : IsRecord(type2) ? RecordFromPattern(RecordPattern(type2), InstantiateType(context, state2, RecordValue(type2))) : IsRest(type2) ? Rest(InstantiateType(context, state2, type2.items)) : IsTuple(type2) ? Tuple(InstantiateElements(context, state2, type2.items), TupleOptions(type2)) : IsUnion(type2) ? Union(InstantiateTypes(context, state2, type2.anyOf), UnionOptions(type2)) : type2;
+    const withModifiers = WithModifiers(type2, instantiatedType);
     return withModifiers;
   }
-  function InstantiateType(context, state2, type) {
-    const result = IsDeferred(type) ? InstantiateDeferred(context, state2, type.action, type.parameters, type.options) : InstantiateImmediate(context, state2, type);
+  function InstantiateType(context, state2, type2) {
+    const result = IsDeferred(type2) ? InstantiateDeferred(context, state2, type2.action, type2.parameters, type2.options) : InstantiateImmediate(context, state2, type2);
     return result;
   }
-  function Instantiate(context, type) {
-    return InstantiateType(context, State([], []), type);
+  function Instantiate(context, type2) {
+    return InstantiateType(context, State([], []), type2);
   }
 
 
-  function AddImmutableOperation(type) {
-    return memory_exports.Update(type, { "~immutable": true }, {});
+  function AddImmutableOperation(type2) {
+    return memory_exports.Update(type2, { "~immutable": true }, {});
   }
-  function AddImmutableAction(type, options) {
-    const result = memory_exports.Update(AddImmutableOperation(type), {}, options);
+  function AddImmutableAction(type2, options) {
+    const result = memory_exports.Update(AddImmutableOperation(type2), {}, options);
     return result;
   }
-  function AddImmutableInstantiate(context, state2, type, options) {
-    const instantiatedType = InstantiateType(context, state2, type);
+  function AddImmutableInstantiate(context, state2, type2, options) {
+    const instantiatedType = InstantiateType(context, state2, type2);
     return AddImmutableAction(instantiatedType, options);
   }
 
 
-  function AddImmutableDeferred(type, options = {}) {
-    return Deferred("AddImmutable", [type], options);
+  function AddImmutableDeferred(type2, options = {}) {
+    return Deferred("AddImmutable", [type2], options);
   }
-  function AddImmutable(type, options = {}) {
-    return AddImmutableAction(type, options);
-  }
-
-
-  function RemoveImmutableDeferred(type, options = {}) {
-    return Deferred("RemoveImmutable", [type], options);
-  }
-  function RemoveImmutable(type, options = {}) {
-    return RemoveImmutableAction(type, options);
+  function AddImmutable(type2, options = {}) {
+    return AddImmutableAction(type2, options);
   }
 
 
-  function EvaluateDeferred(type, options = {}) {
-    return Deferred("Evaluate", [type], options);
+  function RemoveImmutableDeferred(type2, options = {}) {
+    return Deferred("RemoveImmutable", [type2], options);
   }
-  function Evaluate2(type, options = {}) {
-    return EvaluateAction(type, options);
+  function RemoveImmutable(type2, options = {}) {
+    return RemoveImmutableAction(type2, options);
+  }
+
+
+  function EvaluateDeferred(type2, options = {}) {
+    return Deferred("Evaluate", [type2], options);
+  }
+  function Evaluate2(type2, options = {}) {
+    return EvaluateAction(type2, options);
   }
 
 
@@ -5065,8 +5065,8 @@
     const compareResult = Compare(left, right);
     return guard_exports.IsEqual(compareResult, CompareResultRightInside) ? 1 : guard_exports.IsEqual(compareResult, CompareResultDisjoint) ? 1 : 0;
   }
-  function Insert(type, types, result = []) {
-    return guard_exports.ShiftLeft(types, (left, right) => guard_exports.IsEqual(Comparer(type, left), 1) ? Insert(type, right, [...result, left]) : [...result, type, ...types], () => [...result, type]);
+  function Insert(type2, types, result = []) {
+    return guard_exports.ShiftLeft(types, (left, right) => guard_exports.IsEqual(Comparer(type2, left), 1) ? Insert(type2, right, [...result, left]) : [...result, type2, ...types], () => [...result, type2]);
   }
   function Sort(types, result = []) {
     return guard_exports.ShiftLeft(types, (left, right) => Sort(right, Insert(left, result)), () => result);
@@ -7104,16 +7104,95 @@
   var node_os_exports = {};
   __export(node_os_exports, {
     EOL: () => EOL,
+    arch: () => arch,
+    constants: () => constants,
+    cpus: () => cpus,
     default: () => node_os_default,
+    devNull: () => devNull,
+    endianness: () => endianness,
+    freemem: () => freemem,
     homedir: () => homedir,
+    hostname: () => hostname,
+    loadavg: () => loadavg,
+    networkInterfaces: () => networkInterfaces,
     platform: () => platform,
-    tmpdir: () => tmpdir
+    release: () => release,
+    tmpdir: () => tmpdir,
+    totalmem: () => totalmem,
+    type: () => type,
+    uptime: () => uptime,
+    userInfo: () => userInfo,
+    version: () => version
   });
   var homedir = () => process.env.HOME ?? process.env.USERPROFILE ?? "/";
   var tmpdir = () => process.env.TMPDIR ?? "/tmp";
   var platform = () => process.platform;
+  var arch = () => process.arch;
   var EOL = "\n";
-  var node_os_default = { homedir, tmpdir, platform, EOL };
+  var hostname = () => "localhost";
+  var userInfo = () => ({
+    username: process.env.USER ?? process.env.LOGNAME ?? "user",
+    homedir: homedir(),
+    shell: process.env.SHELL ?? "/bin/sh"
+  });
+  var release = () => "";
+  var version = () => "";
+  var uptime = () => 0;
+  var loadavg = () => [0, 0, 0];
+  var networkInterfaces = () => ({});
+  var cpus = () => [];
+  var endianness = () => "LE";
+  var type = () => "Linux";
+  var freemem = () => 0;
+  var totalmem = () => 0;
+  var devNull = "/dev/null";
+  var constants = {
+    E2BIG: 7,
+    EACCES: 13,
+    EAGAIN: 11,
+    EBADF: 9,
+    EBUSY: 16,
+    EEXIST: 17,
+    EFAULT: 14,
+    EINTR: 4,
+    EINVAL: 22,
+    EISDIR: 21,
+    ELOOP: 40,
+    EMFILE: 24,
+    ENAMETOOLONG: 36,
+    ENOENT: 2,
+    ENOMEM: 12,
+    ENOSPC: 28,
+    ENOTDIR: 20,
+    ENOTEMPTY: 39,
+    EPERM: 1,
+    EPIPE: 32,
+    ERANGE: 34,
+    EROFS: 30,
+    ESPIPE: 29,
+    EXDEV: 18
+  };
+  var node_os_default = {
+    homedir,
+    tmpdir,
+    platform,
+    arch,
+    hostname,
+    userInfo,
+    release,
+    version,
+    uptime,
+    loadavg,
+    networkInterfaces,
+    cpus,
+    endianness,
+    type,
+    freemem,
+    totalmem,
+    devNull,
+    EOL,
+    constants
+  };
 
 
   var modules = globalThis.__piNodeModules;
@@ -7144,9 +7223,10 @@
     parse: path.parse,
     format: path.format
   };
+  var toNamespacedPath = (value) => value;
   var win32 = variant;
   var posix = variant;
-  var node_path_default = { ...path, win32, posix };
+  var node_path_default = { ...path, win32, posix, toNamespacedPath };
 
 
   var node_url_exports = {};
@@ -10045,29 +10125,29 @@
   }
 
 
-  function BuildTypeName(_stack, _context, type, value) {
+  function BuildTypeName(_stack, _context, type2, value) {
     return (
       // jsonschema
-      guard_exports.IsEqual(type, "object") ? emit_exports.IsObjectNotArray(value) : guard_exports.IsEqual(type, "array") ? emit_exports.IsArray(value) : guard_exports.IsEqual(type, "boolean") ? emit_exports.IsBoolean(value) : guard_exports.IsEqual(type, "integer") ? emit_exports.IsInteger(value) : guard_exports.IsEqual(type, "number") ? emit_exports.IsNumber(value) : guard_exports.IsEqual(type, "null") ? emit_exports.IsNull(value) : guard_exports.IsEqual(type, "string") ? emit_exports.IsString(value) : (
+      guard_exports.IsEqual(type2, "object") ? emit_exports.IsObjectNotArray(value) : guard_exports.IsEqual(type2, "array") ? emit_exports.IsArray(value) : guard_exports.IsEqual(type2, "boolean") ? emit_exports.IsBoolean(value) : guard_exports.IsEqual(type2, "integer") ? emit_exports.IsInteger(value) : guard_exports.IsEqual(type2, "number") ? emit_exports.IsNumber(value) : guard_exports.IsEqual(type2, "null") ? emit_exports.IsNull(value) : guard_exports.IsEqual(type2, "string") ? emit_exports.IsString(value) : (
         // xschema
-        guard_exports.IsEqual(type, "bigint") ? emit_exports.IsBigInt(value) : guard_exports.IsEqual(type, "constructor") ? emit_exports.IsConstructor(value) : guard_exports.IsEqual(type, "function") ? emit_exports.IsFunction(value) : guard_exports.IsEqual(type, "symbol") ? emit_exports.IsSymbol(value) : guard_exports.IsEqual(type, "undefined") ? emit_exports.IsUndefined(value) : guard_exports.IsEqual(type, "void") ? emit_exports.IsUndefined(value) : emit_exports.Constant(true)
+        guard_exports.IsEqual(type2, "bigint") ? emit_exports.IsBigInt(value) : guard_exports.IsEqual(type2, "constructor") ? emit_exports.IsConstructor(value) : guard_exports.IsEqual(type2, "function") ? emit_exports.IsFunction(value) : guard_exports.IsEqual(type2, "symbol") ? emit_exports.IsSymbol(value) : guard_exports.IsEqual(type2, "undefined") ? emit_exports.IsUndefined(value) : guard_exports.IsEqual(type2, "void") ? emit_exports.IsUndefined(value) : emit_exports.Constant(true)
       )
     );
   }
-  function CheckTypeName(_stack, _context, type, _schema, value) {
+  function CheckTypeName(_stack, _context, type2, _schema, value) {
     return (
       // jsonschema
-      guard_exports.IsEqual(type, "object") ? guard_exports.IsObjectNotArray(value) : guard_exports.IsEqual(type, "array") ? guard_exports.IsArray(value) : guard_exports.IsEqual(type, "boolean") ? guard_exports.IsBoolean(value) : guard_exports.IsEqual(type, "integer") ? guard_exports.IsInteger(value) : guard_exports.IsEqual(type, "number") ? guard_exports.IsNumber(value) : guard_exports.IsEqual(type, "null") ? guard_exports.IsNull(value) : guard_exports.IsEqual(type, "string") ? guard_exports.IsString(value) : (
+      guard_exports.IsEqual(type2, "object") ? guard_exports.IsObjectNotArray(value) : guard_exports.IsEqual(type2, "array") ? guard_exports.IsArray(value) : guard_exports.IsEqual(type2, "boolean") ? guard_exports.IsBoolean(value) : guard_exports.IsEqual(type2, "integer") ? guard_exports.IsInteger(value) : guard_exports.IsEqual(type2, "number") ? guard_exports.IsNumber(value) : guard_exports.IsEqual(type2, "null") ? guard_exports.IsNull(value) : guard_exports.IsEqual(type2, "string") ? guard_exports.IsString(value) : (
         // xschema
-        guard_exports.IsEqual(type, "bigint") ? guard_exports.IsBigInt(value) : guard_exports.IsEqual(type, "constructor") ? guard_exports.IsConstructor(value) : guard_exports.IsEqual(type, "function") ? guard_exports.IsFunction(value) : guard_exports.IsEqual(type, "symbol") ? guard_exports.IsSymbol(value) : guard_exports.IsEqual(type, "undefined") ? guard_exports.IsUndefined(value) : guard_exports.IsEqual(type, "void") ? guard_exports.IsUndefined(value) : true
+        guard_exports.IsEqual(type2, "bigint") ? guard_exports.IsBigInt(value) : guard_exports.IsEqual(type2, "constructor") ? guard_exports.IsConstructor(value) : guard_exports.IsEqual(type2, "function") ? guard_exports.IsFunction(value) : guard_exports.IsEqual(type2, "symbol") ? guard_exports.IsSymbol(value) : guard_exports.IsEqual(type2, "undefined") ? guard_exports.IsUndefined(value) : guard_exports.IsEqual(type2, "void") ? guard_exports.IsUndefined(value) : true
       )
     );
   }
   function BuildTypeNames(stack, context, typenames, value) {
-    return emit_exports.ReduceOr(typenames.map((type) => BuildTypeName(stack, context, type, value)));
+    return emit_exports.ReduceOr(typenames.map((type2) => BuildTypeName(stack, context, type2, value)));
   }
   function CheckTypeNames(stack, context, types, schema, value) {
-    return guard_exports.Some(types, (type) => CheckTypeName(stack, context, type, schema, value));
+    return guard_exports.Some(types, (type2) => CheckTypeName(stack, context, type2, schema, value));
   }
   function BuildType(stack, context, schema, value) {
     return guard_exports.IsArray(schema.type) ? BuildTypeNames(stack, context, schema.type, value) : BuildTypeName(stack, context, schema.type, value);
@@ -10199,7 +10279,7 @@
 
 
   function HasTypeName(schema, typename) {
-    return IsType(schema) && (guard_exports.IsArray(schema.type) && guard_exports.IsGreaterThan(schema.type.length, 0) && guard_exports.Every(schema.type, 0, (type) => guard_exports.IsEqual(type, typename)) || guard_exports.IsEqual(schema.type, typename));
+    return IsType(schema) && (guard_exports.IsArray(schema.type) && guard_exports.IsGreaterThan(schema.type.length, 0) && guard_exports.Every(schema.type, 0, (type2) => guard_exports.IsEqual(type2, typename)) || guard_exports.IsEqual(schema.type, typename));
   }
   function HasObjectType(schema) {
     return HasTypeName(schema, "object");
@@ -11090,11 +11170,11 @@
     ];
   }
   function Code(...args) {
-    const [context, type] = arguments_exports.Match(args, {
-      2: (context2, type2) => [context2, type2],
-      1: (type2) => [{}, type2]
+    const [context, type2] = arguments_exports.Match(args, {
+      2: (context2, type3) => [context2, type3],
+      1: (type3) => [{}, type3]
     });
-    const build = Build(context, type);
+    const build = Build(context, type2);
     const code = [...ImportSection(build), ...ExternalSection(build), ...FunctionSection(build), ...ExportSection(build)].join("\n");
     return { External: build.External(), Code: code };
   }
@@ -11142,20 +11222,20 @@
 
 
   function Check2(...args) {
-    const [context, type, value] = arguments_exports.Match(args, {
-      3: (context2, type2, value2) => [context2, type2, value2],
-      2: (type2, value2) => [{}, type2, value2]
+    const [context, type2, value] = arguments_exports.Match(args, {
+      3: (context2, type3, value2) => [context2, type3, value2],
+      2: (type3, value2) => [{}, type3, value2]
     });
-    return Check(context, type, value);
+    return Check(context, type2, value);
   }
 
 
   function Errors2(...args) {
-    const [context, type, value] = arguments_exports.Match(args, {
-      3: (context2, type2, value2) => [context2, type2, value2],
-      2: (type2, value2) => [{}, type2, value2]
+    const [context, type2, value] = arguments_exports.Match(args, {
+      3: (context2, type3, value2) => [context2, type3, value2],
+      2: (type3, value2) => [{}, type3, value2]
     });
-    const [_, errors] = Errors(context, type, value);
+    const [_, errors] = Errors(context, type2, value);
     return errors;
   }
 
@@ -11172,53 +11252,53 @@
     }
   };
   function Assert(...args) {
-    const [context, type, value] = arguments_exports.Match(args, {
-      3: (context2, type2, value2) => [context2, type2, value2],
-      2: (type2, value2) => [{}, type2, value2]
+    const [context, type2, value] = arguments_exports.Match(args, {
+      3: (context2, type3, value2) => [context2, type3, value2],
+      2: (type3, value2) => [{}, type3, value2]
     });
-    const check = Check2(context, type, value);
+    const check = Check2(context, type2, value);
     if (!check)
-      throw new AssertError("Assert", value, Errors2(context, type, value));
+      throw new AssertError("Assert", value, Errors2(context, type2, value));
   }
 
 
-  function FromArray7(context, type, value) {
+  function FromArray7(context, type2, value) {
     if (!guard_exports.IsArray(value))
       return value;
-    return value.map((value2) => FromType19(context, type.items, value2));
+    return value.map((value2) => FromType19(context, type2.items, value2));
   }
 
 
-  function FromCyclic6(context, type, value) {
-    return FromType19({ ...context, ...type.$defs }, Ref(type.$ref), value);
+  function FromCyclic6(context, type2, value) {
+    return FromType19({ ...context, ...type2.$defs }, Ref(type2.$ref), value);
   }
 
 
-  function EvaluateIntersection(context, type) {
-    const additionalProperties = guard_exports.HasPropertyKey(type, "unevaluatedProperties") ? { additionalProperties: type.unevaluatedProperties } : {};
-    const instantiated = Instantiate(context, type);
+  function EvaluateIntersection(context, type2) {
+    const additionalProperties = guard_exports.HasPropertyKey(type2, "unevaluatedProperties") ? { additionalProperties: type2.unevaluatedProperties } : {};
+    const instantiated = Instantiate(context, type2);
     const evaluated = Evaluate2(instantiated);
     return IsObject3(evaluated) ? With2(evaluated, additionalProperties) : evaluated;
   }
-  function FromIntersect6(context, type, value) {
-    const evaluated = EvaluateIntersection(context, type);
+  function FromIntersect6(context, type2, value) {
+    const evaluated = EvaluateIntersection(context, type2);
     return FromType19(context, evaluated, value);
   }
 
 
-  function GetAdditionalProperties(type) {
-    const additionalProperties = guard_exports.HasPropertyKey(type, "additionalProperties") ? type.additionalProperties : void 0;
+  function GetAdditionalProperties(type2) {
+    const additionalProperties = guard_exports.HasPropertyKey(type2, "additionalProperties") ? type2.additionalProperties : void 0;
     return additionalProperties;
   }
 
 
-  function FromObject11(context, type, value) {
+  function FromObject11(context, type2, value) {
     if (!guard_exports.IsObject(value) || guard_exports.IsArray(value))
       return value;
-    const additionalProperties = GetAdditionalProperties(type);
+    const additionalProperties = GetAdditionalProperties(type2);
     for (const key of guard_exports.Keys(value)) {
-      if (guard_exports.HasPropertyKey(type.properties, key)) {
-        value[key] = FromType19(context, type.properties[key], value[key]);
+      if (guard_exports.HasPropertyKey(type2.properties, key)) {
+        value[key] = FromType19(context, type2.properties[key], value[key]);
         continue;
       }
       const unknownCheck = (
@@ -11235,11 +11315,11 @@
   }
 
 
-  function FromRecord3(context, type, value) {
+  function FromRecord3(context, type2, value) {
     if (!guard_exports.IsObject(value))
       return value;
-    const additionalProperties = GetAdditionalProperties(type);
-    const [recordPattern, recordValue] = [new RegExp(RecordPattern(type)), RecordValue(type)];
+    const additionalProperties = GetAdditionalProperties(type2);
+    const [recordPattern, recordValue] = [new RegExp(RecordPattern(type2)), RecordValue(type2)];
     for (const key of guard_exports.Keys(value)) {
       if (recordPattern.test(key)) {
         value[key] = FromType19(context, recordValue, value[key]);
@@ -11259,8 +11339,8 @@
   }
 
 
-  function FromRef5(context, type, value) {
-    return guard_exports.HasPropertyKey(context, type.$ref) ? FromType19(context, context[type.$ref], value) : value;
+  function FromRef5(context, type2, value) {
+    return guard_exports.HasPropertyKey(context, type2.$ref) ? FromType19(context, context[type2.$ref], value) : value;
   }
 
 
@@ -11280,8 +11360,8 @@
   }
 
 
-  function FromUnion9(context, type, value) {
-    for (const schema of type.anyOf) {
+  function FromUnion9(context, type2, value) {
+    for (const schema of type2.anyOf) {
       const clean = FromType19(context, schema, Clone2(value));
       if (Check2(context, schema, clean))
         return clean;
@@ -11290,16 +11370,16 @@
   }
 
 
-  function FromType19(context, type, value) {
-    return IsArray3(type) ? FromArray7(context, type, value) : IsCyclic(type) ? FromCyclic6(context, type, value) : IsIntersect(type) ? FromIntersect6(context, type, value) : IsObject3(type) ? FromObject11(context, type, value) : IsRecord(type) ? FromRecord3(context, type, value) : IsRef(type) ? FromRef5(context, type, value) : IsTuple(type) ? FromTuple5(context, type, value) : IsUnion(type) ? FromUnion9(context, type, value) : value;
+  function FromType19(context, type2, value) {
+    return IsArray3(type2) ? FromArray7(context, type2, value) : IsCyclic(type2) ? FromCyclic6(context, type2, value) : IsIntersect(type2) ? FromIntersect6(context, type2, value) : IsObject3(type2) ? FromObject11(context, type2, value) : IsRecord(type2) ? FromRecord3(context, type2, value) : IsRef(type2) ? FromRef5(context, type2, value) : IsTuple(type2) ? FromTuple5(context, type2, value) : IsUnion(type2) ? FromUnion9(context, type2, value) : value;
   }
 
 
-  function Modifiers(type, next) {
-    for (const key of guard_default.Keys(type)) {
+  function Modifiers(type2, next) {
+    for (const key of guard_default.Keys(type2)) {
       if (guard_default.HasPropertyKey(next, key))
         continue;
-      next[key] = type[key];
+      next[key] = type2[key];
     }
     return next;
   }
@@ -11313,24 +11393,24 @@
     return FromTypes6(Priority(types));
   }
   function FromTypes6(types) {
-    return types.map((type) => FromType20(type));
+    return types.map((type2) => FromType20(type2));
   }
-  function FromType20(type) {
-    const next = IsArray3(type) ? _Array_(FromType20(type.items), ArrayOptions(type)) : IsIntersect(type) ? Intersect(FromTypes6(type.allOf)) : IsUnion(type) ? Union(FromPriorityTypes(type.anyOf)) : IsObject3(type) ? _Object_(FromProperties4(type.properties)) : IsRecord(type) ? Record(RecordKey(type), FromType20(RecordValue(type))) : IsTuple(type) ? Tuple(FromTypes6(type.items)) : type;
-    return Modifiers(type, next);
+  function FromType20(type2) {
+    const next = IsArray3(type2) ? _Array_(FromType20(type2.items), ArrayOptions(type2)) : IsIntersect(type2) ? Intersect(FromTypes6(type2.allOf)) : IsUnion(type2) ? Union(FromPriorityTypes(type2.anyOf)) : IsObject3(type2) ? _Object_(FromProperties4(type2.properties)) : IsRecord(type2) ? Record(RecordKey(type2), FromType20(RecordValue(type2))) : IsTuple(type2) ? Tuple(FromTypes6(type2.items)) : type2;
+    return Modifiers(type2, next);
   }
-  function UnionPrioritySort(type) {
-    const result = FromType20(type);
+  function UnionPrioritySort(type2) {
+    const result = FromType20(type2);
     return result;
   }
 
 
   function Clean(...args) {
-    const [context, type, value] = arguments_exports.Match(args, {
-      3: (context2, type2, value2) => [context2, type2, value2],
-      2: (type2, value2) => [{}, type2, value2]
+    const [context, type2, value] = arguments_exports.Match(args, {
+      3: (context2, type3, value2) => [context2, type3, value2],
+      2: (type3, value2) => [{}, type3, value2]
     });
-    const sorted = settings_exports.Get().unionPrioritySort ? UnionPrioritySort(type) : type;
+    const sorted = settings_exports.Get().unionPrioritySort ? UnionPrioritySort(type2) : type2;
     return FromType19(context, sorted, value);
   }
 
@@ -11474,9 +11554,9 @@
   }
 
 
-  function FromArray8(context, type, value) {
+  function FromArray8(context, type2, value) {
     const result = try_exports.TryArray(value);
-    return result.value.map((value2) => FromType21(context, type.items, value2));
+    return result.value.map((value2) => FromType21(context, type2.items, value2));
   }
 
 
@@ -11492,13 +11572,13 @@
   }
 
 
-  function FromCyclic7(context, type, value) {
-    return FromType21({ ...context, ...type.$defs }, Ref(type.$ref), value);
+  function FromCyclic7(context, type2, value) {
+    return FromType21({ ...context, ...type2.$defs }, Ref(type2.$ref), value);
   }
 
 
-  function FromEnum3(context, type, value) {
-    return FromType21(context, Evaluate2(type), value);
+  function FromEnum3(context, type2, value) {
+    return FromType21(context, Evaluate2(type2), value);
   }
 
 
@@ -11508,33 +11588,33 @@
   }
 
 
-  function FromIntersect7(context, type, value) {
-    const instantiated = Instantiate(context, type);
+  function FromIntersect7(context, type2, value) {
+    const instantiated = Instantiate(context, type2);
     const evaluated = Evaluate2(instantiated);
     return FromType21(context, evaluated, value);
   }
 
 
-  function FromLiteralBigInt(_context, type, value) {
+  function FromLiteralBigInt(_context, type2, value) {
     const result = try_exports.TryBigInt(value);
-    return try_exports.IsOk(result) && guard_exports.IsEqual(type.const, result.value) ? result.value : value;
+    return try_exports.IsOk(result) && guard_exports.IsEqual(type2.const, result.value) ? result.value : value;
   }
-  function FromLiteralBoolean(_context, type, value) {
+  function FromLiteralBoolean(_context, type2, value) {
     const result = try_exports.TryBoolean(value);
-    return try_exports.IsOk(result) && guard_exports.IsEqual(type.const, result.value) ? result.value : value;
+    return try_exports.IsOk(result) && guard_exports.IsEqual(type2.const, result.value) ? result.value : value;
   }
-  function FromLiteralNumber(_context, type, value) {
+  function FromLiteralNumber(_context, type2, value) {
     const result = try_exports.TryNumber(value);
-    return try_exports.IsOk(result) && guard_exports.IsEqual(type.const, result.value) ? result.value : value;
+    return try_exports.IsOk(result) && guard_exports.IsEqual(type2.const, result.value) ? result.value : value;
   }
-  function FromLiteralString(_context, type, value) {
+  function FromLiteralString(_context, type2, value) {
     const result = try_exports.TryString(value);
-    return try_exports.IsOk(result) && guard_exports.IsEqual(type.const, result.value) ? result.value : value;
+    return try_exports.IsOk(result) && guard_exports.IsEqual(type2.const, result.value) ? result.value : value;
   }
-  function FromLiteral6(context, type, value) {
-    if (guard_exports.IsEqual(type.const, value))
+  function FromLiteral6(context, type2, value) {
+    if (guard_exports.IsEqual(type2.const, value))
       return value;
-    return IsLiteralBigInt(type) ? FromLiteralBigInt(context, type, value) : IsLiteralBoolean(type) ? FromLiteralBoolean(context, type, value) : IsLiteralNumber(type) ? FromLiteralNumber(context, type, value) : IsLiteralString(type) ? FromLiteralString(context, type, value) : Unreachable();
+    return IsLiteralBigInt(type2) ? FromLiteralBigInt(context, type2, value) : IsLiteralBoolean(type2) ? FromLiteralBoolean(context, type2, value) : IsLiteralNumber(type2) ? FromLiteralNumber(context, type2, value) : IsLiteralString(type2) ? FromLiteralString(context, type2, value) : Unreachable();
   }
 
 
@@ -11568,8 +11648,8 @@
   }
 
 
-  function FromProperties5(context, type, value) {
-    const entries = guard_exports.EntriesRegExp(type.properties);
+  function FromProperties5(context, type2, value) {
+    const entries = guard_exports.EntriesRegExp(type2.properties);
     const keys = guard_exports.Keys(value);
     for (const [regexp, property] of entries) {
       for (const key of keys) {
@@ -11578,15 +11658,15 @@
         value[key] = FromType21(context, property, value[key]);
       }
     }
-    return guard_exports.HasPropertyKey(type, "additionalProperties") && guard_exports.IsObject(type.additionalProperties) ? FromAdditionalProperties(context, entries, type.additionalProperties, value) : value;
+    return guard_exports.HasPropertyKey(type2, "additionalProperties") && guard_exports.IsObject(type2.additionalProperties) ? FromAdditionalProperties(context, entries, type2.additionalProperties, value) : value;
   }
-  function FromObject12(context, type, value) {
-    return guard_exports.IsObjectNotArray(value) ? FromProperties5(context, type, value) : value;
+  function FromObject12(context, type2, value) {
+    return guard_exports.IsObjectNotArray(value) ? FromProperties5(context, type2, value) : value;
   }
 
 
-  function FromPatternProperties(context, type, value) {
-    const entries = guard_exports.EntriesRegExp(type.patternProperties);
+  function FromPatternProperties(context, type2, value) {
+    const entries = guard_exports.EntriesRegExp(type2.patternProperties);
     const keys = guard_exports.Keys(value);
     for (const [regexp, schema] of entries) {
       for (const key of keys) {
@@ -11595,15 +11675,15 @@
         }
       }
     }
-    return guard_exports.HasPropertyKey(type, "additionalProperties") && guard_exports.IsObject(type.additionalProperties) ? FromAdditionalProperties(context, entries, type.additionalProperties, value) : value;
+    return guard_exports.HasPropertyKey(type2, "additionalProperties") && guard_exports.IsObject(type2.additionalProperties) ? FromAdditionalProperties(context, entries, type2.additionalProperties, value) : value;
   }
-  function FromRecord4(context, type, value) {
-    return guard_exports.IsObjectNotArray(value) ? FromPatternProperties(context, type, value) : value;
+  function FromRecord4(context, type2, value) {
+    return guard_exports.IsObjectNotArray(value) ? FromPatternProperties(context, type2, value) : value;
   }
 
 
-  function FromRef6(context, type, value) {
-    return guard_exports.HasPropertyKey(context, type.$ref) ? FromType21(context, context[type.$ref], value) : value;
+  function FromRef6(context, type2, value) {
+    return guard_exports.HasPropertyKey(context, type2.$ref) ? FromType21(context, context[type2.$ref], value) : value;
   }
 
 
@@ -11613,16 +11693,16 @@
   }
 
 
-  function FromTemplateLiteral4(context, type, value) {
-    return FromType21(context, Evaluate2(type), value);
+  function FromTemplateLiteral4(context, type2, value) {
+    return FromType21(context, Evaluate2(type2), value);
   }
 
 
-  function FromTuple6(context, type, value) {
+  function FromTuple6(context, type2, value) {
     if (!guard_exports.IsArray(value))
       return value;
-    for (let index3 = 0; index3 < Math.min(type.items.length, value.length); index3++) {
-      value[index3] = FromType21(context, type.items[index3], value[index3]);
+    for (let index3 = 0; index3 < Math.min(type2.items.length, value.length); index3++) {
+      value[index3] = FromType21(context, type2.items[index3], value[index3]);
     }
     return value;
   }
@@ -11634,12 +11714,12 @@
   }
 
 
-  function FromUnion10(context, type, value) {
-    const matched = type.anyOf.some((type2) => Check2(context, type2, value));
+  function FromUnion10(context, type2, value) {
+    const matched = type2.anyOf.some((type3) => Check2(context, type3, value));
     if (matched)
       return value;
-    const candidates = type.anyOf.map((type2) => FromType21(context, type2, Clone2(value)));
-    const selected = candidates.find((value2) => Check2(context, type, value2));
+    const candidates = type2.anyOf.map((type3) => FromType21(context, type3, Clone2(value)));
+    const selected = candidates.find((value2) => Check2(context, type2, value2));
     return guard_exports.IsUndefined(selected) ? value : selected;
   }
 
@@ -11650,93 +11730,93 @@
   }
 
 
-  function FromType21(context, type, value) {
-    return IsArray3(type) ? FromArray8(context, type, value) : IsBigInt3(type) ? FromBigInt6(context, type, value) : IsBoolean4(type) ? FromBoolean6(context, type, value) : IsCyclic(type) ? FromCyclic7(context, type, value) : IsEnum(type) ? FromEnum3(context, type, value) : IsInteger3(type) ? FromInteger(context, type, value) : IsIntersect(type) ? FromIntersect7(context, type, value) : IsLiteral(type) ? FromLiteral6(context, type, value) : IsNull3(type) ? FromNull2(context, type, value) : IsNumber4(type) ? FromNumber5(context, type, value) : IsObject3(type) ? FromObject12(context, type, value) : IsRecord(type) ? FromRecord4(context, type, value) : IsRef(type) ? FromRef6(context, type, value) : IsString4(type) ? FromString7(context, type, value) : IsTemplateLiteral(type) ? FromTemplateLiteral4(context, type, value) : IsTuple(type) ? FromTuple6(context, type, value) : IsUndefined3(type) ? FromUndefined2(context, type, value) : IsUnion(type) ? FromUnion10(context, type, value) : IsVoid(type) ? FromVoid(context, type, value) : value;
+  function FromType21(context, type2, value) {
+    return IsArray3(type2) ? FromArray8(context, type2, value) : IsBigInt3(type2) ? FromBigInt6(context, type2, value) : IsBoolean4(type2) ? FromBoolean6(context, type2, value) : IsCyclic(type2) ? FromCyclic7(context, type2, value) : IsEnum(type2) ? FromEnum3(context, type2, value) : IsInteger3(type2) ? FromInteger(context, type2, value) : IsIntersect(type2) ? FromIntersect7(context, type2, value) : IsLiteral(type2) ? FromLiteral6(context, type2, value) : IsNull3(type2) ? FromNull2(context, type2, value) : IsNumber4(type2) ? FromNumber5(context, type2, value) : IsObject3(type2) ? FromObject12(context, type2, value) : IsRecord(type2) ? FromRecord4(context, type2, value) : IsRef(type2) ? FromRef6(context, type2, value) : IsString4(type2) ? FromString7(context, type2, value) : IsTemplateLiteral(type2) ? FromTemplateLiteral4(context, type2, value) : IsTuple(type2) ? FromTuple6(context, type2, value) : IsUndefined3(type2) ? FromUndefined2(context, type2, value) : IsUnion(type2) ? FromUnion10(context, type2, value) : IsVoid(type2) ? FromVoid(context, type2, value) : value;
   }
 
 
   function Convert(...args) {
-    const [context, type, value] = arguments_exports.Match(args, {
-      3: (context2, type2, value2) => [context2, type2, value2],
-      2: (type2, value2) => [{}, type2, value2]
+    const [context, type2, value] = arguments_exports.Match(args, {
+      3: (context2, type3, value2) => [context2, type3, value2],
+      2: (type3, value2) => [{}, type3, value2]
     });
-    return FromType21(context, type, value);
+    return FromType21(context, type2, value);
   }
 
 
-  function FromArray9(context, type, value) {
+  function FromArray9(context, type2, value) {
     if (!guard_exports.IsArray(value))
       return value;
     for (let i = 0; i < value.length; i++) {
-      value[i] = FromType22(context, type.items, value[i]);
+      value[i] = FromType22(context, type2.items, value[i]);
     }
     return value;
   }
 
 
-  function FromCyclic8(context, type, value) {
-    return FromType22({ ...context, ...type.$defs }, Ref(type.$ref), value);
+  function FromCyclic8(context, type2, value) {
+    return FromType22({ ...context, ...type2.$defs }, Ref(type2.$ref), value);
   }
 
 
-  function FromDefault(type, value) {
+  function FromDefault(type2, value) {
     if (!guard_exports.IsUndefined(value))
       return value;
-    return guard_exports.IsFunction(type.default) ? type.default() : Clone2(type.default);
+    return guard_exports.IsFunction(type2.default) ? type2.default() : Clone2(type2.default);
   }
 
 
-  function FromIntersect8(context, type, value) {
-    const instantiated = Instantiate(context, type);
+  function FromIntersect8(context, type2, value) {
+    const instantiated = Instantiate(context, type2);
     const evaluated = Evaluate2(instantiated);
     return FromType22(context, evaluated, value);
   }
 
 
-  function FromObject13(context, type, value) {
+  function FromObject13(context, type2, value) {
     if (!guard_exports.IsObject(value))
       return value;
-    const knownPropertyKeys = guard_exports.Keys(type.properties);
+    const knownPropertyKeys = guard_exports.Keys(type2.properties);
     for (const key of knownPropertyKeys) {
-      const propertyValue = FromType22(context, type.properties[key], value[key]);
-      const isUnassignableUndefined = guard_exports.IsUndefined(propertyValue) && (IsOptional(type.properties[key]) || !guard_exports.HasPropertyKey(type.properties[key], "default"));
+      const propertyValue = FromType22(context, type2.properties[key], value[key]);
+      const isUnassignableUndefined = guard_exports.IsUndefined(propertyValue) && (IsOptional(type2.properties[key]) || !guard_exports.HasPropertyKey(type2.properties[key], "default"));
       if (isUnassignableUndefined)
         continue;
       value[key] = propertyValue;
     }
-    if (!IsAdditionalProperties(type) || guard_exports.IsBoolean(type.additionalProperties))
+    if (!IsAdditionalProperties(type2) || guard_exports.IsBoolean(type2.additionalProperties))
       return value;
     for (const key of guard_exports.Keys(value)) {
       if (knownPropertyKeys.includes(key))
         continue;
-      value[key] = FromType22(context, type.additionalProperties, value[key]);
+      value[key] = FromType22(context, type2.additionalProperties, value[key]);
     }
     return value;
   }
 
 
-  function FromRecord5(context, type, value) {
+  function FromRecord5(context, type2, value) {
     if (!guard_exports.IsObject(value))
       return value;
-    const [recordKey, recordValue] = [new RegExp(RecordPattern(type)), RecordValue(type)];
+    const [recordKey, recordValue] = [new RegExp(RecordPattern(type2)), RecordValue(type2)];
     for (const key of guard_exports.Keys(value)) {
       if (!(recordKey.test(key) && IsDefault(recordValue)))
         continue;
       value[key] = FromType22(context, recordValue, value[key]);
     }
-    if (!IsAdditionalProperties(type))
+    if (!IsAdditionalProperties(type2))
       return value;
     for (const key of guard_exports.Keys(value)) {
       if (recordKey.test(key))
         continue;
-      value[key] = FromType22(context, type.additionalProperties, value[key]);
+      value[key] = FromType22(context, type2.additionalProperties, value[key]);
     }
     return value;
   }
 
 
-  function FromRef7(context, type, value) {
-    return guard_exports.HasPropertyKey(context, type.$ref) ? FromType22(context, context[type.$ref], value) : value;
+  function FromRef7(context, type2, value) {
+    return guard_exports.HasPropertyKey(context, type2.$ref) ? FromType22(context, context[type2.$ref], value) : value;
   }
 
 
@@ -11763,70 +11843,70 @@
   }
 
 
-  function FromType22(context, type, value) {
-    const defaulted = IsDefault(type) ? FromDefault(type, value) : value;
-    return IsArray3(type) ? FromArray9(context, type, defaulted) : IsCyclic(type) ? FromCyclic8(context, type, defaulted) : IsIntersect(type) ? FromIntersect8(context, type, defaulted) : IsObject3(type) ? FromObject13(context, type, defaulted) : IsRecord(type) ? FromRecord5(context, type, defaulted) : IsRef(type) ? FromRef7(context, type, defaulted) : IsTuple(type) ? FromTuple7(context, type, defaulted) : IsUnion(type) ? FromUnion11(context, type, defaulted) : defaulted;
+  function FromType22(context, type2, value) {
+    const defaulted = IsDefault(type2) ? FromDefault(type2, value) : value;
+    return IsArray3(type2) ? FromArray9(context, type2, defaulted) : IsCyclic(type2) ? FromCyclic8(context, type2, defaulted) : IsIntersect(type2) ? FromIntersect8(context, type2, defaulted) : IsObject3(type2) ? FromObject13(context, type2, defaulted) : IsRecord(type2) ? FromRecord5(context, type2, defaulted) : IsRef(type2) ? FromRef7(context, type2, defaulted) : IsTuple(type2) ? FromTuple7(context, type2, defaulted) : IsUnion(type2) ? FromUnion11(context, type2, defaulted) : defaulted;
   }
 
 
   function Default(...args) {
-    const [context, type, value] = arguments_exports.Match(args, {
-      3: (context2, type2, value2) => [context2, type2, value2],
-      2: (type2, value2) => [{}, type2, value2]
+    const [context, type2, value] = arguments_exports.Match(args, {
+      3: (context2, type3, value2) => [context2, type3, value2],
+      2: (type3, value2) => [{}, type3, value2]
     });
-    return FromType22(context, type, value);
+    return FromType22(context, type2, value);
   }
 
 
   function Pipeline(pipeline) {
     return (...args) => {
-      const [context, type, value] = arguments_exports.Match(args, {
-        3: (context2, type2, value2) => [context2, type2, value2],
-        2: (type2, value2) => [{}, type2, value2]
+      const [context, type2, value] = arguments_exports.Match(args, {
+        3: (context2, type3, value2) => [context2, type3, value2],
+        2: (type3, value2) => [{}, type3, value2]
       });
-      return pipeline.reduce((result, func) => func(context, type, result), value);
+      return pipeline.reduce((result, func) => func(context, type2, result), value);
     };
   }
 
 
-  function Decode3(_context, type, value) {
-    return type["~codec"].decode(value);
+  function Decode3(_context, type2, value) {
+    return type2["~codec"].decode(value);
   }
-  function Encode3(_context, type, value) {
-    return type["~codec"].encode(value);
+  function Encode3(_context, type2, value) {
+    return type2["~codec"].encode(value);
   }
-  function Callback(direction, context, type, value) {
-    if (!IsCodec(type))
+  function Callback(direction, context, type2, value) {
+    if (!IsCodec(type2))
       return value;
-    return guard_exports.IsEqual(direction, "Decode") ? Decode3(context, type, value) : Encode3(context, type, value);
+    return guard_exports.IsEqual(direction, "Decode") ? Decode3(context, type2, value) : Encode3(context, type2, value);
   }
 
 
-  function Decode4(direction, context, type, value) {
+  function Decode4(direction, context, type2, value) {
     if (!guard_exports.IsArray(value))
       return value;
     for (let i = 0; i < value.length; i++) {
-      value[i] = FromType23(direction, context, type.items, value[i]);
+      value[i] = FromType23(direction, context, type2.items, value[i]);
     }
-    return Callback(direction, context, type, value);
+    return Callback(direction, context, type2, value);
   }
-  function Encode4(direction, context, type, value) {
-    const exterior = Callback(direction, context, type, value);
+  function Encode4(direction, context, type2, value) {
+    const exterior = Callback(direction, context, type2, value);
     if (!guard_exports.IsArray(exterior))
       return exterior;
     for (let i = 0; i < exterior.length; i++) {
-      exterior[i] = FromType23(direction, context, type.items, exterior[i]);
+      exterior[i] = FromType23(direction, context, type2.items, exterior[i]);
     }
     return exterior;
   }
-  function FromArray10(direction, context, type, value) {
-    return guard_exports.IsEqual(direction, "Decode") ? Decode4(direction, context, type, value) : Encode4(direction, context, type, value);
+  function FromArray10(direction, context, type2, value) {
+    return guard_exports.IsEqual(direction, "Decode") ? Decode4(direction, context, type2, value) : Encode4(direction, context, type2, value);
   }
 
 
-  function FromCyclic9(direction, context, type, value) {
-    value = FromType23(direction, { ...context, ...type.$defs }, Ref(type.$ref), value);
-    return Callback(direction, context, type, value);
+  function FromCyclic9(direction, context, type2, value) {
+    value = FromType23(direction, { ...context, ...type2.$defs }, Ref(type2.$ref), value);
+    return Callback(direction, context, type2, value);
   }
 
 
@@ -11839,125 +11919,125 @@
         return interior;
     return value;
   }
-  function Decode5(direction, context, type, value) {
-    if (guard_exports.IsEqual(type.allOf.length, 0))
-      return Callback(direction, context, type, value);
-    const interiors = type.allOf.map((schema) => FromType23(direction, context, schema, Clean(schema, Clone2(value))));
+  function Decode5(direction, context, type2, value) {
+    if (guard_exports.IsEqual(type2.allOf.length, 0))
+      return Callback(direction, context, type2, value);
+    const interiors = type2.allOf.map((schema) => FromType23(direction, context, schema, Clean(schema, Clone2(value))));
     const structural = interiors.every((result) => guard_exports.IsObject(result));
     const exterior = structural ? MergeInteriors(interiors) : NonMatchingInterior(value, interiors);
-    return Callback(direction, context, type, exterior);
+    return Callback(direction, context, type2, exterior);
   }
-  function Encode5(direction, context, type, value) {
-    if (guard_exports.IsEqual(type.allOf.length, 0))
-      return Callback(direction, context, type, value);
-    const exterior = Callback(direction, context, type, value);
-    const interiors = type.allOf.map((schema) => FromType23(direction, context, schema, Clean(schema, Clone2(exterior))));
+  function Encode5(direction, context, type2, value) {
+    if (guard_exports.IsEqual(type2.allOf.length, 0))
+      return Callback(direction, context, type2, value);
+    const exterior = Callback(direction, context, type2, value);
+    const interiors = type2.allOf.map((schema) => FromType23(direction, context, schema, Clean(schema, Clone2(exterior))));
     const structural = interiors.every((result) => guard_exports.IsObject(result));
     if (structural)
       return MergeInteriors(interiors);
     return NonMatchingInterior(exterior, interiors);
   }
-  function FromIntersect9(direction, context, type, value) {
-    return guard_exports.IsEqual(direction, "Decode") ? Decode5(direction, context, type, value) : Encode5(direction, context, type, value);
+  function FromIntersect9(direction, context, type2, value) {
+    return guard_exports.IsEqual(direction, "Decode") ? Decode5(direction, context, type2, value) : Encode5(direction, context, type2, value);
   }
 
 
-  function Decode6(direction, context, type, value) {
+  function Decode6(direction, context, type2, value) {
     if (!guard_exports.IsObjectNotArray(value))
       return value;
-    for (const key of guard_exports.Keys(type.properties)) {
-      if (!guard_exports.HasPropertyKey(value, key) || IsOptionalUndefined(type.properties[key], key, value))
+    for (const key of guard_exports.Keys(type2.properties)) {
+      if (!guard_exports.HasPropertyKey(value, key) || IsOptionalUndefined(type2.properties[key], key, value))
         continue;
-      value[key] = FromType23(direction, context, type.properties[key], value[key]);
+      value[key] = FromType23(direction, context, type2.properties[key], value[key]);
     }
-    return Callback(direction, context, type, value);
+    return Callback(direction, context, type2, value);
   }
-  function Encode6(direction, context, type, value) {
-    const exterior = Callback(direction, context, type, value);
+  function Encode6(direction, context, type2, value) {
+    const exterior = Callback(direction, context, type2, value);
     if (!guard_exports.IsObjectNotArray(exterior))
       return exterior;
-    for (const key of guard_exports.Keys(type.properties)) {
-      if (!guard_exports.HasPropertyKey(exterior, key) || IsOptionalUndefined(type.properties[key], key, exterior))
+    for (const key of guard_exports.Keys(type2.properties)) {
+      if (!guard_exports.HasPropertyKey(exterior, key) || IsOptionalUndefined(type2.properties[key], key, exterior))
         continue;
-      exterior[key] = FromType23(direction, context, type.properties[key], exterior[key]);
+      exterior[key] = FromType23(direction, context, type2.properties[key], exterior[key]);
     }
     return exterior;
   }
-  function FromObject14(direction, context, type, value) {
-    return guard_exports.IsEqual(direction, "Decode") ? Decode6(direction, context, type, value) : Encode6(direction, context, type, value);
+  function FromObject14(direction, context, type2, value) {
+    return guard_exports.IsEqual(direction, "Decode") ? Decode6(direction, context, type2, value) : Encode6(direction, context, type2, value);
   }
 
 
-  function Decode7(direction, context, type, value) {
+  function Decode7(direction, context, type2, value) {
     if (!guard_exports.IsObjectNotArray(value))
       return value;
-    const regexp = new RegExp(RecordPattern(type));
+    const regexp = new RegExp(RecordPattern(type2));
     for (const key of guard_exports.Keys(value)) {
       if (!regexp.test(key))
         continue;
-      value[key] = FromType23(direction, context, RecordValue(type), value[key]);
+      value[key] = FromType23(direction, context, RecordValue(type2), value[key]);
     }
-    return Callback(direction, context, type, value);
+    return Callback(direction, context, type2, value);
   }
-  function Encode7(direction, context, type, value) {
-    const exterior = Callback(direction, context, type, value);
+  function Encode7(direction, context, type2, value) {
+    const exterior = Callback(direction, context, type2, value);
     if (!guard_exports.IsObjectNotArray(exterior))
       return exterior;
-    const regexp = new RegExp(RecordPattern(type));
+    const regexp = new RegExp(RecordPattern(type2));
     for (const key of guard_exports.Keys(exterior)) {
       if (!regexp.test(key))
         continue;
-      exterior[key] = FromType23(direction, context, RecordValue(type), exterior[key]);
+      exterior[key] = FromType23(direction, context, RecordValue(type2), exterior[key]);
     }
     return exterior;
   }
-  function FromRecord6(direction, context, type, value) {
-    return guard_exports.IsEqual(direction, "Decode") ? Decode7(direction, context, type, value) : Encode7(direction, context, type, value);
+  function FromRecord6(direction, context, type2, value) {
+    return guard_exports.IsEqual(direction, "Decode") ? Decode7(direction, context, type2, value) : Encode7(direction, context, type2, value);
   }
 
 
-  function ResolveRef2(direction, context, type, value) {
-    return guard_exports.HasPropertyKey(context, type.$ref) ? FromType23(direction, context, context[type.$ref], value) : value;
+  function ResolveRef2(direction, context, type2, value) {
+    return guard_exports.HasPropertyKey(context, type2.$ref) ? FromType23(direction, context, context[type2.$ref], value) : value;
   }
-  function FromRef8(direction, context, type, value) {
-    return guard_exports.IsEqual(direction, "Decode") ? Callback(direction, context, type, ResolveRef2(direction, context, type, value)) : ResolveRef2(direction, context, type, Callback(direction, context, type, value));
+  function FromRef8(direction, context, type2, value) {
+    return guard_exports.IsEqual(direction, "Decode") ? Callback(direction, context, type2, ResolveRef2(direction, context, type2, value)) : ResolveRef2(direction, context, type2, Callback(direction, context, type2, value));
   }
 
 
-  function Decode8(direction, context, type, value) {
+  function Decode8(direction, context, type2, value) {
     if (!guard_exports.IsArray(value))
       return value;
-    for (let i = 0; i < Math.min(type.items.length, value.length); i++) {
-      value[i] = FromType23(direction, context, type.items[i], value[i]);
+    for (let i = 0; i < Math.min(type2.items.length, value.length); i++) {
+      value[i] = FromType23(direction, context, type2.items[i], value[i]);
     }
-    return Callback(direction, context, type, value);
+    return Callback(direction, context, type2, value);
   }
-  function Encode8(direction, context, type, value) {
-    const exterior = Callback(direction, context, type, value);
+  function Encode8(direction, context, type2, value) {
+    const exterior = Callback(direction, context, type2, value);
     if (!guard_exports.IsArray(exterior))
       return value;
-    for (let i = 0; i < Math.min(type.items.length, exterior.length); i++) {
-      exterior[i] = FromType23(direction, context, type.items[i], exterior[i]);
+    for (let i = 0; i < Math.min(type2.items.length, exterior.length); i++) {
+      exterior[i] = FromType23(direction, context, type2.items[i], exterior[i]);
     }
     return exterior;
   }
-  function FromTuple8(direction, context, type, value) {
-    return guard_exports.IsEqual(direction, "Decode") ? Decode8(direction, context, type, value) : Encode8(direction, context, type, value);
+  function FromTuple8(direction, context, type2, value) {
+    return guard_exports.IsEqual(direction, "Decode") ? Decode8(direction, context, type2, value) : Encode8(direction, context, type2, value);
   }
 
 
-  function Decode9(direction, context, type, value) {
-    for (const schema of type.anyOf) {
+  function Decode9(direction, context, type2, value) {
+    for (const schema of type2.anyOf) {
       if (!Check2(context, schema, value))
         continue;
       const variant2 = FromType23(direction, context, schema, value);
-      return Callback(direction, context, type, variant2);
+      return Callback(direction, context, type2, variant2);
     }
     return value;
   }
-  function Encode9(direction, context, type, value) {
-    const exterior = Callback(direction, context, type, value);
-    for (const schema of type.anyOf) {
+  function Encode9(direction, context, type2, value) {
+    const exterior = Callback(direction, context, type2, value);
+    for (const schema of type2.anyOf) {
       const variant2 = FromType23(direction, context, schema, Clone2(exterior));
       if (!Check2(context, schema, variant2))
         continue;
@@ -11965,13 +12045,13 @@
     }
     return exterior;
   }
-  function FromUnion12(direction, context, type, value) {
-    return guard_exports.IsEqual(direction, "Decode") ? Decode9(direction, context, type, value) : Encode9(direction, context, type, value);
+  function FromUnion12(direction, context, type2, value) {
+    return guard_exports.IsEqual(direction, "Decode") ? Decode9(direction, context, type2, value) : Encode9(direction, context, type2, value);
   }
 
 
-  function FromType23(direction, context, type, value) {
-    return IsArray3(type) ? FromArray10(direction, context, type, value) : IsCyclic(type) ? FromCyclic9(direction, context, type, value) : IsIntersect(type) ? FromIntersect9(direction, context, type, value) : IsObject3(type) ? FromObject14(direction, context, type, value) : IsRecord(type) ? FromRecord6(direction, context, type, value) : IsRef(type) ? FromRef8(direction, context, type, value) : IsTuple(type) ? FromTuple8(direction, context, type, value) : IsUnion(type) ? FromUnion12(direction, context, type, value) : Callback(direction, context, type, value);
+  function FromType23(direction, context, type2, value) {
+    return IsArray3(type2) ? FromArray10(direction, context, type2, value) : IsCyclic(type2) ? FromCyclic9(direction, context, type2, value) : IsIntersect(type2) ? FromIntersect9(direction, context, type2, value) : IsObject3(type2) ? FromObject14(direction, context, type2, value) : IsRecord(type2) ? FromRecord6(direction, context, type2, value) : IsRef(type2) ? FromRef8(direction, context, type2, value) : IsTuple(type2) ? FromTuple8(direction, context, type2, value) : IsUnion(type2) ? FromUnion12(direction, context, type2, value) : Callback(direction, context, type2, value);
   }
 
 
@@ -11980,29 +12060,29 @@
       super("Decode", value, errors);
     }
   };
-  function Assert2(context, type, value) {
-    if (!Check2(context, type, value))
-      throw new DecodeError(value, Errors2(context, type, value));
+  function Assert2(context, type2, value) {
+    if (!Check2(context, type2, value))
+      throw new DecodeError(value, Errors2(context, type2, value));
     return value;
   }
-  function DecodeUnsafe(context, type, value) {
-    const sorted = settings_exports.Get().unionPrioritySort ? UnionPrioritySort(type) : type;
+  function DecodeUnsafe(context, type2, value) {
+    const sorted = settings_exports.Get().unionPrioritySort ? UnionPrioritySort(type2) : type2;
     return FromType23("Decode", context, sorted, value);
   }
   var Decoder = Pipeline([
     (_context, _type, value) => Clone2(value),
-    (context, type, value) => Default(context, type, value),
-    (context, type, value) => Convert(context, type, value),
-    (context, type, value) => Clean(context, type, value),
-    (context, type, value) => Assert2(context, type, value),
-    (context, type, value) => DecodeUnsafe(context, type, value)
+    (context, type2, value) => Default(context, type2, value),
+    (context, type2, value) => Convert(context, type2, value),
+    (context, type2, value) => Clean(context, type2, value),
+    (context, type2, value) => Assert2(context, type2, value),
+    (context, type2, value) => DecodeUnsafe(context, type2, value)
   ]);
   function Decode10(...args) {
-    const [context, type, value] = arguments_exports.Match(args, {
-      3: (context2, type2, value2) => [context2, type2, value2],
-      2: (type2, value2) => [{}, type2, value2]
+    const [context, type2, value] = arguments_exports.Match(args, {
+      3: (context2, type3, value2) => [context2, type3, value2],
+      2: (type3, value2) => [{}, type3, value2]
     });
-    return Decoder(context, type, value);
+    return Decoder(context, type2, value);
   }
 
 
@@ -12011,79 +12091,79 @@
       super("Encode", value, errors);
     }
   };
-  function Assert3(context, type, value) {
-    if (!Check2(context, type, value))
-      throw new EncodeError(value, Errors2(context, type, value));
+  function Assert3(context, type2, value) {
+    if (!Check2(context, type2, value))
+      throw new EncodeError(value, Errors2(context, type2, value));
     return value;
   }
-  function EncodeUnsafe(context, type, value) {
-    const sorted = settings_exports.Get().unionPrioritySort ? UnionPrioritySort(type) : type;
+  function EncodeUnsafe(context, type2, value) {
+    const sorted = settings_exports.Get().unionPrioritySort ? UnionPrioritySort(type2) : type2;
     return FromType23("Encode", context, sorted, value);
   }
   var Encoder = Pipeline([
     (_context, _type, value) => Clone2(value),
-    (context, type, value) => EncodeUnsafe(context, type, value),
-    (context, type, value) => Default(context, type, value),
-    (context, type, value) => Convert(context, type, value),
-    (context, type, value) => Clean(context, type, value),
-    (context, type, value) => Assert3(context, type, value)
+    (context, type2, value) => EncodeUnsafe(context, type2, value),
+    (context, type2, value) => Default(context, type2, value),
+    (context, type2, value) => Convert(context, type2, value),
+    (context, type2, value) => Clean(context, type2, value),
+    (context, type2, value) => Assert3(context, type2, value)
   ]);
   function Encode10(...args) {
-    const [context, type, value] = arguments_exports.Match(args, {
-      3: (context2, type2, value2) => [context2, type2, value2],
-      2: (type2, value2) => [{}, type2, value2]
+    const [context, type2, value] = arguments_exports.Match(args, {
+      3: (context2, type3, value2) => [context2, type3, value2],
+      2: (type3, value2) => [{}, type3, value2]
     });
-    return Encoder(context, type, value);
+    return Encoder(context, type2, value);
   }
 
 
-  function FromArray11(context, type) {
-    return IsCodec(type) || FromType24(context, type.items);
+  function FromArray11(context, type2) {
+    return IsCodec(type2) || FromType24(context, type2.items);
   }
-  function FromCyclic10(context, type) {
-    return IsCodec(type) || FromRef9({ ...context, ...type.$defs }, Ref(type.$ref));
+  function FromCyclic10(context, type2) {
+    return IsCodec(type2) || FromRef9({ ...context, ...type2.$defs }, Ref(type2.$ref));
   }
-  function FromIntersect10(context, type) {
-    return IsCodec(type) || type.allOf.some((type2) => FromType24(context, type2));
+  function FromIntersect10(context, type2) {
+    return IsCodec(type2) || type2.allOf.some((type3) => FromType24(context, type3));
   }
-  function FromObject15(context, type) {
-    return IsCodec(type) || guard_exports.Keys(type.properties).some((key) => {
-      return FromType24(context, type.properties[key]);
+  function FromObject15(context, type2) {
+    return IsCodec(type2) || guard_exports.Keys(type2.properties).some((key) => {
+      return FromType24(context, type2.properties[key]);
     });
   }
-  function FromRecord7(context, type) {
-    return IsCodec(type) || FromType24(context, RecordValue(type));
+  function FromRecord7(context, type2) {
+    return IsCodec(type2) || FromType24(context, RecordValue(type2));
   }
-  function FromRef9(context, type) {
-    if (visited.has(type.$ref))
+  function FromRef9(context, type2) {
+    if (visited.has(type2.$ref))
       return false;
-    visited.add(type.$ref);
-    return IsCodec(type) || guard_exports.HasPropertyKey(context, type.$ref) && FromType24(context, context[type.$ref]);
+    visited.add(type2.$ref);
+    return IsCodec(type2) || guard_exports.HasPropertyKey(context, type2.$ref) && FromType24(context, context[type2.$ref]);
   }
-  function FromTuple9(context, type) {
-    return IsCodec(type) || type.items.some((type2) => FromType24(context, type2));
+  function FromTuple9(context, type2) {
+    return IsCodec(type2) || type2.items.some((type3) => FromType24(context, type3));
   }
-  function FromUnion13(context, type) {
-    return IsCodec(type) || type.anyOf.some((type2) => FromType24(context, type2));
+  function FromUnion13(context, type2) {
+    return IsCodec(type2) || type2.anyOf.some((type3) => FromType24(context, type3));
   }
-  function FromType24(context, type) {
-    return IsArray3(type) ? FromArray11(context, type) : IsCyclic(type) ? FromCyclic10(context, type) : IsIntersect(type) ? FromIntersect10(context, type) : IsObject3(type) ? FromObject15(context, type) : IsRecord(type) ? FromRecord7(context, type) : IsRef(type) ? FromRef9(context, type) : IsTuple(type) ? FromTuple9(context, type) : IsUnion(type) ? FromUnion13(context, type) : IsCodec(type);
+  function FromType24(context, type2) {
+    return IsArray3(type2) ? FromArray11(context, type2) : IsCyclic(type2) ? FromCyclic10(context, type2) : IsIntersect(type2) ? FromIntersect10(context, type2) : IsObject3(type2) ? FromObject15(context, type2) : IsRecord(type2) ? FromRecord7(context, type2) : IsRef(type2) ? FromRef9(context, type2) : IsTuple(type2) ? FromTuple9(context, type2) : IsUnion(type2) ? FromUnion13(context, type2) : IsCodec(type2);
   }
   var visited = /* @__PURE__ */ new Set();
   function HasCodec(...args) {
-    const [context, type] = arguments_exports.Match(args, {
-      2: (context2, type2) => [context2, type2],
-      1: (type2) => [{}, type2]
+    const [context, type2] = arguments_exports.Match(args, {
+      2: (context2, type3) => [context2, type3],
+      1: (type3) => [{}, type3]
     });
     visited.clear();
-    return FromType24(context, type);
+    return FromType24(context, type2);
   }
 
 
   var CreateError = class extends Error {
-    constructor(type, message) {
+    constructor(type2, message) {
       super(message);
-      this.type = type;
+      this.type = type2;
     }
   };
 
@@ -12093,16 +12173,16 @@
   }
 
 
-  function FromArray12(context, type) {
-    if (IsUniqueItems(type) && !IsDefault(type))
-      throw new CreateError(type, "Arrays with uniqueItems constraints must specify a default annotation");
-    const length = IsMinItems(type) ? type.minItems : 0;
-    return Array.from({ length }, () => FromType25(context, type.items));
+  function FromArray12(context, type2) {
+    if (IsUniqueItems(type2) && !IsDefault(type2))
+      throw new CreateError(type2, "Arrays with uniqueItems constraints must specify a default annotation");
+    const length = IsMinItems(type2) ? type2.minItems : 0;
+    return Array.from({ length }, () => FromType25(context, type2.items));
   }
 
 
-  function FromBigInt7(_context, type) {
-    return IsExclusiveMinimum(type) ? BigInt(type.exclusiveMinimum) + BigInt(1) : IsMinimum(type) ? BigInt(type.minimum) : BigInt(0);
+  function FromBigInt7(_context, type2) {
+    return IsExclusiveMinimum(type2) ? BigInt(type2.exclusiveMinimum) + BigInt(1) : IsMinimum(type2) ? BigInt(type2.minimum) : BigInt(0);
   }
 
 
@@ -12111,8 +12191,8 @@
   }
 
 
-  function FromConstructor2(context, type) {
-    const instanceType = FromType25(context, type.instanceType);
+  function FromConstructor2(context, type2) {
+    const instanceType = FromType25(context, type2.instanceType);
     return class {
       constructor() {
         Object.assign(this, instanceType);
@@ -12121,41 +12201,41 @@
   }
 
 
-  function FromCyclic11(context, type) {
-    return FromType25({ ...context, ...type.$defs }, Ref(type.$ref));
+  function FromCyclic11(context, type2) {
+    return FromType25({ ...context, ...type2.$defs }, Ref(type2.$ref));
   }
 
 
-  function FromEnum4(context, type) {
-    return FromType25(context, Evaluate2(type));
+  function FromEnum4(context, type2) {
+    return FromType25(context, Evaluate2(type2));
   }
 
 
-  function FromFunction2(context, type) {
-    const returnType = FromType25(context, type.returnType);
+  function FromFunction2(context, type2) {
+    const returnType = FromType25(context, type2.returnType);
     return () => returnType;
   }
 
 
-  function FromInteger2(_context, type) {
-    return IsExclusiveMinimum(type) && guard_exports.IsNumber(type.exclusiveMinimum) ? type.exclusiveMinimum + 1 : IsMinimum(type) ? type.minimum : 0;
+  function FromInteger2(_context, type2) {
+    return IsExclusiveMinimum(type2) && guard_exports.IsNumber(type2.exclusiveMinimum) ? type2.exclusiveMinimum + 1 : IsMinimum(type2) ? type2.minimum : 0;
   }
 
 
-  function FromIntersect11(context, type) {
-    const instantiated = Instantiate(context, type);
+  function FromIntersect11(context, type2) {
+    const instantiated = Instantiate(context, type2);
     const evaluated = Evaluate2(instantiated);
     return FromType25(context, evaluated);
   }
 
 
-  function FromLiteral7(_context, type) {
-    return type.const;
+  function FromLiteral7(_context, type2) {
+    return type2.const;
   }
 
 
-  function FromNever(_context, type) {
-    throw new CreateError(type, "Cannot create TNever types");
+  function FromNever(_context, type2) {
+    throw new CreateError(type2, "Cannot create TNever types");
   }
 
 
@@ -12164,38 +12244,38 @@
   }
 
 
-  function FromNumber6(_context, type) {
-    return IsExclusiveMinimum(type) && guard_exports.IsNumber(type.exclusiveMinimum) ? type.exclusiveMinimum + 1 : IsMinimum(type) ? type.minimum : 0;
+  function FromNumber6(_context, type2) {
+    return IsExclusiveMinimum(type2) && guard_exports.IsNumber(type2.exclusiveMinimum) ? type2.exclusiveMinimum + 1 : IsMinimum(type2) ? type2.minimum : 0;
   }
 
 
-  function FromObject16(context, type) {
-    const required = guard_exports.IsUndefined(type.required) ? [] : type.required;
+  function FromObject16(context, type2) {
+    const required = guard_exports.IsUndefined(type2.required) ? [] : type2.required;
     return required.reduce((result, key) => {
-      return { ...result, [key]: FromType25(context, type.properties[key]) };
+      return { ...result, [key]: FromType25(context, type2.properties[key]) };
     }, {});
   }
 
 
-  function FromRecord8(_context, type) {
-    if (IsMinProperties(type) && !IsDefault(type))
-      throw new CreateError(type, "Record with the minProperties constraint must have a default annotation");
+  function FromRecord8(_context, type2) {
+    if (IsMinProperties(type2) && !IsDefault(type2))
+      throw new CreateError(type2, "Record with the minProperties constraint must have a default annotation");
     return {};
   }
 
 
-  function FromRef10(context, type) {
-    return guard_exports.HasPropertyKey(context, type.$ref) ? FromType25(context, context[type.$ref]) : (() => {
-      throw new CreateError(type, "Unable to deref Ref");
+  function FromRef10(context, type2) {
+    return guard_exports.HasPropertyKey(context, type2.$ref) ? FromType25(context, context[type2.$ref]) : (() => {
+      throw new CreateError(type2, "Unable to deref Ref");
     })();
   }
 
 
-  function FromString8(_context, type) {
-    const needsDefault = (IsPattern(type) || IsFormat(type)) && !IsDefault(type);
+  function FromString8(_context, type2) {
+    const needsDefault = (IsPattern(type2) || IsFormat(type2)) && !IsDefault(type2);
     if (needsDefault)
       throw Error("Strings with format or pattern constraints must specify default");
-    const minLength = IsMinLength4(type) ? type.minLength : 0;
+    const minLength = IsMinLength4(type2) ? type2.minLength : 0;
     return "".padEnd(minLength);
   }
 
@@ -12205,16 +12285,16 @@
   }
 
 
-  function FromTemplateLiteral5(context, type) {
-    const decoded = TemplateLiteralDecode(type.pattern);
+  function FromTemplateLiteral5(context, type2) {
+    const decoded = TemplateLiteralDecode(type2.pattern);
     if (IsString4(decoded))
-      throw new CreateError(type, "Unable to create TemplateLiteral due to infinite type expansion");
+      throw new CreateError(type2, "Unable to create TemplateLiteral due to infinite type expansion");
     return FromType25(context, decoded);
   }
 
 
-  function FromTuple10(context, type) {
-    return Array.from({ length: type.minItems }, (_, i) => FromType25(context, type.items[i]));
+  function FromTuple10(context, type2) {
+    return Array.from({ length: type2.minItems }, (_, i) => FromType25(context, type2.items[i]));
   }
 
 
@@ -12223,11 +12303,11 @@
   }
 
 
-  function FromUnion14(context, type) {
-    if (guard_exports.IsEqual(type.anyOf.length, 0)) {
+  function FromUnion14(context, type2) {
+    if (guard_exports.IsEqual(type2.anyOf.length, 0)) {
       throw Error("Unable to create Union with no variants");
     }
-    return FromType25(context, type.anyOf[0]);
+    return FromType25(context, type2.anyOf[0]);
   }
 
 
@@ -12236,27 +12316,27 @@
   }
 
 
-  function FromType25(context, type) {
+  function FromType25(context, type2) {
     return (
       // -----------------------------------------------------
       // Default
       // -----------------------------------------------------
-      IsDefault(type) ? FromDefault2(context, type) : (
+      IsDefault(type2) ? FromDefault2(context, type2) : (
         // -----------------------------------------------------
         // Types
         // -----------------------------------------------------
-        IsArray3(type) ? FromArray12(context, type) : IsBigInt3(type) ? FromBigInt7(context, type) : IsBoolean4(type) ? FromBoolean7(context, type) : IsConstructor3(type) ? FromConstructor2(context, type) : IsCyclic(type) ? FromCyclic11(context, type) : IsEnum(type) ? FromEnum4(context, type) : IsFunction3(type) ? FromFunction2(context, type) : IsInteger3(type) ? FromInteger2(context, type) : IsIntersect(type) ? FromIntersect11(context, type) : IsLiteral(type) ? FromLiteral7(context, type) : IsNever(type) ? FromNever(context, type) : IsNull3(type) ? FromNull3(context, type) : IsNumber4(type) ? FromNumber6(context, type) : IsObject3(type) ? FromObject16(context, type) : IsRecord(type) ? FromRecord8(context, type) : IsRef(type) ? FromRef10(context, type) : IsString4(type) ? FromString8(context, type) : IsSymbol3(type) ? FromSymbol2(context, type) : IsTemplateLiteral(type) ? FromTemplateLiteral5(context, type) : IsTuple(type) ? FromTuple10(context, type) : IsUndefined3(type) ? FromUndefined3(context, type) : IsUnion(type) ? FromUnion14(context, type) : IsVoid(type) ? FromVoid2(context, type) : void 0
+        IsArray3(type2) ? FromArray12(context, type2) : IsBigInt3(type2) ? FromBigInt7(context, type2) : IsBoolean4(type2) ? FromBoolean7(context, type2) : IsConstructor3(type2) ? FromConstructor2(context, type2) : IsCyclic(type2) ? FromCyclic11(context, type2) : IsEnum(type2) ? FromEnum4(context, type2) : IsFunction3(type2) ? FromFunction2(context, type2) : IsInteger3(type2) ? FromInteger2(context, type2) : IsIntersect(type2) ? FromIntersect11(context, type2) : IsLiteral(type2) ? FromLiteral7(context, type2) : IsNever(type2) ? FromNever(context, type2) : IsNull3(type2) ? FromNull3(context, type2) : IsNumber4(type2) ? FromNumber6(context, type2) : IsObject3(type2) ? FromObject16(context, type2) : IsRecord(type2) ? FromRecord8(context, type2) : IsRef(type2) ? FromRef10(context, type2) : IsString4(type2) ? FromString8(context, type2) : IsSymbol3(type2) ? FromSymbol2(context, type2) : IsTemplateLiteral(type2) ? FromTemplateLiteral5(context, type2) : IsTuple(type2) ? FromTuple10(context, type2) : IsUndefined3(type2) ? FromUndefined3(context, type2) : IsUnion(type2) ? FromUnion14(context, type2) : IsVoid(type2) ? FromVoid2(context, type2) : void 0
       )
     );
   }
 
 
   function Create2(...args) {
-    const [context, type] = arguments_exports.Match(args, {
-      2: (context2, type2) => [context2, type2],
-      1: (type2) => [{}, type2]
+    const [context, type2] = arguments_exports.Match(args, {
+      2: (context2, type3) => [context2, type3],
+      1: (type3) => [{}, type3]
     });
-    return FromType25(context, type);
+    return FromType25(context, type2);
   }
 
 
@@ -12275,29 +12355,29 @@
       super("Parse", value, errors);
     }
   };
-  function Assert4(context, type, value) {
-    if (!Check2(context, type, value))
-      throw new ParseError(value, Errors2(context, type, value));
+  function Assert4(context, type2, value) {
+    if (!Check2(context, type2, value))
+      throw new ParseError(value, Errors2(context, type2, value));
     return value;
   }
   var Parser = Pipeline([
     (_context, _type, value) => Clone2(value),
-    (context, type, value) => Default(context, type, value),
-    (context, type, value) => Convert(context, type, value),
-    (context, type, value) => Clean(context, type, value),
-    (context, type, value) => Assert4(context, type, value)
+    (context, type2, value) => Default(context, type2, value),
+    (context, type2, value) => Convert(context, type2, value),
+    (context, type2, value) => Clean(context, type2, value),
+    (context, type2, value) => Assert4(context, type2, value)
   ]);
   function Parse(...args) {
-    const [context, type, value] = arguments_exports.Match(args, {
-      3: (context2, type2, value2) => [context2, type2, value2],
-      2: (type2, value2) => [{}, type2, value2]
+    const [context, type2, value] = arguments_exports.Match(args, {
+      3: (context2, type3, value2) => [context2, type3, value2],
+      2: (type3, value2) => [{}, type3, value2]
     });
-    const checked = Check2(context, type, value);
+    const checked = Check2(context, type2, value);
     if (checked)
       return value;
     if (settings_exports.Get().correctiveParse)
-      return Parser(context, type, value);
-    throw new ParseError(value, Errors2(context, type, value));
+      return Parser(context, type2, value);
+    throw new ParseError(value, Errors2(context, type2, value));
   }
 
 
@@ -12438,10 +12518,10 @@
 
 
   var RepairError = class extends Error {
-    constructor(context, type, value, message) {
+    constructor(context, type2, value, message) {
       super(message);
       this.context = context;
-      this.type = type;
+      this.type = type2;
       this.value = value;
     }
   };
@@ -12458,65 +12538,65 @@
     }
     return result;
   }
-  function FromArray14(context, type, value) {
-    if (Check2(context, type, value))
+  function FromArray14(context, type2, value) {
+    if (Check2(context, type2, value))
       return value;
-    const created = guard_exports.IsArray(value) ? value : Create2(context, type);
-    const minimum = IsMinItems(type) && created.length < type.minItems ? [...created, ...Array.from({ length: type.minItems - created.length }, () => Create2(context, type))] : created;
-    const maximum = IsMaxItems(type) && minimum.length > type.maxItems ? minimum.slice(0, type.maxItems) : minimum;
-    const repaired = maximum.map((value2) => FromType26(context, type.items, value2));
-    if (!IsUniqueItems(type) || IsUniqueItems(type) && !guard_exports.IsEqual(type.uniqueItems, true))
+    const created = guard_exports.IsArray(value) ? value : Create2(context, type2);
+    const minimum = IsMinItems(type2) && created.length < type2.minItems ? [...created, ...Array.from({ length: type2.minItems - created.length }, () => Create2(context, type2))] : created;
+    const maximum = IsMaxItems(type2) && minimum.length > type2.maxItems ? minimum.slice(0, type2.maxItems) : minimum;
+    const repaired = maximum.map((value2) => FromType26(context, type2.items, value2));
+    if (!IsUniqueItems(type2) || IsUniqueItems(type2) && !guard_exports.IsEqual(type2.uniqueItems, true))
       return repaired;
     const unique = MakeUnique(repaired);
-    if (!Check2(context, type, unique))
-      throw new RepairError(context, type, value, "Failed to repair Array due to uniqueItems constraint");
+    if (!Check2(context, type2, unique))
+      throw new RepairError(context, type2, value, "Failed to repair Array due to uniqueItems constraint");
     return unique;
   }
 
 
-  function FromEnum5(context, type, value) {
-    return FromType26(context, Evaluate2(type), value);
+  function FromEnum5(context, type2, value) {
+    return FromType26(context, Evaluate2(type2), value);
   }
 
 
-  function FromIntersect12(context, type, value) {
-    const instantiated = Instantiate(context, type);
+  function FromIntersect12(context, type2, value) {
+    const instantiated = Instantiate(context, type2);
     const evaluated = Evaluate2(instantiated);
     return FromType26(context, evaluated, value);
   }
 
 
-  function FromObject18(context, type, value) {
-    if (Check2(context, type, value))
+  function FromObject18(context, type2, value) {
+    if (Check2(context, type2, value))
       return value;
     if (!guard_exports.IsObjectNotArray(value))
-      return Create2(context, type);
-    const required = new Set(guard_exports.IsUndefined(type.required) ? [] : type.required);
+      return Create2(context, type2);
+    const required = new Set(guard_exports.IsUndefined(type2.required) ? [] : type2.required);
     const result = {};
-    for (const [key, schema] of guard_exports.Entries(type.properties)) {
+    for (const [key, schema] of guard_exports.Entries(type2.properties)) {
       if (!required.has(key) && guard_exports.IsUndefined(value[key]))
         continue;
       result[key] = key in value ? FromType26(context, schema, value[key]) : Create2(context, schema);
     }
-    const evaluatedKeys = guard_exports.Keys(type.properties);
-    if (IsAdditionalProperties(type) && guard_exports.IsObject(type.additionalProperties)) {
+    const evaluatedKeys = guard_exports.Keys(type2.properties);
+    if (IsAdditionalProperties(type2) && guard_exports.IsObject(type2.additionalProperties)) {
       for (const key of guard_exports.Keys(value)) {
         if (evaluatedKeys.includes(key))
           continue;
-        result[key] = FromType26(context, type.additionalProperties, value[key]);
+        result[key] = FromType26(context, type2.additionalProperties, value[key]);
       }
     }
     return result;
   }
 
 
-  function FromRecord9(context, type, value) {
-    if (Check2(context, type, value))
+  function FromRecord9(context, type2, value) {
+    if (Check2(context, type2, value))
       return value;
     if (guard_exports.IsNull(value) || !guard_exports.IsObject(value) || guard_exports.IsArray(value))
-      return Create2(context, type);
-    const recordKey = new RegExp(RecordPattern(type));
-    const recordValue = RecordValue(type);
+      return Create2(context, type2);
+    const recordKey = new RegExp(RecordPattern(type2));
+    const recordValue = RecordValue(type2);
     const evaluatedKeys = /* @__PURE__ */ new Set();
     const result = {};
     for (const [key, value_] of guard_exports.Entries(value)) {
@@ -12525,26 +12605,26 @@
       result[key] = FromType26(context, recordValue, value_);
       evaluatedKeys.add(key);
     }
-    if (IsAdditionalProperties(type)) {
+    if (IsAdditionalProperties(type2)) {
       for (const key of guard_exports.Keys(value)) {
         if (evaluatedKeys.has(key))
           continue;
-        result[key] = FromType26(context, type.additionalProperties, value[key]);
+        result[key] = FromType26(context, type2.additionalProperties, value[key]);
       }
     }
     return result;
   }
 
 
-  function FromRef11(context, type, value) {
-    return guard_exports.HasPropertyKey(context, type.$ref) ? FromType26(context, context[type.$ref], value) : (() => {
-      throw new RepairError(context, type, value, "Unable to de-reference target type");
+  function FromRef11(context, type2, value) {
+    return guard_exports.HasPropertyKey(context, type2.$ref) ? FromType26(context, context[type2.$ref], value) : (() => {
+      throw new RepairError(context, type2, value, "Unable to de-reference target type");
     })();
   }
 
 
-  function FromTemplateLiteral6(context, type, value) {
-    const decoded = TemplateLiteralDecode(type.pattern);
+  function FromTemplateLiteral6(context, type2, value) {
+    const decoded = TemplateLiteralDecode(type2.pattern);
     return FromType26(context, decoded, value);
   }
 
@@ -12558,16 +12638,16 @@
   }
 
 
-  function Deref(context, type, value) {
-    return IsRef(type) ? guard_exports.HasPropertyKey(context, type.$ref) ? Deref(context, context[type.$ref], value) : (() => {
+  function Deref(context, type2, value) {
+    return IsRef(type2) ? guard_exports.HasPropertyKey(context, type2.$ref) ? Deref(context, context[type2.$ref], value) : (() => {
       throw new Error("Unable to Deref target");
-    })() : type;
+    })() : type2;
   }
-  function ScoreVariant(context, type, value) {
-    if (!(IsObject3(type) && guard_exports.IsObject(value)))
+  function ScoreVariant(context, type2, value) {
+    if (!(IsObject3(type2) && guard_exports.IsObject(value)))
       return 0;
     const keys = guard_exports.Keys(value);
-    const entries = guard_exports.Entries(type.properties);
+    const entries = guard_exports.Entries(type2.properties);
     return entries.reduce((result, [key, schema]) => {
       const literal = IsLiteral(schema) && guard_exports.IsEqual(schema.const, value[key]) ? 100 : 0;
       const checks = Check2(context, schema, value[key]) ? 10 : 0;
@@ -12575,8 +12655,8 @@
       return result + (literal + checks + exists);
     }, 0);
   }
-  function UnionScoreSelect(context, type, value) {
-    const schemas = type.anyOf.map((schema) => Deref(context, schema, value));
+  function UnionScoreSelect(context, type2, value) {
+    const schemas = type2.anyOf.map((schema) => Deref(context, schema, value));
     let [select, best] = [schemas[0], 0];
     for (const schema of schemas) {
       const score = ScoreVariant(context, schema, value);
@@ -12589,64 +12669,64 @@
   }
 
 
-  function RepairUnion(context, type, value) {
-    const union = Union(Flatten(type.anyOf));
+  function RepairUnion(context, type2, value) {
+    const union = Union(Flatten(type2.anyOf));
     const schema = UnionScoreSelect(context, union, value);
     return FromType26(context, schema, value);
   }
-  function FromUnion15(context, type, value) {
-    if (Check2(context, type, value))
+  function FromUnion15(context, type2, value) {
+    if (Check2(context, type2, value))
       return Clone2(value);
-    if (IsDefault(type))
-      return Create2(context, type);
-    return RepairUnion(context, type, value);
+    if (IsDefault(type2))
+      return Create2(context, type2);
+    return RepairUnion(context, type2, value);
   }
 
 
-  function FromUnknown2(context, type, value) {
-    if (Check2(context, type, value))
+  function FromUnknown2(context, type2, value) {
+    if (Check2(context, type2, value))
       return value;
-    const converted = Convert(context, type, value);
-    if (Check2(context, type, converted))
+    const converted = Convert(context, type2, value);
+    if (Check2(context, type2, converted))
       return converted;
-    return Create2(context, type);
+    return Create2(context, type2);
   }
 
 
-  function AssertRepairableValue(context, type, value) {
+  function AssertRepairableValue(context, type2, value) {
     const unsupported = globals_exports.IsDate(value) || globals_exports.IsMap(value) || globals_exports.IsSet(value) || globals_exports.IsTypeArray(value) || guard_exports.IsConstructor(value) || guard_exports.IsFunction(value);
     if (unsupported) {
-      throw new RepairError(context, type, value, "Value is not repairable");
+      throw new RepairError(context, type2, value, "Value is not repairable");
     }
   }
-  function AssertRepairableType(context, type, value) {
-    const unsupported = IsConstructor3(type) || IsFunction3(type) || IsNever(type);
+  function AssertRepairableType(context, type2, value) {
+    const unsupported = IsConstructor3(type2) || IsFunction3(type2) || IsNever(type2);
     if (unsupported) {
-      throw new RepairError(context, type, value, "Type is not repairable");
+      throw new RepairError(context, type2, value, "Type is not repairable");
     }
   }
-  function CreateWhenUndefined(context, type, value) {
-    return guard_exports.IsUndefined(value) && !IsUndefined3(type) ? Create2(context, type) : value;
+  function CreateWhenUndefined(context, type2, value) {
+    return guard_exports.IsUndefined(value) && !IsUndefined3(type2) ? Create2(context, type2) : value;
   }
-  function FinalizeRepair(context, type, repaired) {
-    return IsRefine(type) ? Check2(context, type, repaired) ? repaired : Create2(context, type) : repaired;
+  function FinalizeRepair(context, type2, repaired) {
+    return IsRefine(type2) ? Check2(context, type2, repaired) ? repaired : Create2(context, type2) : repaired;
   }
-  function FromType26(context, type, value) {
-    AssertRepairableValue(context, type, value);
-    AssertRepairableType(context, type, value);
-    const candidate = CreateWhenUndefined(context, type, value);
-    const repaired = IsArray3(type) ? FromArray14(context, type, candidate) : IsEnum(type) ? FromEnum5(context, type, candidate) : IsIntersect(type) ? FromIntersect12(context, type, candidate) : IsObject3(type) ? FromObject18(context, type, candidate) : IsRecord(type) ? FromRecord9(context, type, candidate) : IsRef(type) ? FromRef11(context, type, candidate) : IsTemplateLiteral(type) ? FromTemplateLiteral6(context, type, candidate) : IsTuple(type) ? FromTuple11(context, type, candidate) : IsUnion(type) ? FromUnion15(context, type, candidate) : FromUnknown2(context, type, candidate);
-    return FinalizeRepair(context, type, repaired);
+  function FromType26(context, type2, value) {
+    AssertRepairableValue(context, type2, value);
+    AssertRepairableType(context, type2, value);
+    const candidate = CreateWhenUndefined(context, type2, value);
+    const repaired = IsArray3(type2) ? FromArray14(context, type2, candidate) : IsEnum(type2) ? FromEnum5(context, type2, candidate) : IsIntersect(type2) ? FromIntersect12(context, type2, candidate) : IsObject3(type2) ? FromObject18(context, type2, candidate) : IsRecord(type2) ? FromRecord9(context, type2, candidate) : IsRef(type2) ? FromRef11(context, type2, candidate) : IsTemplateLiteral(type2) ? FromTemplateLiteral6(context, type2, candidate) : IsTuple(type2) ? FromTuple11(context, type2, candidate) : IsUnion(type2) ? FromUnion15(context, type2, candidate) : FromUnknown2(context, type2, candidate);
+    return FinalizeRepair(context, type2, repaired);
   }
 
 
   function Repair(...args) {
-    const [context, type, value] = arguments_exports.Match(args, {
-      3: (context2, type2, value2) => [context2, type2, value2],
-      2: (type2, value2) => [{}, type2, value2]
+    const [context, type2, value] = arguments_exports.Match(args, {
+      3: (context2, type3, value2) => [context2, type3, value2],
+      2: (type3, value2) => [{}, type3, value2]
     });
-    const repaired = FromType26(context, type, value);
-    Assert(context, type, repaired);
+    const repaired = FromType26(context, type2, value);
+    Assert(context, type2, repaired);
     return repaired;
   }
 
@@ -12679,9 +12759,9 @@
 
   var Validator = class {
     /** Constructs a Validator. */
-    constructor(context, type) {
-      this.hasCodec = HasCodec(context, type);
-      this.buildResult = Build(context, type);
+    constructor(context, type2) {
+      this.hasCodec = HasCodec(context, type2);
+      this.buildResult = Build(context, type2);
       this.evaluateResult = this.buildResult.Evaluate();
     }
     // ----------------------------------------------------------------
@@ -12764,11 +12844,11 @@
 
 
   function Compile(...args) {
-    const [context, type] = arguments_exports.Match(args, {
-      2: (context2, type2) => [context2, type2],
-      1: (type2) => [{}, type2]
+    const [context, type2] = arguments_exports.Match(args, {
+      2: (context2, type3) => [context2, type3],
+      1: (type3) => [{}, type3]
     });
-    return new Validator(context, type);
+    return new Validator(context, type2);
   }
 
 
@@ -13080,7 +13160,7 @@
   var createContext = (state2) => ({
     ui: {
       theme,
-      notify: (message, type) => hostCall("ui.notify", { message, type: type ?? "info" }),
+      notify: (message, type2) => hostCall("ui.notify", { message, type: type2 ?? "info" }),
       setStatus: (key, text) => hostCall("ui.setStatus", { key, text: text ?? "" }),
       setWidget: (key, content, options) => {
         if (content === void 0) {
