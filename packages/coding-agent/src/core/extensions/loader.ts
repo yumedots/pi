@@ -796,7 +796,11 @@ function discoverExtensionsInDir(dir: string): string[] {
 	const discovered: string[] = [];
 
 	try {
-		const entries = fs.readdirSync(dir, { withFileTypes: true });
+		// Node sorts the entries, Bun does not. The load order decides which extension
+		// runs first, so it is sorted here to keep it the same on every runtime.
+		const entries = fs
+			.readdirSync(dir, { withFileTypes: true })
+			.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
 		for (const entry of entries) {
 			const entryPath = path.join(dir, entry.name);

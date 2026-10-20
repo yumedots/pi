@@ -855,6 +855,11 @@ export function stopThemeWatcher(): void {
 	themeWatcher = undefined;
 }
 
+/** The watcher on the custom themes directory, if a custom theme is active. */
+export function getThemeWatcher(): fs.FSWatcher | undefined {
+	return themeWatcher;
+}
+
 // ============================================================================
 // HTML Export Helpers
 // ============================================================================

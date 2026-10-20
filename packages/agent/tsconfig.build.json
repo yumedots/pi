@@ -1,6 +1,8 @@
 {
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
+		"incremental": true,
+		"tsBuildInfoFile": "./dist/tsconfig.build.tsbuildinfo",
 		"outDir": "./dist",
 		"paths": {
 			"@earendil-works/pi-ai": ["../ai/dist/index.d.ts"],

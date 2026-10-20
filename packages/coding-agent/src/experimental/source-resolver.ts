@@ -1,11 +1,15 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { registerHooks } from "node:module";
+import * as nodeModule from "node:module";
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 // Node strips TypeScript natively, but it does not apply the workspace source
 // aliases from tsconfig.json. Internal source processes preload this resolver so
 // they cannot silently fall through to stale package dist files.
+//
+// Bun applies the tsconfig paths itself, and it has no node:module
+// registerHooks. Registering the hook there is skipped, so the resolver stays
+// loadable on both runtimes.
 
 interface TsConfig {
 	readonly compilerOptions?: {
@@ -42,24 +46,27 @@ const aliases: SourceAlias[] = Object.entries(paths)
 	})
 	.sort((left, right) => right.pattern.length - left.pattern.length);
 
-registerHooks({
-	resolve(specifier, context, nextResolve) {
-		let matchedPattern: string | undefined;
-		for (const alias of aliases) {
-			const wildcard = matchAlias(alias, specifier);
-			if (wildcard === undefined) continue;
-			matchedPattern ??= alias.pattern;
-			for (const replacement of alias.replacements) {
-				const resolved = resolveSourcePath(replacement.replace("*", wildcard));
-				if (resolved) return { url: pathToFileURL(resolved).href, shortCircuit: true };
+const registerHooks = nodeModule.registerHooks;
+if (registerHooks) {
+	registerHooks({
+		resolve(specifier, context, nextResolve) {
+			let matchedPattern: string | undefined;
+			for (const alias of aliases) {
+				const wildcard = matchAlias(alias, specifier);
+				if (wildcard === undefined) continue;
+				matchedPattern ??= alias.pattern;
+				for (const replacement of alias.replacements) {
+					const resolved = resolveSourcePath(replacement.replace("*", wildcard));
+					if (resolved) return { url: pathToFileURL(resolved).href, shortCircuit: true };
+				}
 			}
-		}
-		if (matchedPattern) {
-			throw new Error(`Source runtime could not resolve ${specifier} through tsconfig path ${matchedPattern}`);
-		}
-		return nextResolve(specifier, context);
-	},
-});
+			if (matchedPattern) {
+				throw new Error(`Source runtime could not resolve ${specifier} through tsconfig path ${matchedPattern}`);
+			}
+			return nextResolve(specifier, context);
+		},
+	});
+}
 
 function matchAlias(alias: SourceAlias, specifier: string): string | undefined {
 	if (!alias.pattern.includes("*")) return specifier === alias.pattern ? "" : undefined;

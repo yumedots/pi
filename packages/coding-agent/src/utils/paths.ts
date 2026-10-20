@@ -6,12 +6,26 @@ import { spawnProcessSync } from "./child-process.ts";
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
 
+/**
+ * The home directory, read from the environment the way Node's `os.homedir()` does.
+ *
+ * Node reads `$HOME` on every call. Bun reads the account database once and ignores
+ * `$HOME`, so a `HOME` that points somewhere else expands to the wrong directory there.
+ * The environment is the source of truth on both.
+ */
+export function getHomeDirectory(): string {
+	if (process.platform === "win32") {
+		return process.env.USERPROFILE || homedir();
+	}
+	return process.env.HOME || homedir();
+}
+
 export interface PathInputOptions {
 	/** Trim leading/trailing whitespace before normalization. */
 	trim?: boolean;
 	/** Expand leading `~` to a home directory. Defaults to true. */
 	expandTilde?: boolean;
-	/** Home directory used for `~` expansion. Defaults to `os.homedir()`. */
+	/** Home directory used for `~` expansion. Defaults to the home directory of the environment. */
 	homeDir?: string;
 	/** Strip a leading `@`, used for CLI @file paths. */
 	stripAtPrefix?: boolean;
@@ -86,7 +100,7 @@ export function normalizePath(input: string, options: PathInputOptions = {}): st
 	}
 
 	if (options.expandTilde ?? true) {
-		const home = options.homeDir ?? homedir();
+		const home = options.homeDir ?? getHomeDirectory();
 		if (normalized === "~") return home;
 		if (normalized.startsWith("~/") || (process.platform === "win32" && normalized.startsWith("~\\"))) {
 			return join(home, normalized.slice(2));
@@ -94,6 +108,9 @@ export function normalizePath(input: string, options: PathInputOptions = {}): st
 	}
 
 	if (/^file:\/\//.test(normalized)) {
+		// Node's fileURLToPath rejects a path with broken percent-encoding. Bun accepts it,
+		// so the check is done here to keep the same paths rejected on every runtime.
+		decodeURIComponent(new URL(normalized).pathname);
 		return fileURLToPath(normalized);
 	}
 

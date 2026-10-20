@@ -60,11 +60,12 @@ Do not open a PR unless you have already been approved by a maintainer using `lg
 Before submitting a PR:
 
 ```bash
-npm run check
+bun run check
 ./test.sh
 ```
 
-Both must pass.
+Both must pass. The toolchain is [Bun](https://bun.sh); `make check` and
+`make test` run the same commands.
 
 Do not edit `CHANGELOG.md`. Changelog entries are added by maintainers.
 

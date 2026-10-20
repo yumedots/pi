@@ -29,8 +29,9 @@
 
 ## Commands
 
-- After code changes (not docs): `npm run check` (full output, no tail). Fix all errors, warnings, and infos before committing. Does not run tests.
-- Never run `npm run build` or `npm test` unless requested by the user.
+- The toolchain is [Bun](https://bun.sh). `make help` lists the targets.
+- After code changes (not docs): `bun run check` (full output, no tail). Fix all errors, warnings, and infos before committing. Does not run tests.
+- Never run `bun run build` or `bun run test` unless requested by the user.
 - Never run the full vitest suite directly: it includes e2e tests that activate when endpoint/auth env vars are present. For all non-e2e tests, run `./test.sh` from the repo root. Otherwise run specific tests from the package root:
   - Vitest: `node "$(git rev-parse --show-toplevel)/node_modules/vitest/dist/cli.js" --run test/specific.test.ts`
   - `packages/tui` (`node:test`): `node --test test/specific.test.ts`
@@ -44,10 +45,24 @@
 
 - Treat npm dep and lockfile changes as reviewed code. Direct registry deps, including internal workspace deps, stay pinned to exact versions.
 - When updating `undici`, you MUST read its changelog/release notes for the target version and evaluate whether any changes may affect functionality before applying the update.
-- Hydrate/update locally with `npm install --ignore-scripts`; clean/CI-style with `npm ci --ignore-scripts`. Don't run lifecycle scripts unless the user asks.
-- If dep metadata changes, refresh `package-lock.json` with `npm install --package-lock-only --ignore-scripts`.
-- If `packages/coding-agent/install-lock/` needs regen, run `node scripts/generate-coding-agent-install-lock.mjs` (verify with `--check` or `npm run check`). New deps with lifecycle scripts require review and an explicit allowlist entry in that script; never add one silently.
+- Hydrate/update locally with `bun install`; clean/CI-style with `bun install --frozen-lockfile --ignore-scripts`. Don't run lifecycle scripts unless the user asks.
+- `package-lock.json` stays the dependency ground truth: the nix build reads it with `importNpmLock`, and `packages/coding-agent/install-lock/` (the shrinkwrap the published installer uses) is generated from it. `bun.lock` is generated from it with `bun pm migrate`; run `bun run check:lockfiles` after changing either.
+- If dep metadata changes, refresh `package-lock.json` with `npm install --package-lock-only --ignore-scripts`, then regenerate `bun.lock` with `bun pm migrate`.
+- If `packages/coding-agent/install-lock/` needs regen, run `bun run install-lock:coding-agent` (verify with `--check` or `bun run check`). New deps with lifecycle scripts require review and an explicit allowlist entry in that script; never add one silently.
+- Bun blocks dependency lifecycle scripts. Nothing is trusted: the repository installs with `--ignore-scripts`, and no dependency needs its install script. Check `bun pm untrusted` before adding anything to `trustedDependencies`.
 - Pre-commit blocks lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1`. Don't bypass unless the user wants the lockfile change committed.
+
+## Node-only code paths
+
+A few scripts must keep running on Node even though the rest of the toolchain moved to Bun. Don't "fix" these by switching them over:
+
+- `scripts/biome-check.mjs` spawns the Biome CLI through `process.execPath`.
+- `test:scripts` and `packages/tui`'s test script use Node's built-in test runner. `bun test` passes the same tests, but it is slower.
+- vitest runs on Node. Bun's `undici` npm package is a stub, and Bun has no `node:module` `registerHooks`, so the coding-agent cannot run its own test suite there.
+- The published packages run on Node, for the same two reasons.
+- npm stays the publisher and the owner of `package-lock.json`.
+
+The TypeScript-based checks run on Bun: they use `typescript/unstable/async`, which works on both runtimes. The synchronous API reads `child.stdout._handle.fd`, which Bun does not expose.
 
 ## Git
 

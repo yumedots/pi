@@ -57,7 +57,13 @@ test("accepts a valid coding-agent package", (t) => {
 });
 
 // #9132: smoke-test the public SDK, not just a bundled CLI that hides missing imports.
+// Node says "Cannot find package", Bun says "Cannot find module". The assertion
+// is that the undeclared package is reported as missing, not which runtime
+// words it that way.
 test("fails when the SDK imports an undeclared package despite a working CLI", (t) => {
 	const directory = createFixture(t, { importUndeclared: true });
-	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find package '@earendil-works\/undeclared'/);
+	assert.throws(
+		() => smokeTestCodingAgent(directory),
+		/Cannot find (?:package|module) '@earendil-works\/undeclared'/,
+	);
 });

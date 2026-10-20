@@ -37,6 +37,18 @@ cleanup() {
 trap cleanup EXIT
 
 # Start from an empty environment and allow only required platform and test settings.
+# PI_TEST_PACKAGE_MANAGER selects the package manager used to run the suite
+# ("npm" by default, "bun" after the Bun migration). Both run the same vitest
+# suites; only the runner differs.
+package_manager="${PI_TEST_PACKAGE_MANAGER:-npm}"
+case "$package_manager" in
+	npm | bun) ;;
+	*)
+		printf "Unsupported PI_TEST_PACKAGE_MANAGER: %s\n" "$package_manager" >&2
+		exit 1
+		;;
+esac
+
 test_env=(
 	"PATH=$PATH"
 	"PWD=$PWD"
@@ -61,6 +73,9 @@ test_env=(
 	"NPM_CONFIG_CACHE=$test_root/cache/npm"
 	"PI_NO_LOCAL_LLM=1"
 	"AWS_EC2_METADATA_DISABLED=true"
+	# Pin terminal capabilities so color assertions do not depend on the host
+	# terminal of whoever runs the suite.
+	"PI_TRUE_COLOR=1"
 )
 
 # Native Windows needs these inherited values to launch child processes.
@@ -81,4 +96,4 @@ for name in CI GITHUB_ACTIONS; do
 done
 
 echo "Running tests without API keys in isolated home: $test_root/home"
-env -i "${test_env[@]}" npm test
+env -i "${test_env[@]}" "$package_manager" run test

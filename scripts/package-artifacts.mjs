@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, w
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { getPublicWorkspacePackages } from "./release-packages.mjs";
-import { execNpmSync } from "./npm-command.mjs";
+import { execBunSync, execNpmSync } from "./npm-command.mjs";
 
 const manifestSchemaVersion = 1;
 
@@ -77,8 +77,10 @@ export function produceArtifactSet({ repoRoot, outDir, build = true, offlineMode
 	const root = resolve(repoRoot);
 	const artifactDirectory = prepareOutputDirectory(outDir, { force, repoRoot: root });
 	if (build) {
-		execNpmSync(["run", "clean"], { cwd: root, stdio: "inherit" });
-		execNpmSync(["run", offlineModelData ? "build:offline" : "build"], { cwd: root, stdio: "inherit" });
+		// The build runs through Bun. The tarballs are still packed with npm,
+		// because that is what end users install from the registry.
+		execBunSync(["run", "clean"], { cwd: root, stdio: "inherit" });
+		execBunSync(["run", offlineModelData ? "build:offline" : "build"], { cwd: root, stdio: "inherit" });
 	}
 	const artifactSource = source === undefined ? getGitSource(root) : source;
 	const packages = getPublicWorkspacePackages(join(root, "packages"));

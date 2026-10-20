@@ -79,28 +79,34 @@ const stagedFiles = git(["diff", "--cached", "--name-only"])
 	.map((line) => line.trim())
 	.filter(Boolean);
 
-if (!stagedFiles.includes("package-lock.json")) {
+// Both lockfiles are reviewed code. package-lock.json is the source of truth
+// for the published installer shrinkwrap and the nix build; bun.lock is what
+// `bun install` reads and is generated from package-lock.json.
+const stagedLockfiles = stagedFiles.filter((file) => file === "package-lock.json" || file === "bun.lock");
+
+if (stagedLockfiles.length === 0) {
 	process.exit(0);
 }
 
 if (allowed) {
-	console.error("package-lock.json is staged; PI_ALLOW_LOCKFILE_CHANGE is set, allowing commit.");
+	console.error(`${stagedLockfiles.join(", ")} staged; PI_ALLOW_LOCKFILE_CHANGE is set, allowing commit.`);
 	process.exit(0);
 }
 
-const changes = getLockfilePackageChanges();
+const changes = stagedFiles.includes("package-lock.json") ? getLockfilePackageChanges() : undefined;
 if (changes && hasOnlyWorkspacePackageChanges(changes)) {
 	console.error("package-lock.json only updates workspace package metadata; allowing commit.");
 	process.exit(0);
 }
 
-console.error("package-lock.json is staged.");
+console.error(`${stagedLockfiles.join(", ")} staged.`);
 console.error("");
 console.error("Review lockfile changes before committing:");
 console.error("  - confirm every new/updated package is intentional");
 console.error("  - confirm npm age gates were active for resolution");
 console.error("  - review any new lifecycle scripts in the dependency tree");
 console.error("  - regenerate/check coding-agent install lock if release deps changed");
+console.error("  - confirm bun.lock still matches package-lock.json (bun run check:lockfiles)");
 
 const summary = changes ? summarizeLockfileChange(changes) : [];
 if (summary.length > 0) {

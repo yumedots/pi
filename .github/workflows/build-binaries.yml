@@ -50,7 +50,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Hydrate release model data
-        run: npm run hydrate:model-data
+        run: bun run hydrate:model-data
 
       - name: Create source archive
         run: |
@@ -326,6 +326,18 @@ jobs:
           ref: ${{ env.SOURCE_REF }}
           persist-credentials: false
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+
+      - name: Cache Bun packages
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -340,7 +352,7 @@ jobs:
           sudo ln -s $(which fdfind) /usr/local/bin/fd
 
       - name: Install dependencies
-        run: npm ci --ignore-scripts
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Download pi-env daemons
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -361,19 +373,19 @@ jobs:
           ls -lR packages/env/bin
 
       - name: Build
-        run: npm run build
+        run: bun run build
 
       - name: Check
-        run: npm run check
+        run: bun run check
 
       - name: Build the pi-env daemon for tests
-        run: npm run build:daemon --workspace packages/env
+        run: bun run --filter '@earendil-works/pi-env' build:daemon
 
       - name: Test
-        run: npm test
+        run: PI_TEST_PACKAGE_MANAGER=bun ./test.sh
 
       - name: Smoke-test packed npm consumer
-        run: npm run check:package-install
+        run: bun run check:package-install
 
       - name: Upgrade npm for trusted publishing
         run: |

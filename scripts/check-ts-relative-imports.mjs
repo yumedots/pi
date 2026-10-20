@@ -10,7 +10,7 @@ import {
 	isNoSubstitutionTemplateLiteral,
 	isStringLiteral,
 } from "typescript/unstable/ast/is";
-import { API } from "typescript/unstable/sync";
+import { closeTypeScriptApi, createTypeScriptApi } from "./typescript-api.mjs";
 
 const ignoredDirectories = new Set([".git", "coverage", "dist", "node_modules"]);
 const files = [];
@@ -54,7 +54,7 @@ const config = JSON.stringify({
 	compilerOptions: { noResolve: true, noLib: true, types: [] },
 	files: files.map((file) => resolve(file)),
 });
-const api = new API({
+const api = createTypeScriptApi({
 	cwd: process.cwd(),
 	fs: {
 		fileExists: (fileName) => (resolve(fileName) === configPath ? true : undefined),
@@ -63,9 +63,11 @@ const api = new API({
 });
 
 try {
-	const program = api.updateSnapshot({ openProjects: [configPath] }).getProject(configPath).program;
+	const snapshot = await api.updateSnapshot({ openProjects: [configPath] });
+	const program = snapshot.getProject(configPath).program;
 	for (const file of files.sort()) {
-		const sourceFile = program.getSourceFile(resolve(file));
+		const sourceFile = await program.getSourceFile(resolve(file));
+		if (!sourceFile) continue;
 
 		function checkSpecifier(node) {
 			if (!isRelativeJavaScriptSpecifier(node.text)) return;
@@ -95,7 +97,7 @@ try {
 		visit(sourceFile);
 	}
 } finally {
-	api.close();
+	await closeTypeScriptApi(api);
 }
 
 if (failures.length > 0) {

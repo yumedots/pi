@@ -1,0 +1,26 @@
+# Bun configuration for the Pi monorepo.
+#
+# Bun drives the dev, build, test and CI pipeline. npm stays in the tree for
+# the published packages (see MIGRATION.md), so the two settings below have to
+# agree with .npmrc.
+
+[install]
+# .npmrc sets save-exact=true for npm. Bun has its own switch for it.
+exact = true
+
+# .npmrc sets min-release-age=2, which npm reads as days. Bun counts seconds,
+# so the same window is 2 * 24 * 60 * 60 here. Without this, a dependency
+# published minutes ago could enter a Bun install while npm would refuse it.
+minimumReleaseAge = 172800
+
+# Hoisted node_modules, like npm. The repository's scripts, the tsc project
+# references and the nix build all assume npm's layout, and an isolated install
+# would need every workspace to declare the packages it reaches for.
+linker = "hoisted"
+
+# Keep the tarball cache on disk. CI caches ~/.bun/install/cache.
+cache = { disable = false, disableManifest = false }
+
+# Text lockfile (bun.lock) instead of the binary bun.lockb, so the lockfile is
+# reviewable in a diff.
+saveTextLockfile = true

@@ -1,7 +1,11 @@
+import { format } from "node:util";
+
 interface StdoutTakeoverState {
 	rawStdoutWrite: (chunk: string, callback?: (error?: Error | null) => void) => boolean;
 	rawStderrWrite: (chunk: string, callback?: (error?: Error | null) => void) => boolean;
 	originalStdoutWrite: typeof process.stdout.write;
+	originalConsoleLog: typeof console.log;
+	originalConsoleInfo: typeof console.info;
 }
 
 let stdoutTakeoverState: StdoutTakeoverState | undefined;
@@ -50,6 +54,8 @@ export function takeOverStdout(): void {
 	const rawStdoutWrite = process.stdout.write.bind(process.stdout) as StdoutTakeoverState["rawStdoutWrite"];
 	const rawStderrWrite = process.stderr.write.bind(process.stderr) as StdoutTakeoverState["rawStderrWrite"];
 	const originalStdoutWrite = process.stdout.write;
+	const originalConsoleLog = console.log;
+	const originalConsoleInfo = console.info;
 
 	process.stdout.write = ((
 		chunk: string | Uint8Array,
@@ -62,10 +68,20 @@ export function takeOverStdout(): void {
 		return rawStderrWrite(String(chunk), callback);
 	}) as typeof process.stdout.write;
 
+	// On Node, console.log goes through process.stdout.write, so the takeover
+	// above already covers it. Bun's console writes to the file descriptor
+	// directly and never reaches process.stdout.write, so route it explicitly.
+	console.log = (...args: unknown[]) => {
+		rawStderrWrite(`${format(...args)}\n`);
+	};
+	console.info = console.log;
+
 	stdoutTakeoverState = {
 		rawStdoutWrite,
 		rawStderrWrite,
 		originalStdoutWrite,
+		originalConsoleLog,
+		originalConsoleInfo,
 	};
 }
 
@@ -75,6 +91,8 @@ export function restoreStdout(): void {
 	}
 
 	process.stdout.write = stdoutTakeoverState.originalStdoutWrite;
+	console.log = stdoutTakeoverState.originalConsoleLog;
+	console.info = stdoutTakeoverState.originalConsoleInfo;
 	stdoutTakeoverState = undefined;
 }
 

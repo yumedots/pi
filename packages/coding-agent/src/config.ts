@@ -1,10 +1,9 @@
 import { accessSync, constants, existsSync, readFileSync, realpathSync } from "fs";
 import { createRequire } from "module";
-import { homedir } from "os";
 import { basename, dirname, join, resolve, sep, win32 } from "path";
 import { fileURLToPath } from "url";
 import { spawnProcessSync } from "./utils/child-process.ts";
-import { normalizePath } from "./utils/paths.ts";
+import { getHomeDirectory, normalizePath } from "./utils/paths.ts";
 import { stripBom } from "./utils/text.ts";
 
 // =============================================================================
@@ -21,8 +20,17 @@ const __dirname = dirname(__filename);
 export const isBunBinary =
 	import.meta.url.includes("$bunfs") || import.meta.url.includes("~BUN") || import.meta.url.includes("%7EBUN");
 
-/** Detect if Bun is the runtime (compiled binary or bun run) */
-export const isBunRuntime = !!process.versions.bun;
+/**
+ * Detect if Bun is the runtime (compiled binary or bun run).
+ *
+ * Read at call time rather than captured when this module loads. The value
+ * cannot change while the process runs, but the install method has to answer
+ * for the runtime that is running right now, and reading it lazily lets the
+ * tests exercise the install-path detection on Bun as well.
+ */
+export function isBunRuntime(): boolean {
+	return !!process.versions.bun;
+}
 
 /** Detect the esbuild-bundled Node.js distribution. */
 declare const PI_BUNDLED_NODE: boolean;
@@ -89,7 +97,7 @@ export function detectInstallMethod(): InstallMethod {
 	if (resolvedPath.includes("/yarn/") || resolvedPath.includes("/.yarn/")) {
 		return "yarn";
 	}
-	if (isBunRuntime || resolvedPath.includes("/install/global/node_modules/")) {
+	if (isBunRuntime() || resolvedPath.includes("/install/global/node_modules/")) {
 		return "bun";
 	}
 	if (resolvedPath.includes("/npm/") || resolvedPath.includes("/node_modules/")) {
@@ -221,7 +229,7 @@ function getGlobalPackageRoots(method: InstallMethod, _packageName: string, npmC
 				const bunBin = readCommandOutput(command, [...npmArgs, "pm", "bin", "-g"], {
 					requireSuccess: true,
 				});
-				const roots = [join(homedir(), ".bun", "install", "global", "node_modules")];
+				const roots = [join(getHomeDirectory(), ".bun", "install", "global", "node_modules")];
 				if (bunBin) {
 					roots.push(join(dirname(bunBin), "install", "global", "node_modules"));
 				}
@@ -245,7 +253,7 @@ function getGlobalPackageRoots(method: InstallMethod, _packageName: string, npmC
 		}
 		case "bun": {
 			const bunBin = readCommandOutput("bun", ["pm", "bin", "-g"]);
-			const roots = [join(homedir(), ".bun", "install", "global", "node_modules")];
+			const roots = [join(getHomeDirectory(), ".bun", "install", "global", "node_modules")];
 			if (bunBin) {
 				roots.push(join(dirname(bunBin), "install", "global", "node_modules"));
 			}
@@ -607,7 +615,7 @@ export function getAgentDir(): string {
 	if (envDir) {
 		return expandTildePath(envDir);
 	}
-	return join(homedir(), CONFIG_DIR_NAME, "agent");
+	return join(getHomeDirectory(), CONFIG_DIR_NAME, "agent");
 }
 
 /** Get path to user's custom themes directory */

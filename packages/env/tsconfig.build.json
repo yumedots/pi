@@ -1,6 +1,8 @@
 {
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
+		"incremental": true,
+		"tsBuildInfoFile": "./dist/tsconfig.build.tsbuildinfo",
 		"outDir": "./dist",
 		"paths": {
 			"@earendil-works/chord": ["../chord/dist/index.d.ts"],
