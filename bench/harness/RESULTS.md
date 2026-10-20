@@ -34,40 +34,28 @@ package serves requests in **9.6 MB**, and an empty native process starts in
 
 ## The agent
 
-| Scenario | Runtime | Wall | Peak RSS | Settled RSS | CPU | Instructions | First screen | First token | Turn | Tokens |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| runtime-floor | node | 96.9 ms | 37.5 MB | - | 0.09 s | 1295M | - | - | - | - |
-| runtime-floor | bun | 9.1 ms | 17.3 MB | - | 0.00 s | 55M | - | - | - | - |
-| runtime-floor | deno | 34.2 ms | 39.5 MB | - | 0.03 s | 305M | - | - | - | - |
-| runtime-floor | native | 3.2 ms | 1.1 MB | - | 0.00 s | 8M | - | - | - | - |
-| cli-version | node | 344.0 ms | 119.0 MB | - | 0.38 s | 4550M | - | - | - | - |
-| cli-version | bun | 149.9 ms | 88.2 MB | - | 0.40 s | 2271M | - | - | - | - |
-| cli-version | binary | 167.6 ms | 91.4 MB | - | 0.20 s | 2056M | - | - | - | - |
-| tui-first-screen | node | 681.8 ms | 141.8 MB | - | 0.60 s | 6377M | 681.8 ms | - | - | - |
-| tui-first-screen | bun | 422.0 ms | 135.8 MB | - | 0.62 s | 3609M | 422.0 ms | - | - | - |
-| tui-first-screen | binary | 463.6 ms | 132.8 MB | - | 0.33 s | 3267M | 463.6 ms | - | - | - |
-| rpc-first-screen | node | 424.5 ms | 137.1 MB | 137.1 MB | 0.51 s | 5887M | 424.5 ms | - | - | - |
-| rpc-first-screen | bun | 204.9 ms | 112.8 MB | 112.6 MB | 0.52 s | 3166M | 204.9 ms | - | - | - |
-| rpc-first-screen | binary | 227.1 ms | 113.1 MB | 112.9 MB | 0.28 s | 2941M | 227.1 ms | - | - | - |
-| rpc-turn | node | 418.3 ms | 157.8 MB | 136.8 MB | 0.61 s | 6730M | 418.3 ms | 1024.8 ms | 1037.7 ms | 4688 |
-| rpc-turn | bun | 212.0 ms | 126.3 MB | 112.8 MB | 0.63 s | 3648M | 212.0 ms | 1456.3 ms | 1504.3 ms | 4669 |
-| rpc-turn | binary | 227.5 ms | 120.9 MB | 112.7 MB | 0.33 s | 3179M | 227.5 ms | 3013.1 ms | 3029.3 ms | 4672 |
-| build | toolchain | 7627.9 ms | 999.5 MB | - | 18.33 s | 1900M | - | - | - | - |
-
-- `tui-first-screen` measures the interactive mode until it draws its first
-  screen, in a terminal, through `PI_STARTUP_BENCHMARK=1`. The agent reports
-  its own phases: 102 ms on Node and 82 ms on Bun from the first line of
-  `main` to the first screen.
-- `rpc-first-screen` measures the headless mode until it answers the first
-  state request.
-- `rpc-turn` sends one message and waits for the answer. The message goes out
-  after the session is up, so the round trip does not include the startup.
-- **Settled RSS** is what the process holds once it is up, without the
-  transient of the startup. The peak of a turn is 21 MB above it on Node: that
-  is the request, the answer and the model catalog.
-- `build` is the whole workspace built from source: every package compiled
-  with tsc and the coding agent bundled. It takes 7.6 s of wall time, 18.3 s
-  of cpu time and 1 GB of memory at its peak.
+| Scenario | Runtime | Wall | Peak RSS | Settled RSS | CPU | Instructions | First screen | Turn | Tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| runtime-floor | node | 94.2 ms | 37.5 MB | - | 0.08 s | 1293M | - | - | - |
+| runtime-floor | bun | 8.6 ms | 17.5 MB | - | 0.00 s | 56M | - | - | - |
+| runtime-floor | deno | 32.8 ms | 39.5 MB | - | 0.02 s | 313M | - | - | - |
+| runtime-floor | native | 3.0 ms | 1.1 MB | - | 0.00 s | 8M | - | - | - |
+| cli-version | node | 333.0 ms | 114.9 MB | - | 0.37 s | 4374M | - | - | - |
+| cli-version | bun | 141.0 ms | 86.5 MB | - | 0.34 s | 2067M | - | - | - |
+| cli-version | binary | 154.8 ms | 88.3 MB | - | 0.16 s | 1839M | - | - | - |
+| tui-first-screen | node | 672.8 ms | 140.9 MB | - | 0.58 s | 6338M | 672.8 ms | - | - |
+| tui-first-screen | bun | 416.1 ms | 136.3 MB | - | 0.59 s | 3572M | 416.1 ms | - | - |
+| tui-first-screen | binary | 465.9 ms | 134.7 MB | - | 0.34 s | 3257M | 465.9 ms | - | - |
+| **tui-idle** (the agent waits) | node | - | - | **159.9 MB** | - | - | - | - | - |
+| **tui-idle** | bun | - | - | **137.3 MB** | - | - | - | - | - |
+| **tui-idle** | binary | - | - | **141.3 MB** | - | - | - | - | - |
+| rpc-first-screen | node | 432.9 ms | 133.3 MB | 133.3 MB | 0.52 s | 5704M | 432.9 ms | - | - |
+| rpc-first-screen | bun | 204.7 ms | 110.5 MB | 110.3 MB | 0.49 s | 2971M | 204.7 ms | - | - |
+| rpc-first-screen | binary | 225.5 ms | 111.3 MB | 111.0 MB | 0.27 s | 2757M | 225.5 ms | - | - |
+| rpc-turn | node | 431.8 ms | 156.8 MB | 133.2 MB | 0.62 s | 6605M | 431.8 ms | 3557.8 ms | 5037 |
+| rpc-turn | bun | 223.6 ms | 123.3 MB | 110.4 MB | 0.59 s | 3429M | 223.6 ms | 1228.7 ms | 5037 |
+| rpc-turn | binary | 241.0 ms | 118.8 MB | 110.4 MB | 0.35 s | 3041M | 241.0 ms | 6928.1 ms | 5040 |
+| build | toolchain | 3333.5 ms | 1009.5 MB | - | 9.59 s | 1885M | - | - | - |
 
 ### The two halves of a message
 
@@ -156,39 +144,54 @@ Two things come out of it:
   not collected. A heap cap of 48 MB (`--max-old-space-size=48`) keeps the
   peak of the same run at 147.6 MB instead of 176.5 MB.
 
+## The build
+
+The build of the workspace went from a chain of `cd packages/X && npm run build`
+to a script that groups the packages into levels of independent packages and
+builds a level at the same time, run with bun.
+
+| | Wall | Memory |
+| --- | --- | --- |
+| the chain, with npm | 7.10 s | 1.0 GB |
+| the levels, with npm | 5.25 s | 1.0 GB |
+| **the levels, with bun** | **2.23 s** | **308 MB** |
+
+Measured with hyperfine, 3 runs after a warmup. The install is 8.2x faster with
+bun than with npm on a warm cache (384 ms against 3.13 s), and the whole
+toolchain of the repository now runs on bun: `bun run build`, `bun run check`,
+`bun run test` and `bun install --frozen-lockfile`.
+
 ## Where the memory goes
 
-`node bench/harness/memory-attribution.mjs` imports the modules of the agent
-one group at a time and reports the resident set size after each group. The
-same script under Bun is 24 MB lower at every step.
+`node bench/harness/memory-attribution.mjs` measures the cost of every module
+of the agent on Node. The same script under Bun is lower at every step.
 
-| Step | Node | Delta | Bun | Delta |
-| --- | --- | --- | --- | --- |
-| the runtime itself | 13 MB | - | 5 MB | - |
-| typebox (the schema builder) | 25 MB | +12 MB | 23 MB | +18 MB |
-| typebox/compile (the schema compiler) | 33 MB | +8 MB | 26 MB | +3 MB |
-| undici (the http client) | 40 MB | +7 MB | 27 MB | +1 MB |
-| yaml (the config parser) | 40 MB | 0 MB | 28 MB | +1 MB |
-| the model catalog | 40 MB | 0 MB | 29 MB | +1 MB |
-| the pi-ai package | 41 MB | +1 MB | 30 MB | +1 MB |
-| the durable harness (the agent library) | 51 MB | +10 MB | 39 MB | +9 MB |
-| the terminal interface | 59 MB | +8 MB | 52 MB | +13 MB |
-| the tools and their schemas | 64 MB | +5 MB | 60 MB | +8 MB |
-| the settings | 65 MB | +1 MB | 60 MB | 0 MB |
-| the session | 83 MB | +18 MB | 66 MB | +6 MB |
-| the interactive mode | 97 MB | +14 MB | 73 MB | +7 MB |
+| Module | Cost |
+| --- | --- |
+| the runtime itself | +1 MB |
+| typebox (the schema builder) | +12 MB |
+| typebox/compile (the schema compiler) | +9 MB |
+| undici (the http client) | +6 MB |
+| the model catalog (every provider) | +10 MB |
+| the pi-ai package | +4 MB |
+| the terminal interface | +3 MB |
+| the syntax highlighter | +1 MB |
+| the tools and their schemas | +5 MB |
+| the settings | +1 MB |
+| the model runtime | +6 MB |
+| the session | +8 MB |
+| the interactive mode | +9 MB |
+
+Every step imports the modules before it, so the number is what the module
+adds on top of them.
 
 The three largest items are the schema builder (typebox, 12 MB), the schema
-compiler (typebox/compile, 8 MB) and the session with the terminal interface
-(26 MB together on Node). The schema costs are the price of the type safe
-tool, settings, model and theme schemas: they are built with typebox when the
-module is imported, and they are built in every process that imports the
-coding agent.
-
-The **durable harness** (the agent library of the `env` package, without the
-terminal interface) costs 10 MB on top of the pi-ai package: 51 MB on Node and
-39 MB on Bun. The application around it (the session manager, the settings, the
-resource loader, the extensions, the theme) is what adds the other 46 MB.
+compiler (typebox/compile, 9 MB) and the model catalog (10 MB). The schema
+costs are the price of the type safe tool, settings, model and theme schemas:
+they are built with typebox when the module is imported, and they are built in
+every process that imports the coding agent. The compiler is now loaded only
+when a file is validated, which is why the interactive mode holds 12 MB less
+on Bun than it did.
 
 The **model catalog** (every provider's model list) is 10 MB, and it is built
 when the providers are composed at startup. Only the picker needs the whole
@@ -220,6 +223,18 @@ commands and the built-in extensions load their interfaces when they run.
 [the token report](../tokens/RESULTS.md). The new `projectContextMaxChars`
 setting cuts the project context, which is the largest part of the prompt.
 
+## What this round changed
+
+**The schema compiler is loaded when a file is validated.** The settings, the
+models configuration, the themes and the keybindings were compiled with typebox
+when their module was imported, so the compiler was always in the process. An
+agent without a models.json, a custom theme or a keybindings.json never
+validates anything, and the compiler is one of the heavier modules of the
+agent: the interactive mode holds 12 MB less on Bun (147.0 MB against 159.9 MB
+on Node) and the headless mode 4 MB less.
+
+**The workspace builds in parallel, with bun.** See the build section above.
+
 ## What was not done, and why
 
 - **The schema builder was not replaced.** typebox and typebox/compile cost 20
@@ -228,10 +243,20 @@ setting cuts the project context, which is the largest part of the prompt.
   every tool, the settings, the model configuration and the themes, and it
   changes the public API of the ai package. It is a project of its own, not an
   optimization.
-- **The model catalog was not deferred.** It is 10 MB and only the picker
-  needs the whole list. The providers are composed at startup, and their
-  models are built with them; composing them one at a time, when their models
-  are asked for, is a change to the `Models` api of the ai package.
+- **The model catalog was not deferred.** It is 10 MB, the largest item that is
+  left, and only the picker needs the whole list: a request needs the model of
+  one provider. The providers are composed at startup and their models are
+  built with them, so deferring the catalog means creating the providers when
+  their models are asked for, which is a change to the `Models` api of the ai
+  package and to the model runtime of the coding agent. The plan is in the
+  paragraph above: the provider modules would be imported when they are needed
+  instead of when the catalog is built.
+- **The type safe schemas were not replaced.** The builder of typebox is 12 MB
+  and the tools build their schemas with it when the agent starts, so the
+  builder is in the process. A builder of the agent's own would remove it, but
+  the type inference of the tool arguments (`Static<typeof schema>`) is the
+  feature, and it is what the public api of the ai package hands to the
+  extensions.
 - **The http client was not deferred.** Loading undici later would free 7 MB
   while the agent waits, but the dispatcher has to be in place before the first
   request, and a request that skips the proxy is a broken proxy.

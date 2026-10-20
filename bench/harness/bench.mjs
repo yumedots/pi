@@ -298,6 +298,56 @@ function agentResidentSetSize(pid) {
 }
 
 /**
+ * A scenario that runs the interactive mode in a terminal and leaves it up.
+ *
+ * The interactive mode needs a terminal, so it runs in a tmux session. The memory
+ * it holds while it is up is the memory of the harness, without the transient of
+ * the startup.
+ */
+async function measureTuiIdle(runtime, env) {
+	const session = `pi-bench-${process.pid}-${Math.floor(performance.now())}`;
+	const stderrPath = join(tmpdir(), `pi-bench-${session}.log`);
+	rmSync(stderrPath, { force: true });
+	const command = [
+		`${TIME_BIN} -l`,
+		shellQuote(runtime.command),
+		...runtime.args.map(shellQuote),
+		`2>${shellQuote(stderrPath)}`,
+	].join(" ");
+	const envPrefix = Object.entries(env)
+		.map(([key, value]) => `${key}=${shellQuote(value)}`)
+		.join(" ");
+	spawnSync("tmux", ["kill-session", "-t", session]);
+	const startedAt = performance.now();
+	spawnSync("tmux", [
+		"new-session",
+		"-d",
+		"-s",
+		session,
+		"-x",
+		"120",
+		"-y",
+		"40",
+		"-c",
+		REPO_ROOT,
+		`${envPrefix} ${command}`,
+	]);
+	// The agent stays up. Its memory is read when the first screen is on it.
+	await new Promise((resolvePromise) => setTimeout(resolvePromise, 4000));
+	const settledRssBytes = readSessionMemory(session);
+	const wallMs = performance.now() - startedAt;
+	spawnSync("tmux", ["kill-session", "-t", session]);
+	await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
+	const stderr = existsSync(stderrPath) ? readFileSync(stderrPath, "utf8") : "";
+	rmSync(stderrPath, { force: true });
+	return {
+		wallMs,
+		...parseTimeReport(stderr),
+		settledRssBytes,
+	};
+}
+
+/**
  * A scenario that runs the interactive mode in a terminal.
  *
  * The interactive mode needs a terminal, so it runs in a tmux session. The agent
@@ -338,7 +388,10 @@ async function measureTui(runtime, env) {
 	while (Date.now() < deadline && !existsSync(donePath)) {
 		await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
 	}
+	// The agent exits by itself after the first screen, so the memory it holds while
+	// it is up is read from the process before it goes.
 	const wallMs = performance.now() - startedAt;
+	const settledRssBytes = readSessionMemory(session);
 	spawnSync("tmux", ["kill-session", "-t", session]);
 	const stderr = existsSync(stderrPath) ? readFileSync(stderrPath, "utf8") : "";
 	rmSync(stderrPath, { force: true });
@@ -346,8 +399,20 @@ async function measureTui(runtime, env) {
 	return {
 		wallMs,
 		...parseTimeReport(stderr),
+		settledRssBytes,
 		startupTimings: parseStartupTimings(stderr),
 	};
+}
+
+/** The resident set size of the agent in a tmux session, if it is still up. */
+function readSessionMemory(session) {
+	const pane = spawnSync("tmux", ["list-panes", "-t", session, "-F", "#{pane_pid}"], { encoding: "utf8" }).stdout.trim();
+	if (!pane) return undefined;
+	const children = spawnSync("pgrep", ["-P", pane], { encoding: "utf8" })
+		.stdout.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0);
+	return residentSetSize(children[0] ?? pane);
 }
 
 function shellQuote(value) {
@@ -574,6 +639,14 @@ async function main() {
 				measureTui(runtime, {
 					PI_TIMING: "1",
 					PI_STARTUP_BENCHMARK: "1",
+					...(agentDir ? { PI_CODING_AGENT_DIR: agentDir } : {}),
+				}),
+		},
+		{
+			name: "tui-idle",
+			description: "The interactive mode stays up, and the memory it holds is read.",
+			run: (runtime) =>
+				measureTuiIdle(runtime, {
 					...(agentDir ? { PI_CODING_AGENT_DIR: agentDir } : {}),
 				}),
 		},
