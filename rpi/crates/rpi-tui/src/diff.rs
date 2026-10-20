@@ -165,8 +165,8 @@ pub fn render_diff(diff_text: &str, width: usize) -> Vec<String> {
 
 /// Render one diff row with a themed gutter: `SIGN NUM│ body`.
 /// `body` may already carry ANSI (intra-line inverse highlights); `clip`
-/// handles that. The sign and the gutter rule use `gutter_color` so the
-/// colored body (red/green/dim) reads as the payload, not the chrome.
+/// handles that. The sign and the line number carry the row's own colour
+/// (pi paints the whole row in it); the gutter rule stays muted.
 fn render_diff_row(
     sign: char,
     line_num: &str,
@@ -179,8 +179,8 @@ fn render_diff_row(
     let num = format!("{num:>num_width$}", num = line_num, num_width = num_width);
     let gutter = format!(
         "{} {}{}",
-        gutter_color.fg(&sign.to_string()),
-        gutter_color.fg(&num),
+        body_color.fg(&sign.to_string()),
+        body_color.fg(&num),
         gutter_color.fg("│")
     );
     let body = format!(" {}", body_color.fg(body));
@@ -342,8 +342,11 @@ mod tests {
         let diff = " 5 context line";
         let lines = render_diff(diff, 80);
         assert_eq!(lines.len(), 1);
-        // Muted context color (Ansi256(244) by default — tool_diff_context).
-        assert!(lines[0].contains("\x1b[38;5;244m"), "context not dimmed");
+        // Muted context color (pi's toolDiffContext).
+        assert!(
+            lines[0].contains("\x1b[38;2;157;165;169m"),
+            "context not dimmed"
+        );
     }
 
     #[test]

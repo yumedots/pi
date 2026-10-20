@@ -124,7 +124,10 @@ impl ImageTool {
                 bytes.len()
             ))],
             details: output,
+            structured_content: None,
+            is_error: false,
             usage: None,
+            
             added_tool_names: vec![],
             terminate: false,
         })
@@ -162,7 +165,10 @@ impl ImageTool {
                 processed.len()
             ))],
             details: output,
+            structured_content: None,
+            is_error: false,
             usage: None,
+            
             added_tool_names: vec![],
             terminate: false,
         })
@@ -200,7 +206,10 @@ impl ImageTool {
                 processed.len()
             ))],
             details: output,
+            structured_content: None,
+            is_error: false,
             usage: None,
+            
             added_tool_names: vec![],
             terminate: false,
         })
@@ -247,7 +256,10 @@ impl ImageTool {
                 processed.len()
             ))],
             details: output,
+            structured_content: None,
+            is_error: false,
             usage: None,
+            
             added_tool_names: vec![],
             terminate: false,
         })

@@ -24,6 +24,9 @@ base64 = "0.22"
 similar = { version = "2", features = ["text", "unicode"] }
 pulldown-cmark = { version = "0.12", default-features = false }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["consoleapi", "processenv", "winbase", "wincon", "winuser"] }
 

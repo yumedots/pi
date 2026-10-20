@@ -248,7 +248,8 @@ function tsCommand({ cwd, agentDir, clock }) {
 function rustCommand({ cwd, agentDir, clock }) {
 	return [
 		`cd ${cwd} &&`,
-		`RPI_CODING_AGENT_DIR=${agentDir}`,
+		`PI_CODING_AGENT_DIR=${agentDir}`,
+		`PI_CODING_AGENT_DIR=${agentDir}`,
 		`PI_PARITY_CLOCK=${clock}`,
 		RUST_BIN,
 		"--offline --provider mock --model mock/mock-1 --api-key parity-key",
@@ -266,7 +267,11 @@ function drive(side, { cwd, agentDir, clock }, keys) {
 	try {
 		spawnSync("sleep", ["6"]);
 		for (const key of keys) {
-			tmux(["send-keys", "-t", session, key]);
+			try {
+				tmux(["send-keys", "-t", session, key]);
+			} catch {
+				break;
+			}
 			spawnSync("sleep", ["1"]);
 		}
 		if (keys.includes("Enter")) spawnSync("sleep", ["5"]);

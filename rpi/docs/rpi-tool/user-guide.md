@@ -287,14 +287,14 @@ rpi 会优先使用 rpi 自己的目录，同时兼容原 Pi 的 `.pi` 布局：
 
 ```json
 {
-  "skillDirs": ["./team-skills"],
-  "promptDirs": ["./prompts/shared"],
-  "extensionDirs": ["./target/debug"],
+  "skills": ["./team-skills"],
+  "prompts": ["./prompts/shared"],
+  "extensions": ["./target/debug"],
   "packages": ["./packages/review-tools"]
 }
 ```
 
-路径相对于项目根目录；`skills`、`prompts`、`extensions` 是对应 `*Dirs` 字段的简写。自定义目录会与 `.rpi`、`.pi` 和全局约定目录一起加载，`.rpi` 优先。全局 `~/.rpi/agent/settings.json` 也支持这些字段，相对路径相对于 agent 目录。
+路径相对于项目根目录；`skillDirs`、`promptDirs`、`extensionDirs` 是对应 `skills`、`prompts`、`extensions` 字段的旧写法，仍然可读。自定义目录会与 `.rpi`、`.pi` 和全局约定目录一起加载，`.rpi` 优先。全局 `~/.rpi/agent/settings.json` 也支持这些字段，相对路径相对于 agent 目录。
 
 只加载当前项目的 package/resource、排除全局资源时，使用以下任一等价参数：
 

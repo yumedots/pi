@@ -1,6 +1,6 @@
 //! Text component for simple text rendering.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use std::any::Any;
 
@@ -11,6 +11,8 @@ pub struct Text {
     content: Mutex<String>,
     padding_x: usize,
     padding_y: usize,
+    /// Paints the row with a background, like the original's `customBgFn`.
+    background: Mutex<Option<Arc<dyn Fn(&str) -> String + Send + Sync>>>,
     /// Render cache keyed by (content, width). A finalized `Text` row is
     /// re-rendered on every repaint of a long transcript; caching the wrapped
     /// lines keeps that cheap. Mirrors upstream `Text.cachedText/cachedLines`.
@@ -32,8 +34,18 @@ impl Text {
             content: Mutex::new(content.into()),
             padding_x,
             padding_y,
+            background: Mutex::new(None),
             cache: Mutex::new(None),
         }
+    }
+
+    /// Paint every row with a background, like the original's
+    /// `setCustomBgFn`.
+    pub fn set_background(&self, background: Option<Arc<dyn Fn(&str) -> String + Send + Sync>>) {
+        if let Ok(mut guard) = self.background.lock() {
+            *guard = background;
+        }
+        self.invalidate();
     }
 
     /// Set the text content.
@@ -70,37 +82,51 @@ impl Component for Text {
 
         let mut lines = Vec::new();
 
-        // Add top padding
-        for _ in 0..self.padding_y {
-            lines.push(String::new());
+        // A blank text draws nothing at all.
+        if content.trim().is_empty() {
+            if let Ok(mut cache) = self.cache.lock() {
+                *cache = Some(TextCache {
+                    content,
+                    width,
+                    theme_revision,
+                    lines: Vec::new(),
+                });
+            }
+            return Vec::new();
         }
 
-        // Render each line with horizontal padding, WORD-WRAPPING to the
-        // content width (pi text.ts: wrapTextWithAnsi) instead of truncating —
-        // long model output flows onto continuation lines rather than being
-        // cut. Each wrapped line carries the padding prefix (matching pi's
-        // per-line padding).
-        let pad = " ".repeat(self.padding_x);
-        let content_width = width.saturating_sub(self.padding_x).max(1);
-        for line in content.lines() {
-            let wrapped = crate::utils::wrap_text_with_ansi(line, content_width);
-            for wl in wrapped {
-                if self.padding_x > 0 {
-                    lines.push(format!("{pad}{wl}"));
-                } else {
-                    lines.push(wl);
-                }
+        // The margins sit on both sides, so the text wraps inside them.
+        let padding_x = self.padding_x.min(width.saturating_sub(1) / 2);
+        let content_width = width.saturating_sub(padding_x * 2).max(1);
+        let left_margin = " ".repeat(padding_x);
+        let right_margin = " ".repeat(padding_x);
+
+        let normalized = content.replace('\t', "   ");
+        for line in crate::utils::wrap_text_with_ansi(&normalized, content_width) {
+            let with_margins = format!("{left_margin}{line}{right_margin}");
+            let visible = crate::ansi::visible_width(&with_margins);
+            let padded = format!("{with_margins}{}", " ".repeat(width.saturating_sub(visible)));
+            let background = self.background.lock().ok().and_then(|guard| guard.clone());
+            match background {
+                Some(background) => lines.push(background(&padded)),
+                None => lines.push(padded),
             }
         }
 
-        // Add bottom padding
+        let empty_line = " ".repeat(width);
+        let mut result = Vec::with_capacity(lines.len() + self.padding_y * 2);
         for _ in 0..self.padding_y {
-            lines.push(String::new());
+            result.push(empty_line.clone());
         }
-
-        if lines.is_empty() {
-            lines.push(String::new());
+        result.extend(lines);
+        for _ in 0..self.padding_y {
+            result.push(empty_line.clone());
         }
+        let lines = if result.is_empty() {
+            vec![String::new()]
+        } else {
+            result
+        };
 
         if let Ok(mut cache) = self.cache.lock() {
             *cache = Some(TextCache {
@@ -128,6 +154,36 @@ impl Component for Text {
 mod tests {
     use super::*;
     use crate::component::Component;
+
+    #[test]
+    fn the_text_insets_both_sides_and_pads_the_row() {
+        let warning = "Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.";
+        let text = Text::new(warning, 1, 0);
+        let lines = text.render(100);
+        assert_eq!(lines.len(), 2);
+        // The text wraps inside the margins, so the row is 98 columns wide.
+        assert!(lines[0].starts_with(' '), "{:?}", lines[0]);
+        assert!(lines[0].trim_end().ends_with("extended-keys"), "{:?}", lines[0]);
+        assert_eq!(crate::ansi::visible_width(&lines[0]), 100);
+        assert_eq!(crate::ansi::visible_width(&lines[1]), 100);
+        assert!(lines[1].starts_with(" on`"), "{:?}", lines[1]);
+    }
+
+    #[test]
+    fn a_blank_text_draws_nothing() {
+        let text = Text::new("   ", 1, 1);
+        assert!(text.render(40).is_empty());
+    }
+
+    #[test]
+    fn the_background_paints_the_whole_row() {
+        let text = Text::new("hi", 0, 0);
+        text.set_background(Some(Arc::new(|line: &str| format!("\x1b[44m{line}\x1b[0m"))));
+        let lines = text.render(10);
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].starts_with("\x1b[44m"), "{:?}", lines[0]);
+        assert_eq!(crate::ansi::visible_width(&lines[0]), 10);
+    }
 
     /// Regression: rendering a line wider than the layout column used to
     /// byte-slice `padded[..width]` and panic mid-character on multi-byte

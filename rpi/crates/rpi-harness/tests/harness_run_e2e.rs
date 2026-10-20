@@ -120,6 +120,8 @@ async fn harness_with_options(
         transform_context: None,
         entry_transforms: Vec::new(),
         provider_hooks: None,
+        prepare_request: None,
+        finish_turn: None,
         allow_existing_session: false,
     };
 
@@ -563,6 +565,8 @@ async fn harness_forwards_after_tool_call_option_into_loop() {
             transform_context: None,
             entry_transforms: Vec::new(),
             provider_hooks: None,
+            prepare_request: None,
+            finish_turn: None,
             allow_existing_session: false,
         };
         let harness = AgentHarness::create(options).await.expect("create harness");
@@ -719,6 +723,8 @@ async fn harness_fires_provider_hooks_before_request_per_call() {
             transform_context: None,
             entry_transforms: Vec::new(),
             provider_hooks: Some(hooks),
+            prepare_request: None,
+            finish_turn: None,
             allow_existing_session: false,
         };
         let harness = AgentHarness::create(options).await.expect("create harness");
@@ -865,6 +871,8 @@ async fn provider_hooks_can_replace_the_system_prompt_the_model_sees() {
         transform_context: None,
         entry_transforms: Vec::new(),
         provider_hooks: Some(Arc::new(AppendHooks) as Arc<dyn ProviderHooks>),
+        prepare_request: None,
+        finish_turn: None,
         allow_existing_session: false,
     };
     let harness = AgentHarness::create(options).await.expect("create harness");
@@ -1337,6 +1345,8 @@ async fn reopen_harness(session: rpi_harness::session::session::Session) -> Agen
         transform_context: None,
         entry_transforms: Vec::new(),
         provider_hooks: None,
+        prepare_request: None,
+        finish_turn: None,
         allow_existing_session: true,
     };
     AgentHarness::create(options)
@@ -1606,6 +1616,8 @@ async fn harness_with_hanging_tool(script: FauxScript) -> (AgentHarness, Arc<Fau
         transform_context: None,
         entry_transforms: Vec::new(),
         provider_hooks: None,
+        prepare_request: None,
+        finish_turn: None,
         allow_existing_session: false,
     };
     let harness = AgentHarness::create(options).await.expect("create harness");
@@ -2110,6 +2122,8 @@ async fn replayable_harness_full(
         transform_context: None,
         entry_transforms: Vec::new(),
         provider_hooks: None,
+        prepare_request: None,
+        finish_turn: None,
         allow_existing_session,
     };
     AgentHarness::create(options).await.expect("create harness")
@@ -2336,6 +2350,7 @@ fn tool_result_of(call_id: &str, name: &str) -> rpi_ai::types::ToolResultMessage
         usage: None,
         added_tool_names: Vec::new(),
         is_error: false,
+        duration_ms: None,
         timestamp: 0,
     }
 }

@@ -30,27 +30,6 @@ pub struct OpenAiResponsesProvider {
     http: reqwest::Client,
     models: Vec<Model>,
 }
-pub fn openai_responses_models() -> Vec<Model> {
-    let mut model = Model::new(
-        "gpt-6-astra",
-        "GPT-6 Astra",
-        Api::OpenaiResponses,
-        "openai",
-        "https://api.openai.com/v1",
-    );
-    model.reasoning = true;
-    model.context_window = 1_000_000;
-    model.max_tokens = 128_000;
-    model.compat = Some(StreamingProtocolCompat::OpenaiResponses(
-        crate::model::OpenaiResponsesCompat {
-            supports_developer_role: Some(true),
-            supports_long_cache_retention: Some(true),
-            supports_strict_mode: Some(true),
-            supports_openai_grammar_tools: Some(true),
-        },
-    ));
-    vec![model]
-}
 impl OpenAiResponsesProvider {
     pub fn with_models(
         id: impl Into<String>,
@@ -1170,6 +1149,16 @@ async fn run_stream(
             headers.insert(k.clone(), v.clone());
         }
     }
+    if let Some((name, value)) =
+        crate::model::opencode_session_header(model, opts.session_id.as_deref())
+    {
+        if !headers
+            .keys()
+            .any(|existing| existing.eq_ignore_ascii_case(name))
+        {
+            headers.insert(name.to_string(), value);
+        }
+    }
     let key = resolve_api_key(&provider_key, opts, allow_env_api_key);
     apply_api_key(&mut headers, key);
     if !headers
@@ -1180,13 +1169,13 @@ async fn run_stream(
         return;
     }
     let body = build_request(model, ctx, opts);
-    let url = responses_url(&model.base_url);
+    let url = responses_url(&crate::model::resolve_base_url(&model.base_url));
     let timeout = opts.request_timeout();
     let signal = opts.signal.clone();
     let response = retry_provider_request(move || { let http=http.clone(); let url=url.clone(); let body=body.clone(); let headers=headers.clone(); let signal=signal.clone(); async move {
         let mut req=http.post(&url).json(&body).timeout(timeout); for (k,v) in headers { req=req.header(k,v); }
         let response = tokio::select! { r=req.send()=>r.map_err(|e| AiError::Http{status:None,message:e.to_string()})?, _=signal.cancelled()=>return Err(AiError::Abort{message:"Request aborted".into()})};
-        if response.status().is_success() { Ok(response) } else { let status=response.status().as_u16(); let msg=response.text().await.unwrap_or_default(); Err(AiError::Http{status:Some(status),message:msg}) }
+        if response.status().is_success() { Ok(response) } else { let status=response.status().as_u16(); let msg=response.text().await.unwrap_or_default(); Err(AiError::Http{status:Some(status),message:format!("{status}: {}", crate::error::pick_body_text(&msg))}) }
     }}, opts.max_retries, opts.max_retry_delay, &opts.signal).await;
     let response = match response {
         Ok(r) => r,
@@ -2559,6 +2548,7 @@ mod tests {
             usage: None,
             added_tool_names: Vec::new(),
             is_error: false,
+            duration_ms: None,
             timestamp: 2,
         }
         .into()
@@ -2714,6 +2704,7 @@ mod tests {
             usage: None,
             added_tool_names: Vec::new(),
             is_error: false,
+            duration_ms: None,
             timestamp: 2,
         };
         let context = Context {
@@ -2812,6 +2803,7 @@ mod tests {
             usage: None,
             added_tool_names: Vec::new(),
             is_error: false,
+            duration_ms: None,
             timestamp: 2,
         };
         let context = Context {

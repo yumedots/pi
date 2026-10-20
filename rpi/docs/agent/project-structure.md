@@ -40,7 +40,7 @@ my-agent/
 │       ├── core.rs            # run_tool 单一入口 + 领域逻辑
 │       └── content.rs         # AgentTool 适配器（内嵌 Agent 用）
 ├── .rpi/
-│   ├── settings.json          # skillDirs / promptDirs / extensionDirs / defaultTools
+│   ├── settings.json          # skills / prompts / extensions / defaultTools
 │   └── extensions/            # 编译后的 cdylib（生成物，不提交）
 └── tests/
     └── behavior.rs
@@ -240,7 +240,7 @@ handle，`poll` 必须非阻塞并响应取消标记，`cancel` 只置位不释�
 
 ```json
 {
-  "skillDirs": ["./skills"],
+  "skills": ["./skills"],
   "defaultTools": ["read", "bash", "edit", "write", "docs"]
 }
 ```

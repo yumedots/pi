@@ -60,7 +60,9 @@ async fn loads_markdown_templates_non_recursively_from_dirs() {
         PromptTemplate {
             name: "one".to_string(),
             description: Some("One template".to_string()),
-            content: "Hello $1".to_string()
+            argument_hint: None,
+            content: "Hello $1".to_string(),
+            file_path: result.prompt_templates[0].file_path.clone(),
         }
     );
     assert_eq!(
@@ -68,7 +70,9 @@ async fn loads_markdown_templates_non_recursively_from_dirs() {
         PromptTemplate {
             name: "two".to_string(),
             description: Some("First line description".to_string()),
+            argument_hint: None,
             content: "First line description\nBody".to_string(),
+            file_path: result.prompt_templates[1].file_path.clone(),
         }
     );
 }
@@ -171,7 +175,9 @@ fn format_invocation_substitutes_command_arguments() {
     let t = PromptTemplate {
         name: "one".to_string(),
         description: None,
+        argument_hint: None,
         content: "$1 ${@:2} $ARGUMENTS".to_string(),
+        file_path: None,
     };
     let out =
         format_prompt_template_invocation(&t, &["hello world".to_string(), "test".to_string()]);

@@ -194,6 +194,22 @@ impl SessionState {
                 self.entries.push(entry.clone());
                 self.entries_by_id
                     .insert(entry.id().to_string(), entry.clone());
+                match &entry {
+                    Entry::SessionInfo(info) => {
+                        self.name = info.name.clone();
+                    }
+                    Entry::Label(label) => {
+                        match &label.label {
+                            Some(text) => {
+                                self.labels.insert(label.target_id.clone(), text.clone());
+                            }
+                            None => {
+                                self.labels.remove(&label.target_id);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
                 if let Some(lane_name) = lane.as_deref() {
                     if let Some(slot) = self.lanes.get_mut(lane_name) {
                         *slot = Some(entry.id().to_string());

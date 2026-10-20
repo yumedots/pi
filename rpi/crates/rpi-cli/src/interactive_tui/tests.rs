@@ -2,39 +2,32 @@ use super::*;
 use rpi_tui::Component;
 
 #[test]
-fn changelog_command_shows_current_release_and_all_is_explicit() {
+fn changelog_command_shows_the_originals_entries() {
     let entries = crate::changelog::bundled_entries();
-    let latest = crate::changelog::latest_release(&entries, crate::VERSION);
-    let heading = |entry: &crate::changelog::ChangelogEntry| {
-        format!("{}.{}.{}", entry.major, entry.minor, entry.patch)
-    };
-    let latest_heading = heading(&latest[0]);
-    let historical_heading = heading(entries.last().unwrap());
+    let newest = entries.first().unwrap();
+    let oldest = entries.last().unwrap();
     let chat = Arc::new(Container::new());
     add_changelog_message(&chat);
     let output = strip_ansi(&chat.render(120).join("\n"));
-    assert!(output.lines().any(|line| line.trim() == latest_heading));
-    assert!(!output.lines().any(|line| line.trim() == historical_heading));
-    assert!(!output.contains("Native parity phase 1"));
-    let chat = Arc::new(Container::new());
-    add_changelog_message_with_scope(&chat, true);
-    let output = strip_ansi(&chat.render(120).join("\n"));
-    assert!(output.lines().any(|line| line.trim() == historical_heading));
-    assert!(output.lines().any(|line| line.trim() == latest_heading));
+    assert!(output.contains("What's New"));
+    assert!(output.contains(&newest.version()));
+    assert!(output.contains(&oldest.version()));
+    let markdown = crate::changelog::changelog_markdown(&entries);
+    assert!(markdown.contains("https://github.com/earendil-works/pi/"));
 }
 
 #[test]
-fn startup_changelog_foreign_profile_is_shown_once_and_persisted() {
+fn startup_changelog_shows_the_originals_note_once_and_persisted() {
     const CHILD: &str = "RPI_CHANGELOG_REGRESSION_CHILD";
     if std::env::var_os(CHILD).is_none() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("settings.json"),
-            r#"{"lastChangelogVersion":"0.85.1","custom":{"retained":true}}"#,
+            r#"{"lastChangelogVersion":"1.2.0","custom":{"retained":true}}"#,
         )
         .unwrap();
         let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "interactive_tui::tests::startup_changelog_foreign_profile_is_shown_once_and_persisted", "--nocapture"])
+            .args(["--exact", "interactive_tui::tests::startup_changelog_shows_the_originals_note_once_and_persisted", "--nocapture"])
             .env(CHILD, "1").env(crate::config::CONFIG_DIR_ENV, dir.path()).output().unwrap();
         assert!(
             output.status.success(),
@@ -52,55 +45,56 @@ fn startup_changelog_foreign_profile_is_shown_once_and_persisted() {
             let harness = AgentHarness::create(Default::default()).await.unwrap();
             let settings = crate::settings::load_settings().unwrap();
             let chat = Arc::new(Container::new());
-            maybe_add_startup_changelog(&harness, &chat, &settings, false, true).await;
+            maybe_add_startup_changelog(&harness, &chat, &settings, false).await;
             let output = strip_ansi(&chat.render(120).join("\n"));
             assert!(output.contains("What's New"));
-            assert!(output.lines().any(|line| line.trim() == crate::VERSION));
-            let old = crate::changelog::bundled_entries().pop().unwrap();
-            let old_version = format!("{}.{}.{}", old.major, old.minor, old.patch);
-            assert!(!output.lines().any(|line| line.trim() == old_version));
+            assert!(output.contains("1.3.0"));
+            assert!(!output.contains("1.2.0"));
             let settings = crate::settings::load_settings().unwrap();
-            assert_eq!(
-                settings.last_rpi_changelog_version.as_deref(),
-                Some(crate::VERSION)
-            );
-            assert_eq!(settings.last_changelog_version.as_deref(), Some("0.85.1"));
+            assert_eq!(settings.last_changelog_version.as_deref(), Some("1.3.0"));
             let chat = Arc::new(Container::new());
-            maybe_add_startup_changelog(&harness, &chat, &settings, false, true).await;
+            maybe_add_startup_changelog(&harness, &chat, &settings, false).await;
             assert_eq!(chat.child_count(), 0);
             let value: serde_json::Value = serde_json::from_slice(
                 &std::fs::read(crate::config::settings_path().unwrap()).unwrap(),
             )
             .unwrap();
             assert_eq!(value["custom"]["retained"], true);
-            // A newer process may save a marker after this startup read its settings.
-            let mut stale = settings.clone();
-            let current_version = semver::Version::parse(crate::VERSION).unwrap();
-            let old = crate::changelog::bundled_entries()
-                .into_iter()
-                .find(|entry| {
-                    (entry.major, entry.minor, entry.patch)
-                        < (
-                            current_version.major,
-                            current_version.minor,
-                            current_version.patch,
-                        )
-                })
-                .unwrap();
-            stale.last_rpi_changelog_version =
-                Some(format!("{}.{}.{}", old.major, old.minor, old.patch));
-            let mut newer = settings;
-            let mut next_version = current_version;
-            next_version.patch += 1;
-            newer.last_rpi_changelog_version = Some(next_version.to_string());
-            crate::settings::save_settings(&newer).unwrap();
-            maybe_add_startup_changelog(&harness, &Arc::new(Container::new()), &stale, false, true)
-                .await;
+        });
+}
+
+#[test]
+fn a_fresh_install_shows_no_release_note() {
+    const CHILD: &str = "RPI_CHANGELOG_FRESH_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "interactive_tui::tests::a_fresh_install_shows_no_release_note", "--nocapture"])
+            .env(CHILD, "1").env(crate::config::CONFIG_DIR_ENV, dir.path()).output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let harness = AgentHarness::create(Default::default()).await.unwrap();
+            let settings = crate::settings::load_settings().unwrap();
+            let chat = Arc::new(Container::new());
+            maybe_add_startup_changelog(&harness, &chat, &settings, false).await;
+            assert_eq!(chat.child_count(), 0);
             assert_eq!(
                 crate::settings::load_settings()
                     .unwrap()
-                    .last_rpi_changelog_version,
-                Some(next_version.to_string())
+                    .last_changelog_version
+                    .as_deref(),
+                Some("1.3.0")
             );
         });
 }
@@ -108,16 +102,60 @@ fn startup_changelog_foreign_profile_is_shown_once_and_persisted() {
 #[test]
 fn collapsed_startup_changelog_links_to_full_notes() {
     let chat = Arc::new(Container::new());
-    add_startup_changelog_message(&chat, "## 0.3.17\n\n- full release detail", "0.3.17", true);
+    add_startup_changelog_message(
+        &chat,
+        "## [1.3.0] - 2026-10-15\n\n- full release detail",
+        "1.3.0",
+        true,
+    );
     let output = strip_ansi(&chat.render(120).join("\n"));
-    assert!(output.contains("Updated to v0.3.17"));
-    assert!(output.contains("/changelog"));
+    assert!(output.contains("Updated to v1.3.0"));
+    assert!(output.contains("Use /changelog to view full changelog."));
     assert!(!output.contains("full release detail"));
     let chat = Arc::new(Container::new());
-    add_startup_changelog_message(&chat, "## 0.3.17\n\n- full release detail", "0.3.17", false);
+    add_startup_changelog_message(
+        &chat,
+        "## [1.3.0] - 2026-10-15\n\n- full release detail",
+        "1.3.0",
+        false,
+    );
     let output = strip_ansi(&chat.render(120).join("\n"));
     assert!(output.contains("What's New"));
     assert!(output.contains("full release detail"));
+}
+
+#[test]
+fn the_help_listing_reads_like_the_original() {
+    let chat = Arc::new(Container::new());
+    add_help_message(&chat);
+    let output = strip_ansi(&chat.render(120).join("\n"));
+    assert!(output.contains("Open settings menu"));
+    assert!(output.contains("Select model (opens selector UI)"));
+    assert!(output.contains("Show changelog entries"));
+    assert!(output.contains("Show all keyboard shortcuts"));
+    assert!(output.contains("Quit pi"));
+    assert!(!output.contains("rpi"));
+}
+
+#[test]
+fn the_hotkeys_listing_reads_like_the_original() {
+    let chat = Arc::new(Container::new());
+    add_hotkeys_message(&chat);
+    let output = strip_ansi(&chat.render(120).join("\n"));
+    assert!(output.contains("Keyboard Shortcuts"));
+    assert!(output.contains("Move cursor / browse history"));
+    assert!(output.contains("Send message"));
+    assert!(output.contains("Slash commands"));
+    assert!(output.contains("Run bash command (excluded from context)"));
+}
+
+#[test]
+fn the_version_block_shows_the_originals_version() {
+    let chat = Arc::new(Container::new());
+    add_version_message(&chat);
+    let output = strip_ansi(&chat.render(120).join("\n"));
+    assert!(output.contains("pi v1.3.0"));
+    assert!(!output.contains("rpi"));
 }
 
 #[test]
@@ -433,8 +471,10 @@ fn markdown_flag_only_comes_from_an_explicit_true() {
 
 /// Minimal `TuiState` for unit tests that only touch state flags. Mirrors
 /// the explicit literals other tests build, but keeps one copy in sync.
-fn test_tui_state() -> Arc<TuiState> {
+pub(super) fn test_tui_state() -> Arc<TuiState> {
     Arc::new(TuiState {
+        js_extensions: None,
+        turn_index: std::sync::atomic::AtomicUsize::new(0),
         current_assistant: Arc::new(std::sync::Mutex::new(None)),
         tool_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
         bash_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -454,6 +494,10 @@ fn test_tui_state() -> Arc<TuiState> {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        warning_container: Arc::new(Container::new()),
+        warning_message: std::sync::Mutex::new(String::new()),
+        session_menu: std::sync::Mutex::new(SessionMenuState::default()),
+        tree_menu: std::sync::Mutex::new(TreeMenuState::default()),
         loader: Arc::new(Loader::new()),
         editor: Arc::new(Editor::simple()),
         last_assistant_text: std::sync::Mutex::new(String::new()),
@@ -745,7 +789,7 @@ fn hot_cycle_crosses_providers_and_anchors_duplicate_ids_to_the_live_lane() {
                 assert!(note.contains("second/shared"));
                 assert_eq!(lane.get_model().await.unwrap(), second);
                 assert!(
-                    strip_ansi(&state.footer.render(120).join("\n")).contains("(second) shared")
+                    strip_ansi(&state.footer.render(120).join("\n")).contains("second/shared")
                 );
                 let saved = crate::settings::load_settings().unwrap();
                 assert_eq!(saved.default_provider.as_deref(), Some("second"));
@@ -787,64 +831,71 @@ fn hot_cycle_crosses_providers_and_anchors_duplicate_ids_to_the_live_lane() {
 }
 
 #[test]
-fn settings_menu_covers_the_wired_settings_surface() {
-    let state = test_tui_state();
+fn settings_menu_covers_pis_rows_in_pis_order() {
     let settings = crate::settings::Settings::default();
-    let items = settings_menu_items(&settings, &state, "claude-sonnet-5");
-    let keys: Vec<&str> = items.iter().map(|item| item.key.as_str()).collect();
+    let rows = settings_menu_rows(&settings, true, true, true, "claude-sonnet-5", &[]);
+    let keys: Vec<&str> = rows.iter().map(|row| row.key.as_str()).collect();
     assert_eq!(
         keys,
         [
-            "theme",
-            "model",
-            "thinking",
-            "scoped-models",
-            "hide-thinking",
+            "autocompact",
             "show-images",
-            "cache-miss-notices",
-            "quiet-startup",
-            "collapse-changelog",
-            "terminal-progress",
-            "fullscreen-copy-on-select",
-            "double-escape-action",
+            "image-width-cells",
+            "auto-resize-images",
+            "block-images",
+            "skill-commands",
+            "show-hardware-cursor",
             "editor-padding",
-            "autocomplete-max-items",
+            "output-padding",
+            "nerd-fonts",
+            "autocomplete-max-visible",
+            "autocomplete-position",
+            "clear-on-shrink",
+            "terminal-progress",
+            "three-d-empty-session",
+            "steering-mode",
+            "follow-up-mode",
+            "transport",
+            "share-destination",
             "http-idle-timeout",
+            "cache-warming-mode",
+            "hide-thinking",
+            "mermaid-rendering",
+            "cache-miss-notices",
+            "collapse-changelog",
+            "quiet-startup",
+            "default-project-trust",
+            "double-escape-action",
+            "tree-filter-mode",
+            "warnings",
+            "model-thinking",
+            "tui-mode",
+            "fullscreen-exit-output",
+            "fullscreen-scrollbar",
+            "fullscreen-copy-on-select",
+            "fullscreen-wheel-scroll-lines",
+            "theme",
         ]
     );
     // Submenu rows must not cycle their displayed value.
-    for item in items.iter().filter(|item| item.has_submenu) {
+    for row in rows.iter().filter(|row| row.submenu.is_some()) {
         assert!(
-            item.values.is_empty(),
+            row.values.is_empty(),
             "{} should be submenu-only",
-            item.key
+            row.key
         );
     }
     // Value rows advertise a cycle that contains the current value.
-    for item in items.iter().filter(|item| !item.has_submenu) {
-        assert!(!item.values.is_empty(), "{} has no values", item.key);
+    for row in rows.iter().filter(|row| row.submenu.is_none()) {
+        assert!(!row.values.is_empty(), "{} has no values", row.key);
         assert!(
-            item.values.iter().any(|value| value == &item.value),
+            row.values.iter().any(|value| value == &row.value),
             "{} current value {} not in {:?}",
-            item.key,
-            item.value,
-            item.values
+            row.key,
+            row.value,
+            row.values
         );
     }
-    // The default model row falls back to the running lane's model.
-    let value = |key: &str| {
-        items
-            .iter()
-            .find(|item| item.key == key)
-            .unwrap()
-            .value
-            .as_str()
-    };
-    assert_eq!(value("model"), "claude-sonnet-5");
-    // Native defaults: cache-miss notices off, terminal progress on.
-    assert_eq!(value("cache-miss-notices"), "false");
-    assert_eq!(value("terminal-progress"), "true");
-    assert_eq!(value("collapse-changelog"), "false");
 }
 
 #[test]
@@ -998,21 +1049,21 @@ fn tui_startup_settings_prefer_rpi_project_fields_over_pi() {
         editor_padding_x: Some(3),
         autocomplete_max_visible: Some(6),
         hide_thinking_block: Some(false),
-        quiet_startup: Some(true),
+        quiet_startup: Some("true".to_string()),
         show_terminal_progress: Some(true),
         ..Default::default()
     };
     let rpi_project = crate::settings::Settings {
         editor_padding_x: Some(0),
         hide_thinking_block: Some(true),
-        quiet_startup: Some(false),
+        quiet_startup: Some("false".to_string()),
         show_terminal_progress: Some(false),
         ..Default::default()
     };
     let pi_project = crate::settings::Settings {
         editor_padding_x: Some(9),
         autocomplete_max_visible: Some(12),
-        quiet_startup: Some(true),
+        quiet_startup: Some("true".to_string()),
         ..Default::default()
     };
 
@@ -1022,10 +1073,13 @@ fn tui_startup_settings_prefer_rpi_project_fields_over_pi() {
             editor_padding_x: 0,
             autocomplete_max_visible: 12,
             hide_thinking: true,
+            nerd_fonts: false,
             quiet_startup: false,
+            tui_mode: crate::args::TuiMode::Fullscreen,
             show_terminal_progress: false,
             show_images: true,
             cache_miss_notices: false,
+            three_d_empty_session: false,
         }
     );
 }
@@ -1033,12 +1087,12 @@ fn tui_startup_settings_prefer_rpi_project_fields_over_pi() {
 #[test]
 fn tui_startup_settings_fall_back_from_rpi_to_pi_per_field() {
     let global = crate::settings::Settings {
-        quiet_startup: Some(false),
+        quiet_startup: Some("false".to_string()),
         ..Default::default()
     };
     let rpi_project = crate::settings::Settings::default();
     let pi_project = crate::settings::Settings {
-        quiet_startup: Some(true),
+        quiet_startup: Some("true".to_string()),
         ..Default::default()
     };
 
@@ -1053,7 +1107,7 @@ fn tui_startup_settings_use_global_values_without_project_fields() {
         editor_padding_x: Some(7),
         autocomplete_max_visible: Some(8),
         hide_thinking_block: Some(true),
-        quiet_startup: Some(true),
+        quiet_startup: Some("true".to_string()),
         show_terminal_progress: Some(false),
         show_images: Some(false),
         show_cache_miss_notices: Some(true),
@@ -1066,10 +1120,13 @@ fn tui_startup_settings_use_global_values_without_project_fields() {
             editor_padding_x: 7,
             autocomplete_max_visible: 8,
             hide_thinking: true,
+            nerd_fonts: false,
             quiet_startup: true,
+            tui_mode: crate::args::TuiMode::Fullscreen,
             show_terminal_progress: false,
             show_images: false,
             cache_miss_notices: true,
+            three_d_empty_session: false,
         }
     );
 }
@@ -1083,6 +1140,7 @@ fn tui_startup_settings_read_native_nested_terminal_block() {
             show_images: Some(false),
             show_terminal_progress: Some(false),
             clear_on_shrink: None,
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -1100,6 +1158,7 @@ fn tui_startup_settings_flat_keys_win_over_nested_terminal_block() {
             show_images: Some(false),
             show_terminal_progress: None,
             clear_on_shrink: None,
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -1111,12 +1170,12 @@ fn tui_startup_settings_flat_keys_win_over_nested_terminal_block() {
 #[test]
 fn tui_startup_settings_ignore_untrusted_project_values() {
     let global = crate::settings::Settings {
-        quiet_startup: Some(false),
+        quiet_startup: Some("false".to_string()),
         show_terminal_progress: Some(true),
         ..Default::default()
     };
     let project = crate::settings::Settings {
-        quiet_startup: Some(true),
+        quiet_startup: Some("true".to_string()),
         show_terminal_progress: Some(false),
         ..Default::default()
     };
@@ -1219,115 +1278,60 @@ fn test_layout_renders_welcome_message() {
 
     let all: String = frame.lines.join("\n");
     assert!(
-        all.contains("rpi"),
-        "Welcome message not found. Rendered: {}",
-        all
-    );
-    assert!(
-        all.contains("Type your message"),
-        "Help text not found. Rendered: {}",
+        all.contains("Pi can explain its own features"),
+        "Startup note not found. Rendered: {}",
         all
     );
 }
 
 #[test]
-fn test_chat_container_has_welcome_content() {
+fn startup_block_shows_the_originals_lines_and_nothing_else() {
     let chat = Arc::new(Container::new());
-    add_welcome_message_with_capabilities(
-        &chat,
-        &["read".into(), "bash".into(), "web_fetch".into()],
-        &["rust-review".into(), "release".into()],
-        &[
-            "/project/.rpi/SYSTEM.md".into(),
-            "/project/AGENTS.md".into(),
-        ],
+    add_welcome_message(&chat);
+    let plain = strip_ansi(&chat.render(100).join("\n"));
+
+    assert!(plain.contains("v1.3.0"), "pi's version missing: {plain}");
+    assert!(
+        plain.contains("escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more"),
+        "hint line missing: {plain}"
+    );
+    assert!(
+        plain.contains("Press ctrl+o to show full startup help."),
+        "startup help line missing: {plain}"
+    );
+    assert!(
+        plain.contains(
+            "Pi can explain its own features and look up its docs. Ask it how to use or extend Pi."
+        ),
+        "startup note missing: {plain}"
     );
 
-    let lines = chat.render(80);
-    let all: String = lines.join("\n");
-    // Welcome title is "rpi" (accent bold) + "interactive TUI" (muted),
-    // joined by an ANSI reset — strip ANSI before checking the substring.
-    let plain = strip_ansi(&all);
-    assert!(
-        plain.contains("rpi"),
-        "Welcome message not in chat container: {:?}",
-        lines
-    );
-    assert!(plain.contains("Tools (3)"), "Tool count missing: {plain}");
-    assert!(
-        plain.contains("read · bash · web_fetch"),
-        "Tool names missing: {plain}"
-    );
-    assert!(plain.contains("Skills (2)"), "Skill count missing: {plain}");
-    assert!(plain.contains("Context (2)"));
-    assert!(plain.contains("/project/.rpi/SYSTEM.md"));
-    assert!(plain.contains("/project/AGENTS.md"));
-    assert!(
-        plain.contains("rust-review · release"),
-        "Skill names missing: {plain}"
-    );
+    // The original's startup block shows nothing else: the port's own
+    // capability listing and greeting do not belong there.
+    for gone in ["Tools (", "Skills (", "Context (", "Welcome to rpi!"] {
+        assert!(
+            !plain.contains(gone),
+            "the startup block must not contain {gone}: {plain}"
+        );
+    }
 }
 
 #[test]
-fn reload_updates_context_header_and_context_panel_without_stale_paths() {
+fn context_panel_shows_the_loaded_context_files() {
     use rpi_harness::types::AgentHarnessResources;
-    let chat = Arc::new(Container::new());
-    let old = AgentHarnessResources {
-        context_files: vec!["/old/SYSTEM.md".into()],
-        ..Default::default()
-    };
-    let listing = add_welcome_message_with_capabilities(&chat, &[], &[], &old.context_files);
-    let shared = Arc::new(Mutex::new(old));
-    let fresh = AgentHarnessResources {
+    let resources = AgentHarnessResources {
         context_files: vec!["/new/APPEND_SYSTEM.md".into(), "/new/CLAUDE.md".into()],
         ..Default::default()
     };
-    update_resource_listing(&shared, Some(&listing), fresh.clone());
-    let header = strip_ansi(&chat.render(120).join("\n"));
-    assert!(header.contains("Context (2)"));
-    assert!(header.contains("/new/APPEND_SYSTEM.md"));
-    assert!(!header.contains("/old/SYSTEM.md"));
-    assert_eq!(*shared.lock().unwrap(), fresh);
     let panel = Arc::new(Container::new());
-    show_context_panel(&panel, &shared.lock().unwrap());
+    show_context_panel(&panel, &resources);
     let output = strip_ansi(&panel.render(120).join("\n"));
     assert!(output.contains("/new/CLAUDE.md"));
-    assert!(!output.contains("/old/SYSTEM.md"));
+    assert!(output.contains("/new/APPEND_SYSTEM.md"));
 
-    update_resource_listing(&shared, Some(&listing), Default::default());
-    assert!(!strip_ansi(&chat.render(120).join("\n")).contains("Context"));
     let panel = Arc::new(Container::new());
-    show_context_panel(&panel, &shared.lock().unwrap());
+    show_context_panel(&panel, &AgentHarnessResources::default());
     assert!(strip_ansi(&panel.render(120).join("\n")).contains("no context files loaded"));
-}
-
-#[test]
-fn welcome_header_renders_the_brand_mark() {
-    let chat = Arc::new(Container::new());
-    add_welcome_message(&chat);
-    let lines: Vec<String> = chat.render(80).iter().map(|l| strip_ansi(l)).collect();
-    let all = lines.join("\n");
-
-    // The three-bar mark: the bottom row carries all three bars, and the
-    // wordmark sits on its baseline next to the middle bar.
-    assert!(
-        lines.iter().any(|l| l.contains("██ ██ ██")),
-        "brand mark missing: {all}"
-    );
-    assert!(
-        all.contains("rpi"),
-        "the mark must carry the product name: {all}"
-    );
-
-    // Regression guard for the layout bug this replaced: `π` is East-Asian
-    // Ambiguous — width 1 normally, width 2 under a CJK locale — which
-    // walked the old box borders out of alignment depending on the user's
-    // system. The crab is deliberately wide but unambiguous, and `crate::brand`
-    // tests pin its width so the padding cannot silently drift.
-    assert!(
-        !all.contains('π'),
-        "the header must not use east-asian-ambiguous glyphs: {all}"
-    );
 }
 
 #[test]
@@ -1407,12 +1411,6 @@ fn package_updates_render_without_an_rpi_update() {
         );
         assert_eq!(plain.contains("rpi update"), include_rpi, "{plain}");
     }
-}
-
-#[test]
-fn welcome_capabilities_show_empty_state() {
-    let plain = strip_ansi(&welcome_capability_line("Skills", &[]));
-    assert_eq!(plain, "Skills (0) none");
 }
 
 #[test]
@@ -1584,7 +1582,8 @@ fn test_slash_command_dispatch() {
     resolves_to("/clear", "/clear");
     resolves_to("/new", "/clear"); // alias
     resolves_to("/q", "/exit"); // alias
-    resolves_to("/quit", "/exit"); // alias
+    resolves_to("/quit", "/quit");
+    resolves_to("/exit", "/quit"); // alias
     resolves_to("/version", "/version");
     resolves_to("/v", "/version"); // alias
     resolves_to("/changelog", "/changelog");
@@ -1593,8 +1592,10 @@ fn test_slash_command_dispatch() {
     resolves_to("/m", "/model"); // alias
     resolves_to("/provider", "/provider");
     resolves_to("/theme", "/theme");
-    resolves_to("/session", "/session");
-    resolves_to("/resume", "/session"); // alias
+    resolves_to("/resume", "/resume");
+    resolves_to("/history", "/resume"); // alias
+    resolves_to("/sessions", "/resume"); // alias
+    resolves_to("/session", "/resume"); // the port's own hidden alias
     resolves_to("/compact", "/compact");
     resolves_to("/copy", "/copy");
     resolves_to("/thinking", "/thinking");
@@ -1628,8 +1629,10 @@ fn test_registry_visible_entries_cover_dispatch() {
         "/help",
         "/clear",
         "/new",
-        "/exit",
         "/quit",
+        "/skills",
+        "/bug",
+        "/stats",
         "/version",
         "/changelog",
         "/model",
@@ -1650,7 +1653,10 @@ fn test_registry_visible_entries_cover_dispatch() {
         );
     }
     // Hidden commands stay off the list.
-    for hidden in ["/context", "/q", "/m", "/v", "/think", "/resume", "/?"] {
+    for hidden in [
+        "/context", "/q", "/m", "/v", "/think", "/exit", "/session", "/history", "/sessions",
+        "/?",
+    ] {
         assert!(
             !names.contains(&hidden.to_string()),
             "{hidden} should be hidden from autocomplete"
@@ -1668,6 +1674,8 @@ fn test_agent_event_mapping_creates_assistant_and_tool() {
     };
 
     let state = Arc::new(TuiState {
+        js_extensions: None,
+        turn_index: std::sync::atomic::AtomicUsize::new(0),
         current_assistant: Arc::new(std::sync::Mutex::new(None)),
         tool_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
         bash_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -1687,6 +1695,10 @@ fn test_agent_event_mapping_creates_assistant_and_tool() {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        warning_container: Arc::new(Container::new()),
+        warning_message: std::sync::Mutex::new(String::new()),
+        session_menu: std::sync::Mutex::new(SessionMenuState::default()),
+        tree_menu: std::sync::Mutex::new(TreeMenuState::default()),
         loader: Arc::new(Loader::new()),
         editor: Arc::new(Editor::simple()),
         last_assistant_text: std::sync::Mutex::new(String::new()),
@@ -1773,7 +1785,10 @@ fn test_agent_event_mapping_creates_assistant_and_tool() {
     // Manually apply the MessageStart assistant branch logic (mirrors the
     // drain handler, without needing a TuiAltScreen).
     let comp = Arc::new(AssistantMessageComponent::new(
-        AssistantMessageOptions::default(),
+        AssistantMessageOptions {
+            hide_thinking: false,
+            ..Default::default()
+        },
     ));
     comp.set_streaming(true);
     comp.update_blocks(&assistant_blocks(&assistant));
@@ -1860,7 +1875,10 @@ fn test_agent_event_mapping_creates_assistant_and_tool() {
     assert!(state.editor.working().is_some());
 
     state.set_status(RunStatus::Aborting);
-    assert_eq!(state.status_container.child_count(), 0);
+    // pi shows the run status in the status slot (above the editor), not in
+    // the footer line.
+    assert_eq!(state.status_container.child_count(), 1);
+    assert!(state.footer.get_status().contains("Aborting"));
     assert!(!state.loader.is_running());
 }
 
@@ -1898,7 +1916,7 @@ fn context_badge_ignores_aborted_and_error_turns() {
     };
     record_context_usage(&footer, &ok);
     let stats = strip_ansi(&footer.render(120).join("\n"));
-    assert!(stats.contains("25.0%/100k"), "stats: {stats}");
+    assert!(stats.contains("25.0% 25,000 tokens"), "stats: {stats}");
 
     // An aborted turn must not clobber the last good value.
     let mut aborted = rpi_ai::AssistantMessage::empty(Api::AnthropicMessages, "anthropic", "m", 0);
@@ -1909,7 +1927,7 @@ fn context_badge_ignores_aborted_and_error_turns() {
     };
     record_context_usage(&footer, &aborted);
     let stats = strip_ansi(&footer.render(120).join("\n"));
-    assert!(stats.contains("25.0%/100k"), "stats: {stats}");
+    assert!(stats.contains("25.0% 25,000 tokens"), "stats: {stats}");
 
     // An errored turn likewise (its usage is not a real measurement).
     let mut errored = rpi_ai::AssistantMessage::empty(Api::AnthropicMessages, "anthropic", "m", 0);
@@ -1920,7 +1938,7 @@ fn context_badge_ignores_aborted_and_error_turns() {
     };
     record_context_usage(&footer, &errored);
     let stats = strip_ansi(&footer.render(120).join("\n"));
-    assert!(stats.contains("25.0%/100k"), "stats: {stats}");
+    assert!(stats.contains("25.0% 25,000 tokens"), "stats: {stats}");
 }
 
 #[test]
@@ -1956,7 +1974,7 @@ fn model_selector_items_are_deduplicated_and_provider_qualified() {
         "Bearer test".into(),
     )]));
 
-    let items = model_selector_items(&[gateway, duplicate, anthropic], "gpt-5.6-sol");
+    let items = model_selector_items(&[gateway, duplicate, anthropic], "gpt-5.6-sol", None);
     assert_eq!(items.len(), 2);
     // Value is provider-qualified so a bare id shared across endpoints resolves
     // to the right provider.
@@ -1983,7 +2001,7 @@ fn model_selector_search_text_covers_provider_name_and_qualified_id() {
         "anthropic",
         "https://api.anthropic.com",
     );
-    let items = model_selector_items(&[anthropic], "");
+    let items = model_selector_items(&[anthropic], "", None);
     let search = items[0].search_key();
     // Mirrors native `getModelSelectorSearchText`: provider-prefixed first,
     // then the display name.
@@ -2727,6 +2745,8 @@ fn test_autocomplete_slash_suggestions_render() {
     // The autocomplete container should render at least one suggestion
     // line when the editor holds a `/` prefix, and clear when it doesn't.
     let state = Arc::new(TuiState {
+        js_extensions: None,
+        turn_index: std::sync::atomic::AtomicUsize::new(0),
         current_assistant: Arc::new(std::sync::Mutex::new(None)),
         tool_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
         bash_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -2746,6 +2766,10 @@ fn test_autocomplete_slash_suggestions_render() {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        warning_container: Arc::new(Container::new()),
+        warning_message: std::sync::Mutex::new(String::new()),
+        session_menu: std::sync::Mutex::new(SessionMenuState::default()),
+        tree_menu: std::sync::Mutex::new(TreeMenuState::default()),
         loader: Arc::new(Loader::new()),
         editor: Arc::new(Editor::simple()),
         last_assistant_text: std::sync::Mutex::new(String::new()),
@@ -2820,6 +2844,8 @@ fn test_select_list_swap_restores_editor() {
     // child; closing restores it. Verify the container child count + the
     // active_selector flag round-trip.
     let state = Arc::new(TuiState {
+        js_extensions: None,
+        turn_index: std::sync::atomic::AtomicUsize::new(0),
         current_assistant: Arc::new(std::sync::Mutex::new(None)),
         tool_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
         bash_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -2839,6 +2865,10 @@ fn test_select_list_swap_restores_editor() {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        warning_container: Arc::new(Container::new()),
+        warning_message: std::sync::Mutex::new(String::new()),
+        session_menu: std::sync::Mutex::new(SessionMenuState::default()),
+        tree_menu: std::sync::Mutex::new(TreeMenuState::default()),
         loader: Arc::new(Loader::new()),
         editor: Arc::new(Editor::simple()),
         last_assistant_text: std::sync::Mutex::new(String::new()),
@@ -2916,6 +2946,8 @@ fn test_message_history_browse_restores_draft() {
     // messages, browse older → newer → back past the newest restores the
     // draft the user was typing.
     let state = Arc::new(TuiState {
+        js_extensions: None,
+        turn_index: std::sync::atomic::AtomicUsize::new(0),
         current_assistant: Arc::new(std::sync::Mutex::new(None)),
         tool_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
         bash_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -2935,6 +2967,10 @@ fn test_message_history_browse_restores_draft() {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        warning_container: Arc::new(Container::new()),
+        warning_message: std::sync::Mutex::new(String::new()),
+        session_menu: std::sync::Mutex::new(SessionMenuState::default()),
+        tree_menu: std::sync::Mutex::new(TreeMenuState::default()),
         loader: Arc::new(Loader::new()),
         editor: Arc::new(Editor::simple()),
         last_assistant_text: std::sync::Mutex::new(String::new()),
@@ -3015,6 +3051,8 @@ fn test_message_history_browse_restores_draft() {
 fn test_accept_top_suggestion_replaces_prefix() {
     // `/he` + Tab → `/help ` (slash command provider inserts a space).
     let state = Arc::new(TuiState {
+        js_extensions: None,
+        turn_index: std::sync::atomic::AtomicUsize::new(0),
         current_assistant: Arc::new(std::sync::Mutex::new(None)),
         tool_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
         bash_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -3034,6 +3072,10 @@ fn test_accept_top_suggestion_replaces_prefix() {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        warning_container: Arc::new(Container::new()),
+        warning_message: std::sync::Mutex::new(String::new()),
+        session_menu: std::sync::Mutex::new(SessionMenuState::default()),
+        tree_menu: std::sync::Mutex::new(TreeMenuState::default()),
         loader: Arc::new(Loader::new()),
         editor: Arc::new(Editor::simple()),
         last_assistant_text: std::sync::Mutex::new(String::new()),
@@ -3100,6 +3142,8 @@ fn test_accept_top_suggestion_replaces_prefix() {
 /// installed by each test).
 fn autocomplete_test_state(max_visible: usize) -> Arc<TuiState> {
     Arc::new(TuiState {
+        js_extensions: None,
+        turn_index: std::sync::atomic::AtomicUsize::new(0),
         current_assistant: Arc::new(std::sync::Mutex::new(None)),
         tool_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
         bash_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -3119,6 +3163,10 @@ fn autocomplete_test_state(max_visible: usize) -> Arc<TuiState> {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        warning_container: Arc::new(Container::new()),
+        warning_message: std::sync::Mutex::new(String::new()),
+        session_menu: std::sync::Mutex::new(SessionMenuState::default()),
+        tree_menu: std::sync::Mutex::new(TreeMenuState::default()),
         loader: Arc::new(Loader::new()),
         editor: Arc::new(Editor::simple()),
         last_assistant_text: std::sync::Mutex::new(String::new()),
@@ -3287,20 +3335,20 @@ fn double_escape_trigger_has_half_second_window() {
 }
 
 #[test]
-fn ctrl_c_clears_first_and_only_exits_inside_the_window() {
-    // upstream's `handleCtrlC`: a lone press clears the editor and never
-    // quits by itself; only a second press within 500ms exits. It must not
-    // abort — Esc owns that.
+fn ctrl_c_warns_first_and_only_exits_inside_the_window() {
+    // upstream's `handleQuit`: a lone press warns that a second press exits
+    // and never touches the editor; only a second press within 500ms quits.
+    // It must not abort — Esc owns that.
     let now = std::time::Instant::now();
-    assert_eq!(ctrl_c_action(None, now), CtrlCAction::Clear);
+    assert_eq!(ctrl_c_action(None, now), CtrlCAction::Warn);
     assert_eq!(
         ctrl_c_action(Some(now - std::time::Duration::from_millis(500)), now),
         CtrlCAction::Exit
     );
-    // A slower second press is a fresh "clear", not a quit.
+    // A slower second press is a fresh warning, not a quit.
     assert_eq!(
         ctrl_c_action(Some(now - std::time::Duration::from_millis(501)), now),
-        CtrlCAction::Clear
+        CtrlCAction::Warn
     );
 }
 
@@ -3600,4 +3648,70 @@ fn ask_user_bridge_answers_and_cancels_by_request_id() {
             "op": "open", "requestId": "r4", "ui": {"kind": "input"}
         }))
         .is_err());
+}
+
+#[test]
+fn the_tmux_warning_reads_like_the_original() {
+    use super::rendering::{
+        tmux_warning_for, warning_line, TMUX_EXTENDED_KEYS_FORMAT_XTERM, TMUX_EXTENDED_KEYS_OFF,
+    };
+    assert_eq!(
+        TMUX_EXTENDED_KEYS_OFF,
+        "tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux."
+    );
+    assert_eq!(
+        TMUX_EXTENDED_KEYS_FORMAT_XTERM,
+        "tmux extended-keys-format is xterm. Pi works best with csi-u. Add `set -g extended-keys-format csi-u` to ~/.tmux.conf and restart tmux."
+    );
+    assert_eq!(
+        tmux_warning_for(Some("off"), Some("csi-u")),
+        Some(TMUX_EXTENDED_KEYS_OFF)
+    );
+    assert_eq!(
+        tmux_warning_for(Some("on"), Some("xterm")),
+        Some(TMUX_EXTENDED_KEYS_FORMAT_XTERM)
+    );
+    assert_eq!(tmux_warning_for(Some("on"), Some("csi-u")), None);
+    assert_eq!(tmux_warning_for(Some("always"), None), None);
+    assert_eq!(tmux_warning_for(None, None), None);
+    assert_eq!(
+        warning_line(TMUX_EXTENDED_KEYS_OFF),
+        format!("Warning: {TMUX_EXTENDED_KEYS_OFF}")
+    );
+}
+
+#[test]
+fn the_originals_commands_are_registered_with_their_text() {
+    let registry = build_builtin_registry();
+    let entries = registry.visible_entries();
+    let row = |name: &str| {
+        entries
+            .iter()
+            .find(|entry| entry.name == name)
+            .map(|entry| entry.description.clone())
+    };
+    assert_eq!(row("/skills").as_deref(), Some("Browse and run a skill"));
+    assert_eq!(
+        row("/bug").as_deref(),
+        Some("<description> — Report a bug to the Pi developers")
+    );
+    assert_eq!(row("/stats").as_deref(), Some("Show session info and stats"));
+    assert_eq!(row("/resume").as_deref(), Some("Resume a different session"));
+    assert_eq!(row("/quit").as_deref(), Some("Quit pi"));
+    assert_eq!(
+        row("/model").as_deref(),
+        Some("<provider/model> — Select model (opens selector UI)")
+    );
+    assert_eq!(
+        row("/thinking").as_deref(),
+        Some("<level> — Set thinking level")
+    );
+    assert_eq!(
+        row("/theme").as_deref(),
+        Some("<name> — Change the color theme")
+    );
+    assert_eq!(
+        row("/login").as_deref(),
+        Some("<provider> — Configure provider authentication")
+    );
 }

@@ -2,11 +2,17 @@ import * as piCodingAgent from "../../../../packages/coding-agent/src/core/exten
 import * as piAgentCore from "./pi-agent-core.ts";
 import * as piAi from "./pi-ai.ts";
 import * as piTui from "./pi-tui.ts";
+import * as nodeChildProcess from "node:child_process";
+import * as nodeOs from "node:os";
+import * as nodePerfHooks from "node:perf_hooks";
+import * as nodeUrl from "node:url";
 import * as typebox from "typebox";
 import * as typeboxCompile from "typebox/compile";
 import * as typeboxValue from "typebox/value";
 
 type Handler = (event: unknown, context: unknown) => unknown;
+
+type TerminalInputHandler = (data: string) => boolean | void;
 
 interface ToolDefinition {
 	name: string;
@@ -33,6 +39,8 @@ interface ExtensionState {
 	entryRenderers: Map<string, unknown>;
 	markdownTransformers: unknown[];
 	toolRenderers: unknown[];
+	autocompleteProviders: unknown[];
+	terminalInputHandlers: TerminalInputHandler[];
 }
 
 interface HostGlobals {
@@ -64,6 +72,22 @@ const nodeModules = (): NodeModules => globals.__piNodeModules as unknown as Nod
 interface ThemeLike {
 	fg(name: string, text: string): string;
 	bg(name: string, text: string): string;
+	bgStart(name: string): string;
+	style(text: string, options: ThemeStyleOptions): string;
+	bold(text: string): string;
+	italic(text: string): string;
+	underline(text: string): string;
+	inverse(text: string): string;
+	strikethrough(text: string): string;
+	readonly colors: Record<string, unknown>;
+	readonly name: string | undefined;
+	readonly sourcePath: string | undefined;
+	readonly appearance: string;
+	getFgAnsi(name: string): string;
+	getBgAnsi(name: string): string;
+	getColorMode(): string;
+	getThinkingBorderColor(level: string): (text: string) => string;
+	getBashModeBorderColor(): (text: string) => string;
 }
 
 interface ComponentLike {
@@ -74,29 +98,138 @@ interface ComponentLike {
 
 type ComponentFactory = (...args: unknown[]) => unknown;
 
-let themeTokens: Record<string, string> | undefined;
+interface ThemeTokens {
+	fg: Record<string, string>;
+	bg: Record<string, string>;
+	colors: Record<string, unknown>;
+	colorEnabled: boolean;
+	name?: string;
+	sourcePath?: string;
+	appearance: string;
+	colorMode: string;
+}
 
-const themeTokenMap = (): Record<string, string> => {
+interface ThemeStyleOptions {
+	fg?: string;
+	bg?: string;
+	bold?: boolean;
+	dim?: boolean;
+	italic?: boolean;
+	underline?: boolean;
+	inverse?: boolean;
+	strikethrough?: boolean;
+}
+
+let themeTokens: ThemeTokens | undefined;
+
+const themeTokenMap = (): ThemeTokens => {
 	if (!themeTokens) {
 		try {
-			const value = hostCall("theme.get", {}) as { fg?: Record<string, string> } | undefined;
-			themeTokens = value?.fg ?? {};
+			const value = hostCall("theme.get", {}) as Partial<ThemeTokens> | undefined;
+			themeTokens = {
+				fg: value?.fg ?? {},
+				bg: value?.bg ?? {},
+				colors: value?.colors ?? {},
+				colorEnabled: value?.colorEnabled ?? false,
+				name: value?.name,
+				sourcePath: value?.sourcePath,
+				appearance: value?.appearance ?? "dark",
+				colorMode: value?.colorMode ?? "truecolor",
+			};
 		} catch {
-			themeTokens = {};
+			themeTokens = {
+				fg: {},
+				bg: {},
+				colors: {},
+				colorEnabled: false,
+				appearance: "dark",
+				colorMode: "truecolor",
+			};
 		}
 	}
 	return themeTokens;
 };
 
+const styleText = (
+	text: string,
+	fgAnsi: string | undefined,
+	bgAnsi: string | undefined,
+	options: ThemeStyleOptions,
+): string => {
+	let prefix = "";
+	let suffix = "";
+	if (fgAnsi) {
+		prefix += fgAnsi;
+		suffix = "\x1b[39m";
+	}
+	if (bgAnsi) {
+		prefix += bgAnsi;
+		suffix = `\x1b[49m${suffix}`;
+	}
+	if (options.bold) prefix += "\x1b[1m";
+	if (options.dim) prefix += "\x1b[2m";
+	if (options.bold || options.dim) suffix = `\x1b[22m${suffix}`;
+	if (options.italic) {
+		prefix += "\x1b[3m";
+		suffix = `\x1b[23m${suffix}`;
+	}
+	if (options.underline) {
+		prefix += "\x1b[4m";
+		suffix = `\x1b[24m${suffix}`;
+	}
+	if (options.inverse) {
+		prefix += "\x1b[7m";
+		suffix = `\x1b[27m${suffix}`;
+	}
+	if (options.strikethrough) {
+		prefix += "\x1b[9m";
+		suffix = `\x1b[29m${suffix}`;
+	}
+	return `${prefix}${text}${suffix}`;
+};
+
+const chalkStyle = (enabled: boolean, code: string, closing: string, text: string): string =>
+	enabled ? `\x1b[${code}m${text}\x1b[${closing}m` : text;
+
 const theme: ThemeLike = {
 	fg: (name: string, text: string): string => {
-		const prefix = themeTokenMap()[name];
-		return prefix ? `${prefix}${text}\x1b[0m` : text;
+		const prefix = themeTokenMap().fg[name];
+		return prefix ? `${prefix}${text}\x1b[39m` : text;
 	},
 	bg: (name: string, text: string): string => {
-		const prefix = themeTokenMap()[`bg:${name}`];
-		return prefix ? `${prefix}${text}\x1b[0m` : text;
+		const prefix = themeTokenMap().bg[name];
+		return prefix ? `${prefix}${text}\x1b[49m` : text;
 	},
+	bgStart: (name: string): string => themeTokenMap().bg[name] ?? "",
+	style: (text: string, options: ThemeStyleOptions): string => {
+		const tokens = themeTokenMap();
+		const fgAnsi = options.fg === undefined ? undefined : tokens.fg[options.fg];
+		const bgAnsi = options.bg === undefined ? undefined : tokens.bg[options.bg];
+		return styleText(text, fgAnsi, bgAnsi, options);
+	},
+	bold: (text: string): string => chalkStyle(themeTokenMap().colorEnabled, "1", "22", text),
+	italic: (text: string): string => chalkStyle(themeTokenMap().colorEnabled, "3", "23", text),
+	underline: (text: string): string => chalkStyle(themeTokenMap().colorEnabled, "4", "24", text),
+	inverse: (text: string): string => chalkStyle(themeTokenMap().colorEnabled, "7", "27", text),
+	strikethrough: (text: string): string => chalkStyle(themeTokenMap().colorEnabled, "9", "29", text),
+	get colors(): Record<string, unknown> {
+		return themeTokenMap().colors;
+	},
+	get name(): string | undefined {
+		return themeTokenMap().name;
+	},
+	get sourcePath(): string | undefined {
+		return themeTokenMap().sourcePath;
+	},
+	get appearance(): string {
+		return themeTokenMap().appearance;
+	},
+	getFgAnsi: (name: string): string => themeTokenMap().fg[name] ?? "",
+	getBgAnsi: (name: string): string => themeTokenMap().bg[name] ?? "",
+	getColorMode: (): string => themeTokenMap().colorMode,
+	getThinkingBorderColor: (level: string) => (text: string): string =>
+		theme.fg(`thinking${level}`, text),
+	getBashModeBorderColor: () => (text: string): string => theme.fg("bashMode", text),
 };
 
 let hostModeValue: string | undefined;
@@ -146,6 +279,45 @@ const footerDataStub = () => ({
 
 const componentRegistry = new Map<string, { factory: ComponentFactory; component?: ComponentLike }>();
 let componentCounter = 0;
+let toolCallCounter = 0;
+
+const registerTerminalInput = (
+	state: ExtensionState,
+	handler: TerminalInputHandler,
+): (() => void) => {
+	state.terminalInputHandlers.push(handler);
+	return () => {
+		const index = state.terminalInputHandlers.indexOf(handler);
+		if (index >= 0) state.terminalInputHandlers.splice(index, 1);
+	};
+};
+
+const createModelRegistry = () => ({
+	refresh: () => hostCall("models.refresh", {}),
+	getError: () => hostCall("models.getError", {}),
+	getAll: () => hostCall("models.list", {}),
+	getAvailable: () => hostCall("models.listAvailable", {}),
+	find: (provider: string, modelId: string) => hostCall("models.find", { provider, modelId }),
+	hasConfiguredAuth: (model: unknown) => hostCall("models.hasConfiguredAuth", { model }),
+	getProviderAuthStatus: (provider: string) => hostCall("models.getProviderAuthStatus", { provider }),
+	getProvider: (provider: string) => hostCall("models.getProvider", { provider }),
+	getProviderDisplayName: (provider: string) =>
+		hostCall("models.getProviderDisplayName", { provider }),
+	isUsingOAuth: (model: unknown) => hostCall("models.isUsingOAuth", { model }),
+	registerProvider: (provider: unknown, config?: unknown) => {
+		hostCall("provider.register", { provider, config });
+	},
+	unregisterProvider: (name: string) => {
+		hostCall("provider.unregister", { name });
+	},
+	registerVirtualModel: (definition: unknown) => {
+		hostCall("model.registerVirtual", { model: definition });
+	},
+	unregisterVirtualModel: (provider: string, id: string) => {
+		hostCall("model.unregisterVirtual", { provider, id });
+	},
+	getRegisteredProviderIds: () => hostCall("models.getRegisteredProviderIds", {}),
+});
 
 const registerComponent = (factory: ComponentFactory): string => {
 	const id = `component-${++componentCounter}`;
@@ -190,9 +362,29 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 
 const moduleCache = new Map<string, { exports: Record<string, unknown> }>();
 
+/// The node builtins an extension may import.
+///
+/// The runtime supplies the file system and the path; the rest are the
+/// shims, bundled with the extension host. An extension that imports a
+/// builtin that is not here fails to load at all, so the list is the
+/// contract.
+const NODE_BUILTINS: Record<string, unknown> = {
+	"node:child_process": nodeChildProcess,
+	"node:os": nodeOs,
+	"node:perf_hooks": nodePerfHooks,
+	"node:url": nodeUrl,
+	child_process: nodeChildProcess,
+	os: nodeOs,
+	perf_hooks: nodePerfHooks,
+	url: nodeUrl,
+};
+
 const resolveModule = (specifier: string, referrer: string): Record<string, unknown> => {
 	if (Object.prototype.hasOwnProperty.call(VIRTUAL_MODULES, specifier)) {
 		return VIRTUAL_MODULES[specifier] as Record<string, unknown>;
+	}
+	if (Object.prototype.hasOwnProperty.call(NODE_BUILTINS, specifier)) {
+		return NODE_BUILTINS[specifier] as Record<string, unknown>;
 	}
 	const builtins = globals.__piNodeModules;
 	if (Object.prototype.hasOwnProperty.call(builtins, specifier)) {
@@ -208,6 +400,13 @@ const resolveModule = (specifier: string, referrer: string): Record<string, unkn
 			code: string;
 		};
 		return loadModule(loaded.path, loaded.code);
+	}
+	// A subpath of one of pi's own packages that the host does not publish is
+	// a gap on this side, not a mistake in the extension: resolving it to an
+	// empty module lets the extension load, and only the names it wanted are
+	// missing. Anything else is a genuine mistake and stays an error.
+	if (specifier.startsWith("@earendil-works/") || specifier.startsWith("@mariozechner/")) {
+		return {};
 	}
 	throw new Error(`cannot resolve "${specifier}" from "${referrer}"`);
 };
@@ -308,8 +507,22 @@ const createContext = (state: ExtensionState) => ({
 		editor: (title: string, prefill?: string) => hostCall("ui.editor", { title, prefill }),
 		custom: (factory: ComponentFactory) =>
 			hostCall("ui.custom", { component: registerComponent(factory) }),
-		onTerminalInput: () => () => undefined,
-		addAutocompleteProvider: () => undefined,
+		setWorkingIndicator: (options?: unknown) =>
+			hostCall("ui.setWorkingIndicator", { options: options ?? null }),
+		setEditorComponent: (factory?: ComponentFactory) =>
+			hostCall("ui.setEditorComponent", {
+				component: factory ? registerComponent(factory) : null,
+			}),
+		getEditorComponent: () => hostCall("ui.getEditorComponent", {}),
+		getAllThemes: () => hostCall("ui.getAllThemes", {}),
+		getTheme: (name: string) => hostCall("ui.getTheme", { name }),
+		setTheme: (theme: unknown) => hostCall("ui.setTheme", { theme }),
+		getToolsExpanded: () => hostCall("ui.getToolsExpanded", {}),
+		setToolsExpanded: (expanded: boolean) => hostCall("ui.setToolsExpanded", { expanded }),
+		onTerminalInput: (handler: TerminalInputHandler) => registerTerminalInput(state, handler),
+		addAutocompleteProvider: (factory: unknown) => {
+			state.autocompleteProviders.push(factory);
+		},
 	},
 	get mode() {
 		return hostMode();
@@ -321,10 +534,23 @@ const createContext = (state: ExtensionState) => ({
 		return hostCall("process.cwd", {});
 	},
 	sessionManager: {
+		getCwd: () => hostCall("process.cwd", {}),
+		getSessionDir: () => hostCall("session.getDir", {}),
+		getSessionId: () => hostCall("session.getId", {}),
+		getSessionFile: () => hostCall("session.getFile", {}),
+		getLeafId: () => hostCall("session.getLeafId", {}),
+		getLeafEntry: () => hostCall("session.getLeafEntry", {}),
+		getEntry: (id: string) => hostCall("session.getEntry", { id }),
+		getLabel: (id: string) => hostCall("session.getLabel", { id }),
 		getBranch: () => hostCall("session.getBranch", {}),
+		buildContextEntries: () => hostCall("session.buildContextEntries", {}),
+		buildSessionProjection: () => hostCall("session.buildSessionProjection", {}),
+		getHeader: () => hostCall("session.getHeader", {}),
 		getEntries: () => hostCall("session.getEntries", {}),
+		getTree: () => hostCall("session.getTree", {}),
+		getSessionName: () => hostCall("session.getSessionName", {}),
 	},
-	modelRegistry: undefined,
+	modelRegistry: createModelRegistry(),
 	get model() {
 		return hostCall("model.get", {});
 	},
@@ -342,6 +568,32 @@ const createContext = (state: ExtensionState) => ({
 	compact: (options?: unknown) => hostCall("agent.compact", { options }),
 	getSystemPrompt: () => hostCall("agent.getSystemPrompt", {}),
 	extensionPath: state.path,
+});
+
+const createCommandContext = (state: ExtensionState) => ({
+	...createContext(state),
+	getSystemPromptOptions: () => hostCall("session.getSystemPromptOptions", {}),
+	waitForIdle: () => hostCall("session.waitForIdle", {}),
+	newSession: (options?: unknown) => hostCall("session.newSession", { options: options ?? null }),
+	fork: (entryId: string, options?: unknown) =>
+		hostCall("session.fork", { entryId, options: options ?? null }),
+	navigateTree: (targetId: string, options?: unknown) =>
+		hostCall("session.navigateTree", { targetId, options: options ?? null }),
+	switchSession: (sessionPath: string, options?: unknown) =>
+		hostCall("session.switchSession", { sessionPath, options: options ?? null }),
+	reload: () => hostCall("session.reload", {}),
+});
+
+const createToolContext = (state: ExtensionState) => ({
+	...createContext(state),
+	tools: {
+		registered: hostCall("tools.getAll", {}),
+		getExposure: (name: string) => hostCall("tools.getExposure", { name }),
+		getNamespace: (name: string) => hostCall("tools.getNamespace", { name }),
+		getPromptGuidelines: (name: string) => hostCall("tools.getPromptGuidelines", { name }),
+	},
+	executeTool: (name: string, args: unknown, options?: unknown) =>
+		hostCall("tools.execute", { name, args, options: options ?? null }),
 });
 
 const eventBus = createEventBus();
@@ -449,7 +701,7 @@ const listTools = () =>
 		})),
 	);
 
-const loadExtension = (path: string, code: string) => {
+const loadExtension = async (path: string, code: string) => {
 	const exports = loadModule(path, code);
 	const factory = exports.default ?? exports;
 	if (typeof factory !== "function") {
@@ -466,8 +718,13 @@ const loadExtension = (path: string, code: string) => {
 		entryRenderers: new Map(),
 		markdownTransformers: [],
 		toolRenderers: [],
+		autocompleteProviders: [],
+		terminalInputHandlers: [],
 	};
-	(factory as (api: unknown) => void)(createApi(state));
+	// The factory may be async: the original awaits it before it commits the
+	// registrations, so an extension that registers after an `await` is
+	// registered by the time the load returns.
+	await (factory as (api: unknown) => unknown)(createApi(state));
 	extensions.push(state);
 	return { path, tools: listTools() };
 };
@@ -483,11 +740,11 @@ const callTool = async (name: string, args: unknown) => {
 	}
 	if (!found) throw new Error(`unknown tool: ${name}`);
 	const result = await found.tool.execute(
-		"tool-call",
+		`tool-call-${++toolCallCounter}`,
 		args,
 		undefined,
 		undefined,
-		createContext(found.state),
+		createToolContext(found.state),
 	);
 	return result ?? null;
 };

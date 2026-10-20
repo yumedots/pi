@@ -153,7 +153,7 @@ if (!existsSync(RPI)) {
 }
 
 const env = { ...process.env };
-if (options.agentDir) env.RPI_CODING_AGENT_DIR = options.agentDir;
+if (options.agentDir) env.PI_CODING_AGENT_DIR = options.agentDir;
 
 console.log(`${"layer".padEnd(38)} cost`);
 let previous = 0;

@@ -96,7 +96,7 @@ async fn combines_stdout_and_stderr() {
 }
 
 #[tokio::test]
-async fn nonzero_exit_returns_error_with_output() {
+async fn nonzero_exit_returns_soft_failure_with_output() {
     let (env, ctx) = fresh_context();
     env.register_shell(
         "fail",
@@ -109,12 +109,13 @@ async fn nonzero_exit_returns_error_with_output() {
     )
     .await;
     let tool = rpi_tools::create_bash_tool(&ctx, None);
-    let err = run_bash(tool, serde_json::json!({ "command": "fail" }))
+    let result = run_bash(tool, serde_json::json!({ "command": "fail" }))
         .await
-        .expect_err("nonzero exit → Err");
-    let msg = err_text(&err);
+        .expect("nonzero exit → Ok with is_error");
+    assert!(result.is_error, "the result must be flagged as an error");
+    let msg = text_output(&result);
     assert!(msg.contains("failed"), "{msg}");
-    assert!(msg.contains("Command exited with code 7"), "{msg}");
+    assert!(msg.ends_with("Command exited with code 7"), "{msg}");
 }
 
 #[tokio::test]

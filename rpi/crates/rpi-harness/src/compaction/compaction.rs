@@ -16,10 +16,8 @@
 //!   AssistantMessage-level retry mirroring `retryAssistantCall`'s shape
 //!   (abort-terminal, success-fast, exponential backoff, sleep honors the
 //!   cancellation token, abort-during-sleep normalized to an aborted message).
-//!   The retryability classifier is a conservative *substring* port of the TS
-//!   regex table (not full regex), because the workspace has no `regex` dep and
-//!   the compaction retry policy defaults to disabled — faux tests never retry,
-//!   so the classifier is off the hot path.
+//!   The retryability classifier it uses is pi's own pair of regex tables,
+//!   ported in [`crate::compaction::retry_classifier`].
 //! - **Retry callbacks** (`onRetryScheduled`/`onRetryAttemptStart`/
 //!   `onRetryFinished`) are omitted in v1 (telemetry-only in TS); the harness
 //!   can add a trait-hook sink later without changing the call shape.
@@ -38,6 +36,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::compaction::cut_point::find_cut_point;
+use crate::compaction::retry_classifier::is_retryable_assistant_error;
 use crate::compaction::tokens::{
     build_session_context, compute_file_lists, create_file_ops, estimate_context_tokens,
     extract_file_ops_from_message, format_file_operations, serialize_conversation, FileOperations,
@@ -247,8 +246,8 @@ pub fn extract_file_operations(
 // ---------------------------------------------------------------------------
 
 /// Prepare session entries for compaction, or `None` when compaction is not
-/// applicable (empty path, or last entry is already a compaction). Mirrors
-/// `prepareCompaction`.
+/// applicable (empty path, last entry is already a compaction, or there is no
+/// history to summarize). Mirrors `prepareCompaction`.
 ///
 /// The returned `Result` is always `Ok` (TS never errors here), but carries the
 /// `CompactionError` type for parity with the TS signature.
@@ -351,6 +350,10 @@ pub fn prepare_compaction(
                 turn_prefix_messages.push(m);
             }
         }
+    }
+
+    if messages_to_summarize.is_empty() && turn_prefix_messages.is_empty() {
+        return Ok(None);
     }
 
     let mut retained_tail: Vec<AgentMessage> = Vec::new();
@@ -492,75 +495,6 @@ where
             }
         }
     }
-}
-
-/// Conservative substring port of `isRetryableAssistantError`. Returns false
-/// for quota/billing errors (non-retryable) and true only for clearly-transient
-/// transport/server text. See module doc for the divergence note.
-pub fn is_retryable_assistant_error(message: &AssistantMessage) -> bool {
-    if message.stop_reason != StopReason::Error {
-        return false;
-    }
-    let Some(msg) = &message.error_message else {
-        return false;
-    };
-    let lower = msg.to_lowercase();
-    const NON_RETRYABLE: &[&str] = &[
-        "gousagelimiterror",
-        "freeusagelimiterror",
-        "monthly usage limit reached",
-        "available balance",
-        "insufficient_quota",
-        "out of budget",
-        "quota exceeded",
-        "billing",
-    ];
-    if NON_RETRYABLE.iter().any(|p| lower.contains(p)) {
-        return false;
-    }
-    const RETRYABLE: &[&str] = &[
-        "overloaded",
-        "rate limit",
-        "too many requests",
-        "429",
-        "500",
-        "502",
-        "503",
-        "504",
-        "524",
-        "service unavailable",
-        "server error",
-        "internal error",
-        "provider returned error",
-        "exceeded request buffer limit while retrying upstream",
-        "network error",
-        "connection error",
-        "connection refused",
-        "connection lost",
-        "other side closed",
-        "fetch failed",
-        "getaddrinfo",
-        "enotfound",
-        "eai_again",
-        "upstream connect",
-        "reset before headers",
-        "socket hang up",
-        "socket connection was closed",
-        "timed out",
-        "timeout",
-        "websocket closed",
-        "websocket error",
-        "ended without",
-        "stream ended before message_stop",
-        "stream ended before a terminal response event",
-        "http2 request did not get a response",
-        "retry delay",
-        "you can retry your request",
-        "try your request again",
-        "please retry your request",
-        "resourceexhausted",
-    ];
-    RETRYABLE.iter().any(|p| lower.contains(p))
 }
 
 // ---------------------------------------------------------------------------
@@ -858,21 +792,16 @@ mod tests {
     }
 
     #[test]
-    fn prepare_compaction_single_user_returns_some_with_empty_summarize() {
-        // One user message, small keep_recent — no history to summarize.
+    fn prepare_compaction_single_user_is_none() {
+        // One user message, small keep_recent — no history to summarize, so
+        // there is nothing to compact (TS `prepareCompaction` returns undefined).
         let entries = vec![user_msg("hi", 1)];
         let settings = CompactionSettings {
             enabled: true,
             reserve_tokens: 1000,
             keep_recent_tokens: 10,
         };
-        let p = prepare_compaction(&entries, settings).unwrap().unwrap();
-        assert!(p.messages_to_summarize.is_empty());
-        assert!(p
-            .retained_tail
-            .iter()
-            .any(|m| matches!(m, AgentMessage::User(u) if u.content.as_text()==Some("hi"))));
-        assert!(!p.is_split_turn);
+        assert!(prepare_compaction(&entries, settings).unwrap().is_none());
     }
 
     #[test]

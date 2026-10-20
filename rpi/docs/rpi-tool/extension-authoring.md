@@ -449,15 +449,15 @@ TUI 中执行 `/reload` 会强制重新运行 Cargo build，再加载新阶段�
 
 ```json
 {
-  "skillDirs": ["./team-skills"],
-  "promptDirs": ["./prompts/shared"],
-  "extensionDirs": ["./target/debug"],
+  "skills": ["./team-skills"],
+  "prompts": ["./prompts/shared"],
+  "extensions": ["./target/debug"],
   "packages": ["./packages/review-tools"]
 }
 ```
 
-`skills`、`prompts`、`extensions` 也可分别作为三个路径数组的简写。全局
-`~/.rpi/agent/settings.json` 支持相同的 `skillDirs`、`promptDirs`、`extensionDirs`，
+`skillDirs`、`promptDirs`、`extensionDirs` 是对应三个路径数组的旧写法，仍然可读。全局
+`~/.rpi/agent/settings.json` 支持相同的 `skills`、`prompts`、`extensions`，
 其中相对路径相对于全局 agent 目录。项目配置优先于全局配置；`.rpi` 资源和设置排在
 `.pi` 之前。
 

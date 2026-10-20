@@ -223,13 +223,13 @@ Global resources normally live under `~/.rpi/agent/`. Project resources take pre
 
 ```json
 {
-  "skillDirs": ["./team-skills"],
-  "promptDirs": ["./prompts/shared"],
-  "extensionDirs": ["./target/debug"]
+  "skills": ["./team-skills"],
+  "prompts": ["./prompts/shared"],
+  "extensions": ["./target/debug"]
 }
 ```
 
-The shorthand keys `skills`, `prompts`, and `extensions` are also supported. Paths are relative to the project root; global settings resolve relative paths against the agent directory. Use `--package-only` or `--project-only` to load only the current project's package and resources. This is different from `--local-only`, which limits extensions to explicitly supplied local paths.
+The keys `skillDirs`, `promptDirs`, and `extensionDirs` are the older spellings of the same three path arrays and are still read. Paths are relative to the project root; global settings resolve relative paths against the agent directory. Use `--package-only` or `--project-only` to load only the current project's package and resources. This is different from `--local-only`, which limits extensions to explicitly supplied local paths.
 
 Set `RPI_CODING_AGENT_DIR=/work/rpi-agent` to relocate configuration and default sessions. Use `--no-session` when a temporary, non-persistent run is required.
 

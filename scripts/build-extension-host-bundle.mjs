@@ -39,6 +39,31 @@ const nodeShims = {
 	"node:child_process": join(shimDir, "node-child-process.ts"),
 	"node:fs": join(shimDir, "node-fs.ts"),
 	"node:fs/promises": join(shimDir, "node-fs-promises.ts"),
+	"node:events": join(shimDir, "node-events.ts"),
+	"node:worker_threads": join(shimDir, "node-worker-threads.ts"),
+	"node:module": join(shimDir, "node-module.ts"),
+	"node:timers/promises": join(shimDir, "timers-promises.ts"),
+	"node:crypto": join(shimDir, "node-crypto.ts"),
+	"node:util": join(shimDir, "node-util.ts"),
+	"node:readline": join(shimDir, "node-readline.ts"),
+	"node:stream": join(shimDir, "node-stream.ts"),
+	"node:zlib": join(shimDir, "node-zlib.ts"),
+	"node:http": join(shimDir, "node-http.ts"),
+	"node:string_decoder": join(shimDir, "node-string-decoder.ts"),
+	"node:stream/promises": join(shimDir, "node-stream-promises.ts"),
+	"node:process": join(shimDir, "node-process.ts"),
+	"node:assert": join(shimDir, "node-assert.ts"),
+	"node:readline/promises": join(shimDir, "node-readline-promises.ts"),
+	constants: join(shimDir, "node-os.ts"),
+	"node:tty": join(shimDir, "node-tty.ts"),
+	"node:async_hooks": join(shimDir, "node-async-hooks.ts"),
+	"node:v8": join(shimDir, "node-v8.ts"),
+	"node:sqlite": join(shimDir, "node-sqlite.ts"),
+	"node:vm": join(shimDir, "node-vm.ts"),
+	"node:net": join(shimDir, "node-net.ts"),
+	"node:tls": join(shimDir, "node-tls.ts"),
+	"node:diagnostics_channel": join(shimDir, "node-diagnostics-channel.ts"),
+	"node:buffer": join(shimDir, "node-buffer.ts"),
 };
 
 const virtualModulePlugin = {
@@ -50,9 +75,13 @@ const virtualModulePlugin = {
 			return { path: resolved };
 		});
 		context.onResolve(
-			{ filter: /^(node:)?(path|os|url|perf_hooks|child_process|fs(\/promises)?)$/ },
+			{
+				filter:
+					/^(node:)?(path|os|url|perf_hooks|child_process|fs(\/promises)?|events|worker_threads|module|timers\/promises|crypto|util|readline(\/promises)?|stream(\/promises)?|zlib|http|string_decoder|process|assert|constants|tty|async_hooks|v8|sqlite|vm|net|tls|diagnostics_channel|buffer)$/
+			},
 			(args) => {
-				const resolved = nodeShims[`node:${args.path.replace(/^node:/, "")}`];
+				const name = args.path.replace(/^node:/, "");
+				const resolved = nodeShims[`node:${name}`] ?? nodeShims[name] ?? nodeShims[`node:timers/${name}`] ?? nodeShims[`node:stream/${name}`] ?? nodeShims[`node:readline/${name}`];
 				if (!resolved) throw new Error(`no shim for the node builtin: ${args.path}`);
 				return { path: resolved };
 			},
@@ -126,9 +155,16 @@ const result = await build({
 	bundle: true,
 	format: "iife",
 	platform: "neutral",
+	// The neutral platform empties `mainFields`, so a package that only has a
+	// `main` field (most of them) never resolves. The vendored pi packages
+	// pull those in.
+	mainFields: ["module", "main"],
 	target: "es2022",
 	write: false,
 	plugins: [virtualModulePlugin],
+	// The vendored pi packages carry their own dependencies; the port's
+	// workspace has them at the root, so the resolution has to look there.
+	nodePaths: [join(repoRoot, "node_modules"), join(repoRoot, "..", "pi", "node_modules")],
 	metafile: true,
 	logLevel: "warning",
 	// esbuild writes the resolved path of every input into the bundle as a

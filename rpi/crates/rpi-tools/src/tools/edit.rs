@@ -33,6 +33,7 @@ use crate::tools::edit_diff::{
     ReplaceEdit,
 };
 use crate::tools::tool_context::ExecutionToolContext;
+use crate::tools::PromptContribution;
 
 /// Input for the edit tool. Mirrors TS `EditToolInput`.
 #[derive(Debug, Clone, JsonSchema, Deserialize)]
@@ -67,6 +68,7 @@ pub struct EditToolDetails {
 pub struct EditTool {
     schema: Tool,
     env: Arc<dyn MutatingEnv>,
+    prompt: PromptContribution,
 }
 
 impl EditTool {
@@ -95,6 +97,15 @@ pub fn create_edit_tool(context: &ExecutionToolContext) -> Arc<dyn AgentTool> {
     Arc::new(EditTool {
         schema: EditTool::schema(),
         env,
+        prompt: PromptContribution::new(
+            "Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
+            &[
+                "Use edit for precise changes (edits[].oldText must match exactly)",
+                "When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
+                "Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
+                "Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+            ],
+        ),
     })
 }
 
@@ -105,6 +116,16 @@ impl AgentTool for EditTool {
     }
     fn label(&self) -> &str {
         "edit"
+    }
+
+    /// Mirrors TS `AgentTool.promptSnippet`.
+    fn prompt_snippet(&self) -> Option<&str> {
+        Some(self.prompt.snippet)
+    }
+
+    /// Mirrors TS `AgentTool.promptGuidelines`.
+    fn prompt_guidelines(&self) -> Option<&[String]> {
+        Some(&self.prompt.guidelines)
     }
 
     /// Fold legacy `oldText`/`newText` and parse a JSON-string `edits`. Mirrors

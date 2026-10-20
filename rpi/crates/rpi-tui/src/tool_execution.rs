@@ -10,8 +10,10 @@ use std::time::Instant;
 
 use super::component::Component;
 use crate::ansi::{bold, strip_ansi};
+use crate::keybinding_hints::key_text;
 use crate::theme::{theme, theme_revision, Theme, ThemeColors};
 use crate::tool_panel::ToolPanel;
+use crate::tool_renderers::{ToolRenderContext, ToolRenderer};
 use crate::utils::{apply_background_to_line, truncate_to_width, wrap_text_with_ansi};
 
 /// Maximum diff lines rendered inline when expanded before collapsing the rest.
@@ -76,6 +78,15 @@ pub struct ToolExecutionComponent {
     /// Complete todo snapshot, rendered as a single compact task list.
     todo_state: Mutex<Option<Vec<(String, String)>>>,
     plan_state: Mutex<Option<(String, bool)>>,
+    /// The tool's own renderer, when it has one. Upstream lets a tool
+    /// definition carry `renderCall` / `renderResult`; a tool without a
+    /// renderer gets the generic name+args panel.
+    renderer: Mutex<Option<Box<dyn ToolRenderer>>>,
+    /// The tool result details as raw JSON — the renderers that report a
+    /// truncation read them from here.
+    details: Mutex<Option<String>>,
+    /// The session working directory, used to resolve relative paths.
+    cwd: std::sync::Arc<str>,
     /// Bumped by every mutator. A finished tool panel is immutable (no live
     /// elapsed timer), so its rendered lines are memoized by width; the
     /// revision drops the cache when args/result/expand change.
@@ -112,6 +123,9 @@ impl ToolExecutionComponent {
             result_markdown: Mutex::new(false),
             todo_state: Mutex::new(None),
             plan_state: Mutex::new(None),
+            renderer: Mutex::new(crate::tool_renderers::builtin_renderer(name)),
+            details: Mutex::new(None),
+            cwd: session_cwd(),
             revision: AtomicU64::new(0),
             cache: Mutex::new(None),
         }
@@ -257,6 +271,41 @@ impl ToolExecutionComponent {
     pub fn is_plan_panel(&self) -> bool {
         self.plan_state.lock().unwrap().is_some()
     }
+
+    /// Attach a renderer to this tool, replacing the built-in one. A tool
+    /// without a renderer keeps the generic name+args panel.
+    pub fn set_renderer(&self, renderer: Box<dyn ToolRenderer>) {
+        if let Ok(mut slot) = self.renderer.lock() {
+            *slot = Some(renderer);
+        }
+        self.bump();
+    }
+
+    /// The tool result details, as raw JSON. The renderers that report a
+    /// truncation read them from here.
+    pub fn set_details(&self, details: &str) {
+        if let Ok(mut slot) = self.details.lock() {
+            *slot = Some(details.to_string());
+        }
+        self.bump();
+    }
+
+    /// Whether the tool carries its own renderer.
+    pub fn has_renderer(&self) -> bool {
+        self.renderer.lock().map(|slot| slot.is_some()).unwrap_or(false)
+    }
+}
+
+/// The session working directory, used to resolve the relative paths a tool
+/// call carries.
+fn session_cwd() -> std::sync::Arc<str> {
+    static CWD: std::sync::LazyLock<std::sync::Arc<str>> = std::sync::LazyLock::new(|| {
+        std::env::current_dir()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default()
+            .into()
+    });
+    CWD.clone()
 }
 
 impl ToolExecutionComponent {
@@ -358,6 +407,28 @@ impl ToolExecutionComponent {
             }
             return rows;
         }
+        // Skill invocation mode: render as native-Pi's `[skill]` box rather
+        // than a generic tool panel — custom-message background, collapsed to
+        // a single `[skill] <name> (Ctrl+O to expand)` line, expanded to the
+        // full skill markdown (the `read` result). Mirrors pi's
+        // `SkillInvocationMessageComponent` while reusing the tool panel's
+        // result streaming + Ctrl+O expand plumbing.
+        {
+            let skill = self.skill_name.lock().unwrap().clone();
+            if let Some(skill) = skill {
+                let content = self.result.lock().unwrap().clone().unwrap_or_default();
+                let expanded = *self.expanded.lock().unwrap();
+                return render_skill(colors, &skill, &content, expanded, width);
+            }
+        }
+
+        // A tool that carries its own renderer draws its call header and its
+        // result body with it, the way upstream's `ToolExecutionComponent`
+        // renders a tool definition with `renderCall` / `renderResult`.
+        if self.has_renderer() {
+            return self.render_with_renderer(width, theme);
+        }
+
         let mut lines = Vec::new();
 
         // Top spacer — pi's tool-execution.ts adds a Spacer(1) child inside
@@ -368,7 +439,6 @@ impl ToolExecutionComponent {
 
         let name = self.name.lock().unwrap();
         let display_title = self.display_title.lock().unwrap();
-        let skill_name = self.skill_name.lock().unwrap();
         let status = self.status.lock().unwrap();
         let args = self.args.lock().unwrap();
         let result = self.result.lock().unwrap();
@@ -377,17 +447,6 @@ impl ToolExecutionComponent {
         let result_markdown = self.result_markdown.lock().unwrap();
         let started_at = self.started_at.lock().unwrap();
         let finished_at = self.finished_at.lock().unwrap();
-
-        // Skill invocation mode: render as native-Pi's `[skill]` box rather
-        // than a generic tool panel — custom-message background, collapsed to
-        // a single `[skill] <name> (Ctrl+O to expand)` line, expanded to the
-        // full skill markdown (the `read` result). Mirrors pi's
-        // `SkillInvocationMessageComponent` while reusing the tool panel's
-        // result streaming + Ctrl+O expand plumbing.
-        if let Some(skill) = skill_name.as_deref() {
-            let content = result.as_deref().unwrap_or("");
-            return render_skill(colors, skill, content, *expanded, width);
-        }
 
         // Status indicator — a colored glyph (no emoji), pi style.
         let (status_icon, status_color) = match *status {
@@ -531,14 +590,18 @@ impl ToolExecutionComponent {
             }
             let hidden = visual_lines.len().saturating_sub(shown);
             if hidden > 0 {
-                let hint = colors
-                    .muted
-                    .fg(&format!("… {hidden} more lines (Ctrl+O to expand)"));
+                let hint = colors.muted.fg(&format!(
+                    "... ({hidden} more lines, {} to expand)",
+                    key_text("app.tools.expand")
+                ));
                 for part in wrap_text_with_ansi(&hint, content_width) {
                     lines.push(panel.line(&part));
                 }
             } else if *expanded && visual_lines.len() > OUTPUT_PREVIEW_LINES {
-                let hint = colors.muted.fg("Ctrl+O to collapse");
+                let hint = colors.muted.fg(&format!(
+                    "{} to collapse",
+                    key_text("app.tools.expand")
+                ));
                 for part in wrap_text_with_ansi(&hint, content_width) {
                     lines.push(panel.line(&part));
                 }
@@ -549,35 +612,148 @@ impl ToolExecutionComponent {
         // (a small preview) and fully when expanded — an edit's diff is the
         // useful payload, but dumping 40 lines into the transcript by default
         // swamped the conversation. Cap at DIFF_LINE_CAP even when expanded.
-        if let Some(diff) = diff_lines.as_ref() {
-            let total = diff.len();
-            let cap = if *expanded {
-                DIFF_LINE_CAP
-            } else {
-                DIFF_PREVIEW_LINES
-            };
-            let shown = diff.iter().take(cap);
-            for dl in shown {
-                // Keep the diff's fixed gutter and clipping behavior, but put
-                // every row (including blanks) inside the themed panel surface.
-                lines.push(panel.line(&truncate_to_width(dl, content_width, "…")));
-            }
-            if total > cap {
-                let more = total - cap;
-                let hint = if *expanded {
-                    format!("… {} more diff lines (Ctrl+O to collapse)", more)
-                } else {
-                    format!("… {} more diff lines (Ctrl+O to expand)", more)
-                };
-                for part in wrap_text_with_ansi(&colors.muted.fg(&hint), content_width) {
-                    lines.push(panel.line(&part));
-                }
-            }
-        }
+        lines.extend(render_diff_rows(
+            diff_lines.as_ref(),
+            &panel,
+            content_width,
+            *expanded,
+            colors,
+        ));
 
         lines.extend(std::iter::repeat(panel.blank()).take(panel.padding_y));
         lines
     }
+
+    /// Render the panel with the tool's own renderer.
+    ///
+    /// Mirrors upstream's `ToolExecutionComponent`: the tool's `renderCall`
+    /// draws the call header and the tool's `renderResult` draws the body.
+    /// Both sit inside the panel's box — one column of padding on each side
+    /// and one blank row above and below.
+    fn render_with_renderer(&self, width: usize, theme: &Theme) -> Vec<String> {
+        let colors = &theme.colors;
+        let status = *self.status.lock().unwrap();
+        let bg = match status {
+            ToolStatus::Pending | ToolStatus::Running => colors.tool_pending_bg,
+            ToolStatus::Failed => colors.tool_error_bg,
+            ToolStatus::Completed => colors.tool_success_bg,
+        };
+        let Some(panel) = ToolPanel::with_padding(width, TOOL_PANEL_PAD, TOOL_PANEL_PAD, bg) else {
+            return Vec::new();
+        };
+        let content_width = panel.content_width.max(1);
+
+        let args = self.args.lock().unwrap();
+        let result = self.result.lock().unwrap();
+        let details = self.details.lock().unwrap();
+        let expanded = *self.expanded.lock().unwrap();
+        let duration_ms = self.elapsed_ms();
+        let cwd = self.cwd.clone();
+        let ctx = ToolRenderContext {
+            args: &args,
+            result: result.as_deref(),
+            is_error: status == ToolStatus::Failed,
+            is_partial: matches!(status, ToolStatus::Pending | ToolStatus::Running),
+            expanded,
+            cwd: cwd.as_ref(),
+            width: content_width,
+            duration_ms,
+            details: details.as_deref(),
+        };
+        let content = {
+            let renderer = self.renderer.lock().unwrap();
+            let Some(renderer) = renderer.as_ref() else {
+                return Vec::new();
+            };
+            let mut content = render_block(&renderer.render_call(&ctx, theme), content_width);
+            if result.is_some() {
+                content.extend(render_block(&renderer.render_result(&ctx, theme), content_width));
+            }
+            content
+        };
+
+        let mut lines = vec![String::new()];
+        if content.is_empty() {
+            return lines;
+        }
+        lines.extend(std::iter::repeat(panel.blank()).take(panel.padding_y));
+        for row in content {
+            lines.push(panel.line(&row));
+        }
+        let diff_lines = self.diff_lines.lock().unwrap();
+        lines.extend(render_diff_rows(
+            diff_lines.as_ref(),
+            &panel,
+            content_width,
+            expanded,
+            colors,
+        ));
+        lines.extend(std::iter::repeat(panel.blank()).take(panel.padding_y));
+        lines
+    }
+
+    /// How long the tool ran, in milliseconds.
+    fn elapsed_ms(&self) -> Option<u64> {
+        let started = *self.started_at.lock().unwrap();
+        let finished = *self.finished_at.lock().unwrap();
+        match (started, finished) {
+            (Some(started), Some(finished)) => {
+                Some(finished.duration_since(started).as_millis() as u64)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// The horizontal and vertical inset of a tool panel that draws itself with
+/// upstream's own padding (the `outputPad` setting, one column by default).
+const TOOL_PANEL_PAD: usize = 1;
+
+/// Wrap a rendered block into panel rows, the way upstream's `Text` child
+/// does: an empty block draws nothing.
+fn render_block(text: &str, width: usize) -> Vec<String> {
+    if text.trim().is_empty() {
+        return Vec::new();
+    }
+    wrap_text_with_ansi(&text.replace('\t', "   "), width)
+}
+
+/// The diff rows of a tool panel — the `edit` tool's diff, previewed when
+/// the panel is collapsed.
+fn render_diff_rows(
+    diff: Option<&Vec<String>>,
+    panel: &ToolPanel,
+    content_width: usize,
+    expanded: bool,
+    colors: &ThemeColors,
+) -> Vec<String> {
+    let Some(diff) = diff else {
+        return Vec::new();
+    };
+    let mut lines = Vec::new();
+    let total = diff.len();
+    let cap = if expanded {
+        DIFF_LINE_CAP
+    } else {
+        DIFF_PREVIEW_LINES
+    };
+    for dl in diff.iter().take(cap) {
+        // Keep the diff's fixed gutter and clipping behavior, but put
+        // every row (including blanks) inside the themed panel surface.
+        lines.push(panel.line(&truncate_to_width(dl, content_width, "…")));
+    }
+    if total > cap {
+        let more = total - cap;
+        let hint = if expanded {
+            format!("… {} more diff lines (Ctrl+O to collapse)", more)
+        } else {
+            format!("… {} more diff lines (Ctrl+O to expand)", more)
+        };
+        for part in wrap_text_with_ansi(&colors.muted.fg(&hint), content_width) {
+            lines.push(panel.line(&part));
+        }
+    }
+    lines
 }
 
 impl Component for ToolExecutionComponent {
@@ -627,11 +803,11 @@ impl Component for ToolExecutionComponent {
 
 /// Render a skill-invocation box in native-Pi style.
 ///
-/// Mirrors pi's `SkillInvocationMessageComponent`: a `[skill]` box on the
-/// custom-message background. Collapsed it is a single line
-/// `[skill] <name> (Ctrl+O to expand)`; expanded it shows the `[skill]` label,
-/// the bold skill name, then the full skill markdown content (the `read`
-/// result) rendered with the standard markdown component.
+/// Mirrors pi's `SkillInvocationMessageComponent`: a card on the
+/// custom-message background that shows the mention as `@<name>`. Collapsed it
+/// is a single line `@<name> (ctrl+o to expand)`; expanded it shows the
+/// mention, then the full skill markdown content (the `read` result) rendered
+/// with the standard markdown component.
 fn render_skill(
     colors: &ThemeColors,
     name: &str,
@@ -640,7 +816,7 @@ fn render_skill(
     width: usize,
 ) -> Vec<String> {
     let bg = colors.custom_message_bg;
-    let label = crate::ansi::bold("[skill]");
+    let label = format!("@{name}");
     // Upstream's `Box(1, 1, bg)` — one column of horizontal padding on each
     // side, one blank background row top and bottom.
     let pad = " ";
@@ -650,19 +826,21 @@ fn render_skill(
     out.push(apply_background_to_line("", width, |s| bg.bg(s)));
 
     if !expanded {
-        // Single collapsed line: `[skill] <name> (Ctrl+O to expand)`.
+        // Single collapsed line: `@<name> (ctrl+o to expand)`.
         let line = format!(
-            "{pad}{} {} {}",
+            "{pad}{} {}",
             colors.custom_message_label.fg(&label),
-            colors.custom_message_text.fg(name),
-            colors.dim.fg("(Ctrl+O to expand)"),
+            colors.dim.fg(&format!(
+                "({} to expand)",
+                key_text("app.tools.expand")
+            )),
         );
         out.push(apply_background_to_line(&line, width, |s| bg.bg(s)));
         out.push(apply_background_to_line("", width, |s| bg.bg(s)));
         return out;
     }
 
-    // Expanded: `[skill]` label, then a single markdown block whose first
+    // Expanded: the mention, then a single markdown block whose first
     // paragraph is the bold skill name (upstream renders
     // `**${name}**\n\n${content}` as one Markdown child), so the body keeps
     // its normal markdown colors on the custom-message background.
@@ -718,12 +896,15 @@ fn strip_frontmatter(content: &str) -> &str {
 pub(crate) fn format_elapsed(duration: std::time::Duration) -> String {
     let secs = duration.as_secs_f64();
     if secs < 60.0 {
-        format!("{:.1}s", secs)
-    } else {
-        let mins = (secs / 60.0).floor() as u64;
-        let remaining_secs = (secs % 60.0).floor() as u64;
-        format!("{}m{}s", mins, remaining_secs)
+        return format!("{secs:.1}s");
     }
+    let total_seconds = secs.floor() as u64;
+    let minutes = total_seconds / 60;
+    let remainder = total_seconds % 60;
+    if minutes < 60 {
+        return format!("{minutes}m {remainder}s");
+    }
+    format!("{}h {}m {remainder}s", minutes / 60, minutes % 60)
 }
 
 /// Normalize tool output for display. Tool payloads are not guaranteed to use
@@ -1255,7 +1436,7 @@ mod tests {
             ToolStatus::Completed,
             ToolStatus::Failed,
         ] {
-            let tool = ToolExecutionComponent::new("edit", r#"{"path":"f.rs"}"#);
+            let tool = ToolExecutionComponent::new("custom_tool", r#"{"path":"f.rs"}"#);
             tool.set_result("updated", status == ToolStatus::Failed);
             tool.set_diff(vec![
                 theme.colors.tool_diff_added.fg("+ new"),
@@ -1299,14 +1480,14 @@ mod tests {
         let mut theme = Theme::default();
         theme.spacing.tool_panel_padding_x = 4;
         theme.spacing.tool_panel_padding_y = 2;
-        let tool = ToolExecutionComponent::new("edit", "{}");
+        let tool = ToolExecutionComponent::new("custom_tool", "{}");
         tool.set_result("done", false);
         tool.set_diff(vec!["+ new".into()]);
         let lines = tool.render_panel(40, &theme);
         let blank = theme.colors.tool_success_bg.bg(&" ".repeat(40));
         assert_eq!(lines[1..3], [blank.clone(), blank.clone()]);
         assert_eq!(lines[lines.len() - 2..], [blank.clone(), blank]);
-        assert!(strip_ansi(&lines[3]).starts_with("    ✓ edit"));
+        assert!(strip_ansi(&lines[3]).starts_with("    ✓ custom_tool"));
         assert!(lines
             .iter()
             .any(|line| strip_ansi(line).trim_end() == "    │ done"));
@@ -1317,7 +1498,7 @@ mod tests {
         theme.spacing.tool_panel_padding_x = 0;
         theme.spacing.tool_panel_padding_y = 0;
         let lines = tool.render_panel(40, &theme);
-        assert!(strip_ansi(&lines[1]).starts_with("✓ edit"));
+        assert!(strip_ansi(&lines[1]).starts_with("✓ custom_tool"));
         assert_eq!(strip_ansi(lines.last().unwrap()).trim_end(), "+ new");
     }
 
@@ -1325,7 +1506,7 @@ mod tests {
     fn generic_output_wraps_between_both_insets() {
         let theme = Theme::default();
         let output = "abcdefghijklmnop你好世界qrstuvwxyz";
-        let tool = ToolExecutionComponent::new("read", "{}");
+        let tool = ToolExecutionComponent::new("custom_tool", "{}");
         tool.set_result(output, false);
         for expanded in [false, true] {
             tool.set_expanded(expanded);
@@ -1352,7 +1533,7 @@ mod tests {
     fn generic_panels_handle_narrow_widths_and_large_padding() {
         let mut theme = Theme::default();
         theme.spacing.tool_panel_padding_x = usize::MAX;
-        let tool = ToolExecutionComponent::new("edit", r#"{"path":"很长的文件.rs"}"#);
+        let tool = ToolExecutionComponent::new("custom_tool", r#"{"path":"很长的文件.rs"}"#);
         tool.set_result("你好世界abcdefghijklmnop", false);
         tool.set_diff(vec!["+ 中文abcdefghijklmnop".into()]);
         for expanded in [false, true] {
@@ -1378,7 +1559,7 @@ mod tests {
     #[test]
     fn expanded_args_wrap_and_diff_stays_inside_the_panel() {
         let theme = Theme::default();
-        let tool = ToolExecutionComponent::new("edit", r#"{"path":"abcdefghijklmnop.rs"}"#);
+        let tool = ToolExecutionComponent::new("custom_tool", r#"{"path":"abcdefghijklmnop.rs"}"#);
         let diff = "+ 你好abcdefghijklmnopqrst";
         tool.set_result("done", false);
         tool.set_diff(vec![theme.colors.tool_diff_added.fg(diff)]);
@@ -1401,7 +1582,7 @@ mod tests {
 
     #[test]
     fn test_tool_execution_basic() {
-        let tool = ToolExecutionComponent::new("read", "file.txt");
+        let tool = ToolExecutionComponent::new("read", r#"{"path":"file.txt"}"#);
         let lines = tool.render(80);
         assert!(!lines.is_empty());
     }
@@ -1421,7 +1602,7 @@ mod tests {
 
     #[test]
     fn test_tool_execution_expanded() {
-        let tool = ToolExecutionComponent::new("edit", "file.rs");
+        let tool = ToolExecutionComponent::new("custom_tool", "file.rs");
         tool.set_expanded(true);
         tool.set_result("success", false);
 
@@ -1431,7 +1612,7 @@ mod tests {
 
     #[test]
     fn test_tool_execution_error() {
-        let tool = ToolExecutionComponent::new("bash", "invalid_command");
+        let tool = ToolExecutionComponent::new("custom_tool", r#"{"command":"invalid_command"}"#);
         tool.set_result("command not found", true);
 
         let lines = tool.render(80);
@@ -1465,7 +1646,7 @@ mod tests {
 
     #[test]
     fn tool_output_wraps_with_a_stable_gutter_and_background() {
-        let tool = ToolExecutionComponent::new("read", r#"{"path":"wide.txt"}"#);
+        let tool = ToolExecutionComponent::new("custom_tool", r#"{"path":"wide.txt"}"#);
         tool.set_result("0123456789ABCDEFGHIJ", false);
         let rendered = tool.render(12);
         let body: Vec<String> = rendered
@@ -1481,7 +1662,7 @@ mod tests {
         // Nested foreground resets must re-apply the panel background.
         assert!(rendered
             .iter()
-            .any(|line| line.matches("\x1b[48;2;38;48;52m").count() > 1));
+            .any(|line| line.matches("\x1b[48;2;37;65;49m").count() > 1));
     }
 
     #[test]
@@ -1522,7 +1703,7 @@ mod tests {
 
     #[test]
     fn long_tool_output_collapses_and_ctrl_o_expands() {
-        let tool = ToolExecutionComponent::new("read", r#"{"path":"large.rs"}"#);
+        let tool = ToolExecutionComponent::new("custom_tool", r#"{"path":"large.rs"}"#);
         let output = (1..=20)
             .map(|line| format!("line {line}"))
             .collect::<Vec<_>>()
@@ -1531,14 +1712,14 @@ mod tests {
 
         let collapsed = tool.render(80);
         let collapsed_plain = crate::ansi::strip_ansi(&collapsed.join("\n"));
-        assert!(collapsed_plain.contains("8 more lines (Ctrl+O to expand)"));
+        assert!(collapsed_plain.contains("8 more lines, ctrl+o to expand)"));
         assert!(!collapsed_plain.contains("line 20"));
 
         tool.set_expanded(true);
         let expanded = tool.render(80);
         let expanded_plain = crate::ansi::strip_ansi(&expanded.join("\n"));
         assert!(expanded_plain.contains("line 20"));
-        assert!(expanded_plain.contains("Ctrl+O to collapse"));
+        assert!(expanded_plain.contains("ctrl+o to collapse"));
     }
 
     /// The header summarizes the args JSON into a compact signature instead
@@ -1559,21 +1740,22 @@ mod tests {
         let collapsed = tool.render(80);
         let plain = crate::ansi::strip_ansi(&collapsed.join("\n"));
         assert!(
-            plain.contains("[skill] release"),
+            plain.contains("@release"),
             "collapsed label: {plain}"
         );
-        assert!(plain.contains("(Ctrl+O to expand)"), "expand hint: {plain}");
+        assert!(plain.contains("(ctrl+o to expand)"), "expand hint: {plain}");
         assert!(!plain.contains("Steps"), "collapsed hides body: {plain}");
-        // Uses the custom-message background (dark: #2d2838), not a tool tint.
+        // Uses the custom-message background, not a tool tint.
+        let bg = format!("{:?}", crate::theme::theme().colors.custom_message_bg);
         assert!(
-            collapsed.iter().any(|l| l.contains("\x1b[48;2;45;40;56m")),
-            "custom-message bg missing: {collapsed:?}"
+            collapsed.iter().any(|l| l.contains("48;2;")),
+            "custom-message bg missing: {collapsed:?} ({bg})"
         );
 
         tool.set_expanded(true);
         let expanded = tool.render(80);
         let plain = crate::ansi::strip_ansi(&expanded.join("\n"));
-        assert!(plain.contains("[skill]"), "expanded label: {plain}");
+        assert!(plain.contains("@release"), "expanded label: {plain}");
         assert!(plain.contains("release"), "expanded name: {plain}");
         assert!(
             plain.contains("Do the thing."),
@@ -1600,23 +1782,22 @@ mod tests {
         let t = ToolExecutionComponent::new("read", r#"{"path":"src/foo.rs"}"#);
         let joined = t.render(80).join("\n");
         let plain = crate::ansi::strip_ansi(&joined);
-        assert!(plain.contains("read"), "tool label lowercase: {plain}");
-        assert!(plain.contains("src/foo.rs"), "path in summary: {plain}");
+        assert!(plain.contains("read src/foo.rs"), "tool label: {plain}");
         // The raw JSON must NOT leak into the header.
         assert!(!plain.contains("\"path\""), "raw JSON leaked: {plain}");
 
-        // `grep` → pattern · path (no path field → just pattern).
+        // `grep` → the pattern and the path.
         let t = ToolExecutionComponent::new("grep", r#"{"pattern":"TODO","path":"src"}"#);
         let plain = crate::ansi::strip_ansi(&t.render(80).join("\n"));
-        assert!(plain.contains("TODO · src"), "grep summary: {plain}");
+        assert!(plain.contains("grep /TODO/ in src"), "grep summary: {plain}");
 
-        // `edit` with multiple edits → `(N edits)` suffix.
+        // `edit` → the path.
         let t = ToolExecutionComponent::new(
             "edit",
             r#"{"path":"a.rs","edits":[{"oldText":"x"},{"oldText":"y"}]}"#,
         );
         let plain = crate::ansi::strip_ansi(&t.render(80).join("\n"));
-        assert!(plain.contains("a.rs (2 edits)"), "edit count: {plain}");
+        assert!(plain.contains("edit a.rs"), "edit summary: {plain}");
     }
 
     /// Unknown tools fall back to the first string-valued arg field rather
@@ -1627,6 +1808,42 @@ mod tests {
         let t = ToolExecutionComponent::new("mytool", r#"{"query":"hai"}"#);
         let plain = crate::ansi::strip_ansi(&t.render(80).join("\n"));
         assert!(plain.contains("hai"), "unknown tool summary: {plain}");
+    }
+
+    /// A tool that carries a renderer draws its own call header and its own
+    /// result body, the way upstream's `ToolExecutionComponent` does: the
+    /// header inside the panel's box, the body below it.
+    #[test]
+    fn a_tool_with_a_renderer_draws_its_own_call_and_result() {
+        let theme = Theme::default();
+        let tool = ToolExecutionComponent::new("read", r#"{"path":"tool-input.txt"}"#);
+        tool.set_result("hello from the parity fixture\n", false);
+        let lines = tool.render_panel(40, &theme);
+        let plain: Vec<String> = lines.iter().map(|line| strip_ansi(line)).collect();
+        assert_eq!(plain[0], "", "the spacer in front of the panel");
+        assert_eq!(plain[1].trim_end(), "", "the panel's top padding");
+        assert_eq!(plain[2].trim_end(), " read tool-input.txt");
+        assert_eq!(plain[3].trim_end(), "", "the panel's bottom padding");
+        assert_eq!(lines.len(), 4);
+        // A collapsed read result is not drawn at all.
+        assert!(!plain.join("\n").contains("hello from the parity fixture"));
+
+        tool.set_expanded(true);
+        let lines = tool.render_panel(40, &theme);
+        let plain = strip_ansi(&lines.join("\n"));
+        assert!(plain.contains("hello from the parity fixture"), "{plain}");
+    }
+
+    /// A tool without a renderer keeps the generic name+args panel.
+    #[test]
+    fn a_tool_without_a_renderer_keeps_the_generic_panel() {
+        let theme = Theme::default();
+        let tool = ToolExecutionComponent::new("my_extension_tool", r#"{"query":"hai"}"#);
+        tool.set_result("done", false);
+        let plain = strip_ansi(&tool.render_panel(40, &theme).join("\n"));
+        assert!(plain.contains("my_extension_tool"), "{plain}");
+        assert!(plain.contains("hai"), "{plain}");
+        assert!(plain.contains("done"), "{plain}");
     }
 
     /// The collapsed diff preview caps at DIFF_PREVIEW_LINES and teases the

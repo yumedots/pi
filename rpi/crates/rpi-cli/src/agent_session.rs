@@ -495,6 +495,8 @@ mod tests {
             before_tool_call: None,
             after_tool_call: None,
             transform_context: None,
+            prepare_request: None,
+            finish_turn: None,
             entry_transforms: Vec::new(),
             provider_hooks: None,
         })

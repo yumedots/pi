@@ -223,7 +223,7 @@ impl RemoteSession {
         if !response.is_ok() {
             if let Some(error) = &response.error {
                 self.last_error = Some(error.clone());
-                self.transcript.push_notice(format!("error: {error}"));
+                self.transcript.push_notice(format!("Error: {error}"));
             }
             return;
         }

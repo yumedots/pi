@@ -11,7 +11,7 @@ use rpi_agent::agent_tool::AgentTool;
 use rpi_agent::error::AgentError;
 use rpi_agent::types::{AgentToolResult, TextContentOrImage, ToolResultPartial};
 use rpi_ai::types::{
-    ConstrainedSamplingConfig, ConstrainedStrictness, ImageContent, ImageContentType, Tool,
+    ConstrainedSamplingConfig, ConstrainedStrictness, ImageContent, ImageContentType, Schema, Tool,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -21,6 +21,7 @@ use crate::env::ExecutionEnv;
 use crate::image::{detect_supported_image_mime_type, encode_base64};
 use crate::path_utils::resolve_read_tool_path;
 use crate::tools::tool_context::ExecutionToolContext;
+use crate::tools::PromptContribution;
 use crate::truncate::{
     format_size, truncate_head, TruncationOptions, TruncationResult, DEFAULT_MAX_BYTES,
     DEFAULT_MAX_LINES,
@@ -101,12 +102,34 @@ pub struct ProcessedImage {
 /// and an optional image processor.
 pub struct ReadTool {
     schema: Tool,
+    output_schema: Schema,
     env: Arc<dyn ExecutionEnv>,
     options: ReadToolOptions,
     image_processor: Option<Arc<dyn ReadImageProcessor>>,
+    prompt: PromptContribution,
 }
 
 impl ReadTool {
+    /// The JSON Schema of the tool's `structured_content`. Mirrors TS
+    /// `readOutputSchema`: the text for text files, an image block for images.
+    fn output_schema() -> Schema {
+        Schema::new(serde_json::json!({
+            "anyOf": [
+                { "type": "string" },
+                {
+                    "type": "object",
+                    "properties": {
+                        "type": { "const": "image" },
+                        "data": { "type": "string" },
+                        "mimeType": { "type": "string" },
+                        "note": { "type": "string" }
+                    },
+                    "required": ["type", "data", "mimeType", "note"]
+                }
+            ]
+        }))
+    }
+
     fn schema() -> Tool {
         let params = schemars::schema_for!(ReadInput);
         Tool {
@@ -133,9 +156,14 @@ pub fn create_read_tool(
     let image_processor = options.image_processor.clone();
     Arc::new(ReadTool {
         schema: ReadTool::schema(),
+        output_schema: ReadTool::output_schema(),
         env: context.env().clone(),
         options,
         image_processor,
+        prompt: PromptContribution::new(
+            "Read file contents",
+            &["Use read to examine files instead of cat or sed."],
+        ),
     })
 }
 
@@ -146,6 +174,21 @@ impl AgentTool for ReadTool {
     }
     fn label(&self) -> &str {
         "read"
+    }
+
+    /// Mirrors TS `AgentTool.outputSchema` (`readOutputSchema`).
+    fn output_schema(&self) -> Option<&Schema> {
+        Some(&self.output_schema)
+    }
+
+    /// Mirrors TS `AgentTool.promptSnippet`.
+    fn prompt_snippet(&self) -> Option<&str> {
+        Some(self.prompt.snippet)
+    }
+
+    /// Mirrors TS `AgentTool.promptGuidelines`.
+    fn prompt_guidelines(&self) -> Option<&[String]> {
+        Some(&self.prompt.guidelines)
     }
 
     async fn execute(
@@ -268,8 +311,9 @@ impl AgentTool for ReadTool {
             None => serde_json::Value::Null,
         };
         Ok(AgentToolResult {
-            content: vec![TextContentOrImage::text(output_text)],
+            content: vec![TextContentOrImage::text(output_text.clone())],
             details: details_value,
+            structured_content: Some(serde_json::Value::String(output_text)),
             ..Default::default()
         })
     }
@@ -291,12 +335,12 @@ fn image_result(
                 } else {
                     format!("\n{}", p.hints.join("\n"))
                 };
+                let note = format!("Read image file [{}]{}", p.mime_type, hints);
+                let data = p.data.clone();
+                let mime_type = p.mime_type.clone();
                 return AgentToolResult {
                     content: vec![
-                        TextContentOrImage::text(format!(
-                            "Read image file [{}]{}",
-                            p.mime_type, hints
-                        )),
+                        TextContentOrImage::text(note.clone()),
                         TextContentOrImage::Image(ImageContent {
                             kind: ImageContentType,
                             data: p.data,
@@ -304,15 +348,16 @@ fn image_result(
                         }),
                     ],
                     details: serde_json::Value::Null,
+                    structured_content: Some(image_structured_content(&data, &mime_type, &note)),
                     ..Default::default()
                 };
             }
             Err(message) => {
+                let note = format!("Read image file [{mime}]\n{message}");
                 return AgentToolResult {
-                    content: vec![TextContentOrImage::text(format!(
-                        "Read image file [{mime}]\n{message}"
-                    ))],
+                    content: vec![TextContentOrImage::text(note.clone())],
                     details: serde_json::Value::Null,
+                    structured_content: Some(serde_json::Value::String(note)),
                     ..Default::default()
                 };
             }
@@ -320,26 +365,40 @@ fn image_result(
     }
     // No processor — BMP is omitted; others are inlined.
     if mime == "image/bmp" {
+        let note = "Read image file [image/bmp]\n[Image omitted: configure an imageProcessor to convert BMP images.]";
         return AgentToolResult {
-            content: vec![TextContentOrImage::text(
-                "Read image file [image/bmp]\n[Image omitted: configure an imageProcessor to convert BMP images.]",
-            )],
+            content: vec![TextContentOrImage::text(note)],
             details: serde_json::Value::Null,
+            structured_content: Some(serde_json::Value::String(note.to_string())),
             ..Default::default()
         };
     }
+    let note = format!("Read image file [{mime}]");
+    let data = encode_base64(bytes);
     AgentToolResult {
         content: vec![
-            TextContentOrImage::text(format!("Read image file [{mime}]")),
+            TextContentOrImage::text(note.clone()),
             TextContentOrImage::Image(ImageContent {
                 kind: ImageContentType,
-                data: encode_base64(bytes),
+                data: data.clone(),
                 mime_type: mime.to_string(),
             }),
         ],
         details: serde_json::Value::Null,
+        structured_content: Some(image_structured_content(&data, mime, &note)),
         ..Default::default()
     }
+}
+
+/// The image branch of the read tool's `structured_content`. Mirrors TS
+/// `toReadOutput`.
+fn image_structured_content(data: &str, mime_type: &str, note: &str) -> serde_json::Value {
+    serde_json::json!({
+        "type": "image",
+        "data": data,
+        "mimeType": mime_type,
+        "note": note,
+    })
 }
 
 /// Map a `FileError` into an `AgentError::Tool`, mirroring the TS `getOrThrow`

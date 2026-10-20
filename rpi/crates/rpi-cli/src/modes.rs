@@ -99,7 +99,7 @@ pub async fn print(
                                 }
                             }
                         }
-                        eprintln!("run failed: {error:?}");
+                        eprintln!("run failed: {}", error.message);
                     }
                     HarnessRunOutcome::Suspended { .. } => {
                         eprintln!("run suspended (deferred) — resume is not supported in v1");
@@ -981,10 +981,10 @@ async fn run_one(
                 } => {
                     if let Some(m) = final_message {
                         if let Some(em) = &m.error_message {
-                            eprintln!("error: {em}");
+                            eprintln!("Error: {em}");
                         }
                     }
-                    eprintln!("run failed: {error:?}");
+                    eprintln!("run failed: {}", error.message);
                 }
                 HarnessRunOutcome::Suspended { .. } => {
                     eprintln!("run suspended (deferred) — resume not supported in v1");

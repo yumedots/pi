@@ -57,11 +57,11 @@ use crate::session::jsonl::errors::file_result;
 use crate::session::jsonl::storage::JsonlSessionStorage;
 use crate::session::jsonl::types::{
     JsonlSessionCreateOptions, JsonlSessionListOptions, JsonlSessionMetadata,
-    JsonlSessionRepoOptions, JsonlV4Header,
+    JsonlSessionRepoOptions, SessionFileHeader,
 };
 use crate::session::memory::Clock;
 use crate::session::types::{
-    ForkOptions, JsonValue, SessionCreateOptions, SessionMetadata, SessionRepo,
+    iso_timestamp_from_ms, ForkOptions, JsonValue, SessionCreateOptions, SessionMetadata, SessionRepo,
 };
 
 /// `^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$` — a session id must be
@@ -127,41 +127,6 @@ fn session_file_name(created_at: i64, id: &str) -> String {
     let iso = iso_timestamp_from_ms(created_at);
     let safe = iso.replace([':', '.'], "-");
     format!("{safe}_{id}.jsonl")
-}
-
-/// Render `ms` as an ISO-8601 UTC timestamp `YYYY-MM-DDTHH:MM:SS.mmmZ` (the TS
-/// `new Date(createdAt).toISOString()` shape). Hand-rolled to avoid a chrono/jiff
-/// dependency; the format is fully determined by the ms value.
-fn iso_timestamp_from_ms(ms: i64) -> String {
-    // Days since 1970-01-01 (floor; supports negative ms for pre-epoch, though
-    // timestamps here are always non-negative).
-    let total_seconds = ms.div_euclid(1000);
-    let millis = ms.rem_euclid(1000);
-    let days_since_epoch = total_seconds.div_euclid(86_400);
-    let secs_of_day = total_seconds.rem_euclid(86_400);
-
-    let hour = secs_of_day / 3600;
-    let minute = (secs_of_day % 3600) / 60;
-    let second = secs_of_day % 60;
-
-    let (year, month, day) = civil_from_days(days_since_epoch);
-    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
-}
-
-/// Howard Hinnant's days-from-epoch → civil date algorithm. Returns
-/// `(year, month, day)` with `month`/`day` 1-based.
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = (z - era * 146_097) as u64;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = if m <= 2 { y + 1 } else { y };
-    (year, m as u32, d as u32)
 }
 
 /// A `{id, cwd}` destination for a create/fork op, with a same-process claim
@@ -298,7 +263,9 @@ impl JsonlSessionRepo {
         }
         let destination = self.resolve_create_destination(&create_options).await?;
         self.claim_create_destination(&destination, async {
-            let (header, path) = self.prepare_create(&destination, &create_options).await?;
+            let (mut header, path) = self.prepare_create(&destination, &create_options).await?;
+            // The original's header carries the parent session's path.
+            header.parent_session = Some(source.path.clone());
             source_storage
                 .fork(&path, header, fork, self.clock.clone(), self.ids.clone())
                 .await
@@ -370,7 +337,7 @@ impl JsonlSessionRepo {
         &self,
         destination: &CreateDestination,
         options: &JsonlSessionCreateOptions,
-    ) -> SessionResult<(JsonlV4Header, String)> {
+    ) -> SessionResult<(SessionFileHeader, String)> {
         let CreateDestination { id, cwd } = destination.clone();
         if self.session_id_exists(&id, &cwd).await? {
             return Err(SessionError::already_exists(format!(
@@ -394,13 +361,11 @@ impl JsonlSessionRepo {
         if let Some(metadata) = &options.metadata {
             assert_json_serializable(metadata)?;
         }
-        let header = JsonlV4Header::new(
+        let header = SessionFileHeader::new(
             id,
-            created_at,
+            iso_timestamp_from_ms(created_at),
             cwd,
             options.parent_session_id.clone(),
-            None,
-            options.metadata.clone(),
         );
         file_result(
             self.fs.create_dir(&session_directory, true, None).await,
@@ -1032,14 +997,7 @@ mod tests {
             .await
             .unwrap();
         let m = listed.iter().find(|m| m.id == "m-1").unwrap();
-        assert_eq!(
-            m.metadata.as_ref().unwrap().get("title"),
-            Some(&JsonValue::String("my session".into()))
-        );
-        assert_eq!(
-            m.metadata.as_ref().unwrap().get("count"),
-            Some(&JsonValue::Number(42.into()))
-        );
+        assert_eq!(m.cwd, "/proj");
     }
 
     #[tokio::test]

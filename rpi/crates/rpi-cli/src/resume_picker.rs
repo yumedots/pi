@@ -88,7 +88,7 @@ pub async fn select(cwd: &Path) -> Result<Option<String>, String> {
     let list = Arc::new(list);
     let search = Arc::new(Text::new("  Filter: ", 0, 0));
     let root = Arc::new(Container::new());
-    root.add_child(Arc::new(Text::new("Resume session", 1, 1)));
+    root.add_child(Arc::new(Text::new("Sessions", 1, 1)));
     root.add_child(Arc::new(Text::new(
         "  Type to filter, Enter to resume, Esc to cancel",
         0,
@@ -190,10 +190,13 @@ pub async fn select(cwd: &Path) -> Result<Option<String>, String> {
 fn format_modified_age(now_ms: i64, modified_ms: i64) -> String {
     let seconds = now_ms.saturating_sub(modified_ms).max(0) / 1000;
     match seconds {
-        0..=59 => "just now".to_string(),
-        60..=3_599 => format!("{}m ago", seconds / 60),
-        3_600..=86_399 => format!("{}h ago", seconds / 3_600),
-        _ => format!("{}d ago", seconds / 86_400),
+        0..=59 => "now".to_string(),
+        60..=3_599 => format!("{}m", seconds / 60),
+        3_600..=86_399 => format!("{}h", seconds / 3_600),
+        86_400..=604_799 => format!("{}d", seconds / 86_400),
+        604_800..=2_591_999 => format!("{}w", seconds / 604_800),
+        2_592_000..=31_535_999 => format!("{}mo", seconds / 2_592_000),
+        _ => format!("{}y", seconds / 31_536_000),
     }
 }
 
@@ -204,10 +207,10 @@ mod tests {
     #[test]
     fn modified_age_is_compact_and_stable() {
         let now = 10 * 86_400_000;
-        assert_eq!(format_modified_age(now, now - 20_000), "just now");
-        assert_eq!(format_modified_age(now, now - 5 * 60_000), "5m ago");
-        assert_eq!(format_modified_age(now, now - 3 * 3_600_000), "3h ago");
-        assert_eq!(format_modified_age(now, now - 2 * 86_400_000), "2d ago");
+        assert_eq!(format_modified_age(now, now - 20_000), "now");
+        assert_eq!(format_modified_age(now, now - 5 * 60_000), "5m");
+        assert_eq!(format_modified_age(now, now - 3 * 3_600_000), "3h");
+        assert_eq!(format_modified_age(now, now - 2 * 86_400_000), "2d");
     }
 
     #[test]

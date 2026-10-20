@@ -43,18 +43,15 @@ impl SlashCommand for ClearChatCommand {
 
 pub(super) struct ExitCommand;
 impl SlashCommand for ExitCommand {
+    /// The original's canonical name is `/quit`; `/exit` is its alias.
     fn name(&self) -> &'static str {
-        "/exit"
+        "/quit"
     }
     fn aliases(&self) -> &'static [&'static str] {
-        &["/quit", "/q"]
-    }
-    // `/quit` is surfaced (matches pi's BUILTIN list); `/q` stays a hidden alias.
-    fn alias_visible(&self) -> &'static [&'static str] {
-        &["/quit"]
+        &["/exit", "/q"]
     }
     fn description(&self) -> &'static str {
-        "Exit the application"
+        "Quit pi"
     }
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         ctx.state.cancel_js_preparation();
@@ -85,18 +82,53 @@ impl SlashCommand for ChangelogCommand {
         "/changelog"
     }
     fn description(&self) -> &'static str {
-        "Show latest release changes (/changelog all for history)"
+        "Show changelog entries"
+    }
+    fn execute(&self, ctx: &CommandContext, _args: &str) {
+        add_changelog_message(&ctx.chat);
+        ctx.tui.request_render(false);
+    }
+}
+
+pub(super) struct SkillsCommand;
+impl SlashCommand for SkillsCommand {
+    fn name(&self) -> &'static str {
+        "/skills"
+    }
+    fn description(&self) -> &'static str {
+        "Browse and run a skill"
+    }
+    fn execute(&self, ctx: &CommandContext, _args: &str) {
+        let _ = ctx.tx.send(TuiMessage::ShowSkills);
+    }
+}
+
+pub(super) struct BugCommand;
+impl SlashCommand for BugCommand {
+    fn name(&self) -> &'static str {
+        "/bug"
+    }
+    fn description(&self) -> &'static str {
+        "Report a bug to the Pi developers"
+    }
+    fn argument_hint(&self) -> Option<&'static str> {
+        Some("<description>")
     }
     fn execute(&self, ctx: &CommandContext, args: &str) {
-        match args.trim() {
-            "" => add_changelog_message(&ctx.chat),
-            "all" => add_changelog_message_with_scope(&ctx.chat, true),
-            _ => {
-                ctx.chat
-                    .add_child(Arc::new(Text::new("Usage: /changelog [all]", 1, 0)));
-            }
-        }
-        ctx.tui.request_render(false);
+        let _ = ctx.tx.send(TuiMessage::ReportBug(args.trim().to_string()));
+    }
+}
+
+pub(super) struct StatsCommand;
+impl SlashCommand for StatsCommand {
+    fn name(&self) -> &'static str {
+        "/stats"
+    }
+    fn description(&self) -> &'static str {
+        "Show session info and stats"
+    }
+    fn execute(&self, ctx: &CommandContext, _args: &str) {
+        let _ = ctx.tx.send(TuiMessage::ShowStats);
     }
 }
 
@@ -106,7 +138,7 @@ impl SlashCommand for HotkeysCommand {
         "/hotkeys"
     }
     fn description(&self) -> &'static str {
-        "Show keyboard shortcuts"
+        "Show all keyboard shortcuts"
     }
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         add_hotkeys_message(&ctx.chat);
@@ -123,7 +155,10 @@ impl SlashCommand for ModelCommand {
         &["/m"]
     }
     fn description(&self) -> &'static str {
-        "Choose a model (selector)"
+        "Select model (opens selector UI)"
+    }
+    fn argument_hint(&self) -> Option<&'static str> {
+        Some("<provider/model>")
     }
     fn execute(&self, ctx: &CommandContext, args: &str) {
         let term = args.trim();
@@ -204,7 +239,10 @@ impl SlashCommand for ThinkingCommand {
         &["/think"]
     }
     fn description(&self) -> &'static str {
-        "Set thinking level (selector)"
+        "Set thinking level"
+    }
+    fn argument_hint(&self) -> Option<&'static str> {
+        Some("<level>")
     }
     fn execute(&self, ctx: &CommandContext, args: &str) {
         let level_name = args.trim();
@@ -288,14 +326,16 @@ impl SlashCommand for ImagesCommand {
 
 pub(super) struct SessionCommand;
 impl SlashCommand for SessionCommand {
+    /// The original's canonical name is `/resume`; `/history` and `/sessions`
+    /// are its aliases, and the port's own `/session` stays as a hidden alias.
     fn name(&self) -> &'static str {
-        "/session"
+        "/resume"
     }
     fn aliases(&self) -> &'static [&'static str] {
-        &["/resume"]
+        &["/history", "/sessions", "/session"]
     }
     fn description(&self) -> &'static str {
-        "List saved sessions"
+        "Resume a different session"
     }
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         open_session_selector(
@@ -315,7 +355,10 @@ impl SlashCommand for ThemeCommand {
         "/theme"
     }
     fn description(&self) -> &'static str {
-        "Choose a theme (selector)"
+        "Change the color theme"
+    }
+    fn argument_hint(&self) -> Option<&'static str> {
+        Some("<name>")
     }
     fn execute(&self, ctx: &CommandContext, args: &str) {
         let name = args.trim().to_ascii_lowercase();
@@ -353,7 +396,7 @@ impl SlashCommand for CompactCommand {
         "/compact"
     }
     fn description(&self) -> &'static str {
-        "Compact the conversation"
+        "Manually compact the session context"
     }
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         let _ = ctx.tx.send(TuiMessage::Compact);
@@ -366,7 +409,7 @@ impl SlashCommand for CopyCommand {
         "/copy"
     }
     fn description(&self) -> &'static str {
-        "Copy last reply to clipboard"
+        "Copy last agent message to clipboard"
     }
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         let _ = ctx.tx.send(TuiMessage::Copy);
@@ -379,7 +422,7 @@ impl SlashCommand for ExportCommand {
         "/export"
     }
     fn description(&self) -> &'static str {
-        "Export session (supports: md, html, jsonl)"
+        "Export session (HTML default, or specify path: .html/.jsonl)"
     }
     fn execute(&self, ctx: &CommandContext, args: &str) {
         let format = args.trim().to_lowercase();
@@ -413,7 +456,7 @@ impl SlashCommand for ForkCommand {
         "/fork"
     }
     fn description(&self) -> &'static str {
-        "Fork the session into a new one"
+        "Create a new fork from a previous user message"
     }
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         let _ = ctx.tx.send(TuiMessage::ForkSession);
@@ -429,7 +472,7 @@ impl SlashCommand for CloneCommand {
         "/clone"
     }
     fn description(&self) -> &'static str {
-        "Duplicate the current session"
+        "Duplicate the current session at the current position"
     }
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         let _ = ctx.tx.send(TuiMessage::ForkSession);
@@ -442,7 +485,7 @@ impl SlashCommand for TreeCommand {
         "/tree"
     }
     fn description(&self) -> &'static str {
-        "Navigate the current session tree"
+        "Navigate session tree (switch branches)"
     }
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         let _ = ctx.tx.send(TuiMessage::OpenTree);
@@ -455,7 +498,10 @@ impl SlashCommand for LoginCommand {
         "/login"
     }
     fn description(&self) -> &'static str {
-        "Log in to a provider (selector, API key, or OAuth)"
+        "Configure provider authentication"
+    }
+    fn argument_hint(&self) -> Option<&'static str> {
+        Some("<provider>")
     }
     fn execute(&self, ctx: &CommandContext, args: &str) {
         let args = args.trim();
@@ -554,7 +600,7 @@ impl SlashCommand for LogoutCommand {
         "/logout"
     }
     fn description(&self) -> &'static str {
-        "Remove saved provider credentials"
+        "Remove provider authentication"
     }
     fn execute(&self, ctx: &CommandContext, args: &str) {
         let provider = args.trim();
@@ -592,7 +638,7 @@ impl SlashCommand for TrustCommand {
         "/trust"
     }
     fn description(&self) -> &'static str {
-        "Trust the current project"
+        "Save project trust decision for future sessions"
     }
     fn execute(&self, ctx: &CommandContext, args: &str) {
         let value = match args.trim().to_ascii_lowercase().as_str() {
@@ -651,7 +697,7 @@ impl SlashCommand for ImportCommand {
         "/import"
     }
     fn description(&self) -> &'static str {
-        "Import a session file (path)"
+        "Import and resume a session from a JSONL file"
     }
     fn execute(&self, ctx: &CommandContext, args: &str) {
         let path = args.trim();
@@ -698,7 +744,7 @@ impl SlashCommand for ScopedModelsCommand {
         "/scoped-models"
     }
     fn description(&self) -> &'static str {
-        "Choose models for Ctrl+P cycling"
+        "Enable/disable models for Ctrl+P cycling"
     }
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         open_scoped_models_selector(
@@ -720,7 +766,7 @@ impl SlashCommand for ShareCommand {
         "/share"
     }
     fn description(&self) -> &'static str {
-        "Share session (gist via gh, or clipboard)"
+        "Share session via a Radius artifact or a GitHub gist"
     }
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         let _ = ctx.tx.send(TuiMessage::ShareSession);
@@ -780,7 +826,7 @@ impl SlashCommand for ReloadCommand {
         "/reload"
     }
     fn description(&self) -> &'static str {
-        "Reload extensions, skills, prompts"
+        "Reload keybindings, extensions, skills, prompts, themes, and context files"
     }
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         // Signal the main loop. It owns the `&AgentHarness` borrow the
@@ -831,6 +877,9 @@ pub(super) fn build_builtin_registry() -> CommandRegistry {
     r.register(Arc::new(LoginCommand));
     r.register(Arc::new(LogoutCommand));
     r.register(Arc::new(ReloadCommand));
+    r.register(Arc::new(SkillsCommand));
+    r.register(Arc::new(BugCommand));
+    r.register(Arc::new(StatsCommand));
     r
 }
 

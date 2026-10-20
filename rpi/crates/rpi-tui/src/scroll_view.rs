@@ -105,7 +105,34 @@ struct ScrollRenderCache {
     lines: Arc<Vec<String>>,
 }
 
-/// ScrollView - A scrollable container.
+/// Thumb geometry of a scrollbar: its height in rows and the offset of its
+/// first row inside the track.
+///
+/// Mirrors upstream's `getScrollbarGeometry` (`packages/tui/src/layout.ts`), so
+/// the painted thumb and the hit geometry agree.
+pub fn scrollbar_thumb_geometry(
+    content_height: usize,
+    viewport_height: usize,
+    scroll_top: usize,
+) -> (usize, usize) {
+    let track = viewport_height.max(1);
+    if content_height <= track {
+        return (track, 0);
+    }
+    let min_thumb_height = track.min(2);
+    let scaled = (track * track + content_height / 2) / content_height;
+    let thumb_height = min_thumb_height.max(scaled.min(track));
+    let max_scroll_top = content_height - track;
+    let max_thumb_top = track - thumb_height;
+    let thumb_offset = if max_scroll_top == 0 {
+        0
+    } else {
+        (scroll_top * max_thumb_top + max_scroll_top / 2) / max_scroll_top
+    };
+    (thumb_height, thumb_offset)
+}
+
+/// ScrollView - a scrollable container.
 ///
 /// Provides vertical scrolling with optional follow-end behavior.
 /// In constrained layout, the child is measured at unbounded height
@@ -188,6 +215,14 @@ impl ScrollView {
     /// Check if this is the primary scroll view.
     pub fn is_primary(&self) -> bool {
         self.options.primary
+    }
+
+    /// Whether two handles refer to the same scroll view.
+    ///
+    /// The layout keeps its own handle of the view it lays out; both share
+    /// the same state, so they are the same view.
+    pub fn is_same_view(&self, other: &ScrollView) -> bool {
+        Arc::ptr_eq(&self.state, &other.state)
     }
 
     /// Check if scrollbar is visible.
@@ -428,25 +463,14 @@ impl ScrollView {
         // moved the window with no indicator). `Always` reserves the column in
         // get_content_width; `Auto` overlays it while a scroll is active.
         if self.is_scrollbar_visible() {
-            let total = content_height.max(1);
-            let viewport = height.max(1);
-            let thumb = if total <= viewport {
-                viewport
-            } else {
-                (viewport * viewport / total).max(1)
-            };
-            let thumb_top = if total > viewport {
-                scroll_top * (viewport.saturating_sub(thumb)) / (total - viewport)
-            } else {
-                0
-            };
+            let (thumb, thumb_top) = scrollbar_thumb_geometry(content_height, height, scroll_top);
             for (i, line) in visible.iter_mut().enumerate() {
                 let on = i >= thumb_top && i < thumb_top + thumb;
                 if width > 0 && !line.contains("\x1b_G") && !line.contains("\x1b]1337;File=") {
                     let cell = if on {
-                        self.scrollbar_style(" ")
+                        self.scrollbar_thumb_style("█")
                     } else {
-                        " ".to_owned()
+                        self.scrollbar_track_style("│")
                     };
                     *line = crate::layout::composite_tui_line(line, &cell, width - 1, 1, width);
                 }
@@ -459,6 +483,16 @@ impl ScrollView {
     /// Get the scrollbar style (can be customized).
     pub fn scrollbar_style(&self, text: &str) -> String {
         format!("\x1b[100m{}\x1b[49m", text)
+    }
+
+    /// Style of the scrollbar track.
+    pub fn scrollbar_track_style(&self, text: &str) -> String {
+        crate::theme::theme().colors.scrollbar_track.fg(text)
+    }
+
+    /// Style of the scrollbar thumb.
+    pub fn scrollbar_thumb_style(&self, text: &str) -> String {
+        crate::theme::theme().colors.scrollbar_thumb.fg(text)
     }
 }
 

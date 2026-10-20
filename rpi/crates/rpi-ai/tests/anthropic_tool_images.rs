@@ -129,6 +129,7 @@ async fn capture_request(content: Vec<Content>, vision: bool, deferred: bool) ->
             vec![]
         },
         is_error: false,
+        duration_ms: None,
         timestamp: 1,
     };
     let mut context = Context::new(vec![

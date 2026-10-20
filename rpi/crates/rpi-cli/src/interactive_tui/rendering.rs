@@ -6,87 +6,161 @@ use super::*;
 // Transcript message helpers
 // ===========================================================================
 
-/// Add the welcome header to the chat container.
+/// Add the startup block to the chat container: pi's mark and version, the key
+/// hints, and the note the original prints under them.
 pub(super) fn add_welcome_message(container: &Arc<Container>) {
-    add_welcome_message_with_capabilities(container, &[], &[], &[]);
-}
-
-/// Add the startup welcome header and a compact snapshot of active tools and
-/// discovered skills and context files. The snapshot reflects the first turn's
-/// configuration, including tools contributed by extensions.
-pub(super) fn add_welcome_message_with_capabilities(
-    container: &Arc<Container>,
-    active_tools: &[String],
-    skills: &[String],
-    context_files: &[String],
-) -> Arc<Container> {
     let c = current_theme().colors;
-    // The mark, wordmark and language mark live in `crate::brand`. See that
-    // module for why the layout is built from single-width characters only.
-    container.add_child(Arc::new(crate::brand::BrandLockup::new()));
-    container.add_child(Arc::new(Spacer::new(1)));
-    // The mark carries the product name, so the line under it is the tagline
-    // rather than a second logotype.
-    let title = c.muted.fg("interactive TUI · library-first agent runtime");
-    container.add_child(Arc::new(Text::new(title, 1, 0)));
+    let version = crate::changelog::current_version();
+    let (top, bottom) = pi_logo_lines();
+    // The original's header container opens with a blank row.
     container.add_child(Arc::new(Spacer::new(1)));
     container.add_child(Arc::new(Text::new(
-        c.dim.fg("Type your message and press Enter to send."),
-        1,
-        0,
-    )));
-    let hint = c
-        .dim
-        .fg("Enter send · Shift+Enter newline · Ctrl+C clear · Esc abort · /help");
-    container.add_child(Arc::new(Text::new(hint, 1, 0)));
-    container.add_child(Arc::new(Spacer::new(1)));
-    let context_listing = Arc::new(Container::new());
-    render_context_files(&context_listing, context_files);
-    container.add_child(context_listing.clone());
-    container.add_child(Arc::new(Text::new(
-        welcome_capability_line("Tools", active_tools),
+        format!("{top} v{version}"),
         1,
         0,
     )));
     container.add_child(Arc::new(Text::new(
-        welcome_capability_line("Skills", skills),
+        c.muted.fg(&format!("{bottom} {}", compact_hints())),
         1,
         0,
     )));
-    container.add_child(Arc::new(DynamicBorder::new()));
-    context_listing
+    container.add_child(Arc::new(Text::new(
+        c.dim.fg(&format!(
+            "Press {} to show full startup help.",
+            rpi_tui::key_text("app.tools.expand")
+        )),
+        1,
+        0,
+    )));
+    add_startup_note(container);
+    // The original's header container closes with a blank row too.
+    container.add_child(Arc::new(Spacer::new(1)));
 }
 
-/// Retain this section in the welcome header so /reload can replace it.
-pub(super) fn render_context_files(container: &Arc<Container>, files: &[String]) {
-    container.clear();
-    if files.is_empty() {
+/// The original's mark: four cells wide, two lines tall, in its own colours.
+fn pi_logo_lines() -> (String, String) {
+    let coral = rpi_tui::ansi::foreground_rgb(228, 138, 122);
+    let blue = rpi_tui::ansi::foreground_rgb(79, 142, 179);
+    let yellow = rpi_tui::ansi::foreground_rgb(234, 182, 93);
+    let blue_background = rpi_tui::ansi::background_rgb(79, 142, 179);
+    let reset = "\u{1b}[0m";
+    let top = format!("{coral}{blue_background}▀{reset}{coral}▀█{reset} ");
+    let bottom = format!("{blue}█▀{reset} {yellow}█{reset}");
+    (top, bottom)
+}
+
+/// The original's compact startup hints.
+fn compact_hints() -> String {
+    [
+        format!("{} interrupt", rpi_tui::key_text("app.interrupt")),
+        "ctrl+c twice to exit".to_string(),
+        "/ commands".to_string(),
+        "! bash".to_string(),
+        format!("{} more", rpi_tui::key_text("app.tools.expand")),
+    ]
+    .join(" · ")
+}
+
+/// The original's warning when tmux cannot deliver modified Enter keys.
+pub(crate) const TMUX_EXTENDED_KEYS_OFF: &str = "tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.";
+
+/// The original's warning when tmux delivers the keys in the xterm format.
+pub(crate) const TMUX_EXTENDED_KEYS_FORMAT_XTERM: &str = "tmux extended-keys-format is xterm. Pi works best with csi-u. Add `set -g extended-keys-format csi-u` to ~/.tmux.conf and restart tmux.";
+
+/// The warning the original prints at startup when tmux cannot deliver
+/// modified Enter keys.
+pub(super) fn add_tmux_warning(container: &Arc<Container>) {
+    let Some(message) = tmux_warning_message() else {
         return;
-    }
-    let colors = current_theme().colors;
+    };
+    let c = current_theme().colors;
+    container.add_child(Arc::new(Spacer::new(1)));
     container.add_child(Arc::new(Text::new(
-        colors.accent.fg(&format!("Context ({})", files.len())),
+        c.warning.fg(&warning_line(&message)),
         1,
         0,
     )));
-    for path in files {
-        container.add_child(Arc::new(Text::new(
-            colors.dim.fg(&format!("  {path}")),
-            1,
-            0,
-        )));
+}
+
+/// The line the original prints for a startup warning.
+pub(super) fn warning_line(message: &str) -> String {
+    format!("Warning: {message}")
+}
+
+/// The tmux warning for the queried option values, or `None` when there is
+/// nothing to warn about.
+pub(super) fn tmux_warning_for(
+    extended_keys: Option<&str>,
+    extended_keys_format: Option<&str>,
+) -> Option<&'static str> {
+    let extended_keys = extended_keys?;
+    if extended_keys != "on" && extended_keys != "always" {
+        return Some(TMUX_EXTENDED_KEYS_OFF);
+    }
+    if extended_keys_format == Some("xterm") {
+        return Some(TMUX_EXTENDED_KEYS_FORMAT_XTERM);
+    }
+    None
+}
+
+/// The tmux warning text, or `None` when there is nothing to warn about.
+fn tmux_warning_message() -> Option<String> {
+    if std::env::var_os("TMUX").is_none() {
+        return None;
+    }
+    let extended_keys = tmux_option("extended-keys")?;
+    let extended_keys_format = tmux_option("extended-keys-format");
+    tmux_warning_for(Some(&extended_keys), extended_keys_format.as_deref())
+        .map(str::to_string)
+}
+
+/// Read one tmux global option, with the original's two second budget.
+fn tmux_option(name: &str) -> Option<String> {
+    use std::io::Read;
+    let mut child = std::process::Command::new("tmux")
+        .args(["show", "-gv", name])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    return None;
+                }
+                let mut out = String::new();
+                child
+                    .stdout
+                    .take()?
+                    .read_to_string(&mut out)
+                    .ok()?;
+                return Some(out.trim().to_string());
+            }
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(_) => return None,
+        }
     }
 }
 
-pub(super) fn update_resource_listing(
-    shared: &Arc<Mutex<rpi_harness::types::AgentHarnessResources>>,
-    startup_context: Option<&Arc<Container>>,
-    resources: rpi_harness::types::AgentHarnessResources,
-) {
-    if let Some(listing) = startup_context {
-        render_context_files(listing, &resources.context_files);
-    }
-    *shared.lock().unwrap() = resources;
+/// The note the original prints under the startup hints.
+pub(super) fn add_startup_note(container: &Arc<Container>) {
+    let c = current_theme().colors;
+    container.add_child(Arc::new(Spacer::new(1)));
+    container.add_child(Arc::new(Text::new(
+        c.dim.fg(
+            "Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.",
+        ),
+        1,
+        0,
+    )));
 }
 
 /// Append update notices inside the live transcript. Fullscreen mode clears
@@ -158,52 +232,45 @@ pub(super) fn add_update_panel(
     container.add_child(Arc::new(DynamicBorder::with_color(color)));
 }
 
-pub(super) fn welcome_capability_line(label: &str, names: &[String]) -> String {
-    let c = current_theme().colors;
-    let value = if names.is_empty() {
-        "none".to_string()
-    } else {
-        names.join(" · ")
-    };
-    format!(
-        "{} {}",
-        c.accent.fg(&format!("{label} ({})", names.len())),
-        c.muted.fg(&value)
-    )
-}
-
 /// Add the `/help` command listing to the chat container.
 pub(super) fn add_help_message(container: &Arc<Container>) {
     let c = current_theme().colors;
-    // Section header + a thin themed rule, then a two-column command table:
-    // `cmd` in accent, `— desc` in muted. The old single-space layout made
-    // the description column wander depending on command length.
     container.add_child(Arc::new(Text::new(
-        c.md_heading.fg(&tui_bold("📚 Available Commands")),
+        c.md_heading.fg(&tui_bold("Available Commands")),
         1,
         0,
     )));
     container.add_child(Arc::new(Spacer::new(1)));
 
     let cmds: &[(&str, &str)] = &[
-        ("/help, /?", "Show this help message"),
-        ("/clear, /new", "Clear the conversation"),
-        ("/exit, /quit, /q", "Exit the application"),
-        ("/version, /v", "Show version information"),
-        ("/changelog", "Show recent release changes"),
-        ("/model, /m", "Choose a model (live switch)"),
-        (
-            "/provider",
-            "Switch provider now, or add/remove provider configuration",
-        ),
-        ("/thinking, /think", "Set reasoning depth (selector)"),
-        ("/tools", "Toggle built-in tools on/off"),
-        ("/images", "Toggle inline image rendering"),
-        ("/session", "List saved sessions"),
-        ("/theme", "Choose a theme (selector)"),
-        ("/compact", "Compact the conversation"),
-        ("/copy", "Copy last reply to clipboard"),
-        ("/hotkeys", "Show keyboard shortcuts"),
+        ("/settings", "Open settings menu"),
+        ("/model", "Select model (opens selector UI)"),
+        ("/tree", "Navigate session tree (switch branches)"),
+        ("/thinking", "Set thinking level"),
+        ("/scoped-models", "Enable/disable models for Ctrl+P cycling"),
+        ("/theme", "Change the color theme"),
+        ("/export", "Export session (HTML default, or specify path: .html/.jsonl)"),
+        ("/import", "Import and resume a session from a JSONL file"),
+        ("/share", "Share session via a Radius artifact or a GitHub gist"),
+        ("/copy", "Copy last agent message to clipboard"),
+        ("/name", "Set session display name"),
+        ("/changelog", "Show changelog entries"),
+        ("/hotkeys", "Show all keyboard shortcuts"),
+        ("/fork", "Create a new fork from a previous user message"),
+        ("/clone", "Duplicate the current session at the current position"),
+        ("/trust", "Save project trust decision for future sessions"),
+        ("/login", "Configure provider authentication"),
+        ("/logout", "Remove provider authentication"),
+        ("/clear", "Clear the conversation"),
+        ("/compact", "Manually compact the session context"),
+        ("/resume", "Resume a different session"),
+        ("/skills", "Browse and run a skill"),
+        ("/bug", "Report a bug to the Pi developers"),
+        ("/stats", "Show session info and stats"),
+        ("/reload", "Reload keybindings, extensions, skills, prompts, themes, and context files"),
+        ("/quit", "Quit pi"),
+        ("/help", "Show this help message"),
+        ("/version", "Show version information"),
     ];
     let cmd_w = cmds.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
     for (cmd, desc) in cmds {
@@ -227,21 +294,11 @@ pub(super) fn add_version_message(container: &Arc<Container>) {
         0,
     )));
     container.add_child(Arc::new(Spacer::new(1)));
-    // Use the crate version (kept in sync via `version.workspace = true`)
-    // instead of the stale hardcoded "v0.1.2".
     container.add_child(Arc::new(Text::new(
         format!(
             "  {} {}",
-            c.muted.fg("rpi-cli"),
-            c.text.fg(&format!("v{}", crate::VERSION))
-        ),
-        1,
-        0,
-    )));
-    container.add_child(Arc::new(Text::new(
-        format!(
-            "  {}",
-            c.dim.fg("Rust implementation of pi coding agent TUI")
+            c.muted.fg("pi"),
+            c.text.fg(&format!("v{}", crate::changelog::current_version()))
         ),
         1,
         0,
@@ -249,37 +306,26 @@ pub(super) fn add_version_message(container: &Arc<Container>) {
     container.add_child(Arc::new(Spacer::new(1)));
 }
 
-/// Show the real bundled changelog, including in installed/offline builds.
+/// Show the release notes that ship with the port.
 pub(super) fn add_changelog_message(container: &Arc<Container>) {
-    add_changelog_message_with_scope(container, false);
-}
-
-pub(super) fn add_changelog_message_with_scope(container: &Arc<Container>, all: bool) {
     let c = current_theme().colors;
+    container.add_child(Arc::new(Spacer::new(1)));
+    container.add_child(Arc::new(DynamicBorder::new()));
     container.add_child(Arc::new(Text::new(
-        c.md_heading.fg(&tui_bold(if all {
-            "Full Changelog"
-        } else {
-            "Recent Changes"
-        })),
+        c.md_heading.fg(&tui_bold("What's New")),
         1,
         0,
     )));
     container.add_child(Arc::new(Spacer::new(1)));
     let entries = crate::changelog::bundled_entries();
-    let entries = if all {
-        entries
-    } else {
-        crate::changelog::latest_release(&entries, crate::VERSION)
-    };
-    let markdown = crate::changelog::format_entries(&entries);
+    let markdown = crate::changelog::changelog_markdown(&entries);
     let markdown = if markdown.is_empty() {
         "No changelog entries found.".into()
     } else {
         markdown
     };
-    container.add_child(Arc::new(Markdown::new(markdown, 1, 0)));
-    container.add_child(Arc::new(Spacer::new(1)));
+    container.add_child(Arc::new(Markdown::new(markdown, 1, 1)));
+    container.add_child(Arc::new(DynamicBorder::new()));
 }
 
 pub(super) fn add_startup_changelog_message(
@@ -290,8 +336,9 @@ pub(super) fn add_startup_changelog_message(
 ) {
     container.add_child(Arc::new(DynamicBorder::new()));
     if collapse {
+        let latest = latest_version_in(markdown).unwrap_or_else(|| version.to_string());
         container.add_child(Arc::new(Text::new(
-            format!("Updated to v{version}. Use /changelog to view release notes."),
+            format!("Updated to v{latest}. Use /changelog to view full changelog."),
             1,
             0,
         )));
@@ -310,48 +357,181 @@ pub(super) fn add_startup_changelog_message(
     container.add_child(Arc::new(Spacer::new(1)));
 }
 
+/// The version of the first release heading in a release note.
+fn latest_version_in(markdown: &str) -> Option<String> {
+    for line in markdown.lines() {
+        let Some(rest) = line.strip_prefix("## ") else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        let rest = rest.strip_prefix('[').unwrap_or(rest);
+        let candidate: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        let parts: Vec<&str> = candidate.split('.').collect();
+        if parts.len() == 3 && parts.iter().all(|part| part.parse::<u64>().is_ok()) {
+            return Some(candidate);
+        }
+        return None;
+    }
+    None
+}
+
 /// Add the `/hotkeys` block to the chat container.
 pub(super) fn add_hotkeys_message(container: &Arc<Container>) {
     let c = current_theme().colors;
+    let sections: &[(&str, &[(&[&'static str], &str)])] = &[
+        (
+            "Navigation",
+            &[
+                (
+                    &[
+                        "tui.editor.cursorUp",
+                        "tui.editor.cursorDown",
+                        "tui.editor.cursorLeft",
+                        "tui.editor.cursorRight",
+                    ],
+                    "Move cursor / browse history",
+                ),
+                (
+                    &["tui.editor.cursorWordLeft", "tui.editor.cursorWordRight"],
+                    "Move by word",
+                ),
+                (&["tui.editor.cursorLineStart"], "Start of line"),
+                (&["tui.editor.jumpForward"], "Jump forward to character"),
+                (&["tui.editor.jumpBackward"], "Jump backward to character"),
+                (
+                    &["tui.editor.pageUp", "tui.editor.pageDown"],
+                    "Scroll by page",
+                ),
+            ],
+        ),
+        (
+            "Editing",
+            &[
+                (&["tui.input.submit"], "Send message"),
+                (&["tui.input.newLine"], "New line"),
+                (
+                    &["tui.editor.deleteWordBackward"],
+                    "Delete word backwards",
+                ),
+                (
+                    &["tui.editor.deleteWordForward"],
+                    "Delete word forwards",
+                ),
+                (
+                    &["tui.editor.deleteToLineStart"],
+                    "Delete to start of line",
+                ),
+                (&["tui.editor.deleteToLineEnd"], "Delete to end of line"),
+                (
+                    &["tui.editor.yank"],
+                    "Paste the most-recently-deleted text",
+                ),
+                (
+                    &["tui.editor.yankPop"],
+                    "Cycle through the deleted text after pasting",
+                ),
+                (&["tui.editor.undo"], "Undo"),
+            ],
+        ),
+        (
+            "Other",
+            &[
+                (
+                    &["tui.input.tab"],
+                    "Path completion / accept autocomplete",
+                ),
+                (
+                    &["app.interrupt"],
+                    "Cancel autocomplete / abort streaming",
+                ),
+                (&["app.quit"], "Exit (press twice)"),
+                (&["app.exit"], "Exit (when editor is empty)"),
+                (&["app.suspend"], "Suspend to background"),
+                (&["app.thinking.cycle"], "Cycle thinking level"),
+                (
+                    &["app.model.cycleForward", "app.model.cycleBackward"],
+                    "Cycle models",
+                ),
+                (&["app.model.select"], "Open model selector"),
+                (
+                    &["app.tools.expand"],
+                    "Toggle tool output expansion",
+                ),
+                (
+                    &["app.thinking.toggle"],
+                    "Toggle thinking block visibility",
+                ),
+                (
+                    &["app.editor.external"],
+                    "Edit message in external editor",
+                ),
+                (
+                    &["app.message.copy"],
+                    "Copy selection or last assistant message",
+                ),
+                (
+                    &["app.message.followUp"],
+                    "Queue follow-up message",
+                ),
+                (&["app.message.dequeue"], "Restore queued messages"),
+                (
+                    &["app.clipboard.pasteImage"],
+                    "Paste files on macOS, images, or text from clipboard",
+                ),
+                (&["`/`"], "Slash commands"),
+                (&["`!`"], "Run bash command"),
+                (
+                    &["`!!`"],
+                    "Run bash command (excluded from context)",
+                ),
+            ],
+        ),
+    ];
+
+    let mut markdown = String::new();
+    for (title, rows) in sections {
+        let mut table = String::from("| Key | Action |\n|-----|--------|\n");
+        for (ids, action) in *rows {
+            let keys = hotkey_keys(ids);
+            if keys.is_empty() {
+                continue;
+            }
+            table.push_str(&format!("| {keys} | {action} |\n"));
+        }
+        if table.lines().count() <= 2 {
+            continue;
+        }
+        markdown.push_str(&format!("**{title}**\n{table}\n"));
+    }
+
+    container.add_child(Arc::new(Spacer::new(1)));
+    container.add_child(Arc::new(DynamicBorder::new()));
     container.add_child(Arc::new(Text::new(
-        c.md_heading.fg(&tui_bold("⌨️  Keyboard Shortcuts")),
+        c.md_heading.fg(&tui_bold("Keyboard Shortcuts")),
         1,
         0,
     )));
     container.add_child(Arc::new(Spacer::new(1)));
-    let keys: &[(&str, &str)] = &[
-        ("Enter", "Send message"),
-        ("Shift+Enter", "New line"),
-        ("Tab", "Accept autocomplete suggestion"),
-        ("Ctrl+A / Ctrl+E", "Line start / end"),
-        (
-            "Ctrl+K / Ctrl+U",
-            "Kill to end / start of line (Ctrl+Y yanks)",
-        ),
-        ("Ctrl+- / Ctrl+R", "Undo / redo"),
-        ("Ctrl+Y / Alt+Y", "Yank / yank-pop"),
-        ("Alt+Backspace", "Kill previous word"),
-        ("Ctrl+C", "Clear the editor (press twice quickly to exit)"),
-        ("Ctrl+X", "Copy the editor selection or the last reply"),
-        ("Esc", "Abort a running prompt"),
-        ("Ctrl+L", "Open model selector"),
-        ("Ctrl+P", "Cycle to the next model (live)"),
-        ("Ctrl+O", "Expand/collapse all tool output"),
-        ("Ctrl+T", "Show/hide reasoning blocks"),
-        ("PageUp/Down", "Scroll transcript by one page"),
-        ("Home / End", "Jump to transcript start / latest output"),
-    ];
-    let key_w = keys.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
-    for (key, desc) in keys {
-        let row = format!(
-            "  {:<key_w$}  {}  {}",
-            c.accent.fg(key),
-            c.dim.fg("—"),
-            c.muted.fg(desc)
-        );
-        container.add_child(Arc::new(Text::new(row, 1, 0)));
-    }
-    container.add_child(Arc::new(Spacer::new(1)));
+    container.add_child(Arc::new(Markdown::new(markdown.trim().to_string(), 1, 1)));
+    container.add_child(Arc::new(DynamicBorder::new()));
+}
+
+/// The key names of a set of keybinding ids, as a markdown table cell.
+fn hotkey_keys(ids: &[&'static str]) -> String {
+    ids.iter()
+        .map(|id| {
+            if id.starts_with('`') {
+                (*id).to_string()
+            } else {
+                format!("`{}`", rpi_tui::key_display_text(id))
+            }
+        })
+        .filter(|text| text != "``")
+        .collect::<Vec<_>>()
+        .join(" / ")
 }
 
 /// Add a user message echo to the chat container — a bordered `UserMessageComponent`
@@ -475,7 +655,7 @@ pub(super) fn sanitize_error_message(text: &str) -> String {
 pub(super) fn add_note_message(container: &Arc<Container>, text: &str) {
     let c = current_theme().colors;
     container.add_child(Arc::new(Text::new(
-        format!("  {} {}", c.info.fg("ℹ"), c.muted.fg(text)),
+        format!("  {} {}", c.accent.fg("ℹ"), c.muted.fg(text)),
         1,
         0,
     )));

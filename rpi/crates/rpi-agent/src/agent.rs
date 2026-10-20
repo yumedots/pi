@@ -518,6 +518,8 @@ impl Agent {
             get_api_key: None,
             should_stop_after_turn: None,
             prepare_next_turn: None,
+            prepare_request: None,
+            finish_turn: None,
             after_tool_results: None,
             get_steering_messages: Some(Arc::new(move || {
                 let q = Arc::clone(&steering);

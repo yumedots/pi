@@ -122,7 +122,16 @@ impl Component for HStack {
         for (i, entry) in children.iter().enumerate() {
             // Render child to get intrinsic height
             let lines = entry.component.render(width);
-            let max_line_width = lines.iter().map(|l| visible_width(l)).max().unwrap_or(0);
+            // The intrinsic width is the content width: a child that pads its
+            // rows to the full width must not claim the whole row.
+            let max_line_width = lines
+                .iter()
+                .map(|line| {
+                    let plain = crate::ansi::strip_ansi(line);
+                    visible_width(plain.trim_end())
+                })
+                .max()
+                .unwrap_or(0);
 
             let basis = entry.options.basis.unwrap_or(max_line_width);
             let min_size = entry.options.min_size;

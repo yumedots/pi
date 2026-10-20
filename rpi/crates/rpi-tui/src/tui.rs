@@ -64,6 +64,10 @@ pub struct OverlayOptions {
     pub max_height: Option<SizeValue>,
     /// Anchor point for positioning.
     pub anchor: OverlayAnchor,
+    /// Row position: absolute row, or a percentage of the free vertical space.
+    pub row: Option<SizeValue>,
+    /// Column position: absolute column, or a percentage of the free horizontal space.
+    pub col: Option<SizeValue>,
     /// Horizontal offset from anchor position.
     pub offset_x: i32,
     /// Vertical offset from anchor position.
@@ -74,6 +78,19 @@ pub struct OverlayOptions {
     pub visible: Option<fn(width: usize, height: usize) -> bool>,
     /// Don't capture keyboard focus.
     pub non_capturing: bool,
+}
+
+/// Last rendered terminal-relative overlay rectangle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OverlayBounds {
+    /// Top row of the overlay.
+    pub row: usize,
+    /// Left column of the overlay.
+    pub col: usize,
+    /// Width of the overlay in columns.
+    pub width: usize,
+    /// Height of the overlay in rows.
+    pub height: usize,
 }
 
 /// Handle returned by show_overlay for controlling the overlay.
@@ -90,8 +107,14 @@ pub trait OverlayHandle: Send + Sync {
     /// Focus this overlay.
     fn focus(&self);
 
+    /// Release focus to the next visible capturing overlay.
+    fn unfocus(&self);
+
     /// Check if this overlay has focus.
     fn is_focused(&self) -> bool;
+
+    /// Get the most recent rendered bounds for a visible overlay.
+    fn get_bounds(&self) -> Option<OverlayBounds>;
 }
 
 /// Options for stopping the TUI.

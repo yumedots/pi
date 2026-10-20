@@ -5,8 +5,9 @@
 use std::any::Any;
 use std::sync::{Arc, Mutex};
 
-use super::component::Component;
+use super::component::{Component, MouseButton, MouseEvent, MouseEventKind, MouseEventResult};
 use super::fuzzy::fuzzy_filter;
+use super::list_hover::{apply_hover, HoverableList};
 use crate::utils::{truncate_to_width, visible_width};
 
 const DEFAULT_PRIMARY_COLUMN_WIDTH: usize = 32;
@@ -85,11 +86,11 @@ pub struct SelectListTheme {
 impl Default for SelectListTheme {
     fn default() -> Self {
         Self {
-            selected_prefix: |s| format!("\x1b[32m{}\x1b[0m", s),
-            selected_text: |s| format!("\x1b[1;36m{}\x1b[0m", s),
-            description: |s| format!("\x1b[90m{}\x1b[0m", s),
-            scroll_info: |s| format!("\x1b[90m{}\x1b[0m", s),
-            no_match: |s| format!("\x1b[90m{}\x1b[0m", s),
+            selected_prefix: |s| crate::theme::theme().colors.accent.fg(s),
+            selected_text: |s| crate::theme::theme().colors.accent.fg(s),
+            description: |s| crate::theme::theme().colors.muted.fg(s),
+            scroll_info: |s| crate::theme::theme().colors.muted.fg(s),
+            no_match: |s| crate::theme::theme().colors.muted.fg(s),
         }
     }
 }
@@ -120,6 +121,12 @@ pub struct SelectList {
     items: Mutex<Vec<SelectItem>>,
     filtered_items: Mutex<Vec<SelectItem>>,
     selected_index: Mutex<usize>,
+    /// Top of the visible window. Tracked separately from the selection so a
+    /// hover can move the selection without scrolling the list out from under
+    /// the pointer.
+    window_start: Mutex<usize>,
+    /// Item the mouse pressed on, used when the click is delivered later.
+    mouse_pressed_index: Mutex<Option<usize>>,
     /// Values toggled in multi-select mode. Values (rather than indexes) are
     /// retained so filtering does not lose the user's selections.
     selected_values: Mutex<std::collections::HashSet<String>>,
@@ -140,6 +147,8 @@ impl SelectList {
             filtered_items: Mutex::new(items.clone()),
             items: Mutex::new(items),
             selected_index: Mutex::new(0),
+            window_start: Mutex::new(0),
+            mouse_pressed_index: Mutex::new(None),
             selected_values: Mutex::new(std::collections::HashSet::new()),
             multi_select: false,
             max_visible,
@@ -158,6 +167,8 @@ impl SelectList {
             filtered_items: Mutex::new(items.clone()),
             items: Mutex::new(items),
             selected_index: Mutex::new(0),
+            window_start: Mutex::new(0),
+            mouse_pressed_index: Mutex::new(None),
             selected_values: Mutex::new(std::collections::HashSet::new()),
             multi_select: false,
             max_visible,
@@ -235,6 +246,23 @@ impl SelectList {
             .unwrap_or(false)
     }
 
+    /// Replace the list's items. The caller re-applies the filter when the
+    /// list is searchable, so the visible rows follow the new items.
+    pub fn set_items(&self, items: Vec<SelectItem>) {
+        if let Ok(mut stored) = self.items.lock() {
+            *stored = items.clone();
+        }
+        if let Ok(mut filtered) = self.filtered_items.lock() {
+            *filtered = items;
+        }
+        if let Ok(mut index) = self.selected_index.lock() {
+            *index = 0;
+        }
+        if let Ok(mut start) = self.window_start.lock() {
+            *start = 0;
+        }
+    }
+
     /// Set the filter text.
     pub fn set_filter(&self, filter: &str) {
         if let Ok(items) = self.items.lock() {
@@ -247,6 +275,14 @@ impl SelectList {
         if let Ok(mut index) = self.selected_index.lock() {
             *index = 0;
         }
+        if let Ok(mut start) = self.window_start.lock() {
+            *start = 0;
+        }
+    }
+
+    /// The index of the highlighted row in the filtered list.
+    pub fn selected_index(&self) -> usize {
+        self.selected_index.lock().map(|index| *index).unwrap_or(0)
     }
 
     /// Set the selected index.
@@ -256,6 +292,7 @@ impl SelectList {
                 *current = index.min(filtered.len().saturating_sub(1));
             }
         }
+        self.scroll_to_selection();
     }
 
     /// Get the selected item.
@@ -351,6 +388,7 @@ impl SelectList {
                 }
             }
         }
+        self.scroll_to_selection();
     }
 
     /// Move selection down.
@@ -369,6 +407,52 @@ impl SelectList {
                     self.notify_selection_change(item);
                 }
             }
+        }
+        self.scroll_to_selection();
+    }
+
+    /// Visible range of the list: the first and one-past-last item index.
+    pub fn visible_range(&self) -> (usize, usize) {
+        let len = self
+            .filtered_items
+            .lock()
+            .map(|filtered| filtered.len())
+            .unwrap_or(0);
+        let start = self
+            .window_start
+            .lock()
+            .map(|start| *start)
+            .unwrap_or(0)
+            .min(len.saturating_sub(self.max_visible));
+        (start, (start + self.max_visible).min(len))
+    }
+
+    /// Center the visible window on the selection.
+    ///
+    /// Keyboard navigation calls this so the selection stays in view; a hover
+    /// does not, so the row under the pointer stays under the pointer.
+    fn scroll_to_selection(&self) {
+        let len = self
+            .filtered_items
+            .lock()
+            .map(|filtered| filtered.len())
+            .unwrap_or(0);
+        if len <= self.max_visible {
+            if let Ok(mut start) = self.window_start.lock() {
+                *start = 0;
+            }
+            return;
+        }
+        let selected = self
+            .selected_index
+            .lock()
+            .map(|index| *index)
+            .unwrap_or(0);
+        let start = selected
+            .saturating_sub(self.max_visible / 2)
+            .min(len - self.max_visible);
+        if let Ok(mut window) = self.window_start.lock() {
+            *window = start;
         }
     }
 
@@ -416,6 +500,32 @@ impl SelectList {
                 callback(item);
             }
         }
+    }
+
+    /// Notify the listener about the currently selected item.
+    fn notify_selected_item(&self) {
+        if let Some(item) = self.get_selected_item() {
+            self.notify_selection_change(&item);
+        }
+    }
+
+    /// Move the selection to an index without moving the visible window.
+    fn select_index(&self, index: usize) -> bool {
+        let Ok(mut selected) = self.selected_index.lock() else {
+            return false;
+        };
+        let Ok(filtered) = self.filtered_items.lock() else {
+            return false;
+        };
+        if filtered.is_empty() {
+            return false;
+        }
+        let index = index.min(filtered.len() - 1);
+        if *selected == index {
+            return false;
+        }
+        *selected = index;
+        true
     }
 
     /// Get primary column width.
@@ -546,7 +656,7 @@ impl Component for SelectList {
         let mut lines = Vec::new();
 
         if filtered.is_empty() {
-            lines.push((self.theme.no_match)("  No matching items"));
+            lines.push((self.theme.no_match)("  No matching commands"));
             return lines;
         }
 
@@ -557,14 +667,7 @@ impl Component for SelectList {
         let primary_column_width = self.get_primary_column_width(&filtered);
 
         // Calculate visible range with scrolling
-        let start_index = if filtered.len() <= self.max_visible {
-            0
-        } else {
-            (*selected)
-                .saturating_sub(self.max_visible / 2)
-                .min(filtered.len().saturating_sub(self.max_visible))
-        };
-        let end_index = (start_index + self.max_visible).min(filtered.len());
+        let (start_index, end_index) = self.visible_range();
 
         // Render visible items
         for i in start_index..end_index {
@@ -591,8 +694,117 @@ impl Component for SelectList {
         // No cached state
     }
 
+    fn handle_mouse(&self, event: &MouseEvent) -> Option<MouseEventResult> {
+        let filtered_len = self
+            .filtered_items
+            .lock()
+            .map(|filtered| filtered.len())
+            .unwrap_or(0);
+        if filtered_len == 0 {
+            return None;
+        }
+        if event.kind == MouseEventKind::Wheel {
+            let Some(delta) = event.wheel_delta else {
+                return None;
+            };
+            if delta == 0 {
+                return None;
+            }
+            let step = if delta < 0 { -1 } else { 1 };
+            let previous = self
+                .selected_index
+                .lock()
+                .map(|index| *index)
+                .unwrap_or(0);
+            let next = previous
+                .saturating_add_signed(step)
+                .min(filtered_len - 1);
+            if let Ok(mut index) = self.selected_index.lock() {
+                *index = next;
+            }
+            if next == previous {
+                return Some(MouseEventResult {
+                    handled: true,
+                    render: Some(false),
+                    ..Default::default()
+                });
+            }
+            self.scroll_to_selection();
+            self.notify_selected_item();
+            return Some(MouseEventResult::handled());
+        }
+        if apply_hover(event, self) {
+            self.notify_selected_item();
+            return Some(MouseEventResult::handled());
+        }
+        if event.button != MouseButton::Left
+            || (event.kind != MouseEventKind::Press && event.kind != MouseEventKind::Click)
+        {
+            return None;
+        }
+        let (start_index, end_index) = self.visible_range();
+        let item_index = start_index + event.y;
+        if item_index < start_index || item_index >= end_index {
+            return None;
+        }
+        if event.kind == MouseEventKind::Press {
+            if let Ok(mut pressed) = self.mouse_pressed_index.lock() {
+                *pressed = Some(item_index);
+            }
+            let changed = self.select_index(item_index);
+            if changed {
+                self.notify_selected_item();
+            }
+            return Some(MouseEventResult {
+                handled: true,
+                focus: true,
+                ..Default::default()
+            });
+        }
+        let clicked_index = self
+            .mouse_pressed_index
+            .lock()
+            .ok()
+            .and_then(|pressed| *pressed)
+            .unwrap_or(item_index);
+        if let Ok(mut pressed) = self.mouse_pressed_index.lock() {
+            *pressed = None;
+        }
+        let changed = self.select_index(clicked_index);
+        if changed {
+            self.notify_selected_item();
+        }
+        if let Ok(filtered) = self.filtered_items.lock() {
+            if let Some(item) = filtered.get(clicked_index) {
+                let item = item.clone();
+                if let Ok(cb) = self.on_select.lock() {
+                    if let Some(callback) = cb.as_ref() {
+                        callback(&item);
+                    }
+                }
+            }
+        }
+        Some(MouseEventResult::handled())
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
+    }
+}
+
+impl HoverableList for SelectList {
+    fn index_at_row(&self, row: usize) -> Option<usize> {
+        let (start_index, end_index) = self.visible_range();
+        let index = start_index + row;
+        if index >= start_index && index < end_index {
+            Some(index)
+        } else {
+            None
+        }
+    }
+
+    fn select(&self, index: usize) -> bool {
+        self.select_index(index)
     }
 }
 
@@ -631,6 +843,14 @@ mod tests {
     }
 
     #[test]
+    fn empty_list_says_no_matching_commands() {
+        let list = SelectList::new(vec![SelectItem::new("one", "One")], 5);
+        list.set_filter("nothing matches this");
+        let lines = list.render(40);
+        assert_eq!(crate::utils::strip_ansi(&lines[0]), "  No matching commands");
+    }
+
+    #[test]
     fn test_select_list_navigation() {
         let items = vec![SelectItem::new("one", "One"), SelectItem::new("two", "Two")];
         let list = SelectList::new(items, 5);
@@ -649,6 +869,58 @@ mod tests {
         assert_eq!(item.label, "Label");
         assert_eq!(item.description, Some("Description".to_string()));
         assert_eq!(item.display_value(), "Label");
+    }
+
+    #[test]
+    fn hovering_a_row_moves_the_selection() {
+        let list = SelectList::new(
+            vec![
+                SelectItem::new("one", "One"),
+                SelectItem::new("two", "Two"),
+                SelectItem::new("three", "Three"),
+            ],
+            5,
+        );
+        let event = MouseEvent::new(MouseEventKind::Move, MouseButton::None, 0, 2);
+        assert!(list.handle_mouse(&event).is_some());
+        assert_eq!(list.get_selected_item().unwrap().value, "three");
+    }
+
+    #[test]
+    fn a_click_confirms_the_item_under_the_pointer() {
+        let list = SelectList::new(
+            vec![
+                SelectItem::new("one", "One"),
+                SelectItem::new("two", "Two"),
+                SelectItem::new("three", "Three"),
+            ],
+            5,
+        );
+        let confirmed = Arc::new(Mutex::new(Vec::<String>::new()));
+        let confirmed_copy = confirmed.clone();
+        list.on_select(Arc::new(move |item: &SelectItem| {
+            confirmed_copy.lock().unwrap().push(item.value.clone());
+        }));
+
+        let press = MouseEvent::new(MouseEventKind::Press, MouseButton::Left, 0, 1);
+        assert!(list.handle_mouse(&press).is_some());
+        assert_eq!(list.get_selected_item().unwrap().value, "two");
+
+        let click = MouseEvent::new(MouseEventKind::Click, MouseButton::Left, 0, 1);
+        assert!(list.handle_mouse(&click).is_some());
+        assert_eq!(confirmed.lock().unwrap().as_slice(), &["two".to_string()]);
+    }
+
+    #[test]
+    fn a_hover_keeps_the_visible_window_in_place() {
+        let items: Vec<SelectItem> = (0..20)
+            .map(|index| SelectItem::new(&format!("item-{index}"), &format!("Item {index}")))
+            .collect();
+        let list = SelectList::new(items, 5);
+        let event = MouseEvent::new(MouseEventKind::Move, MouseButton::None, 0, 4);
+        list.handle_mouse(&event);
+        assert_eq!(list.visible_range(), (0, 5));
+        assert_eq!(list.get_selected_item().unwrap().value, "item-4");
     }
 
     #[test]

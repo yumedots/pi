@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use super::component::Component;
 use crate::ansi::bold;
 use crate::ansi::strip_ansi;
+use crate::keybinding_hints::key_text;
 use crate::spacer::Spacer;
 use crate::theme::{theme, theme_revision, Theme, ThemeColors};
 use crate::tool_panel::ToolPanel;
@@ -244,13 +245,16 @@ impl BashExecutionComponent {
         }
         if hidden > 0 {
             if expanded {
-                parts.push(colors.muted.fg("(Ctrl+O to collapse)"));
+                parts.push(colors.muted.fg(&format!(
+                    "({} to collapse)",
+                    key_text("app.tools.expand")
+                )));
             } else {
-                parts.push(
-                    colors
-                        .muted
-                        .fg(&format!("... {} more lines (Ctrl+O to expand)", hidden)),
-                );
+                parts.push(colors.muted.fg(&format!(
+                    "... {} more lines ({} to expand)",
+                    hidden,
+                    key_text("app.tools.expand")
+                )));
             }
         }
         match status {
@@ -336,21 +340,15 @@ impl BashExecutionComponent {
         }
 
         if status == BashStatus::Running {
-            let elapsed = self.elapsed();
             let row = format!(
                 "{} {}",
-                colors.accent.fg("●"),
-                colors
-                    .muted
-                    .fg(&crate::tool_execution::format_elapsed(elapsed)),
+                colors.accent.fg("⠋"),
+                colors.muted.fg(&format!(
+                    "Running... ({} to cancel)",
+                    key_text("tui.select.cancel")
+                )),
             );
             lines.push(panel_line(&truncate_to_width(&row, content_width, "…")));
-            if elapsed > LONG_RUNNING_HINT_AFTER {
-                let hint = format!("{} Esc / Ctrl+C 中止", colors.muted.fg("⏸"));
-                for part in wrap_text_with_ansi(&hint, content_width) {
-                    lines.push(panel_line(&part));
-                }
-            }
         } else {
             let status_lines = self.status_line(hidden, colors);
             if !status_lines.is_empty() {
@@ -553,23 +551,14 @@ mod tests {
     #[test]
     fn test_new_renders_header_and_live_elapsed() {
         let c = BashExecutionComponent::new("ls -la");
-        let lines = c.render(40);
+        let lines = c.render(80);
         let joined = lines.join("\n");
         assert!(joined.contains("$ ls -la"));
-        // A running panel reports a live elapsed timer and a static status
-        // glyph — no spinner, matching tool panels.
+        // A running panel shows the original's label and its cancel hint.
         let plain = strip_ansi(&joined);
         assert!(
-            plain.contains('●'),
-            "running panel needs the status glyph: {plain}"
-        );
-        assert!(
-            plain.contains('s'),
-            "running panel needs an elapsed readout: {plain}"
-        );
-        assert!(
-            !plain.contains("Running"),
-            "the `Running...` label was replaced by the elapsed timer: {plain}"
+            plain.contains("Running... (escape/ctrl+c to cancel)"),
+            "running panel needs the original's label: {plain}"
         );
     }
 

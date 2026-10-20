@@ -56,6 +56,30 @@ pub fn provisioned_from_entry(entry: &Entry) -> ProvisionedEntry {
             details: m.details.clone(),
             usage: m.usage.clone(),
         },
+        Entry::Usage(m) => ProvisionedKind::Usage {
+            kind: m.kind.clone(),
+            provider: m.provider.clone(),
+            model: m.model.clone(),
+            usage: m.usage.clone(),
+            note: m.note.clone(),
+        },
+        Entry::Label(m) => ProvisionedKind::Label {
+            target_id: m.target_id.clone(),
+            label: m.label.clone(),
+        },
+        Entry::SessionInfo(m) => ProvisionedKind::SessionInfo {
+            name: m.name.clone(),
+        },
+        Entry::CustomMessage(m) => ProvisionedKind::CustomMessage {
+            custom_type: m.custom_type.clone(),
+            content: m.content.clone(),
+            details: m.details.clone(),
+            display: m.display,
+        },
+        Entry::ContextEdit(m) => ProvisionedKind::ContextEdit {
+            target_id: m.target_id.clone(),
+            replacement: m.replacement.clone(),
+        },
         Entry::Custom(m) => ProvisionedKind::Custom {
             custom_type: m.custom_type.clone(),
             data: m.data.clone(),
@@ -208,6 +232,72 @@ pub struct CustomEntry {
     pub data: Option<JsonValue>,
 }
 
+/// Per-request usage. Mirrors the original's `UsageEntry`
+/// (`packages/coding-agent/src/core/session-manager.ts:80`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    /// Arbitrary usage category, such as `cache_warm`.
+    pub kind: String,
+    pub provider: String,
+    pub model: String,
+    pub usage: Usage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// A bookmark on an entry. Mirrors the original's `LabelEntry`
+/// (`packages/coding-agent/src/core/session-manager.ts:135`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub target_id: String,
+    pub label: Option<String>,
+}
+
+/// Session metadata (the user-defined display name). Mirrors the original's
+/// `SessionInfoEntry` (`packages/coding-agent/src/core/session-manager.ts:142`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionInfoEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// An extension-injected message. Mirrors the original's `CustomMessageEntry`
+/// (`packages/coding-agent/src/core/session-manager.ts:159`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomMessageEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub custom_type: String,
+    pub content: JsonValue,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<JsonValue>,
+    pub display: bool,
+}
+
+/// An append-only edit to an earlier entry's contribution to the model
+/// context. Mirrors the original's `ContextEditEntry`
+/// (`packages/coding-agent/src/core/session-manager.ts:175`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextEditEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub target_id: String,
+    /// `null` omits the target from the model context; a value replaces only
+    /// its content.
+    pub replacement: Option<JsonValue>,
+}
+
 /// `Entry = MessageEntry | ModelChangeEntry | ... | CustomEntry`.
 ///
 /// Serialized as a flat object (each arm `#[serde(flatten)]`s its `base`), so
@@ -224,6 +314,11 @@ pub enum Entry {
     Compaction(CompactionEntry),
     BranchSummary(BranchSummaryEntry),
     Custom(CustomEntry),
+    Usage(UsageEntry),
+    Label(LabelEntry),
+    SessionInfo(SessionInfoEntry),
+    CustomMessage(CustomMessageEntry),
+    ContextEdit(ContextEditEntry),
 }
 
 impl Entry {
@@ -236,6 +331,11 @@ impl Entry {
             Entry::Compaction(e) => &e.base,
             Entry::BranchSummary(e) => &e.base,
             Entry::Custom(e) => &e.base,
+            Entry::Usage(e) => &e.base,
+            Entry::Label(e) => &e.base,
+            Entry::SessionInfo(e) => &e.base,
+            Entry::CustomMessage(e) => &e.base,
+            Entry::ContextEdit(e) => &e.base,
         }
     }
 
@@ -248,6 +348,11 @@ impl Entry {
             Entry::Compaction(e) => &mut e.base,
             Entry::BranchSummary(e) => &mut e.base,
             Entry::Custom(e) => &mut e.base,
+            Entry::Usage(e) => &mut e.base,
+            Entry::Label(e) => &mut e.base,
+            Entry::SessionInfo(e) => &mut e.base,
+            Entry::CustomMessage(e) => &mut e.base,
+            Entry::ContextEdit(e) => &mut e.base,
         }
     }
 
@@ -269,6 +374,11 @@ impl Entry {
             Entry::Compaction(_) => "compaction",
             Entry::BranchSummary(_) => "branch_summary",
             Entry::Custom(_) => "custom",
+            Entry::Usage(_) => "usage",
+            Entry::Label(_) => "label",
+            Entry::SessionInfo(_) => "session_info",
+            Entry::CustomMessage(_) => "custom_message",
+            Entry::ContextEdit(_) => "context_edit",
         }
     }
 
@@ -293,21 +403,27 @@ impl Entry {
 
     /// Build the flat JSON object for this entry (base fields + arm-specific
     /// fields merged). Used by the manual `Serialize` and the JSONL codec.
+    ///
+    /// The shape is the original's session-entry shape: `{type, id, parentId,
+    /// timestamp}` plus the arm's own fields. The `seq` counter is a storage
+    /// detail and is not written; the timestamp is an ISO-8601 string.
     pub fn to_flat_json(&self) -> serde_json::Value {
         use serde_json::{Map, Value};
         let base = self.base();
         let mut map = Map::new();
         map.insert("type".into(), Value::String(self.entry_type().into()));
         map.insert("id".into(), Value::String(base.id.clone()));
-        map.insert("seq".into(), Value::Number(base.seq.into()));
         match &base.parent_id {
             Some(s) => map.insert("parentId".into(), Value::String(s.clone())),
             None => map.insert("parentId".into(), Value::Null),
         };
-        map.insert("timestamp".into(), Value::Number(base.timestamp.into()));
+        map.insert(
+            "timestamp".into(),
+            Value::String(iso_timestamp_from_ms(base.timestamp)),
+        );
 
         // Serialize the arm (which flattens `base` again) and merge in only the
-        // arm-specific keys (skip the 5 base keys we already wrote).
+        // arm-specific keys (skip the base keys we already wrote).
         let arm = match self {
             Entry::Message(e) => serde_json::to_value(e),
             Entry::ModelChange(e) => serde_json::to_value(e),
@@ -316,6 +432,11 @@ impl Entry {
             Entry::Compaction(e) => serde_json::to_value(e),
             Entry::BranchSummary(e) => serde_json::to_value(e),
             Entry::Custom(e) => serde_json::to_value(e),
+            Entry::Usage(e) => serde_json::to_value(e),
+            Entry::Label(e) => serde_json::to_value(e),
+            Entry::SessionInfo(e) => serde_json::to_value(e),
+            Entry::CustomMessage(e) => serde_json::to_value(e),
+            Entry::ContextEdit(e) => serde_json::to_value(e),
         };
         if let Ok(Value::Object(arm_map)) = arm {
             for (k, v) in arm_map {
@@ -438,6 +559,72 @@ impl<'de> Deserialize<'de> for Entry {
                 .map_err(serde::de::Error::custom)?,
                 data: obj.get("data").cloned(),
             }),
+            "usage" => Entry::Usage(UsageEntry {
+                base,
+                kind: serde_json::from_value(
+                    obj.get("kind")
+                        .cloned()
+                        .ok_or_else(|| serde::de::Error::custom("usage missing \"kind\""))?,
+                )
+                .map_err(serde::de::Error::custom)?,
+                provider: serde_json::from_value(
+                    obj.get("provider")
+                        .cloned()
+                        .ok_or_else(|| serde::de::Error::custom("usage missing \"provider\""))?,
+                )
+                .map_err(serde::de::Error::custom)?,
+                model: serde_json::from_value(
+                    obj.get("model")
+                        .cloned()
+                        .ok_or_else(|| serde::de::Error::custom("usage missing \"model\""))?,
+                )
+                .map_err(serde::de::Error::custom)?,
+                usage: serde_json::from_value(
+                    obj.get("usage")
+                        .cloned()
+                        .ok_or_else(|| serde::de::Error::custom("usage missing \"usage\""))?,
+                )
+                .map_err(serde::de::Error::custom)?,
+                note: obj.get("note").and_then(|v| v.as_str()).map(String::from),
+            }),
+            "label" => Entry::Label(LabelEntry {
+                base,
+                target_id: serde_json::from_value(
+                    obj.get("targetId")
+                        .cloned()
+                        .ok_or_else(|| serde::de::Error::custom("label missing \"targetId\""))?,
+                )
+                .map_err(serde::de::Error::custom)?,
+                label: obj.get("label").and_then(|v| v.as_str()).map(String::from),
+            }),
+            "session_info" => Entry::SessionInfo(SessionInfoEntry {
+                base,
+                name: obj.get("name").and_then(|v| v.as_str()).map(String::from),
+            }),
+            "custom_message" => Entry::CustomMessage(CustomMessageEntry {
+                base,
+                custom_type: serde_json::from_value(
+                    obj.get("customType").cloned().ok_or_else(|| {
+                        serde::de::Error::custom("custom_message missing \"customType\"")
+                    })?,
+                )
+                .map_err(serde::de::Error::custom)?,
+                content: obj.get("content").cloned().ok_or_else(|| {
+                    serde::de::Error::custom("custom_message missing \"content\"")
+                })?,
+                details: obj.get("details").cloned(),
+                display: obj.get("display").and_then(|v| v.as_bool()).unwrap_or(false),
+            }),
+            "context_edit" => Entry::ContextEdit(ContextEditEntry {
+                base,
+                target_id: serde_json::from_value(
+                    obj.get("targetId")
+                        .cloned()
+                        .ok_or_else(|| serde::de::Error::custom("context_edit missing \"targetId\""))?,
+                )
+                .map_err(serde::de::Error::custom)?,
+                replacement: obj.get("replacement").cloned(),
+            }),
             other => {
                 return Err(serde::de::Error::custom(format!(
                     "unknown entry type {other}"
@@ -460,19 +647,103 @@ fn deserialize_base(obj: &serde_json::Map<String, serde_json::Value>) -> Result<
             .and_then(|v| v.as_str())
             .ok_or("missing id")?
             .to_string(),
-        seq: obj
-            .get("seq")
-            .and_then(|v| v.as_u64())
-            .ok_or("missing seq")?,
+        seq: obj.get("seq").and_then(|v| v.as_u64()).unwrap_or(0),
         parent_id: obj
             .get("parentId")
             .and_then(|v| v.as_str())
             .map(String::from),
-        timestamp: obj
-            .get("timestamp")
-            .and_then(|v| v.as_i64())
-            .ok_or("missing timestamp")?,
+        timestamp: parse_entry_timestamp(obj.get("timestamp"))?,
     })
+}
+
+/// Read an entry's `timestamp`: an ISO-8601 string (the original's shape) or a
+/// number of milliseconds since the epoch.
+fn parse_entry_timestamp(value: Option<&serde_json::Value>) -> Result<i64, String> {
+    match value {
+        Some(serde_json::Value::String(text)) => ms_from_iso_timestamp(text)
+            .ok_or_else(|| "timestamp is not an ISO-8601 timestamp".to_string()),
+        Some(serde_json::Value::Number(number)) => number
+            .as_i64()
+            .ok_or_else(|| "timestamp is not an integer".to_string()),
+        _ => Err("missing timestamp".to_string()),
+    }
+}
+
+/// Render `ms` as an ISO-8601 UTC timestamp `YYYY-MM-DDTHH:MM:SS.mmmZ` (the
+/// original's `new Date(createdAt).toISOString()` shape). Hand-rolled to avoid
+/// a date-time dependency; the format is fully determined by the ms value.
+pub fn iso_timestamp_from_ms(ms: i64) -> String {
+    let total_seconds = ms.div_euclid(1000);
+    let millis = ms.rem_euclid(1000);
+    let days_since_epoch = total_seconds.div_euclid(86_400);
+    let secs_of_day = total_seconds.rem_euclid(86_400);
+
+    let hour = secs_of_day / 3600;
+    let minute = (secs_of_day % 3600) / 60;
+    let second = secs_of_day % 60;
+
+    let (year, month, day) = civil_from_days(days_since_epoch);
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
+}
+
+/// Parse an ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SS.mmmZ`) back into
+/// milliseconds since the epoch. Returns `None` when the text is not that
+/// shape.
+pub fn ms_from_iso_timestamp(text: &str) -> Option<i64> {
+    let text = text.trim();
+    let (date, time) = text.split_once('T')?;
+    if date.len() != 10 {
+        return None;
+    }
+    let year: i64 = date.get(0..4)?.parse().ok()?;
+    let month: i64 = date.get(5..7)?.parse().ok()?;
+    let day: i64 = date.get(8..10)?.parse().ok()?;
+    let time = time.strip_suffix('Z').unwrap_or(time);
+    let (clock, fraction) = match time.split_once('.') {
+        Some((clock, fraction)) => (clock, fraction),
+        None => (time, "0"),
+    };
+    let mut parts = clock.split(':');
+    let hour: i64 = parts.next()?.parse().ok()?;
+    let minute: i64 = parts.next()?.parse().ok()?;
+    let second: i64 = parts.next().unwrap_or("0").parse().ok()?;
+    let mut millis: i64 = fraction
+        .get(0..3)
+        .and_then(|text| text.parse().ok())
+        .unwrap_or(0);
+    if fraction.len() > 3 {
+        millis = millis.min(999);
+    }
+    let days = days_from_civil(year, month, day);
+    let seconds = days * 86_400 + hour * 3600 + minute * 60 + second;
+    Some(seconds * 1000 + millis)
+}
+
+/// Howard Hinnant's days-from-epoch → civil date algorithm. Returns
+/// `(year, month, day)` with `month`/`day` 1-based.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+    (year, m as u32, d as u32)
+}
+
+/// Howard Hinnant's civil date → days-from-epoch algorithm.
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = if month > 2 { month - 3 } else { month + 9 };
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
 }
 
 /// An entry without storage-assigned `seq`/`parent_id`/`timestamp` — what
@@ -526,6 +797,30 @@ pub enum ProvisionedKind {
         custom_type: String,
         data: Option<JsonValue>,
     },
+    Usage {
+        kind: String,
+        provider: String,
+        model: String,
+        usage: Usage,
+        note: Option<String>,
+    },
+    Label {
+        target_id: String,
+        label: Option<String>,
+    },
+    SessionInfo {
+        name: Option<String>,
+    },
+    CustomMessage {
+        custom_type: String,
+        content: JsonValue,
+        details: Option<JsonValue>,
+        display: bool,
+    },
+    ContextEdit {
+        target_id: String,
+        replacement: Option<JsonValue>,
+    },
 }
 
 impl ProvisionedEntry {
@@ -539,6 +834,11 @@ impl ProvisionedEntry {
             ProvisionedKind::Compaction { .. } => "compaction",
             ProvisionedKind::BranchSummary { .. } => "branch_summary",
             ProvisionedKind::Custom { .. } => "custom",
+            ProvisionedKind::Usage { .. } => "usage",
+            ProvisionedKind::Label { .. } => "label",
+            ProvisionedKind::SessionInfo { .. } => "session_info",
+            ProvisionedKind::CustomMessage { .. } => "custom_message",
+            ProvisionedKind::ContextEdit { .. } => "context_edit",
         }
     }
 }
@@ -612,6 +912,46 @@ pub fn provisioned_into_entry(
             base,
             custom_type,
             data,
+        }),
+        ProvisionedKind::Usage {
+            kind,
+            provider,
+            model,
+            usage,
+            note,
+        } => Entry::Usage(UsageEntry {
+            base,
+            kind,
+            provider,
+            model,
+            usage,
+            note,
+        }),
+        ProvisionedKind::Label { target_id, label } => Entry::Label(LabelEntry {
+            base,
+            target_id,
+            label,
+        }),
+        ProvisionedKind::SessionInfo { name } => Entry::SessionInfo(SessionInfoEntry { base, name }),
+        ProvisionedKind::CustomMessage {
+            custom_type,
+            content,
+            details,
+            display,
+        } => Entry::CustomMessage(CustomMessageEntry {
+            base,
+            custom_type,
+            content,
+            details,
+            display,
+        }),
+        ProvisionedKind::ContextEdit {
+            target_id,
+            replacement,
+        } => Entry::ContextEdit(ContextEditEntry {
+            base,
+            target_id,
+            replacement,
         }),
     }
 }

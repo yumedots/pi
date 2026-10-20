@@ -56,7 +56,7 @@ pub async fn run_with_extensions(
             0
         }
         other => {
-            eprintln!("error: unknown auth subcommand \"{other}\"");
+            eprintln!("Error: unknown auth subcommand \"{other}\"");
             eprintln!();
             print_auth_help();
             EXIT_ERROR
@@ -82,14 +82,14 @@ async fn run_login(
         Ok(k) => k,
         Err(e) => {
             eprintln!();
-            eprintln!("error: could not read the key from the terminal: {e}");
+            eprintln!("Error: could not read the key from the terminal: {e}");
             return EXIT_ERROR;
         }
     };
     eprintln!();
     let key = key.trim();
     if key.is_empty() {
-        eprintln!("error: an empty key was entered; nothing saved.");
+        eprintln!("Error: an empty key was entered; nothing saved.");
         return EXIT_ERROR;
     }
     let cred = Credential::ApiKey {
@@ -97,13 +97,13 @@ async fn run_login(
         env: None,
     };
     if let Err(e) = upsert_credential(provider, cred) {
-        eprintln!("error: could not save credentials: {e}");
+        eprintln!("Error: could not save credentials: {e}");
         return EXIT_ERROR;
     }
     let path = match config::auth_path() {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("warn: credentials saved, but could not resolve the config path: {e}");
+            eprintln!("Warning: credentials saved, but could not resolve the config path: {e}");
             return 0;
         }
     };
@@ -123,7 +123,7 @@ async fn run_check(
     let source = match detect_credential(provider, snapshot) {
         Ok(source) => source,
         Err(error) => {
-            eprintln!("error: could not read authentication configuration: {error}");
+            eprintln!("Error: could not read authentication configuration: {error}");
             return EXIT_ERROR;
         }
     };
@@ -163,7 +163,7 @@ async fn run_refresh(
 ) -> i32 {
     let provider = parse_provider(args).unwrap_or(DEFAULT_PROVIDER_ID);
     let Some(snapshot) = snapshot else {
-        eprintln!("error: no OAuth extensions are loaded");
+        eprintln!("Error: no OAuth extensions are loaded");
         return EXIT_ERROR;
     };
     let Some(Credential::Oauth {
@@ -172,7 +172,7 @@ async fn run_refresh(
         expires,
     }) = config::read_oauth_token(provider).ok().flatten()
     else {
-        eprintln!("error: no stored OAuth credentials for \"{provider}\"");
+        eprintln!("Error: no stored OAuth credentials for \"{provider}\"");
         return EXIT_NOT_READY;
     };
     let response = match rpi_extensions::request_oauth(
@@ -183,31 +183,31 @@ async fn run_refresh(
     ) {
         Ok(value) => value,
         Err(error) => {
-            eprintln!("error: OAuth refresh failed: {error}");
+            eprintln!("Error: OAuth refresh failed: {error}");
             return EXIT_ERROR;
         }
     };
     let response = match rpi_extensions::OAuthActionResponse::parse(response) {
         Ok(response) => response,
         Err(error) => {
-            eprintln!("error: invalid OAuth refresh response: {error}");
+            eprintln!("Error: invalid OAuth refresh response: {error}");
             return EXIT_ERROR;
         }
     };
     let Some(token) = (match response.credential() {
         Ok(token) => token,
         Err(error) => {
-            eprintln!("error: invalid OAuth refresh credential: {error}");
+            eprintln!("Error: invalid OAuth refresh credential: {error}");
             return EXIT_ERROR;
         }
     }) else {
-        eprintln!("error: OAuth refresh returned no credential");
+        eprintln!("Error: OAuth refresh returned no credential");
         return EXIT_ERROR;
     };
     if let Err(error) =
         config::upsert_oauth_token(provider, token.access, token.refresh, token.expires_at)
     {
-        eprintln!("error: could not save refreshed OAuth credentials: {error}");
+        eprintln!("Error: could not save refreshed OAuth credentials: {error}");
         return EXIT_ERROR;
     }
     println!("OAuth credentials refreshed for \"{provider}\".");
@@ -224,7 +224,7 @@ async fn run_logout(
     })) = config::read_oauth_token(provider)
     {
         let Some(snapshot) = snapshot else {
-            eprintln!("error: cannot revoke OAuth credentials: no OAuth extensions are loaded");
+            eprintln!("Error: cannot revoke OAuth credentials: no OAuth extensions are loaded");
             return EXIT_ERROR;
         };
         let response = match rpi_extensions::request_oauth(
@@ -235,7 +235,7 @@ async fn run_logout(
         ) {
             Ok(response) => response,
             Err(error) => {
-                eprintln!("error: OAuth revoke failed; local credentials were kept: {error}");
+                eprintln!("Error: OAuth revoke failed; local credentials were kept: {error}");
                 return EXIT_ERROR;
             }
         };
@@ -243,13 +243,13 @@ async fn run_logout(
             Ok(response) if response.kind == rpi_extensions::OAuthResponseKind::Success => {}
             Ok(_) => {
                 eprintln!(
-                    "error: OAuth revoke did not return success; local credentials were kept"
+                    "Error: OAuth revoke did not return success; local credentials were kept"
                 );
                 return EXIT_ERROR;
             }
             Err(error) => {
                 eprintln!(
-                    "error: invalid OAuth revoke response; local credentials were kept: {error}"
+                    "Error: invalid OAuth revoke response; local credentials were kept: {error}"
                 );
                 return EXIT_ERROR;
             }
@@ -267,7 +267,7 @@ async fn run_logout(
             0
         }
         Err(e) => {
-            eprintln!("error: could not remove credentials: {e}");
+            eprintln!("Error: could not remove credentials: {e}");
             EXIT_ERROR
         }
     }
@@ -283,21 +283,21 @@ async fn run_oauth_login(provider: &str, snapshot: &Arc<rpi_extensions::Registry
         let raw = match rpi_extensions::request_oauth(snapshot, provider, action, input) {
             Ok(value) => value,
             Err(error) => {
-                eprintln!("error: OAuth {action} failed: {error}");
+                eprintln!("Error: OAuth {action} failed: {error}");
                 return EXIT_ERROR;
             }
         };
         let response = match rpi_extensions::OAuthActionResponse::parse(raw) {
             Ok(response) => response,
             Err(error) => {
-                eprintln!("error: invalid OAuth response: {error}");
+                eprintln!("Error: invalid OAuth response: {error}");
                 return EXIT_ERROR;
             }
         };
         match response.kind {
             rpi_extensions::OAuthResponseKind::Credential => {
                 let Some(token) = response.credential().ok().flatten() else {
-                    eprintln!("error: OAuth response contained no valid credential");
+                    eprintln!("Error: OAuth response contained no valid credential");
                     return EXIT_ERROR;
                 };
                 if let Err(error) = config::upsert_oauth_token(
@@ -306,18 +306,18 @@ async fn run_oauth_login(provider: &str, snapshot: &Arc<rpi_extensions::Registry
                     token.refresh,
                     token.expires_at,
                 ) {
-                    eprintln!("error: could not save OAuth credentials: {error}");
+                    eprintln!("Error: could not save OAuth credentials: {error}");
                     return EXIT_ERROR;
                 }
                 println!("OAuth credentials saved for \"{provider}\".");
                 return 0;
             }
             rpi_extensions::OAuthResponseKind::Error => {
-                eprintln!("error: OAuth provider rejected the request");
+                eprintln!("Error: OAuth provider rejected the request");
                 return EXIT_ERROR;
             }
             rpi_extensions::OAuthResponseKind::Success => {
-                eprintln!("error: OAuth login completed without credentials");
+                eprintln!("Error: OAuth login completed without credentials");
                 return EXIT_ERROR;
             }
             rpi_extensions::OAuthResponseKind::Interaction => {
@@ -340,7 +340,7 @@ async fn run_oauth_login(provider: &str, snapshot: &Arc<rpi_extensions::Registry
                 let _ = io::stderr().flush();
                 let mut line = String::new();
                 if io::stdin().read_line(&mut line).is_err() || line.trim().is_empty() {
-                    eprintln!("error: empty OAuth input; nothing saved.");
+                    eprintln!("Error: empty OAuth input; nothing saved.");
                     return EXIT_ERROR;
                 }
                 input = serde_json::json!({"value": line.trim()});

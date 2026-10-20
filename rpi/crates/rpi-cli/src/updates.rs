@@ -500,7 +500,7 @@ fn now_ms() -> i64 {
 
 pub fn print_startup_notices(report: &UpdateReport) {
     for warning in &report.warnings {
-        eprintln!("warning: {} Run `{}`.", warning.message, warning.command);
+        eprintln!("Warning: {} Run `{}`.", warning.message, warning.command);
     }
     for notice in &report.notices {
         eprintln!(
@@ -659,7 +659,7 @@ fn reclaim_self_update_artifacts() {
         return;
     };
     for warning in consume_self_update_statuses(&agent_dir) {
-        eprintln!("warning: {} Run `{}`.", warning.message, warning.command);
+        eprintln!("Warning: {} Run `{}`.", warning.message, warning.command);
     }
 }
 
@@ -675,7 +675,7 @@ pub fn run_self_update(args: &[String]) -> i32 {
         }
         SelfUpdateArgs::Run { force, build } => (force, build),
         SelfUpdateArgs::Usage => {
-            eprintln!("error: `rpi update` accepts only `--force`, `--offline` and `--build`");
+            eprintln!("Error: `rpi update` accepts only `--force`, `--offline` and `--build`");
             return 2;
         }
     };
@@ -764,7 +764,7 @@ pub fn run_self_update(args: &[String]) -> i32 {
     }
 
     if !build && release.is_none() {
-        eprintln!("error: could not resolve the release version; retry later or select --build explicitly");
+        eprintln!("Error: could not resolve the release version; retry later or select --build explicitly");
         return 1;
     }
     let version = release.as_ref().map(|(version, _)| version.as_str());
@@ -1052,26 +1052,26 @@ fn run_direct_self_update(build: bool, version: Option<&str>) -> i32 {
     let staging = match create_self_update_staging_directory() {
         Ok(directory) => directory,
         Err(error) => {
-            eprintln!("error: could not create self-update staging directory: {error}");
+            eprintln!("Error: could not create self-update staging directory: {error}");
             return 1;
         }
     };
     if let Err(error) = prepare_self_update(staging.path(), build, version) {
-        eprintln!("error: {error}");
+        eprintln!("Error: {error}");
         return 1;
     }
 
     let current_exe = match std::env::current_exe() {
         Ok(path) => path,
         Err(error) => {
-            eprintln!("error: could not resolve the current rpi executable: {error}");
+            eprintln!("Error: could not resolve the current rpi executable: {error}");
             return 1;
         }
     };
     let plan = match build_direct_update_plan(staging.path(), &current_exe) {
         Ok(plan) => plan,
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             return 1;
         }
     };
@@ -1081,7 +1081,7 @@ fn run_direct_self_update(build: bool, version: Option<&str>) -> i32 {
             0
         }
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             1
         }
     }
@@ -1550,7 +1550,7 @@ fn run_windows_self_update(build: bool, version: Option<&str>) -> i32 {
     let staging = match create_windows_update_staging() {
         Ok(staging) => staging,
         Err(error) => {
-            eprintln!("error: could not create self-update staging directory: {error}");
+            eprintln!("Error: could not create self-update staging directory: {error}");
             return 1;
         }
     };
@@ -1567,7 +1567,7 @@ fn run_windows_self_update(build: bool, version: Option<&str>) -> i32 {
         Err(error) => {
             let message = format!("could not resolve the current rpi executable: {error}");
             let _ = write_windows_update_status(&status_file, "failed", &message);
-            eprintln!("error: {message}");
+            eprintln!("Error: {message}");
             return 1;
         }
     };
@@ -1575,14 +1575,14 @@ fn run_windows_self_update(build: bool, version: Option<&str>) -> i32 {
         Ok(path) => path,
         Err(error) => {
             let _ = write_windows_update_status(&status_file, "failed", &error);
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             return 1;
         }
     };
 
     if let Err(error) = prepare_self_update(&staging_dir, build, version) {
         let _ = write_windows_update_status(&status_file, "failed", &error);
-        eprintln!("error: {error}");
+        eprintln!("Error: {error}");
         return 1;
     }
 
@@ -1590,7 +1590,7 @@ fn run_windows_self_update(build: bool, version: Option<&str>) -> i32 {
         Ok(plan) => plan,
         Err(error) => {
             let _ = write_windows_update_status(&status_file, "failed", &error);
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             return 1;
         }
     };
@@ -1598,25 +1598,25 @@ fn run_windows_self_update(build: bool, version: Option<&str>) -> i32 {
         Ok(version) => version,
         Err(error) => {
             let _ = write_windows_update_status(&plan.status_file, "failed", &error);
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             return 1;
         }
     };
     if let Err(error) = preflight_windows_replacement(&plan) {
         let _ = write_windows_update_status(&plan.status_file, "failed", &error);
-        eprintln!("error: {error}");
+        eprintln!("Error: {error}");
         return 1;
     }
     if let Err(error) = std::fs::write(&plan.helper_script, WINDOWS_UPDATE_HELPER.as_bytes()) {
         let message = format!("could not write the self-update helper: {error}");
         let _ = write_windows_update_status(&plan.status_file, "failed", &message);
-        eprintln!("error: {message}");
+        eprintln!("Error: {message}");
         return 1;
     }
     if validated_regular_file(&plan.helper_script, "self-update helper").is_err() {
         let message = "self-update helper did not pass regular-file validation";
         let _ = write_windows_update_status(&plan.status_file, "failed", message);
-        eprintln!("error: {message}");
+        eprintln!("Error: {message}");
         return 1;
     }
     let _ = write_windows_update_status(
@@ -1646,7 +1646,7 @@ fn run_windows_self_update(build: bool, version: Option<&str>) -> i32 {
         Err(error) => {
             let message = format!("could not start the self-update helper: {error}");
             let _ = write_windows_update_status(&plan.status_file, "failed", &message);
-            eprintln!("error: {message}");
+            eprintln!("Error: {message}");
             1
         }
     }

@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use super::component::Component;
 use crate::ansi::visible_width;
 use crate::countdown_timer::CountdownTimer;
-use crate::keybinding_hints::raw_key_hint;
+use crate::keybinding_hints::key_text;
 use crate::theme::{theme, Color};
 use crate::utils::truncate_to_width;
 
@@ -246,22 +246,9 @@ impl Component for IdleStatus {
     }
 }
 
-/// Literal "Ctrl+C" text for interrupt hints (no `app.interrupt` binding exists).
+/// The bound interrupt key, the way the original writes it in hints.
 fn raw_key_hint_keys() -> String {
-    // raw_key_hint returns "{keys} {desc}"; we only want the keys portion.
-    // Re-implement inline to get just the key glyph.
-    let colors = theme().colors;
-    // Return a pre-styled "Ctrl+C" so callers can interpolate it into messages.
-    // We strip the description arg by wrapping: use raw_key_hint then split.
-    let full = raw_key_hint("Ctrl+C", "cancel");
-    let _ = colors;
-    // raw_key_hint = "<muted>Ctrl+C</muted> <muted>cancel</muted>"; take the
-    // first styled segment only:
-    if let Some(space_idx) = full.find(" \x1b") {
-        full[..space_idx].to_string()
-    } else {
-        full
-    }
+    key_text("app.interrupt")
 }
 
 #[cfg(test)]

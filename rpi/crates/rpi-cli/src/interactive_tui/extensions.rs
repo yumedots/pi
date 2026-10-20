@@ -12,6 +12,136 @@ pub(super) struct ExtensionCommand {
     pub(super) session: crate::session::ExtensionSessionCell,
 }
 
+/// A slash command a JavaScript extension registered.
+pub(super) struct JsExtensionCommand {
+    pub(super) name: String,
+    pub(super) description: String,
+    pub(super) extensions: crate::js_extensions::JsExtensions,
+}
+
+impl SlashCommand for JsExtensionCommand {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn description_owned(&self) -> String {
+        self.description.clone()
+    }
+
+    fn execute(&self, ctx: &CommandContext, args: &str) {
+        match self.extensions.run_command(&self.name, args) {
+            Ok(value) => {
+                if let Some(text) = value
+                    .as_object()
+                    .and_then(|object| object.get("text"))
+                    .and_then(|text| text.as_str())
+                {
+                    add_note_message(&ctx.chat, text);
+                }
+            }
+            Err(error) => {
+                add_error_message(&ctx.chat, &format!("Extension command failed: {error}"));
+            }
+        }
+        ctx.tui.request_render(false);
+    }
+}
+
+/// Register the slash commands the JavaScript extensions registered.
+pub(super) fn register_js_extension_commands(
+    registry: &mut CommandRegistry,
+    extensions: crate::js_extensions::JsExtensions,
+) {
+    for command in extensions.commands() {
+        let name = if command.name.starts_with('/') {
+            command.name.clone()
+        } else {
+            format!("/{}", command.name)
+        };
+        if registry.find(&name).is_some() {
+            continue;
+        }
+        registry.register(Arc::new(JsExtensionCommand {
+            name,
+            description: command.description,
+            extensions: extensions.clone(),
+        }));
+    }
+}
+
+/// Fill the header slot with the component an extension installed.
+///
+/// `applied` holds the signature of the last fill; when the extensions did
+/// not change, the slot is left alone. Returns `true` when the slot changed,
+/// so the caller repaints.
+pub(super) fn sync_js_header(
+    extensions: &crate::js_extensions::JsExtensions,
+    header: &Arc<Container>,
+    width: usize,
+    applied: &mut Option<String>,
+) -> bool {
+    let component = extensions.header();
+    let signature = component.as_ref().map(|component| component.to_string());
+    if signature == *applied {
+        return false;
+    }
+    *applied = signature;
+    header.clear();
+    let Some(component) = component else {
+        return true;
+    };
+    let lines = match component {
+        crate::js_extensions::JsComponent::Lines(lines) => lines,
+        crate::js_extensions::JsComponent::Component(id) => {
+            extensions.render_component(&id, width).unwrap_or_default()
+        }
+    };
+    for line in lines {
+        header.add_child(Arc::new(Text::new(line, 1, 0)));
+    }
+    true
+}
+
+/// Fill the widget slots with what the JavaScript extensions placed there.
+///
+/// `applied` holds the signature of the last fill; when the extensions did
+/// not change, the slots are left alone. Returns `true` when a slot changed,
+/// so the caller repaints.
+pub(super) fn sync_js_widgets(
+    extensions: &crate::js_extensions::JsExtensions,
+    above: &Arc<Container>,
+    below: &Arc<Container>,
+    width: usize,
+    applied: &mut Vec<String>,
+) -> bool {
+    let widgets = extensions.widgets();
+    let signature: Vec<String> = widgets
+        .iter()
+        .map(|widget| format!("{}|{}|{}", widget.key, widget.placement, widget.component))
+        .collect();
+    if signature == *applied {
+        return false;
+    }
+    *applied = signature;
+    for (below_editor, container) in [(false, above), (true, below)] {
+        let lines: Vec<String> = widgets
+            .iter()
+            .filter(|widget| (widget.placement == "belowEditor") == below_editor)
+            .flat_map(|widget| match &widget.component {
+                crate::js_extensions::JsComponent::Lines(lines) => lines.clone(),
+                crate::js_extensions::JsComponent::Component(id) => {
+                    extensions.render_component(id, width).unwrap_or_default()
+                }
+            })
+            .collect();
+        container.clear();
+        for line in lines {
+            container.add_child(Arc::new(Text::new(line, 1, 0)));
+        }
+    }
+    true
+}
+
 impl SlashCommand for ExtensionCommand {
     fn name(&self) -> &str {
         &self.name
@@ -411,6 +541,7 @@ pub(super) fn open_extension_editor(
                 .and_then(|v| v.as_str())
                 .map(str::to_string),
             initial_text: Some(initial),
+            ..Default::default()
         },
         EditorStyle {
             prompt: "> ".to_string(),

@@ -12,8 +12,10 @@
 
 mod host;
 mod runtime;
+mod theme;
 mod transpile;
 
 pub use host::{Host, ProcessHost};
+pub use theme::tokens as theme_tokens;
 pub use runtime::{Error, Runtime};
 pub use transpile::transpile;

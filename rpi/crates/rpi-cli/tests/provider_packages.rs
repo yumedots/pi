@@ -39,7 +39,7 @@ fn command_base(temp: &tempfile::TempDir) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_rpi"));
     cmd.current_dir(temp.path())
         .stdin(Stdio::null())
-        .env("RPI_CODING_AGENT_DIR", temp.path().join("agent"))
+        .env("PI_CODING_AGENT_DIR", temp.path().join("agent"))
         .env("RPI_OFFLINE", "1")
         .env_remove("ANTHROPIC_API_KEY")
         .env_remove("ANTHROPIC_AUTH_TOKEN")
@@ -502,7 +502,7 @@ async fn reload_updates_the_catalog_endpoint_and_runtime_without_a_restart() {
                 "--nocapture",
             ])
             .env("RPI_TEST_PACKAGE_RELOAD", "1")
-            .env("RPI_CODING_AGENT_DIR", temp.path().join("agent"))
+            .env("PI_CODING_AGENT_DIR", temp.path().join("agent"))
             .env("RPI_TEST_PACKAGE_CWD", temp.path())
             .env_remove("OPENAI_API_KEY")
             .env_remove("ANTHROPIC_API_KEY")
@@ -727,7 +727,7 @@ fn linked_package_is_discovered_and_unlinked_cleanly() {
     let run = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_rpi"))
             .current_dir(temp.path())
-            .env("RPI_CODING_AGENT_DIR", temp.path().join("agent"))
+            .env("PI_CODING_AGENT_DIR", temp.path().join("agent"))
             .env("RPI_OFFLINE", "1")
             .stdin(Stdio::null())
             .args(args)

@@ -1,425 +1,127 @@
-//! Mirrors `packages/agent/src/harness/session/jsonl/codec.ts` — the v4 JSONL
-//! codec: a header line followed by newline-terminated mutation lines.
+//! The session-file codec — the original's on-disk shape.
 //!
-//! ## Wire shapes (all terminate with `\n`)
+//! ## Wire shapes (all lines terminate with `\n`)
 //!
-//! - **Header**: `{"kind":"header","version":4,"id","createdAt","cwd",
-//!   "parentSessionId"?,"legacyParentSessionPath"?,"metadata"?}` — exactly one,
-//!   first line. `parentSessionId` and `legacyParentSessionPath` are mutually
-//!   exclusive.
-//! - **entry mutation**: `{"kind":"entry","lane"?,"<…flat entry fields…>"}`
-//!   (`lane` present except on the fork path, which carries `lane: null`).
-//! - **record mutation**: `{"kind":"record","<…lane record fields…>"}`.
-//! - **lane mutation**: `{"kind":"lane","lane","leafId"?}`.
-//! - **fact mutation**: `{"kind":"fact","fact":"name","name"?}` or
-//!   `{"kind":"fact","fact":"label","targetId","label"?}`.
+//! - **Header** (the first line): `{"type":"session","version":3,"id","timestamp",
+//!   "cwd","parentSession"?}`.
+//! - **Entry** (every other line): `{type, id, parentId, timestamp}` plus the
+//!   entry type's own fields. `timestamp` is an ISO-8601 string.
 //!
-//! ## Decode validation (mirrors `codec.ts`)
+//! The entry types are the original's (`packages/coding-agent/src/core/session-manager.ts:57-190`):
+//! `message`, `thinking_level_change`, `model_change`, `usage`, `compaction`,
+//! `branch_summary`, `custom`, `custom_message`, `context_edit`, `label`,
+//! `session_info` — plus the port's own `active_tools_change`.
 //!
-//! version==4; positive safe-int `seq`; entry/record `type` whitelists;
-//! `operation_started` `intent.kind` in {run,compaction,navigation};
-//! `operation_finished` requires `runId`. Errors are `JsonlDecodeError` with
-//! `kind: Syntax` (bad JSON) or `kind: Schema` (wrong shape/whitelist). The
-//! storage layer keys torn-tail recovery off `kind: Syntax` on the last line.
+//! ## Decode validation
 //!
-//! ## Adaptation
-//!
-//! TS spreads the decoded object into a typed `SessionMutation` with an `as
-//! unknown` cast; Rust round-trips the parsed JSON through [`Entry`]'s manual
-//! serde and [`LaneRecord`]'s `#[serde(tag="type")]` enum, stripping the two
-//! wrapper keys (`kind`, and `lane` on entries) first. [`SessionMutation`]
-//! already carries a full [`Entry`] (storage fields stamped by the caller), so
-//! `parse_mutation` keeps the entry's `seq`/`parentId`/`timestamp` verbatim
-//! from the wire — exactly as the TS port does.
+//! The header must be `type:"session"`; an entry must carry `type`, `id` and a
+//! `timestamp`. Errors are [`JsonlDecodeError`] with `kind: Syntax` (bad JSON)
+//! or `kind: Schema` (wrong shape). The storage layer keys torn-tail recovery
+//! off `kind: Syntax` on the last line.
 
 use serde_json::Value;
 
 use crate::session::jsonl::errors::{JsonlDecodeError, JsonlDecodeErrorKind};
-use crate::session::jsonl::types::{JsonlSessionMetadata, JsonlSourceFormat, JsonlV4Header};
-use crate::session::types::{JsonValue, LaneRecord, SessionMutation};
+use crate::session::jsonl::types::{JsonlSessionMetadata, JsonlSourceFormat, SessionFileHeader};
+use crate::session::types::{iso_timestamp_from_ms, ms_from_iso_timestamp, Entry, JsonValue};
 
-// ---- whitelists (mirror codec.ts ENTRY_TYPES / RECORD_TYPES / OPERATION_KINDS) ----
-
+/// The entry types the file may contain.
 const ENTRY_TYPES: &[&str] = &[
     "message",
-    "model_change",
     "thinking_level_change",
-    "active_tools_change",
+    "model_change",
+    "usage",
     "compaction",
     "branch_summary",
     "custom",
+    "custom_message",
+    "context_edit",
+    "label",
+    "session_info",
+    "active_tools_change",
 ];
-const RECORD_TYPES: &[&str] = &[
-    "operation_started",
-    "abort_requested",
-    "operation_finished",
-    "step_attempt",
-    "tool_started",
-    "queue_enqueued",
-    "queue_cancelled",
-    "write_deferred",
-    "usage",
-    "assistant_frame",
-    "retry_pending",
-];
-const OPERATION_KINDS: &[&str] = &["run", "compaction", "navigation"];
 
 // ============================ header ============================
 
-/// Parse the first JSONL line into a validated [`JsonlV4Header`]. Mirrors TS
-/// `parseHeader` -> `decodeHeader`.
-pub fn parse_header(line: &str) -> Result<JsonlV4Header, JsonlDecodeError> {
-    decode_header(line)
+/// Parse the first JSONL line into a validated [`SessionFileHeader`].
+pub fn parse_header(line: &str) -> Result<SessionFileHeader, JsonlDecodeError> {
+    let value = parse_object(line)?;
+    let entry_type = value.get("type").and_then(|v| v.as_str());
+    if entry_type != Some("session") {
+        return Err(schema("is not a session header"));
+    }
+    let id = require_string(&value, "id")?;
+    let timestamp = require_string(&value, "timestamp")?;
+    let cwd = require_string(&value, "cwd")?;
+    let parent_session = optional_string_field(&value, "parentSession")?;
+    Ok(SessionFileHeader {
+        entry_type: "session".to_string(),
+        version: 3,
+        id,
+        timestamp,
+        cwd,
+        parent_session,
+    })
 }
 
-/// Serialize a header to its newline-terminated JSONL line. Mirrors TS
-/// `encodeHeader`.
-pub fn encode_header(header: &JsonlV4Header) -> String {
-    // serde_json::to_string is infallible for this shape; the TS impl trusts
-    // JSON.stringify the same way.
+/// Serialize a header to its newline-terminated JSONL line.
+pub fn encode_header(header: &SessionFileHeader) -> String {
     let mut s = serde_json::to_string(header).expect("header serializes");
     s.push('\n');
     s
 }
 
-impl JsonlV4Header {
-    /// Construct with the canonical v4 fields. `version` is forced to 4.
-    pub fn new(
-        id: String,
-        created_at: i64,
-        cwd: String,
-        parent_session_id: Option<String>,
-        legacy_parent_session_path: Option<String>,
-        metadata: Option<serde_json::Map<String, JsonValue>>,
-    ) -> Self {
-        Self {
-            kind: super::types::HeaderKind,
-            version: 4,
-            id,
-            created_at,
-            cwd,
-            parent_session_id,
-            legacy_parent_session_path,
-            metadata,
-        }
-    }
-}
-
-fn decode_header(line: &str) -> Result<JsonlV4Header, JsonlDecodeError> {
-    let value = parse_object(line)?;
-    let kind = value.get("kind").and_then(|v| v.as_str());
-    if kind != Some("header") {
-        return Err(schema("is not a header"));
-    }
-    let version = value
-        .get("version")
-        .and_then(|v| v.as_u64())
-        .ok_or_else(|| schema("has unsupported session version"))?;
-    if version != 4 {
-        return Err(schema("has unsupported session version"));
-    }
-
-    let parent_session_id = optional_string_field(&value, "parentSessionId")?;
-    let legacy_parent_session_path = optional_string_field(&value, "legacyParentSessionPath")?;
-    if parent_session_id.is_some() && legacy_parent_session_path.is_some() {
-        return Err(schema(
-            "has both parentSessionId and legacyParentSessionPath",
-        ));
-    }
-
-    let metadata_value = value.get("metadata");
-    let metadata = match metadata_value {
-        None | Some(Value::Null) => None,
-        Some(Value::Object(m)) => Some(m.clone()),
-        _ => return Err(schema("has invalid metadata")),
-    };
-
-    let id = require_string(&value, "id")?;
-    let created_at = require_timestamp(&value, "createdAt")?;
-    let cwd = require_string(&value, "cwd")?;
-
-    Ok(JsonlV4Header {
-        kind: super::types::HeaderKind,
-        version: 4,
-        id,
-        created_at,
-        cwd,
-        parent_session_id,
-        legacy_parent_session_path,
-        metadata,
-    })
-}
-
-/// Mirrors TS `metadataFromHeader`: build the richness [`JsonlSessionMetadata`]
-/// (path + filesystem mtime + source_format=4) from a header + the resolved
-/// on-disk path + modification time.
+/// Build the metadata for a session file: the path, the filesystem mtime and
+/// the source format.
 pub fn metadata_from_header(
-    header: &JsonlV4Header,
+    header: &SessionFileHeader,
     path: &str,
     modified_at: i64,
 ) -> JsonlSessionMetadata {
     JsonlSessionMetadata {
-        id: header.id.clone(),
-        created_at: header.created_at,
-        cwd: header.cwd.clone(),
         path: path.to_string(),
+        id: header.id.clone(),
+        cwd: header.cwd.clone(),
+        created_at: ms_from_iso_timestamp(&header.timestamp).unwrap_or(0),
         modified_at,
-        source_format: JsonlSourceFormat::V4,
-        parent_session_id: header.parent_session_id.clone(),
-        legacy_parent_session_path: header.legacy_parent_session_path.clone(),
-        metadata: header.metadata.clone(),
+        source_format: JsonlSourceFormat::V3,
+        parent_session_id: None,
     }
 }
 
-// ============================ mutations ============================
+// ============================ entries ============================
 
-/// Parse a mutation line into a [`SessionMutation`]. Mirrors TS `parseMutation`
-/// -> `decodeMutation`.
-pub fn parse_mutation(line: &str) -> Result<SessionMutation, JsonlDecodeError> {
+/// Parse one entry line into an [`Entry`].
+pub fn parse_entry(line: &str) -> Result<Entry, JsonlDecodeError> {
     let value = parse_object(line)?;
-    let seq = require_sequence(&value)?;
-    match value.get("kind").and_then(|v| v.as_str()) {
-        Some("entry") => parse_entry_mutation(&value, seq),
-        Some("record") => parse_record_mutation(&value, seq),
-        Some("lane") => parse_lane_mutation(&value, seq),
-        Some("fact") => parse_fact_mutation(&value, seq),
-        _ => Err(schema("has unknown mutation kind")),
-    }
-}
-
-/// Serialize a mutation to its newline-terminated JSONL line. Mirrors TS
-/// `encodeMutation`.
-pub fn encode_mutation(mutation: &SessionMutation) -> String {
-    match mutation {
-        SessionMutation::Entry { lane, entry, .. } => {
-            // `{kind:"entry", lane, ...entry}` — emit as an object with `kind`
-            // first, then `lane` (present or null), then the entry's flat fields.
-            let mut map = serde_json::Map::new();
-            map.insert("kind".into(), Value::String("entry".into()));
-            map.insert(
-                "lane".into(),
-                match lane {
-                    Some(l) => Value::String(l.clone()),
-                    None => Value::Null,
-                },
-            );
-            if let Value::Object(entry_obj) = entry.to_flat_json() {
-                for (k, v) in entry_obj {
-                    map.insert(k, v);
-                }
-            }
-            let mut s =
-                serde_json::to_string(&Value::Object(map)).expect("entry mutates serialize");
-            s.push('\n');
-            s
-        }
-        SessionMutation::Record { record } => {
-            // `{kind:"record", ...record}`.
-            let rec = serde_json::to_value(record).expect("record serializes");
-            let mut map = serde_json::Map::new();
-            map.insert("kind".into(), Value::String("record".into()));
-            if let Value::Object(rec_obj) = rec {
-                for (k, v) in rec_obj {
-                    map.insert(k, v);
-                }
-            }
-            let mut s =
-                serde_json::to_string(&Value::Object(map)).expect("record mutates serialize");
-            s.push('\n');
-            s
-        }
-        SessionMutation::Lane { seq, lane, leaf_id } => {
-            let mut map = serde_json::Map::new();
-            map.insert("kind".into(), Value::String("lane".into()));
-            map.insert("seq".into(), Value::Number((*seq).into()));
-            map.insert("lane".into(), Value::String(lane.clone()));
-            map.insert(
-                "leafId".into(),
-                match leaf_id {
-                    Some(l) => Value::String(l.clone()),
-                    None => Value::Null,
-                },
-            );
-            let mut s = serde_json::to_string(&Value::Object(map)).expect("lane mutates serialize");
-            s.push('\n');
-            s
-        }
-        SessionMutation::FactName { seq, name } => {
-            let mut map = serde_json::Map::new();
-            map.insert("kind".into(), Value::String("fact".into()));
-            map.insert("seq".into(), Value::Number((*seq).into()));
-            map.insert("fact".into(), Value::String("name".into()));
-            if let Some(n) = name {
-                map.insert("name".into(), Value::String(n.clone()));
-            } else {
-                map.insert("name".into(), Value::Null);
-            }
-            let mut s = serde_json::to_string(&Value::Object(map)).expect("fact mutates serialize");
-            s.push('\n');
-            s
-        }
-        SessionMutation::FactLabel {
-            seq,
-            target_id,
-            label,
-        } => {
-            let mut map = serde_json::Map::new();
-            map.insert("kind".into(), Value::String("fact".into()));
-            map.insert("seq".into(), Value::Number((*seq).into()));
-            map.insert("fact".into(), Value::String("label".into()));
-            map.insert("targetId".into(), Value::String(target_id.clone()));
-            if let Some(l) = label {
-                map.insert("label".into(), Value::String(l.clone()));
-            } else {
-                map.insert("label".into(), Value::Null);
-            }
-            let mut s = serde_json::to_string(&Value::Object(map)).expect("fact mutates serialize");
-            s.push('\n');
-            s
-        }
-    }
-}
-
-// ---- per-kind decode (mirror parseEntryMutation / parseRecordMutation / ...) ----
-
-fn parse_entry_mutation(
-    value: &serde_json::Map<String, Value>,
-    seq: u64,
-) -> Result<SessionMutation, JsonlDecodeError> {
-    // `lane` is optional (absent or null on the fork path).
-    let lane = match value.get("lane") {
-        None => None,
-        Some(Value::Null) => None,
-        Some(Value::String(s)) => Some(s.clone()),
-        _ => return Err(schema("has invalid lane")),
-    };
-
-    // TS `requireString(value.type, "entry type")` — the *field* is `type`,
-    // the validation *label* is "entry type".
     let entry_type = value
         .get("type")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| schema("has invalid entry type"))?;
+        .ok_or_else(|| schema("entry is missing \"type\""))?;
     if !ENTRY_TYPES.contains(&entry_type) {
-        return Err(schema(format!("has unknown entry type {entry_type}")));
+        return Err(schema("has an unknown entry type"));
     }
-
-    // timestamp must be a non-negative integer (mirrors `requireTimestamp`).
-    require_timestamp_map(value, "timestamp")?;
-
-    // `custom` entries must carry `customType`.
-    if entry_type == "custom" {
-        if value.get("customType").and_then(|v| v.as_str()).is_none() {
-            return Err(schema("has invalid customType"));
-        }
-    }
-
-    // Rebuild the flat entry object (drop `kind` + `lane`) and let the Entry's
-    // manual serde do the rest. `parentId` may be null (root entry) — preserved.
-    let entry_obj = strip_wrapper_keys(value, &["kind", "lane"]);
-    let entry: crate::session::types::Entry =
-        serde_json::from_value(Value::Object(entry_obj)).map_err(|e| schema(e.to_string()))?;
-
-    Ok(SessionMutation::Entry {
-        seq,
-        timestamp: entry.base().timestamp,
-        lane,
-        entry,
-    })
+    serde_json::from_value(Value::Object(value)).map_err(|error| schema(error.to_string()))
 }
 
-fn parse_record_mutation(
-    value: &serde_json::Map<String, Value>,
-    seq: u64,
-) -> Result<SessionMutation, JsonlDecodeError> {
-    let record_type = value
-        .get("type")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| schema("has invalid record type"))?;
-    if !RECORD_TYPES.contains(&record_type) {
-        return Err(schema(format!("has unknown record type {record_type}")));
-    }
-    // Validate the record-shape-specific checks before handing off to serde.
-    if record_type == "operation_started" {
-        let intent = value
-            .get("intent")
-            .ok_or_else(|| schema("has invalid intent"))?;
-        let intent_obj = intent
-            .as_object()
-            .ok_or_else(|| schema("has invalid intent"))?;
-        let op_kind = intent_obj
-            .get("kind")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| schema("has invalid operation kind"))?;
-        if !OPERATION_KINDS.contains(&op_kind) {
-            return Err(schema(format!("has unknown operation kind {op_kind}")));
-        }
-    }
-    if record_type == "operation_finished" {
-        if value.get("runId").and_then(|v| v.as_str()).is_none() {
-            return Err(schema("has invalid runId"));
-        }
-    }
-
-    // `{kind:"record", ...record}` → drop `kind`, keep the rest as the record.
-    let record_obj = strip_wrapper_keys(value, &["kind"]);
-    let record: LaneRecord =
-        serde_json::from_value(Value::Object(record_obj)).map_err(|e| schema(e.to_string()))?;
-    let _ = seq; // seq lives inside the record's base; not re-stamped by decode.
-    Ok(SessionMutation::Record { record })
-}
-
-fn parse_lane_mutation(
-    value: &serde_json::Map<String, Value>,
-    seq: u64,
-) -> Result<SessionMutation, JsonlDecodeError> {
-    let lane = require_string_map(value, "lane")?;
-    let leaf_id = match value.get("leafId") {
-        None => None,
-        Some(Value::Null) => None,
-        Some(Value::String(s)) => Some(s.clone()),
-        _ => return Err(schema("has invalid leafId")),
-    };
-    Ok(SessionMutation::Lane { seq, lane, leaf_id })
-}
-
-fn parse_fact_mutation(
-    value: &serde_json::Map<String, Value>,
-    seq: u64,
-) -> Result<SessionMutation, JsonlDecodeError> {
-    match value.get("fact").and_then(|v| v.as_str()) {
-        Some("name") => {
-            let name = match value.get("name") {
-                None => None,
-                Some(Value::Null) => None,
-                Some(Value::String(s)) => Some(s.clone()),
-                _ => return Err(schema("has invalid name")),
-            };
-            Ok(SessionMutation::FactName { seq, name })
-        }
-        Some("label") => {
-            let target_id = require_string_map(value, "targetId")?;
-            let label = match value.get("label") {
-                None => None,
-                Some(Value::Null) => None,
-                Some(Value::String(s)) => Some(s.clone()),
-                _ => return Err(schema("has invalid label")),
-            };
-            Ok(SessionMutation::FactLabel {
-                seq,
-                target_id,
-                label,
-            })
-        }
-        _ => Err(schema("has unknown fact type")),
-    }
+/// Serialize an entry to its newline-terminated JSONL line.
+pub fn encode_entry(entry: &Entry) -> String {
+    let mut s = serde_json::to_string(&entry.to_flat_json()).expect("entry serializes");
+    s.push('\n');
+    s
 }
 
 // ============================ shared field helpers ============================
 
 fn parse_object(line: &str) -> Result<serde_json::Map<String, Value>, JsonlDecodeError> {
-    let value: Value = serde_json::from_str(line).map_err(|_| syntax("is not valid JSON"))?;
-    match value {
+    let parsed: Value = serde_json::from_str(line).map_err(|error| {
+        if error.is_syntax() || error.is_eof() {
+            syntax(error.to_string())
+        } else {
+            schema(error.to_string())
+        }
+    })?;
+    match parsed {
         Value::Object(map) => Ok(map),
         _ => Err(schema("is not a JSON object")),
     }
@@ -432,44 +134,8 @@ fn require_string(
     value
         .get(field)
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| schema(format!("has invalid {field}")))
-}
-
-fn require_string_map(
-    value: &serde_json::Map<String, Value>,
-    field: &str,
-) -> Result<String, JsonlDecodeError> {
-    require_string(value, field)
-}
-
-fn require_sequence(value: &serde_json::Map<String, Value>) -> Result<u64, JsonlDecodeError> {
-    value
-        .get("seq")
-        .and_then(|v| v.as_u64())
-        .filter(|&n| n > 0)
-        .ok_or_else(|| schema("has invalid seq"))
-}
-
-fn require_timestamp(
-    value: &serde_json::Map<String, Value>,
-    field: &str,
-) -> Result<i64, JsonlDecodeError> {
-    require_timestamp_map(value, field)
-}
-
-fn require_timestamp_map(
-    value: &serde_json::Map<String, Value>,
-    field: &str,
-) -> Result<i64, JsonlDecodeError> {
-    let n = value
-        .get(field)
-        .and_then(|v| v.as_i64())
-        .ok_or_else(|| schema(format!("has invalid {field}")))?;
-    if n < 0 {
-        return Err(schema(format!("has invalid {field}")));
-    }
-    Ok(n)
+        .map(String::from)
+        .ok_or_else(|| schema(&format!("is missing \"{field}\"")))
 }
 
 fn optional_string_field(
@@ -478,24 +144,9 @@ fn optional_string_field(
 ) -> Result<Option<String>, JsonlDecodeError> {
     match value.get(field) {
         None | Some(Value::Null) => Ok(None),
-        Some(Value::String(s)) => Ok(Some(s.clone())),
-        _ => Err(schema(format!("has invalid {field}"))),
+        Some(Value::String(text)) => Ok(Some(text.clone())),
+        Some(_) => Err(schema(&format!("has an invalid \"{field}\""))),
     }
-}
-
-/// Build a new object with the `wrapper` keys removed (mirrors the TS
-/// `const { kind, lane, ...rest } = value` destructure).
-fn strip_wrapper_keys(
-    value: &serde_json::Map<String, Value>,
-    wrapper: &[&str],
-) -> serde_json::Map<String, Value> {
-    let mut out = serde_json::Map::new();
-    for (k, v) in value {
-        if !wrapper.contains(&k.as_str()) {
-            out.insert(k.clone(), v.clone());
-        }
-    }
-    out
 }
 
 fn syntax(message: impl Into<String>) -> JsonlDecodeError {
@@ -512,100 +163,78 @@ fn schema(message: impl Into<String>) -> JsonlDecodeError {
     }
 }
 
+/// Render the current time as an ISO-8601 timestamp, for a new session file.
+pub fn now_iso_timestamp(now_ms: i64) -> String {
+    iso_timestamp_from_ms(now_ms)
+}
+
+/// The `JsonValue` alias re-export, so callers do not need the types module.
+pub type EntryValue = JsonValue;
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::jsonl::types::HeaderKind;
+    use crate::session::types::{EntryBase, MessageEntry};
+    use rpi_agent::message::AgentMessage;
+    use rpi_ai::types::UserMessage;
+    use rpi_ai::types::UserContent;
 
-    fn header() -> JsonlV4Header {
-        JsonlV4Header::new(
-            "sess-1".into(),
-            1700_000_000_000,
-            "/cwd".into(),
-            None,
-            None,
-            None,
-        )
+    fn message_entry(id: &str, parent: Option<&str>, timestamp: i64) -> Entry {
+        Entry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                seq: 1,
+                parent_id: parent.map(String::from),
+                timestamp,
+            },
+            message: AgentMessage::User(UserMessage::new(
+                UserContent::Text("hello".into()),
+                timestamp,
+            )),
+            terminate: None,
+        })
     }
 
     #[test]
-    fn header_round_trips() {
-        let line = encode_header(&header());
+    fn header_round_trip() {
+        let header = SessionFileHeader::new(
+            "abc".into(),
+            "2026-10-20T21:34:06.203Z".into(),
+            "/tmp/work".into(),
+            None,
+        );
+        let line = encode_header(&header);
+        assert!(line.starts_with("{\"type\":\"session\",\"version\":3,"), "{line}");
         assert!(line.ends_with('\n'));
         let parsed = parse_header(line.trim_end()).unwrap();
-        assert_eq!(parsed.version, 4);
-        assert_eq!(parsed.id, "sess-1");
-        assert_eq!(parsed.cwd, "/cwd");
+        assert_eq!(parsed.id, "abc");
+        assert_eq!(parsed.cwd, "/tmp/work");
+        assert_eq!(parsed.timestamp, "2026-10-20T21:34:06.203Z");
     }
 
     #[test]
-    fn header_rejects_version_3() {
-        let line = r#"{"kind":"header","version":3,"id":"x","createdAt":0,"cwd":"."}"#;
-        assert!(parse_header(line).is_err());
+    fn entry_line_has_the_original_shape() {
+        let entry = message_entry("e1", None, 1_800_000_000_000);
+        let line = encode_entry(&entry);
+        assert!(line.contains("\"type\":\"message\""), "{line}");
+        assert!(line.contains("\"parentId\":null"), "{line}");
+        assert!(line.contains("\"timestamp\":\"2027-01-15T08:00:00.000Z\""), "{line}");
+        assert!(!line.contains("\"seq\""), "{line}");
+        let parsed = parse_entry(line.trim_end()).unwrap();
+        assert_eq!(parsed.id(), "e1");
+        assert_eq!(parsed.base().timestamp, 1_800_000_000_000);
     }
 
     #[test]
-    fn header_rejects_both_parents() {
-        let line = r#"{"kind":"header","version":4,"id":"x","createdAt":0,"cwd":".",
-            "parentSessionId":"p","legacyParentSessionPath":"lp"}"#;
-        assert!(parse_header(line).is_err());
-    }
-
-    #[test]
-    fn lane_mutation_round_trips() {
-        let s = SessionMutation::Lane {
-            seq: 2,
-            lane: "main".into(),
-            leaf_id: None,
-        };
-        let line = encode_mutation(&s);
-        let parsed = parse_mutation(line.trim_end()).unwrap();
-        match parsed {
-            SessionMutation::Lane { seq, lane, leaf_id } => {
-                assert_eq!(seq, 2);
-                assert_eq!(lane, "main");
-                assert_eq!(leaf_id, None);
-            }
-            _ => panic!("wrong variant"),
-        }
-    }
-
-    #[test]
-    fn fact_name_round_trips() {
-        let s = SessionMutation::FactName {
-            seq: 3,
-            name: Some("hello".into()),
-        };
-        let line = encode_mutation(&s);
-        let parsed = parse_mutation(line.trim_end()).unwrap();
-        match parsed {
-            SessionMutation::FactName { seq, name } => {
-                assert_eq!(seq, 3);
-                assert_eq!(name.as_deref(), Some("hello"));
-            }
-            _ => panic!("wrong variant"),
-        }
-    }
-
-    #[test]
-    fn unknown_kind_is_schema_error() {
-        let line = r#"{"kind":"bogus","seq":1}"#;
-        let err = parse_mutation(line).unwrap_err();
+    fn unknown_entry_type_is_a_schema_error() {
+        let err = parse_entry("{\"type\":\"nope\",\"id\":\"x\"}").unwrap_err();
         assert_eq!(err.kind, JsonlDecodeErrorKind::Schema);
     }
 
     #[test]
-    fn bad_json_is_syntax_error() {
-        let line = "{not json";
-        let err = parse_mutation(line).unwrap_err();
+    fn malformed_json_is_a_syntax_error() {
+        let err = parse_entry("{\"type\":").unwrap_err();
         assert_eq!(err.kind, JsonlDecodeErrorKind::Syntax);
-    }
-
-    #[test]
-    fn header_kind_marker_serializes_as_string() {
-        let mut map = serde_json::Map::new();
-        map.insert("kind".into(), serde_json::to_value(HeaderKind).unwrap());
-        let v = serde_json::to_string(&serde_json::Value::Object(map)).unwrap();
-        assert!(v.contains("\"kind\":\"header\""));
     }
 }

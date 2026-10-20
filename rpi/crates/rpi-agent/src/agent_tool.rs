@@ -40,6 +40,25 @@ pub trait AgentTool: Send + Sync {
         ToolExecutionMode::Parallel
     }
 
+    /// JSON Schema of the tool's `structured_content` in successful results.
+    /// Mirrors TS `AgentTool.outputSchema`. A tool that declares it should
+    /// always set `structured_content`.
+    fn output_schema(&self) -> Option<&rpi_ai::types::Schema> {
+        None
+    }
+
+    /// One-line tool description used by the system prompt's tool list. Mirrors
+    /// TS `AgentTool.promptSnippet`.
+    fn prompt_snippet(&self) -> Option<&str> {
+        None
+    }
+
+    /// Guideline bullets this tool contributes to the system prompt's rules.
+    /// Mirrors TS `AgentTool.promptGuidelines`.
+    fn prompt_guidelines(&self) -> Option<&[String]> {
+        None
+    }
+
     /// Optional compatibility shim for raw tool-call arguments before schema
     /// validation. Default is identity. Mirrors TS `prepareArguments`.
     fn prepare_arguments(&self, args: serde_json::Value) -> Result<serde_json::Value, AgentError> {

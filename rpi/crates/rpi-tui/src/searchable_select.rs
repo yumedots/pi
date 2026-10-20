@@ -14,10 +14,10 @@ use std::sync::{Arc, Mutex};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::component::{Component, Focusable};
+use super::component::{Component, Focusable, MouseEvent, MouseEventResult};
 use crate::ansi::bold;
 use crate::input::Input;
-use crate::select_list::SelectList;
+use crate::select_list::{SelectItem, SelectList};
 use crate::spacer::Spacer;
 use crate::theme::theme;
 use crate::utils::truncate_to_width;
@@ -29,13 +29,16 @@ pub struct SearchableSelectList {
     input: Arc<Input>,
     list: Arc<SelectList>,
     focused: Mutex<bool>,
+    /// First row of the list inside this widget, tracked at render time so a
+    /// mouse event can be routed to the list.
+    list_top: Mutex<usize>,
 }
 
 impl SearchableSelectList {
     /// Wrap `list` with a search input. `title` / `description` are optional
     /// header rows (upstream's `SelectSubmenu` shows both).
     pub fn new(title: Option<&str>, description: Option<&str>, list: Arc<SelectList>) -> Self {
-        let input = Arc::new(Input::with_placeholder("Type to filter..."));
+        let input = Arc::new(Input::new());
         // Every text edit re-filters the list. `Input::on_change` fires after
         // the state lock is released, so this can safely read the value.
         let list_for_change = list.clone();
@@ -48,7 +51,14 @@ impl SearchableSelectList {
             input,
             list,
             focused: Mutex::new(false),
+            list_top: Mutex::new(0),
         }
+    }
+
+    /// Replace the list's items, keeping the current search query applied.
+    pub fn set_items(&self, items: Vec<SelectItem>) {
+        self.list.set_items(items);
+        self.list.set_filter(&self.input.get_value());
     }
 
     /// The wrapped list. Callers register `on_select` / `on_cancel` here.
@@ -123,13 +133,32 @@ impl Component for SearchableSelectList {
         let search = self.input.render(width);
         lines.extend(search);
         lines.extend(Spacer::new(1).render(width));
+        if let Ok(mut list_top) = self.list_top.lock() {
+            *list_top = lines.len();
+        }
         lines.extend(self.list.render(width));
         lines
+    }
+
+    fn handle_mouse(&self, event: &MouseEvent) -> Option<MouseEventResult> {
+        let list_top = self.list_top.lock().map(|top| *top).unwrap_or(0);
+        if event.y < list_top {
+            return None;
+        }
+        let translated = MouseEvent {
+            y: event.y - list_top,
+            ..*event
+        };
+        self.list.handle_mouse(&translated)
     }
 
     fn invalidate(&self) {
         self.input.invalidate();
         self.list.invalidate();
+    }
+
+    fn as_focusable(&self) -> Option<&dyn crate::component::Focusable> {
+        Some(self)
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -265,5 +294,27 @@ mod tests {
         assert!(rendered.contains("Pick"), "{rendered}");
         assert!(rendered.contains("Choose one"), "{rendered}");
         assert!(rendered.contains("Claude Sonnet"), "{rendered}");
+    }
+
+    #[test]
+    fn a_click_on_a_row_reaches_the_list() {
+        use crate::component::{MouseButton, MouseEvent, MouseEventKind};
+
+        let widget = SearchableSelectList::new(Some("Pick"), None, list());
+        widget.render(60);
+        let list_top = *widget.list_top.lock().unwrap();
+        let press = MouseEvent::new(MouseEventKind::Press, MouseButton::Left, 0, list_top + 1);
+        assert!(widget.handle_mouse(&press).is_some());
+        assert_eq!(widget.list().get_selected_item().unwrap().value, "gpt-5");
+    }
+
+    #[test]
+    fn a_click_above_the_list_is_not_a_list_click() {
+        use crate::component::{MouseButton, MouseEvent, MouseEventKind};
+
+        let widget = SearchableSelectList::new(Some("Pick"), None, list());
+        widget.render(60);
+        let press = MouseEvent::new(MouseEventKind::Press, MouseButton::Left, 0, 0);
+        assert!(widget.handle_mouse(&press).is_none());
     }
 }

@@ -9,10 +9,19 @@ use unicode_width::UnicodeWidthStr;
 /// This is a zero-width escape sequence that terminals ignore.
 pub const CURSOR_MARKER: &str = "\x1b_pi:c\x07";
 
+/// Fake cursor markers - zero-width APC sequences around the cell drawn as the
+/// caret. The TUI turns them into reverse video, or drops them when the
+/// hardware cursor already sits on the cell.
+pub const FAKE_CURSOR_START: &str = "\x1b_pi:fc\x07";
+pub const FAKE_CURSOR_END: &str = "\x1b_pi:/fc\x07";
+
 /// Calculate the visible width of a string, ignoring ANSI escape sequences.
 ///
 /// This is the number of terminal columns the string will occupy.
 pub fn visible_width(s: &str) -> usize {
+    if s.is_ascii() && !s.contains('\x1b') {
+        return s.chars().filter(|c| !c.is_control()).count();
+    }
     let stripped = strip_ansi(s);
     UnicodeWidthStr::width(stripped.as_str())
 }
@@ -144,6 +153,180 @@ pub fn normalize_terminal_output(line: &str) -> String {
 /// Create a hyperlink using OSC 8.
 pub fn hyperlink(url: &str, text: &str) -> String {
     format!("\x1b]8;;{}\x07{}\x1b]8;;\x07", url, text)
+}
+
+/// How colors reach the terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorMode {
+    /// 24-bit color: `38;2;r;g;b`.
+    TrueColor,
+    /// 256-color palette: `38;5;n`.
+    Ansi256,
+}
+
+/// Color mode override: 0 = detect, 1 = truecolor, 2 = 256-color.
+static COLOR_MODE_OVERRIDE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// The color mode the terminal gets.
+///
+/// Detected like pi's `getTerminalColorMode()`: a truecolor hint in the
+/// environment, or a terminal known to support 24-bit color.
+pub fn color_mode() -> ColorMode {
+    match COLOR_MODE_OVERRIDE.load(std::sync::atomic::Ordering::Acquire) {
+        1 => ColorMode::TrueColor,
+        2 => ColorMode::Ansi256,
+        _ => *COLOR_MODE,
+    }
+}
+
+/// Force the color mode, overriding the detection.
+pub fn set_color_mode(mode: ColorMode) {
+    let value = match mode {
+        ColorMode::TrueColor => 1,
+        ColorMode::Ansi256 => 2,
+    };
+    COLOR_MODE_OVERRIDE.store(value, std::sync::atomic::Ordering::Release);
+}
+
+/// Drop the color mode override and go back to the detected mode.
+pub fn reset_color_mode() {
+    COLOR_MODE_OVERRIDE.store(0, std::sync::atomic::Ordering::Release);
+}
+
+static COLOR_MODE: std::sync::LazyLock<ColorMode> =
+    std::sync::LazyLock::new(|| {
+        if terminal_supports_true_color() {
+            ColorMode::TrueColor
+        } else {
+            ColorMode::Ansi256
+        }
+    });
+
+/// Whether the terminal supports 24-bit color.
+///
+/// Mirrors pi's `detectCapabilitiesFromEnvironment`: a truecolor hint in the
+/// environment, or a terminal known to support 24-bit color. Under tmux and
+/// screen only the hint counts.
+fn terminal_supports_true_color() -> bool {
+    if let Ok(value) = std::env::var("PI_TRUE_COLOR") {
+        if value == "1" {
+            return true;
+        }
+        if value == "0" {
+            return false;
+        }
+    }
+    let term_program = env_var_lower("TERM_PROGRAM");
+    let terminal_emulator = env_var_lower("TERMINAL_EMULATOR");
+    let term = env_var_lower("TERM");
+    let color_term = env_var_lower("COLORTERM");
+    let hint = color_term == "truecolor" || color_term == "24bit" || term.ends_with("-direct");
+    if std::env::var_os("TMUX").is_some() || term.starts_with("tmux") {
+        return hint;
+    }
+    if term.starts_with("screen") {
+        return hint;
+    }
+    if term_program == "herdr" {
+        return true;
+    }
+    if std::env::var_os("KITTY_WINDOW_ID").is_some() || term_program == "kitty" {
+        return true;
+    }
+    if term_program == "ghostty" || term.contains("ghostty") {
+        return true;
+    }
+    if std::env::var_os("WEZTERM_PANE").is_some() || term_program == "wezterm" {
+        return true;
+    }
+    if term_program == "warpterminal" || std::env::var_os("WARP_SESSION_ID").is_some() {
+        return true;
+    }
+    if std::env::var_os("ITERM_SESSION_ID").is_some() || term_program == "iterm.app" {
+        return true;
+    }
+    if std::env::var_os("WT_SESSION").is_some() {
+        return true;
+    }
+    if matches!(term_program.as_str(), "alacritty" | "vscode" | "zed") {
+        return true;
+    }
+    if terminal_emulator == "jetbrains-jediterm" {
+        return true;
+    }
+    if cfg!(target_os = "windows") {
+        return true;
+    }
+    hint
+}
+
+/// Read an environment variable, lowercased.
+fn env_var_lower(name: &str) -> String {
+    std::env::var(name)
+        .unwrap_or_default()
+        .to_lowercase()
+}
+
+/// The escape sequence that starts a foreground color.
+pub fn foreground_rgb(r: u8, g: u8, b: u8) -> String {
+    match color_mode() {
+        ColorMode::TrueColor => format!("\x1b[38;2;{};{};{}m", r, g, b),
+        ColorMode::Ansi256 => format!("\x1b[38;5;{}m", rgb_to_ansi256(r, g, b)),
+    }
+}
+
+/// The escape sequence that starts a background color.
+pub fn background_rgb(r: u8, g: u8, b: u8) -> String {
+    match color_mode() {
+        ColorMode::TrueColor => format!("\x1b[48;2;{};{};{}m", r, g, b),
+        ColorMode::Ansi256 => format!("\x1b[48;5;{}m", rgb_to_ansi256(r, g, b)),
+    }
+}
+
+/// The xterm-256 palette index closest to a color.
+///
+/// Pi's own rounding (`packages/tui/src/colors.ts`): the closest cube color,
+/// unless the color is nearly grey and the grey ramp is closer.
+pub fn rgb_to_ansi256(r: u8, g: u8, b: u8) -> u8 {
+    const CUBE: [f64; 6] = [0.0, 95.0, 135.0, 175.0, 215.0, 255.0];
+    let grays: Vec<f64> = (0..24).map(|index| 8.0 + 10.0 * index as f64).collect();
+    let (r, g, b) = (r as f64, g as f64, b as f64);
+    let r_index = find_closest(&CUBE, r);
+    let g_index = find_closest(&CUBE, g);
+    let b_index = find_closest(&CUBE, b);
+    let cube = (CUBE[r_index], CUBE[g_index], CUBE[b_index]);
+    let gray = (0.299 * r + 0.587 * g + 0.114 * b).round();
+    let gray_offset = find_closest(&grays, gray);
+    let gray_value = grays[gray_offset];
+    let spread = r.max(g).max(b) - r.min(g).min(b);
+    if spread < 10.0 && color_distance(r, g, b, gray_value, gray_value, gray_value)
+        < color_distance(r, g, b, cube.0, cube.1, cube.2)
+    {
+        return 232 + gray_offset as u8;
+    }
+    (16 + 36 * r_index + 6 * g_index + b_index) as u8
+}
+
+/// Index of the value closest to the target.
+fn find_closest(values: &[f64], target: f64) -> usize {
+    let mut closest = 0;
+    let mut distance = f64::INFINITY;
+    for (index, value) in values.iter().enumerate() {
+        let candidate = (target - value).abs();
+        if candidate < distance {
+            closest = index;
+            distance = candidate;
+        }
+    }
+    closest
+}
+
+/// Weighted distance between two colors.
+fn color_distance(r: f64, g: f64, b: f64, other_r: f64, other_g: f64, other_b: f64) -> f64 {
+    let dr = r - other_r;
+    let dg = g - other_g;
+    let db = b - other_b;
+    dr * dr * 0.299 + dg * dg * 0.587 + db * db * 0.114
 }
 
 /// Apply a foreground color using ANSI 256-color mode.

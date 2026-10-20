@@ -222,7 +222,7 @@ export RPI_EVENT_LOG=1
 rpi            # any run records extension event handler invocations
 ```
 
-Logs are written by default to `~/.rpi/logs/events.jsonl` (when `RPI_CODING_AGENT_DIR` exists, they
+Logs are written by default to `~/.pi/logs/events.jsonl` (when `PI_CODING_AGENT_DIR` exists, they
 go to the `logs/` directory under its parent directory; `RPI_EVENT_LOG_PATH` can override the path
 explicitly). When disabled, there is zero disk writes and zero overhead.
 

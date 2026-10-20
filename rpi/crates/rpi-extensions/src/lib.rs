@@ -72,6 +72,7 @@ pub use actions::{
     reload_callback_from_mailbox, trampoline_runtime_action, ActionBridge, ReloadMailbox,
     RuntimeActionHost, SideQuestionSink, UiDialogMailbox, UiDialogRequest,
 };
+pub use event_sink::{clear_event_sinks, emit_event, install_event_sink, EventSink};
 pub use editor_text::{EditorTextEdit, EditorTextMailbox, EditorTextMode};
 pub use event_log::{event_log_path, log_handler_invocation, EventLogger};
 pub use loader::{
@@ -97,13 +98,15 @@ mod panel;
 pub use panel::{ExtensionPanel, PanelAnchor, PanelHighlight, PanelHighlightColor, PanelLayout};
 pub use tool::{PluginToolAdapter, PluginToolHandle, ToolCallContext};
 pub use translate::{
-    dispatch_data_event, dispatch_data_event_claiming, dispatch_empty_event,
-    dispatch_lifecycle_event, dispatch_tool_call_event, ExtensionEmitter, TeeEmitter,
+    agent_tool_result_json, assistant_message_event_json, dispatch_data_event,
+    dispatch_data_event_claiming, dispatch_empty_event, dispatch_lifecycle_event,
+    dispatch_tool_call_event, ExtensionEmitter, TeeEmitter,
 };
 
 pub use stdio::StdioLifecycle;
 mod actions;
 mod editor_text;
+mod event_sink;
 mod event_log;
 mod loader;
 mod oauth;

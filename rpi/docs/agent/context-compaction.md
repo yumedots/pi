@@ -14,6 +14,8 @@
 
 触发条件为 `context_tokens > context_window - reserve_tokens`，达到等号时不触发。模型窗口为 0 时不做自动检查。
 
+阈值命中后还要有可摘要的历史：准备阶段在没有可摘要内容（历史与本轮前缀都为空）时返回无操作，因此 `reserve_tokens` 大于模型上下文窗口时，每一轮不会额外花费一次摘要请求。与 TypeScript 原版一致。
+
 [AgentHarness](../../crates/rpi-harness/src/agent_harness.rs) 提供三条路径：
 
 - run 开始前：新 prompt 已持久化后检查当前 branch。
@@ -28,7 +30,7 @@
 
 [切分器](../../crates/rpi-harness/src/compaction/cut_point.rs) 从后向前累计消息 token，并选择合法的保留起点。`toolResult` 不能成为起点，以保留对应的 assistant 工具调用。预算是近似保留目标，不是严格上限。
 
-若起点落在一轮对话中间，会分为较早完整历史、本轮前缀、保留后缀。空路径或最后一个 entry 已是压缩 entry 时，准备阶段返回无操作。
+若起点落在一轮对话中间，会分为较早完整历史、本轮前缀、保留后缀。空路径、最后一个 entry 已是压缩 entry，或没有可摘要的历史（历史与本轮前缀都为空）时，准备阶段返回无操作。
 
 ## 摘要生成
 

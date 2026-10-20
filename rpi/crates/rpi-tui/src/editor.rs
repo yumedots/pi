@@ -8,13 +8,13 @@ use std::sync::OnceLock;
 use std::sync::{Arc, Mutex};
 
 use crossterm::event::{KeyCode, KeyModifiers};
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use super::component::{Component, Focusable};
+use super::component::{Component, Focusable, MouseButton, MouseEvent, MouseEventKind, MouseEventResult};
 use super::keybindings::Keybindings;
 use crate::ansi::CURSOR_MARKER;
 use crate::kill_ring::{KillRing, PushOptions};
-use crate::theme::Color;
 use crate::undo_stack::UndoStack;
 
 /// Editor style configuration.
@@ -44,6 +44,14 @@ pub struct EditorOptions {
     pub placeholder: Option<String>,
     /// Initial text content.
     pub initial_text: Option<String>,
+    /// Number of content rows the box always shows. The text scrolls inside
+    /// the box, so the views around it do not resize while typing.
+    pub content_height: Option<usize>,
+    /// Largest number of content rows the box shows. The box grows with the
+    /// text up to this height, then the overflow scrolls inside it.
+    pub max_content_height: Option<usize>,
+    /// Whether the box reports how many lines are hidden above and below it.
+    pub show_scroll_hints: bool,
 }
 
 /// Editor state.
@@ -189,28 +197,129 @@ fn decode_csi_u_ctrl(text: &str) -> String {
     .into_owned()
 }
 
+/// The segments of a logical line: graphemes, with a folded-paste marker kept
+/// whole so it never breaks across a row.
+fn editor_line_segments(line: &str) -> Vec<(usize, &str)> {
+    let mut segments: Vec<(usize, &str)> = Vec::new();
+    let mut last = 0usize;
+    for capture in paste_marker_regex().find_iter(line) {
+        push_graphemes(&line[last..capture.start()], last, &mut segments);
+        segments.push((capture.start(), capture.as_str()));
+        last = capture.end();
+    }
+    push_graphemes(&line[last..], last, &mut segments);
+    segments
+}
+
+fn push_graphemes<'a>(text: &'a str, offset: usize, segments: &mut Vec<(usize, &'a str)>) {
+    for (index, grapheme) in text.grapheme_indices(true) {
+        segments.push((offset + index, grapheme));
+    }
+}
+
 /// Split a logical editor line into terminal-width chunks. The editor keeps
 /// logical lines for editing and cursor movement; wrapping is strictly a
 /// rendering concern so a long draft cannot escape the bordered input box.
+///
+/// The split happens at word boundaries: a word that does not fit moves whole
+/// to the next row, and only a word wider than the row is broken. A CJK run
+/// may break between two characters.
 fn wrap_line_ranges(line: &str, max_width: usize) -> Vec<(usize, usize)> {
-    if line.is_empty() {
+    if line.is_empty() || max_width == 0 {
         return vec![(0, 0)];
     }
-    let max_width = max_width.max(1);
-    let mut ranges = Vec::new();
-    let mut start = 0;
-    let mut width = 0;
-    for (idx, ch) in line.char_indices() {
-        let char_width = UnicodeWidthStr::width(ch.to_string().as_str());
-        if idx > start && width + char_width > max_width {
-            ranges.push((start, idx));
-            start = idx;
-            width = 0;
+    if crate::ansi::visible_width(line) <= max_width {
+        return vec![(0, line.len())];
+    }
+
+    let segments = editor_line_segments(line);
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    let mut current_width = 0usize;
+    let mut start = 0usize;
+    let mut wrap_opportunity: Option<(usize, usize)> = None;
+
+    for (position, (index, grapheme)) in segments.iter().enumerate() {
+        let grapheme_width = crate::ansi::visible_width(grapheme);
+        let is_whitespace = grapheme.chars().any(char::is_whitespace);
+
+        if current_width + grapheme_width > max_width {
+            let backtrack = wrap_opportunity
+                .filter(|(_, width)| current_width - width + grapheme_width <= max_width);
+            if let Some((opportunity, width)) = backtrack {
+                ranges.push((start, opportunity));
+                start = opportunity;
+                current_width -= width;
+            } else if wrap_opportunity.is_none() && start < *index {
+                ranges.push((start, *index));
+                start = *index;
+                current_width = 0;
+            }
+            wrap_opportunity = None;
         }
-        width += char_width;
+
+        if grapheme_width > max_width {
+            ranges.push((start, index + grapheme.len()));
+            start = index + grapheme.len();
+            current_width = 0;
+            wrap_opportunity = None;
+            continue;
+        }
+
+        current_width += grapheme_width;
+
+        let next = segments.get(position + 1);
+        if let Some((next_index, next_grapheme)) = next {
+            let next_is_whitespace = next_grapheme.chars().any(char::is_whitespace);
+            if is_whitespace && !next_is_whitespace {
+                wrap_opportunity = Some((*next_index, current_width));
+            } else if !is_whitespace
+                && !next_is_whitespace
+                && (crate::utils::is_cjk_break(grapheme)
+                    || crate::utils::is_cjk_break(next_grapheme))
+            {
+                wrap_opportunity = Some((*next_index, current_width));
+            }
+        }
     }
     ranges.push((start, line.len()));
     ranges
+}
+
+/// Copy one escape sequence (CSI, OSC, APC or a two-byte escape) verbatim.
+fn copy_escape_sequence(chars: &mut std::iter::Peekable<std::str::Chars<'_>>, out: &mut String) {
+    out.push('\x1b');
+    match chars.next() {
+        Some('[') => {
+            out.push('[');
+            while let Some(c) = chars.next() {
+                out.push(c);
+                if ('@'..='~').contains(&c) {
+                    break;
+                }
+            }
+        }
+        Some(c @ (']' | '_' | 'P' | '^')) => {
+            out.push(c);
+            while let Some(c) = chars.next() {
+                out.push(c);
+                if c == '\x07' {
+                    break;
+                }
+                if c == '\x1b' {
+                    match chars.next() {
+                        Some('\\') => {
+                            out.push('\\');
+                            break;
+                        }
+                        Some(other) => out.push(other),
+                        None => break,
+                    }
+                }
+            }
+        }
+        Some(c) => out.push(c),
+        None => {}
+    }
 }
 
 /// Insert the zero-width cursor marker at a visible column without slicing
@@ -218,17 +327,11 @@ fn wrap_line_ranges(line: &str, max_width: usize) -> Vec<(usize, usize)> {
 fn insert_cursor_marker(text: &str, column: usize) -> String {
     let mut out = String::with_capacity(text.len() + CURSOR_MARKER.len());
     let mut visible = 0;
-    let mut chars = text.char_indices().peekable();
+    let mut chars = text.chars().peekable();
     let mut inserted = false;
-    while let Some((idx, ch)) = chars.next() {
+    while let Some(ch) = chars.next() {
         if ch == '\x1b' {
-            out.push(ch);
-            while let Some((_, esc)) = chars.next() {
-                out.push(esc);
-                if esc == '\x07' || ('@'..='~').contains(&esc) {
-                    break;
-                }
-            }
+            copy_escape_sequence(&mut chars, &mut out);
             continue;
         }
         if !inserted && visible >= column {
@@ -237,7 +340,6 @@ fn insert_cursor_marker(text: &str, column: usize) -> String {
         }
         out.push(ch);
         visible += UnicodeWidthStr::width(ch.to_string().as_str());
-        let _ = idx;
     }
     if !inserted {
         out.push_str(CURSOR_MARKER);
@@ -245,11 +347,45 @@ fn insert_cursor_marker(text: &str, column: usize) -> String {
     out
 }
 
+/// A rendered row of the editor: one wrapped chunk of a logical line.
+struct LayoutChunk {
+    /// The logical row the chunk belongs to.
+    row: usize,
+    /// The byte range of the chunk inside the logical row.
+    start: usize,
+    end: usize,
+    /// The byte offset of the caret inside the chunk, when the caret is on
+    /// this row.
+    cursor: Option<usize>,
+}
+
+/// The caret decoration of a chunk: the hardware cursor marker followed by
+/// the fake cursor around the grapheme under the caret. The TUI turns the
+/// fake cursor into reverse video, or drops it when the hardware cursor
+/// already sits on the cell.
+fn caret_decoration(content: &str, cursor_byte: usize, focused: bool) -> String {
+    let split = content
+        .char_indices()
+        .find(|(index, _)| *index >= cursor_byte)
+        .map(|(index, _)| index)
+        .unwrap_or(content.len());
+    let (before, rest) = content.split_at(split);
+    let (caret, after) = match rest.graphemes(true).next() {
+        Some(grapheme) => (grapheme, &rest[grapheme.len()..]),
+        None => (" ", ""),
+    };
+    let marker = if focused { CURSOR_MARKER } else { "" };
+    format!(
+        "{before}{marker}{}{caret}{}{after}",
+        crate::ansi::FAKE_CURSOR_START,
+        crate::ansi::FAKE_CURSOR_END
+    )
+}
+
 /// Editor - A multi-line text editor component.
 pub struct Editor {
     state: Mutex<EditorState>,
     options: EditorOptions,
-    #[allow(dead_code)]
     style: EditorStyle,
     #[allow(dead_code)]
     keybindings: Arc<Keybindings>,
@@ -268,19 +404,26 @@ pub struct Editor {
     /// for the next printable char to jump forward to, `Some(-1)` backward.
     /// The next character input consumes it instead of inserting.
     jump_mode: Mutex<Option<i32>>,
-    /// Explicit top/bottom border color. `None` ⇒ the theme's default border
-    /// color. Upstream's `editor.borderColor` (used for bash mode and thinking
-    /// levels via `updateEditorBorderColor`).
-    border_color: Mutex<Option<Color>>,
-    /// Working indicator text shown inside the top border. `None` means idle.
-    /// When `Some`, the top border line renders the spinner + elapsed + message
-    /// instead of plain `─` characters (pi's working-inside-input-border style).
+    /// Working indicator text shown on the card's top row. `None` means idle.
+    /// When `Some`, the top row renders the spinner + elapsed + message
+    /// instead of a blank row (pi's working-inside-input-border style).
     working: Mutex<Option<WorkingState>>,
     /// Folded pastes: `id -> content`, referenced by a `[paste #id …]` marker
     /// in `state.lines`. Mirrors upstream's `pastes` map.
     pastes: Mutex<HashMap<u32, PasteEntry>>,
     /// Monotonic id source for [`Self::pastes`] (upstream's `pasteCounter`).
     paste_counter: Mutex<u32>,
+    /// First content row the box shows. The text above it is hidden.
+    scroll_offset: Mutex<usize>,
+    /// The view was scrolled away from the caret with the mouse wheel, so it
+    /// stays where it is until the next key press moves the caret back.
+    scroll_pinned: Mutex<bool>,
+    /// Number of content rows the last render showed, and the number of rows
+    /// the text has. The wheel scrolls by the difference.
+    rendered_rows: Mutex<(usize, usize)>,
+    /// The width the last render laid the text out at, for the mouse to map
+    /// a clicked column back to a caret position.
+    rendered_width: Mutex<usize>,
 }
 
 /// State for the working indicator embedded in the editor's top border.
@@ -329,11 +472,26 @@ impl Editor {
             kill_ring: Mutex::new(KillRing::new()),
             last_action: Mutex::new(None),
             jump_mode: Mutex::new(None),
-            border_color: Mutex::new(None),
             working: Mutex::new(None),
             pastes: Mutex::new(HashMap::new()),
             paste_counter: Mutex::new(0),
+            scroll_offset: Mutex::new(0),
+            scroll_pinned: Mutex::new(false),
+            rendered_rows: Mutex::new((0, 0)),
+            rendered_width: Mutex::new(0),
         }
+    }
+
+    /// The number of content rows the box shows.
+    ///
+    /// A fixed box keeps its height, a capped box grows with the text up to
+    /// the cap, and without either the box grows with the content.
+    fn height_limit(&self) -> usize {
+        self.options
+            .content_height
+            .or(self.options.max_content_height)
+            .unwrap_or(usize::MAX)
+            .max(1)
     }
 
     /// Create a new editor with default options.
@@ -347,21 +505,45 @@ impl Editor {
 
     /// Set the text content.
     pub fn set_text(&self, text: &str) {
+        self.set_text_placed(text, false);
+    }
+
+    /// Set the text content with the caret at its start.
+    ///
+    /// The history recall uses this, so a recalled entry can be edited from
+    /// the beginning (the original's `setTextInternal(text, "start")`).
+    pub fn set_text_at_start(&self, text: &str) {
+        self.set_text_placed(text, true);
+    }
+
+    fn set_text_placed(&self, text: &str, at_start: bool) {
+        let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
         if let Ok(mut state) = self.state.lock() {
-            state.lines = if text.is_empty() {
+            state.lines = if normalized.is_empty() {
                 vec![String::new()]
             } else {
-                text.split('\n').map(|s| s.to_string()).collect()
+                normalized.split('\n').map(|s| s.to_string()).collect()
             };
             if state.lines.is_empty() {
                 state.lines.push(String::new());
             }
-            state.cursor_row = 0;
-            state.cursor_col = 0;
+            if at_start {
+                state.cursor_row = 0;
+                state.cursor_col = 0;
+            } else {
+                state.cursor_row = state.lines.len() - 1;
+                state.cursor_col = state.lines[state.cursor_row].len();
+            }
         }
         // A programmatic replacement discards any folded pastes: the new text
         // is the whole truth (mirrors upstream's `setText` clearing `pastes`).
         self.reset_pastes();
+        if let Ok(mut guard) = self.scroll_offset.lock() {
+            *guard = 0;
+        }
+        if let Ok(mut guard) = self.scroll_pinned.lock() {
+            *guard = false;
+        }
         // Mirrors native `setTextInternal`: programmatic replacement is a change.
         self.notify_change();
     }
@@ -1155,21 +1337,8 @@ impl Editor {
         }
     }
 
-    /// Set an explicit top/bottom border color. `None` restores the theme's
-    /// default border color. Mirrors upstream's `editor.borderColor`.
-    pub fn set_border_color(&self, color: Option<Color>) {
-        if let Ok(mut guard) = self.border_color.lock() {
-            *guard = color;
-        }
-    }
-
-    /// The current explicit border color, if any.
-    pub fn border_color(&self) -> Option<Color> {
-        self.border_color.lock().ok().and_then(|guard| *guard)
-    }
-
     /// Set the working state. When Some, shows a spinner + elapsed time + message
-    /// inside the top border. When None, shows the normal border.
+    /// on the card's top row. When None, the top row is blank.
     pub fn set_working(&self, working: Option<WorkingState>) {
         if let Ok(mut guard) = self.working.lock() {
             *guard = working;
@@ -1216,6 +1385,10 @@ impl Editor {
 
     /// Handle keyboard input.
     pub fn handle_key(&self, key: crossterm::event::KeyEvent) -> bool {
+        // A key press moves the caret, so the view follows it again.
+        if let Ok(mut guard) = self.scroll_pinned.lock() {
+            *guard = false;
+        }
         match (key.modifiers, key.code) {
             // Navigation — plain movement clears any active selection;
             // Shift+movement extends it.
@@ -1385,131 +1558,295 @@ impl Editor {
         }
         true
     }
-}
 
-impl Component for Editor {
-    fn render(&self, width: usize) -> Vec<String> {
-        let state = self.state.lock().map(|s| s.clone()).unwrap_or_default();
-        let mut content_lines = Vec::new();
+    /// Scroll the text inside the box with the mouse wheel.
+    ///
+    /// The event is only taken when the box hides lines, so the wheel scrolls
+    /// the content above the box while the text fits. The view stays where the
+    /// wheel put it, until a key press moves the caret back into view.
+    fn handle_wheel(&self, event: &MouseEvent) -> Option<MouseEventResult> {
+        let (visible, total) = *self.rendered_rows.lock().ok()?;
+        let max_scroll = total.saturating_sub(visible);
+        if max_scroll == 0 {
+            return None;
+        }
+        let delta = event.wheel_delta.unwrap_or(0);
+        let current = *self.scroll_offset.lock().ok()?;
+        let next = (current as i64 + delta as i64).clamp(0, max_scroll as i64) as usize;
+        if next == current {
+            return None;
+        }
+        if let Ok(mut guard) = self.scroll_offset.lock() {
+            *guard = next;
+        }
+        if let Ok(mut guard) = self.scroll_pinned.lock() {
+            *guard = true;
+        }
+        Some(MouseEventResult::handled())
+    }
 
-        let pad = " ".repeat(self.options.padding_x);
-        // `prompt` is no longer rendered (mirrors the TS editor, which draws a
-        // bordered box with padding-only lines and no `> ` prefix — see
-        // `editor.ts:539-578`). The `EditorStyle.prompt` field is retained for
-        // API compatibility but unread here.
-        let content_width = width.saturating_sub(self.options.padding_x).max(1);
-        // Leave one cell for the cursor marker on the active logical line so
-        // the terminal never performs an implicit wrap at the right border.
-        let active_width = content_width.saturating_sub(1).max(1);
-        for (row_idx, line) in state.lines.iter().enumerate() {
-            let ranges = wrap_line_ranges(
-                line,
-                if row_idx == state.cursor_row {
-                    active_width
-                } else {
-                    content_width
-                },
-            );
-            for (chunk_start, chunk_end) in ranges {
-                let chunk = &line[chunk_start..chunk_end];
-                // Placeholder (dim) only on the single empty line at the cursor —
-                // honors callers that set `placeholder`; production drops it.
-                let content =
-                    if chunk.is_empty() && row_idx == state.cursor_row && state.lines.len() == 1 {
-                        if let Some(placeholder) = &self.options.placeholder {
-                            format!("\x1b[2m{}\x1b[22m", placeholder)
-                        } else {
-                            String::new()
-                        }
+    /// Put the caret where the pointer clicked.
+    ///
+    /// The press and the release are left to the renderer, which turns them
+    /// into a click when they land on the same cell.
+    fn handle_click(&self, event: &MouseEvent) -> Option<MouseEventResult> {
+        let state = self.state.lock().ok()?.clone();
+        let layout_width = *self.rendered_width.lock().ok()?;
+        let (visible, _total) = *self.rendered_rows.lock().ok()?;
+        if event.y == 0 || event.y > visible {
+            return Some(MouseEventResult {
+                handled: true,
+                focus: true,
+                ..Default::default()
+            });
+        }
+        let layout = self.layout_chunks(&state, layout_width);
+        let scroll_offset = *self.scroll_offset.lock().ok()?;
+        let index = scroll_offset + event.y - 1;
+        let Some(chunk) = layout.get(index) else {
+            return Some(MouseEventResult {
+                handled: true,
+                focus: true,
+                ..Default::default()
+            });
+        };
+        let padding_x = self
+            .options
+            .padding_x
+            .min(event.width.saturating_sub(1) / 2);
+        let content_width = event.width.saturating_sub(padding_x * 2).max(1);
+        let prompt_width = crate::ansi::visible_width(&self.style.prompt)
+            .min(content_width.saturating_sub(1));
+        let target_column = event.x.saturating_sub(padding_x + prompt_width);
+        let line = &state.lines[chunk.row];
+        let chunk_text = &line[chunk.start..chunk.end];
+        let mut visible_column = 0;
+        let mut target_index = chunk_text.len();
+        let mut last_grapheme_index = 0;
+        for (grapheme_index, grapheme) in chunk_text.grapheme_indices(true) {
+            let next_column = visible_column + crate::ansi::visible_width(grapheme);
+            last_grapheme_index = grapheme_index;
+            if target_column < next_column {
+                target_index = grapheme_index;
+                break;
+            }
+            visible_column = next_column;
+        }
+        let is_last_segment = layout
+            .get(index + 1)
+            .map(|next| next.row != chunk.row)
+            .unwrap_or(true);
+        if !is_last_segment && target_index == chunk_text.len() && !chunk_text.is_empty() {
+            target_index = last_grapheme_index;
+        }
+        if let Ok(mut guard) = self.state.lock() {
+            guard.cursor_row = chunk.row;
+            guard.cursor_col = chunk.start + target_index;
+            guard.selection_anchor = None;
+        }
+        if let Ok(mut guard) = self.scroll_pinned.lock() {
+            *guard = false;
+        }
+        Some(MouseEventResult {
+            handled: true,
+            focus: true,
+            ..Default::default()
+        })
+    }
+
+    /// The rows the editor's text occupies: one row per wrapped chunk, with
+    /// the caret on the row that holds it.
+    fn layout_chunks(&self, state: &EditorState, layout_width: usize) -> Vec<LayoutChunk> {
+        let mut layout: Vec<LayoutChunk> = Vec::new();
+        for (row, line) in state.lines.iter().enumerate() {
+            let ranges = wrap_line_ranges(line, layout_width);
+            let last = ranges.len().saturating_sub(1);
+            for (index, (start, end)) in ranges.into_iter().enumerate() {
+                let mut cursor = None;
+                if row == state.cursor_row {
+                    let holds_caret = if index == last {
+                        state.cursor_col >= start
                     } else {
-                        chunk.to_string()
+                        state.cursor_col >= start && state.cursor_col < end
                     };
-
-                // Selection highlight: inverse-video the span on this row (byte
-                // offsets are char boundaries — both anchor and caret always sit
-                // on one).
-                let mut content = content;
-                if let Some((sc, ec)) = self.selection_span_on_row(&state, row_idx) {
-                    let local_start = sc.max(chunk_start).min(chunk_end);
-                    let local_end = ec.max(chunk_start).min(chunk_end);
-                    if local_start < local_end {
-                        let before = &line[chunk_start..local_start];
-                        let sel = &line[local_start..local_end];
-                        let after = &line[local_end..chunk_end];
-                        content = format!("{before}\x1b[7m{sel}\x1b[27m{after}");
+                    if holds_caret {
+                        cursor = Some(state.cursor_col.saturating_sub(start));
                     }
                 }
-
-                let visible_w = crate::ansi::visible_width(&content);
-                // Pad the line out to the full width (left padding + content +
-                // right padding) so the border box has a uniform interior width
-                // (mirrors editor.ts:522-578).
-                let right_pad = " ".repeat(
-                    width
-                        .saturating_sub(self.options.padding_x)
-                        .saturating_sub(visible_w),
-                );
-                let right_pad_cursor = if state.focused && row_idx == state.cursor_row {
-                    right_pad
-                        .get(..right_pad.len().saturating_sub(1))
-                        .unwrap_or("")
-                        .to_string()
-                } else {
-                    right_pad
-                };
-
-                let mut rendered = format!("{pad}{content}{right_pad_cursor}");
-
-                // Cursor marker if this focused row holds the cursor. `cursor_col`
-                // is a byte offset into `line`; the rendered prefix up to the caret
-                // is `pad` (ASCII, `padding_x` bytes) + `line[..cursor_col]`.
-                // Because `content` may carry ANSI escapes (placeholder branch),
-                // and the prefix length is computed in *bytes* of the source line,
-                // snap the insertion point to the nearest preceding char boundary
-                // in `rendered` before byte-slicing — never slice mid-character.
-                if state.focused
-                    && row_idx == state.cursor_row
-                    && state.cursor_col >= chunk_start
-                    && state.cursor_col <= chunk_end
-                {
-                    let cursor_col = UnicodeWidthStr::width(
-                        line[chunk_start..state.cursor_col.min(chunk_end)]
-                            .to_string()
-                            .as_str(),
-                    );
-                    rendered = insert_cursor_marker(&rendered, self.options.padding_x + cursor_col);
-                }
-
-                content_lines.push(rendered);
+                layout.push(LayoutChunk {
+                    row,
+                    start,
+                    end,
+                    cursor,
+                });
             }
         }
+        layout
+    }
 
-        // Guard against an empty `lines` vector (the invariant is `[""]`, but
-        // be defensive): emit one blank interior row so the box still renders.
+    /// The input as the TypeScript original draws it: a filled card in the
+    /// colour of the sent messages, the `> ` prompt in the left gutter and no
+    /// horizontal rules (`editor.ts:602-628`, `634-770`).
+    fn render_card(&self, width: usize) -> Vec<String> {
+        let state = self.state.lock().map(|s| s.clone()).unwrap_or_default();
+        let colors = crate::theme::theme().colors;
+
+        let max_padding = width.saturating_sub(1) / 2;
+        let padding_x = self.options.padding_x.min(max_padding);
+        let content_width = width.saturating_sub(padding_x * 2).max(1);
+        let prompt = self.style.prompt.clone();
+        let prompt_width = crate::ansi::visible_width(&prompt).min(content_width.saturating_sub(1));
+        let prompt_text = colors.accent.fg(&crate::utils::truncate_to_width(
+            &prompt,
+            prompt_width,
+            "",
+        ));
+        let text_width = content_width.saturating_sub(prompt_width).max(1);
+        let layout_width = text_width.saturating_sub(usize::from(padding_x == 0)).max(1);
+        let left_pad = " ".repeat(padding_x);
+        let right_pad = " ".repeat(padding_x);
+
+        let layout = self.layout_chunks(&state, layout_width);
+
+        let height_limit = self.height_limit();
+        let visible_rows = match self.options.content_height {
+            Some(fixed) => fixed.max(1),
+            None => layout.len().min(height_limit).max(1),
+        };
+        let cursor_index = layout
+            .iter()
+            .position(|chunk| chunk.cursor.is_some())
+            .unwrap_or(0);
+        let mut scroll_offset = self.scroll_offset.lock().map(|o| *o).unwrap_or(0);
+        let pinned = self.scroll_pinned.lock().map(|p| *p).unwrap_or(false);
+        if !pinned {
+            if cursor_index < scroll_offset {
+                scroll_offset = cursor_index;
+            } else if cursor_index >= scroll_offset + visible_rows {
+                scroll_offset = cursor_index + 1 - visible_rows;
+            }
+        }
+        let max_scroll = layout.len().saturating_sub(visible_rows);
+        scroll_offset = scroll_offset.min(max_scroll);
+        if let Ok(mut guard) = self.scroll_offset.lock() {
+            *guard = scroll_offset;
+        }
+        let shown_rows = visible_rows.min(layout.len().saturating_sub(scroll_offset));
+        if let Ok(mut guard) = self.rendered_rows.lock() {
+            *guard = (shown_rows, layout.len());
+        }
+        if let Ok(mut guard) = self.rendered_width.lock() {
+            *guard = layout_width;
+        }
+
+        let mut content_lines = Vec::new();
+        for (index, chunk) in layout
+            .iter()
+            .enumerate()
+            .skip(scroll_offset)
+            .take(visible_rows)
+        {
+            let row_idx = chunk.row;
+            let line = &state.lines[row_idx];
+            let chunk_start = chunk.start;
+            let chunk_end = chunk.end;
+            let chunk_text = &line[chunk_start..chunk_end];
+            let is_placeholder = chunk_text.is_empty()
+                && row_idx == state.cursor_row
+                && state.lines.len() == 1
+                && self.options.placeholder.is_some();
+            let mut content = chunk_text.to_string();
+            let mut decorated = false;
+            if let Some(cursor) = chunk.cursor {
+                content = caret_decoration(&content, cursor, state.focused);
+                decorated = true;
+            }
+            if is_placeholder {
+                content = match &self.options.placeholder {
+                    Some(placeholder) => format!("\x1b[2m{placeholder}\x1b[22m"),
+                    None => String::new(),
+                };
+                decorated = false;
+            }
+            if let Some((sc, ec)) = self.selection_span_on_row(&state, row_idx) {
+                let local_start = sc.max(chunk_start).min(chunk_end);
+                let local_end = ec.max(chunk_start).min(chunk_end);
+                if local_start < local_end {
+                    let before = &line[chunk_start..local_start];
+                    let sel = &line[local_start..local_end];
+                    let after = &line[local_end..chunk_end];
+                    content = format!("{before}\x1b[7m{sel}\x1b[27m{after}");
+                    decorated = false;
+                }
+            }
+            // The prompt sits in the gutter of the first line; the other
+            // lines keep the gutter blank so the text stays aligned.
+            let gutter = if row_idx == 0 && index == 0 {
+                prompt_text.clone()
+            } else {
+                " ".repeat(prompt_width)
+            };
+            let visible_w = crate::ansi::visible_width(&content);
+            let text_pad = text_width.saturating_sub(visible_w);
+            let mut line_right_pad = right_pad.clone();
+            if visible_w > text_width && padding_x > 0 {
+                line_right_pad.pop();
+            }
+            let mut rendered = format!(
+                "{left_pad}{gutter}{content}{}{line_right_pad}",
+                " ".repeat(text_pad)
+            );
+            if state.focused && !decorated {
+                if let Some(cursor) = chunk.cursor {
+                    let cursor_col =
+                        crate::ansi::visible_width(&chunk_text[..cursor.min(chunk_text.len())]);
+                    rendered =
+                        insert_cursor_marker(&rendered, padding_x + prompt_width + cursor_col);
+                }
+            }
+            content_lines.push(rendered);
+        }
         if content_lines.is_empty() {
             content_lines.push(format!(
-                "{pad}{}",
-                " ".repeat(width.saturating_sub(self.options.padding_x))
+                "{left_pad}{}{right_pad}",
+                " ".repeat(content_width)
+            ));
+        }
+        while content_lines.len() < visible_rows {
+            content_lines.push(format!(
+                "{left_pad}{}{right_pad}",
+                " ".repeat(content_width)
             ));
         }
 
-        // Full-width top + bottom border, colored via the theme border color
-        // (mirrors editor.ts:494,530,587). The global `theme()` is read-only
-        // after OnceLock init; `Color::fg` wraps the `─` run in the escape.
-        // An explicit `border_color` (bash mode) wins over the theme default.
-        let border_color = self
-            .border_color
-            .lock()
-            .ok()
-            .and_then(|guard| *guard)
-            .unwrap_or(crate::theme::theme().colors.border);
-        // Check if we have a working state to display in the top border.
-        //
-        // The frame advances once per render, mirroring `Loader::render`: the
-        // spinner is therefore driven by *repaints*, so it visibly speeds up
-        // while the model is streaming (each token schedules a frame) and falls
-        // back to the render tick's cadence when nothing is being produced. A
-        // timer-only animation looked constant-speed and unrelated to output.
+        let lines_below = layout.len().saturating_sub(scroll_offset + shown_rows);
+        let mut lines = Vec::with_capacity(content_lines.len() + 2);
+        let mut top = self.working_row();
+        if self.options.show_scroll_hints && scroll_offset > 0 {
+            top.push_str(&format!(" ↑ {scroll_offset} more"));
+        }
+        lines.push(top);
+        lines.extend(content_lines);
+        let bottom = if self.options.show_scroll_hints && lines_below > 0 {
+            format!(" ↓ {lines_below} more")
+        } else {
+            String::new()
+        };
+        lines.push(bottom);
+
+        let bg = colors.user_message_bg;
+        lines
+            .into_iter()
+            .map(|line| {
+                let visible = crate::ansi::visible_width(&line);
+                let padded = format!("{line}{}", " ".repeat(width.saturating_sub(visible)));
+                bg.bg(&padded)
+            })
+            .collect()
+    }
+
+    /// The card's top row: the working indicator, or blank when idle.
+    fn working_row(&self) -> String {
         let working_state = self.working.lock().ok().and_then(|mut guard| {
             guard.as_mut().map(|state| {
                 let snapshot = state.clone();
@@ -1517,50 +1854,30 @@ impl Component for Editor {
                 snapshot
             })
         });
-        let top_border = if let Some(ref working) = working_state {
-            // Working indicator embedded in the top border: spinner + message +
-            // elapsed time, with the remaining width filled by border glyphs.
-            // The frame set is shared with `Loader` so the two never drift.
-            let frames = crate::loader::SPINNER_FRAMES;
-            let spinner_char = frames[working.frame % frames.len()];
-            let colors = crate::theme::theme().colors;
-
-            let elapsed = working.started_at.elapsed();
-            let elapsed_str = if elapsed.as_secs() >= 60 {
-                format!("{}m{}s", elapsed.as_secs() / 60, elapsed.as_secs() % 60)
-            } else {
-                format!("{}s", elapsed.as_secs())
-            };
-
-            let plain = format!(" {} {} {} ", spinner_char, working.message, elapsed_str);
-            let indicator_width = crate::ansi::visible_width(&plain);
-
-            if width >= indicator_width + 1 {
-                let colored = format!(
-                    " {} {} {} ",
-                    colors.accent.fg(&spinner_char.to_string()),
-                    colors.muted.fg(&working.message),
-                    colors.muted.fg(&elapsed_str),
-                );
-                let right = border_color.fg(&"─".repeat(width - indicator_width - 1));
-                format!("{}{}{}", border_color.fg("─"), colored, right)
-            } else {
-                border_color.fg(&"─".repeat(width))
-            }
+        let Some(working) = working_state else {
+            return String::new();
+        };
+        let colors = crate::theme::theme().colors;
+        let frames = crate::loader::SPINNER_FRAMES;
+        let spinner_char = frames[working.frame % frames.len()];
+        let elapsed = working.started_at.elapsed();
+        let elapsed_str = if elapsed.as_secs() >= 60 {
+            format!("{}m{}s", elapsed.as_secs() / 60, elapsed.as_secs() % 60)
         } else {
-            border_color.fg(&"─".repeat(width))
+            format!("{}s", elapsed.as_secs())
         };
+        format!(
+            "{} {} {}",
+            colors.accent.fg(&spinner_char.to_string()),
+            colors.muted.fg(&working.message),
+            colors.muted.fg(&elapsed_str)
+        )
+    }
+}
 
-        let bottom_border = {
-            let horizontal = "─".repeat(width);
-            border_color.fg(&horizontal)
-        };
-
-        let mut lines = Vec::with_capacity(content_lines.len() + 2);
-        lines.push(top_border);
-        lines.extend(content_lines);
-        lines.push(bottom_border);
-        lines
+impl Component for Editor {
+    fn render(&self, width: usize) -> Vec<String> {
+        self.render_card(width)
     }
 
     fn invalidate(&self) {
@@ -1571,6 +1888,20 @@ impl Component for Editor {
         // Parse key event from crossterm format
         // This is a simplified version - in real usage, you'd receive KeyEvent directly
         false
+    }
+
+    fn handle_mouse(&self, event: &MouseEvent) -> Option<MouseEventResult> {
+        if event.kind == MouseEventKind::Wheel {
+            return self.handle_wheel(event);
+        }
+        if event.kind == MouseEventKind::Click && event.button == MouseButton::Left {
+            return self.handle_click(event);
+        }
+        None
+    }
+
+    fn as_focusable(&self) -> Option<&dyn crate::component::Focusable> {
+        Some(self)
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -1593,6 +1924,83 @@ impl Focusable for Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_input_is_a_card_with_the_prompt_in_the_gutter() {
+        use crate::component::Component;
+        let editor = Editor::simple();
+        editor.set_text("hello");
+        let lines = editor.render(40);
+        assert_eq!(lines.len(), 3);
+        let top = crate::strip_ansi(&lines[0]);
+        let content = crate::strip_ansi(&lines[1]);
+        let bottom = crate::strip_ansi(&lines[2]);
+        assert_eq!(top.trim(), "", "top row: {top:?}");
+        assert_eq!(bottom.trim(), "", "bottom row: {bottom:?}");
+        assert!(!content.contains('─'), "the card has no rules: {content:?}");
+        assert!(content.starts_with("> hello"), "content: {content}");
+        assert_eq!(crate::ansi::visible_width(&lines[0]), 40);
+        assert_eq!(crate::ansi::visible_width(&lines[1]), 40);
+        assert_eq!(crate::ansi::visible_width(&lines[2]), 40);
+    }
+
+    #[test]
+    fn the_card_is_filled_with_the_user_message_background() {
+        use crate::component::Component;
+        let colors = crate::theme::theme().colors;
+        let editor = Editor::simple();
+        editor.set_text("hello");
+        let lines = editor.render(40);
+        let background = colors.user_message_bg.to_bg();
+        for line in &lines {
+            assert!(
+                line.contains(&background),
+                "every row is filled with the user-message background: {line:?}"
+            );
+        }
+        let prompt = colors.accent.fg("> ");
+        assert!(
+            lines[1].contains(&prompt),
+            "the prompt is drawn in the accent colour: {:?}",
+            lines[1]
+        );
+    }
+
+    #[test]
+    fn the_gutter_is_blank_on_the_lines_below_the_prompt() {
+        use crate::component::Component;
+        let editor = Editor::simple();
+        editor.set_text("one\ntwo");
+        let lines = editor.render(40);
+        assert_eq!(lines.len(), 4);
+        assert!(crate::strip_ansi(&lines[1]).starts_with("> one"));
+        assert!(crate::strip_ansi(&lines[2]).starts_with("  two"));
+    }
+
+    #[test]
+    fn the_cursor_marker_never_splits_an_escape_sequence() {
+        let row = "\x1b[48;5;236m\x1b[38;5;108m> \x1b[0m\x1b[48;5;236m   ";
+        let marked = insert_cursor_marker(row, 2);
+        assert!(
+            marked.starts_with("\x1b[48;5;236m\x1b[38;5;108m> "),
+            "the escapes before the cursor must stay intact: {marked:?}"
+        );
+        assert_eq!(
+            marked.matches("\x1b[48;5;236m").count(),
+            2,
+            "the background must not be split: {marked:?}"
+        );
+        let marker_at = marked.find(CURSOR_MARKER).expect("marker");
+        assert!(
+            marker_at > marked.rfind("\x1b[48;5;236m").expect("background"),
+            "the marker must not land inside an escape: {marked:?}"
+        );
+        assert_eq!(
+            crate::ansi::visible_width(&marked[..marker_at]),
+            2,
+            "the marker belongs behind the prompt: {marked:?}"
+        );
+    }
 
     #[test]
     fn working_spinner_advances_per_render_not_per_timer() {
@@ -1701,35 +2109,6 @@ mod tests {
         let before = editor.working().expect("working").frame;
         let _ = editor.render(60);
         assert_eq!(editor.working().expect("working").frame, before + 1);
-    }
-
-    #[test]
-    fn explicit_border_color_overrides_the_theme_border() {
-        use crate::component::Component;
-        let editor = Editor::simple();
-        editor.set_focused(true);
-        editor.insert("echo hi");
-
-        let default_border = crate::theme::theme().colors.border.fg(&"─".repeat(20));
-        assert!(editor.render(20).contains(&default_border));
-        assert_eq!(editor.border_color(), None);
-
-        // Bash mode sets an explicit accent; the border line changes and the
-        // theme default is gone.
-        editor.set_border_color(Some(crate::theme::theme().colors.bash_mode));
-        let bash_border = crate::theme::theme().colors.bash_mode.fg(&"─".repeat(20));
-        assert_eq!(
-            editor.border_color(),
-            Some(crate::theme::theme().colors.bash_mode)
-        );
-        let rendered = editor.render(20);
-        assert!(rendered.contains(&bash_border), "{rendered:?}");
-        assert!(!rendered.contains(&default_border));
-
-        // Clearing restores the theme default (what `updateEditorBorderColor`
-        // does once the draft no longer starts with `!`).
-        editor.set_border_color(None);
-        assert!(editor.render(20).contains(&default_border));
     }
 
     #[test]
@@ -2095,10 +2474,10 @@ l12",
     }
 
     #[test]
-    fn test_editor_render_has_borders() {
-        // The editor renders a native-pi bordered box: a full-width `─` line
-        // above and below the content, with no `> ` prompt prefix on the text
-        // lines (mirrors TS editor.ts:525-588).
+    fn test_editor_render_draws_the_card() {
+        // The editor renders the input as the original does: a filled card with
+        // the `> ` prompt in the gutter and no horizontal rules (mirrors TS
+        // editor.ts:602-628, 634-770).
         let editor = Editor::new(
             EditorOptions {
                 padding_x: 1,
@@ -2109,29 +2488,24 @@ l12",
         );
         editor.set_text("hi");
         let lines = editor.render(20);
-        assert_eq!(lines.len(), 3, "expected [border, content, border]");
-        // Both borders are a 20-wide `─` run (visible width, ANSI stripped).
+        assert_eq!(lines.len(), 3, "expected [card top, content, card bottom]");
         let top = crate::ansi::strip_ansi(&lines[0]);
         let bottom = crate::ansi::strip_ansi(lines.last().unwrap());
-        assert_eq!(
-            top.chars().filter(|c| *c == '─').count(),
-            20,
-            "top border not full width: {top:?}"
-        );
-        assert_eq!(
-            bottom.chars().filter(|c| *c == '─').count(),
-            20,
-            "bottom border not full width: {bottom:?}"
-        );
-        // The content line carries the text with no `> ` prompt.
+        assert_eq!(top.trim(), "", "card top row: {top:?}");
+        assert_eq!(bottom.trim(), "", "card bottom row: {bottom:?}");
+        // The content line carries the text behind the prompt.
         let content = crate::ansi::strip_ansi(&lines[1]);
         assert!(
             content.contains("hi"),
             "content line missing text: {content:?}"
         );
         assert!(
-            !content.contains("> "),
-            "content line should not have a prompt prefix: {content:?}"
+            content.contains("> "),
+            "content line must carry the prompt: {content:?}"
+        );
+        assert!(
+            !content.contains('─'),
+            "the card must not draw rules: {content:?}"
         );
     }
 
@@ -2155,7 +2529,7 @@ l12",
         assert_eq!(
             lines.len(),
             3,
-            "bordered box keeps [border, content, border]"
+            "the card keeps [top row, content, bottom row]"
         );
 
         // Backspace / left/right must also stay on boundaries.
@@ -2180,7 +2554,7 @@ l12",
         editor.set_focused(true);
         editor.set_text("12345678901234567890");
         let lines = editor.render(10);
-        assert_eq!(lines.len(), 5, "two wrapped content rows plus borders");
+        assert_eq!(lines.len(), 6, "four wrapped content rows plus the card");
         for line in &lines {
             assert!(
                 crate::ansi::visible_width(line) <= 10,
@@ -2188,8 +2562,8 @@ l12",
             );
         }
         let rendered = crate::ansi::strip_ansi(&lines.join("\n"));
-        assert!(rendered.contains("1234567"));
-        assert!(rendered.contains("90123456"));
+        assert!(rendered.contains("123456"));
+        assert!(rendered.contains("345678"));
     }
 
     #[test]
@@ -2197,7 +2571,243 @@ l12",
         let editor = Editor::simple();
         editor.set_text("first\n");
         assert_eq!(editor.get_text(), "first\n");
+        assert_eq!(editor.cursor_position(), (1, 0));
+    }
+
+    #[test]
+    fn setting_the_text_leaves_the_caret_at_the_end() {
+        let editor = Editor::simple();
+        editor.set_text("ab");
+        assert_eq!(editor.cursor_position(), (0, 2));
+        editor.set_text("one\ntwo");
+        assert_eq!(editor.cursor_position(), (1, 3));
+    }
+
+    #[test]
+    fn the_history_recall_keeps_its_own_placement() {
+        let editor = Editor::simple();
+        editor.set_text_at_start("ab");
         assert_eq!(editor.cursor_position(), (0, 0));
+    }
+
+    fn wrapped_chunks(line: &str, width: usize) -> Vec<String> {
+        wrap_line_ranges(line, width)
+            .into_iter()
+            .map(|(start, end)| line[start..end].to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_editor_wrap_breaks_at_word_boundaries() {
+        assert_eq!(
+            wrapped_chunks("the quick brown fox jumps over the lazy dog", 20),
+            vec!["the quick brown fox ", "jumps over the lazy ", "dog"]
+        );
+    }
+
+    #[test]
+    fn the_editor_wrap_matches_the_original_at_every_width() {
+        let fox = "the quick brown fox jumps over the lazy dog";
+        assert_eq!(
+            wrapped_chunks(fox, 15),
+            vec!["the quick ", "brown fox ", "jumps over the ", "lazy dog"]
+        );
+        assert_eq!(
+            wrapped_chunks(fox, 16),
+            vec!["the quick brown ", "fox jumps over ", "the lazy dog"]
+        );
+        assert_eq!(wrapped_chunks("hello world", 5), vec!["hello", " ", "world"]);
+        assert_eq!(wrapped_chunks("one two three", 7), vec!["one ", "two ", "three"]);
+        assert_eq!(
+            wrapped_chunks("日本語のテキストです", 4),
+            vec!["日本", "語の", "テキ", "スト", "です"]
+        );
+        assert_eq!(wrapped_chunks("abcdefghij", 5), vec!["abcde", "fghij"]);
+    }
+
+    #[test]
+    fn the_editor_wrap_breaks_a_word_wider_than_the_row() {
+        assert_eq!(
+            wrapped_chunks("supercalifragilisticexpialidocious", 10),
+            vec!["supercalif", "ragilistic", "expialidoc", "ious"]
+        );
+    }
+
+    #[test]
+    fn the_editor_wrap_breaks_between_cjk_characters() {
+        assert_eq!(
+            wrapped_chunks("日本語のテキストです", 5),
+            vec!["日本", "語の", "テキ", "スト", "です"]
+        );
+    }
+
+    #[test]
+    fn the_editor_renders_the_draft_broken_at_word_boundaries() {
+        let editor = Editor::new(
+            EditorOptions {
+                padding_x: 0,
+                ..Default::default()
+            },
+            EditorStyle::default(),
+            Arc::new(Keybindings::new()),
+        );
+        editor.set_text("the quick brown fox jumps over the lazy dog");
+        let lines = editor.render(20);
+        let rendered: Vec<String> = lines
+            .iter()
+            .map(|line| crate::ansi::strip_ansi(line).trim_end().to_string())
+            .collect();
+        assert_eq!(rendered[1], "> the quick brown");
+        assert_eq!(rendered[2], "  fox jumps over");
+        assert_eq!(rendered[3], "  the lazy dog");
+    }
+
+    #[test]
+    fn the_input_box_caps_its_content_and_scrolls_inside() {
+        let editor = Editor::new(
+            EditorOptions {
+                padding_x: 0,
+                max_content_height: Some(12),
+                ..Default::default()
+            },
+            EditorStyle::default(),
+            Arc::new(Keybindings::new()),
+        );
+        let draft = (1..=30)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        editor.set_text(&draft);
+        editor.set_cursor(0, 0);
+        let lines = editor.render(40);
+        assert_eq!(lines.len(), 14, "12 content rows plus the card frame");
+        let rendered = crate::ansi::strip_ansi(&lines.join("\n"));
+        assert!(rendered.contains("line 1"));
+        assert!(!rendered.contains("line 30"));
+    }
+
+    #[test]
+    fn the_input_box_reports_the_hidden_lines() {
+        let editor = Editor::new(
+            EditorOptions {
+                padding_x: 0,
+                max_content_height: Some(4),
+                show_scroll_hints: true,
+                ..Default::default()
+            },
+            EditorStyle::default(),
+            Arc::new(Keybindings::new()),
+        );
+        let draft = (1..=20)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        editor.set_text(&draft);
+        editor.set_cursor(0, 0);
+        let lines = editor.render(40);
+        let rendered: Vec<String> = lines
+            .iter()
+            .map(|line| crate::ansi::strip_ansi(line).trim_end().to_string())
+            .collect();
+        assert!(rendered[rendered.len() - 1].contains("↓ 16 more"), "{rendered:?}");
+        assert!(!rendered[0].contains("↑"), "{rendered:?}");
+    }
+
+    #[test]
+    fn the_caret_is_drawn_with_the_fake_cursor_markers() {
+        let editor = Editor::new(
+            EditorOptions {
+                padding_x: 0,
+                ..Default::default()
+            },
+            EditorStyle::default(),
+            Arc::new(Keybindings::new()),
+        );
+        editor.set_focused(true);
+        editor.set_text("abc");
+        editor.set_cursor(0, 1);
+        let lines = editor.render(20);
+        let content = &lines[1];
+        assert!(content.contains(crate::ansi::FAKE_CURSOR_START), "{content:?}");
+        assert!(content.contains(crate::ansi::FAKE_CURSOR_END), "{content:?}");
+        let start = content.find(crate::ansi::FAKE_CURSOR_START).unwrap();
+        let end = content.find(crate::ansi::FAKE_CURSOR_END).unwrap();
+        let between = &content[start + crate::ansi::FAKE_CURSOR_START.len()..end];
+        assert_eq!(between, "b");
+    }
+
+    #[test]
+    fn the_caret_at_the_end_of_the_line_is_a_reversed_space() {
+        let editor = Editor::new(
+            EditorOptions {
+                padding_x: 0,
+                ..Default::default()
+            },
+            EditorStyle::default(),
+            Arc::new(Keybindings::new()),
+        );
+        editor.set_focused(true);
+        editor.set_text("ab");
+        editor.set_cursor(0, 2);
+        let lines = editor.render(20);
+        let content = &lines[1];
+        let start = content.find(crate::ansi::FAKE_CURSOR_START).unwrap();
+        let end = content.find(crate::ansi::FAKE_CURSOR_END).unwrap();
+        let between = &content[start + crate::ansi::FAKE_CURSOR_START.len()..end];
+        assert_eq!(between, " ");
+    }
+
+    #[test]
+    fn a_click_in_the_input_moves_the_caret() {
+        use crate::component::Component;
+        let editor = Editor::new(
+            EditorOptions {
+                padding_x: 0,
+                ..Default::default()
+            },
+            EditorStyle::default(),
+            Arc::new(Keybindings::new()),
+        );
+        editor.set_text("hello world");
+        editor.render(40);
+        let mut event = MouseEvent::new(MouseEventKind::Click, MouseButton::Left, 5, 1);
+        event.width = 40;
+        event.height = 3;
+        let result = editor.handle_mouse(&event).expect("handled");
+        assert!(result.handled);
+        assert!(result.focus);
+        assert_eq!(editor.cursor_position(), (0, 3));
+    }
+
+    #[test]
+    fn the_wheel_scrolls_the_overflowing_input() {
+        use crate::component::Component;
+        let editor = Editor::new(
+            EditorOptions {
+                padding_x: 0,
+                max_content_height: Some(4),
+                ..Default::default()
+            },
+            EditorStyle::default(),
+            Arc::new(Keybindings::new()),
+        );
+        let draft = (1..=20)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        editor.set_text(&draft);
+        editor.set_cursor(0, 0);
+        editor.render(40);
+        let mut event = MouseEvent::new(MouseEventKind::Wheel, MouseButton::None, 0, 2);
+        event.width = 40;
+        event.height = 6;
+        event.wheel_delta = Some(3);
+        let result = editor.handle_mouse(&event).expect("handled");
+        assert!(result.handled);
+        let lines = editor.render(40);
+        let rendered = crate::ansi::strip_ansi(&lines.join("\n"));
+        assert!(rendered.contains("line 4"), "{rendered}");
+        assert!(!rendered.contains("line 1"), "{rendered}");
     }
 
     #[test]

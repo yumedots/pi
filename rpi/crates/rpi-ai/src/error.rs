@@ -33,16 +33,7 @@ pub enum AiError {
 impl fmt::Display for AiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AiError::Http {
-                status: Some(s),
-                message,
-            } => {
-                write!(f, "http error {s}: {message}")
-            }
-            AiError::Http {
-                status: None,
-                message,
-            } => write!(f, "http error: {message}"),
+            AiError::Http { message, .. } => write!(f, "{message}"),
             AiError::Sse { message } => write!(f, "sse error: {message}"),
             AiError::Auth { message } => write!(f, "auth error: {message}"),
             AiError::Abort { message } => write!(f, "abort error: {message}"),
@@ -54,6 +45,23 @@ impl fmt::Display for AiError {
 }
 
 impl std::error::Error for AiError {}
+
+/// The text of a provider error body.
+///
+/// Mirrors the TS `pickBodyText`: a parsed `error` object is unwrapped and
+/// stringified, otherwise the raw body is used.
+pub fn pick_body_text(body: &str) -> String {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
+        if let Some(error) = value.get("error") {
+            if let Some(object) = error.as_object() {
+                if !object.is_empty() {
+                    return serde_json::to_string(error).unwrap_or_else(|_| body.to_string());
+                }
+            }
+        }
+    }
+    body.to_string()
+}
 
 impl AiError {
     /// True if this error originated from cancellation (not a provider fault).

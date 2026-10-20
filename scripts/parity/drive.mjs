@@ -215,7 +215,7 @@ export function tsCommand({ tsRoot, cwd, agentDir, clock, extra = "" }) {
 export function rustCommand({ rustBin, cwd, agentDir, clock, extra = "" }) {
 	return [
 		`cd ${cwd} &&`,
-		`RPI_CODING_AGENT_DIR=${agentDir}`,
+		`PI_CODING_AGENT_DIR=${agentDir}`,
 		`PI_PARITY_CLOCK=${clock}`,
 		rustBin,
 		`--offline --no-session --provider mock --model mock/mock-1 --api-key parity-key${extra ? ` ${extra}` : ""}`,

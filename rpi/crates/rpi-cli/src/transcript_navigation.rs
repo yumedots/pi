@@ -9,7 +9,7 @@ pub(crate) fn install(tui: &TuiAltScreen, bindings: Arc<Keybindings>) {
         let colors = rpi_tui::theme().colors;
         format!(
             "{}{}{}\x1b[39m\x1b[49m",
-            colors.selection.to_bg(),
+            colors.selected_bg.to_bg(),
             colors.text.to_fg(),
             label(&bindings)
         )

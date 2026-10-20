@@ -25,6 +25,7 @@ use crate::error::{FileError, FileErrorCode};
 use crate::file_mutation_queue::{with_file_mutation_queue, MutatingEnv};
 use crate::path_utils::resolve_tool_path;
 use crate::tools::tool_context::ExecutionToolContext;
+use crate::tools::PromptContribution;
 
 /// Input for the write tool. Mirrors TS `WriteToolInput`.
 #[derive(Debug, Clone, JsonSchema, Deserialize)]
@@ -39,6 +40,7 @@ pub struct WriteInput {
 pub struct WriteTool {
     schema: Tool,
     env: Arc<dyn MutatingEnv>,
+    prompt: PromptContribution,
 }
 
 impl WriteTool {
@@ -69,6 +71,10 @@ pub fn create_write_tool(context: &ExecutionToolContext) -> Arc<dyn AgentTool> {
     Arc::new(WriteTool {
         schema: WriteTool::schema(),
         env,
+        prompt: PromptContribution::new(
+            "Create or overwrite files",
+            &["Use write only for new files or complete rewrites."],
+        ),
     })
 }
 
@@ -79,6 +85,16 @@ impl AgentTool for WriteTool {
     }
     fn label(&self) -> &str {
         "write"
+    }
+
+    /// Mirrors TS `AgentTool.promptSnippet`.
+    fn prompt_snippet(&self) -> Option<&str> {
+        Some(self.prompt.snippet)
+    }
+
+    /// Mirrors TS `AgentTool.promptGuidelines`.
+    fn prompt_guidelines(&self) -> Option<&[String]> {
+        Some(&self.prompt.guidelines)
     }
 
     async fn execute(

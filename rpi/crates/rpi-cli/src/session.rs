@@ -6,8 +6,7 @@
 //! v1 scope cuts vs the TS SDK (tracked in `docs/m6-cli-open-questions.md`):
 //! - **Skill / prompt-template / context-file discovery IS wired**
 //!   (`--no-skills`/`-ns`, `--no-prompt-templates`/`-np`, `--no-context-files`/
-//!   `-nc` each suppress one channel; project `.rpi/<sub>` + legacy
-//!   `.rpi/<sub>` + global
+//!   `-nc` each suppress one channel; project `.pi/<sub>` + global
 //!   `agent_dir()<sub>` discovery with project-wins dedupe via
 //!   [`crate::resource_dirs`]; SYSTEM.md/APPEND_SYSTEM.md project-wins
 //!   precedence). **Extension `resources_discover` (B5b) feeds the SAME loaders:
@@ -44,18 +43,18 @@ use rpi_harness::session::types::SessionMetadata;
 use rpi_harness::session::Session;
 use rpi_harness::system_prompt::compose_system_prompt;
 use rpi_harness::types::{
-    AgentHarnessOptions, AgentHarnessResources, AgentHarnessStreamOptions, DrivingMode,
-    HarnessTool, HarnessToolExecution, ToolReplay,
+    AgentHarnessOptions, AgentHarnessResources, DrivingMode, HarnessTool, HarnessToolExecution,
+    ToolReplay,
 };
 #[cfg(windows)]
 use rpi_tools::create_powershell_tool;
 use rpi_tools::{
-    create_bash_tool, create_edit_tool, create_read_tool, create_write_tool, ExecutionToolContext,
-    MutationQueueRegistry, OsExecutionEnv,
+    create_bash_tool, create_edit_tool, create_find_tool, create_grep_tool, create_ls_tool,
+    create_read_tool, create_write_tool, ExecutionToolContext, MutationQueueRegistry,
+    OsExecutionEnv,
 };
 
 use crate::args::Args;
-use crate::docs_tool::create_docs_tool;
 use crate::provider::ResolvedModel;
 use crate::resource_dirs::{
     discover_append_system_prompt_file, discover_system_prompt_file, extension_dirs,
@@ -68,12 +67,24 @@ use rpi_extensions::{
     PluginDiagnostics, PluginToolAdapter, TeeEmitter,
 };
 
-/// The coding tools registered by the CLI by default.
-pub const BUILTIN_TOOL_NAMES: &[&str] = &["read", "bash", "edit", "write", "docs"];
-
+/// The coding tools registered by the CLI by default. Mirrors pi's
+/// `allToolNames` (`packages/coding-agent/src/core/tools/index.ts:95-105`).
+pub const BUILTIN_TOOL_NAMES: &[&str] = &[
+    "read", "bash", "powershell", "edit", "write", "grep", "find", "ls",
+];
+///
 /// The default coding system prompt. A condensed port of the TS
 /// `packages/coding-agent/src/core/system-prompt.ts` base prompt.
-pub fn default_system_prompt(cwd: &str, prior_reasoning_replayed: bool) -> String {
+///
+/// The tool list and the per-tool guidelines are derived from the **active**
+/// tool set, the way the original derives them from `promptSnippet` /
+/// `promptGuidelines` on every tool definition. A tool the model does not have
+/// is never advertised.
+pub fn default_system_prompt(
+    cwd: &str,
+    prior_reasoning_replayed: bool,
+    tools: &[HarnessTool],
+) -> String {
     // The working-state rule must match what actually comes back on the next
     // request. With `compat.requiresThinkingAsText` (or the native thinking
     // channels of anthropic/responses) the model *does* see its own reasoning
@@ -92,16 +103,52 @@ pub fn default_system_prompt(cwd: &str, prior_reasoning_replayed: bool) -> Strin
   your head you will re-derive it from scratch every turn."
     };
 
+    let tool_lines: Vec<String> = tools
+        .iter()
+        .filter_map(|tool| {
+            tool.tool
+                .prompt_snippet()
+                .map(|snippet| format!("- {}: {}", tool.tool.schema().name, snippet))
+        })
+        .collect();
+    let tool_block = if tool_lines.is_empty() {
+        "(none)".to_string()
+    } else {
+        tool_lines.join("\n")
+    };
+
+    let mut guidelines: Vec<String> = Vec::new();
+    for tool in tools {
+        for guideline in tool.tool.prompt_guidelines().unwrap_or(&[]) {
+            let guideline = guideline.trim();
+            if guideline.is_empty() || guidelines.iter().any(|g| g == guideline) {
+                continue;
+            }
+            guidelines.push(guideline.to_string());
+        }
+    }
+    let has = |name: &str| tools.iter().any(|tool| tool.tool.schema().name == name);
+    if (has("bash") || has("powershell")) && !has("grep") && !has("find") && !has("ls") {
+        guidelines.push("Use bash for file operations like ls, rg, find".to_string());
+    }
+    if has("bash") {
+        guidelines.push(
+            "The bash tool runs Bash, even on Windows. Use POSIX pipelines; do not pass PowerShell
+  cmdlets such as Get-ChildItem, Select-Object, or Select-String. If a powershell tool is
+  available, use it for PowerShell commands."
+                .to_string(),
+        );
+    }
+    let guideline_lines: String = guidelines.iter().map(|g| format!("- {g}")).collect::<Vec<String>>().join("\n");
+
     format!(
         "You are an expert coding assistant operating inside rpi, a coding agent harness. \
 You help users by reading files, executing commands, editing code, and writing new files.
 
 Available tools:
-- read  — Read file contents
-- bash  — Execute Bash commands using Bash/POSIX syntax, including on Windows
-- edit  — Find/replace edits to existing files
-- write — Create or overwrite files
-- docs  — Look up rpi usage, extension, package, and compatibility documentation
+{tool_block}
+
+In addition to the tools above, you may have access to other custom tools depending on the project.
 
 Guidelines:
 - Reply in the SAME language the user is writing in. Detect the language of the user's
@@ -109,12 +156,10 @@ Guidelines:
   conversation so far) and use it for your prose replies. Mirror it unless the user
   explicitly asks for a different language; only fall back to English when the
   user's language cannot be determined.
+{guideline_lines}
 - Be concise in your responses
 - Show file paths clearly when working with files
 - Prefer the smallest change that solves the problem
-- The bash tool runs Bash, even on Windows. Use ls, find, rg, and POSIX pipelines;
-  do not pass PowerShell cmdlets such as Get-ChildItem, Select-Object, or Select-String.
-  If a powershell tool is available, use it for PowerShell commands.
 {working_state_rule}
 - Track multi-step work with the todo tool instead of re-listing the plan in prose: add the
   steps once, then mark them done as you go. Re-stating the same plan without acting on it is
@@ -186,9 +231,14 @@ pub fn select_session(args: &Args, cwd: &Path) -> SessionSelection {
     }
 }
 
-/// The default session directory is `<cwd>/.rpi/sessions`.
-pub fn default_session_dir(cwd: &Path) -> PathBuf {
-    cwd.join(".rpi").join("sessions")
+/// The default session directory is `<agent dir>/sessions`; the session repo
+/// adds the per-project `--<encoded cwd>--` subdirectory, so the port and pi
+/// look in the same place. Mirrors TS `getDefaultSessionDirPath`
+/// (`packages/coding-agent/src/core/session-manager.ts:589`).
+pub fn default_session_dir(_cwd: &Path) -> PathBuf {
+    crate::config::agent_dir()
+        .map(|dir| dir.join("sessions"))
+        .unwrap_or_else(|_| PathBuf::from("sessions"))
 }
 
 /// Extensions are loaded exactly once before model resolution. Their action
@@ -215,7 +265,7 @@ pub fn prepare_extensions(
     let tool_context = rpi_extensions::ToolCallContext::new(cwd_str.clone());
     if !project_trusted && args.verbose {
         eprintln!(
-            "warning: current-project settings, resources, and discovered extensions are explicitly disabled (use --approve or /trust yes to re-enable)"
+            "Warning: current-project settings, resources, and discovered extensions are explicitly disabled (use --approve or /trust yes to re-enable)"
         );
     }
     // Pi packages are explicitly opt-in because discovery can start Node and
@@ -416,29 +466,32 @@ pub async fn build_prepared(
         let name = if name.is_empty() { None } else { Some(name) };
         if let Err(error) = session.set_name(name).await {
             if args.verbose {
-                eprintln!("warning: could not set session name: {error}");
+                eprintln!("Warning: could not set session name: {error}");
             }
         }
     }
     // ---- System prompt base (precedence: --system-prompt > SYSTEM.md > default) ----
     // Mirrors pi `discoverSystemPromptFile` (`resource-loader.ts:1022-1034`):
     // an explicit `--system-prompt` flag wins; otherwise a discovered
-    // `<cwd>/.rpi/SYSTEM.md` wins, then
+    // `<cwd>/.pi/SYSTEM.md` wins, then
     // `<agent_dir>/SYSTEM.md`.
     // (global); otherwise the built-in default. **Project-wins** — the same
     // direction as skills/prompts precedence.
     // Whether this model sees its own prior reasoning again decides how the
     // working-state rule is worded (see `default_system_prompt`).
-    let prior_reasoning_replayed = rpi_ai::model::prior_reasoning_is_replayed(&resolved.model);
+    let prior_reasoning_replayed = resolved
+        .model
+        .as_ref()
+        .is_some_and(rpi_ai::model::prior_reasoning_is_replayed);
     let mut context_paths = Vec::new();
     let base_prompt = match args.system_prompt.as_deref() {
         Some(explicit) => explicit.to_string(),
         None if project_trusted => match discover_system_prompt_file(cwd) {
             Some(path) => read_prompt_source(&path, &mut context_paths)
-                .unwrap_or_else(|| default_system_prompt(&cwd_str, prior_reasoning_replayed)),
-            None => default_system_prompt(&cwd_str, prior_reasoning_replayed),
+                .unwrap_or_else(|| default_system_prompt(&cwd_str, prior_reasoning_replayed, &tools)),
+            None => default_system_prompt(&cwd_str, prior_reasoning_replayed, &tools),
         },
-        None => default_system_prompt(&cwd_str, prior_reasoning_replayed),
+        None => default_system_prompt(&cwd_str, prior_reasoning_replayed, &tools),
     };
 
     // ---- Append-text sources (precedence: --append-system-prompt > APPEND_SYSTEM.md) ----
@@ -478,14 +531,14 @@ pub async fn build_prepared(
     // **Trust gate (v1 divergence):** pi gates project config discovery on
     // `isProjectTrusted()` (global resources are unconditional). rpi v1 has no
     // trust prompt — project resources are discovered unconditionally (a copied
-    // `.rpi/` dir drops in and works). Full trust gating is deferred.
+    // `.pi/` dir drops in and works). Full trust gating is deferred.
     let agent_dir = crate::config::agent_dir().ok();
 
     // ---- B5b: extension resources_discover ----
     // If any plugin registered a `resources_discover` handler, fan the event out
     // (reason "startup") and collect skill/prompt/theme paths. These plugin-
     // contributed paths merge WITH the static Part-A dirs (project
-    // `.rpi/skills` +
+    // `.pi/skills` +
     // `agent_dir/skills`, etc.) and the loaders re-run over the union — the
     // coherence point: a plugin's discovered skills land through the SAME loaders
     // as static skills. Static dirs load FIRST so project skills keep winning name
@@ -559,7 +612,7 @@ pub async fn build_prepared(
     if args.verbose {
         for d in &skill_diags {
             eprintln!(
-                "warning: skill {} ({}): {}",
+                "Warning: skill {} ({}): {}",
                 d.path,
                 d.code.as_str(),
                 d.message
@@ -567,7 +620,7 @@ pub async fn build_prepared(
         }
         for d in &prompt_diags {
             eprintln!(
-                "warning: prompt template {} ({}): {}",
+                "Warning: prompt template {} ({}): {}",
                 d.path,
                 d.code.as_str(),
                 d.message
@@ -577,7 +630,7 @@ pub async fn build_prepared(
         for d in &resource_diags {
             if let rpi_harness::diagnostics::ResourceDiagnostic::Collision(c) = d {
                 eprintln!(
-                    "warning: {} name \"{}\" collision: keeping {} (shadowed {})",
+                    "Warning: {} name \"{}\" collision: keeping {} (shadowed {})",
                     c.resource_type.as_str(),
                     c.name,
                     c.winner_path,
@@ -700,9 +753,16 @@ pub async fn build_prepared(
     let emitter: Arc<dyn rpi_agent::AgentEmitter> = match extension_session.snapshot_arc() {
         Some(snapshot) => {
             let ext = ExtensionEmitter::new(snapshot, extension_session.keepalive());
-            Arc::new(TeeEmitter::new(vec![broadcast_emitter, Arc::new(ext)]))
+            Arc::new(TeeEmitter::new(vec![
+                broadcast_emitter,
+                Arc::new(ext),
+                Arc::new(crate::js_emitter::JsEmitter::new()),
+            ]))
         }
-        None => broadcast_emitter,
+        None => Arc::new(TeeEmitter::new(vec![
+            broadcast_emitter,
+            Arc::new(crate::js_emitter::JsEmitter::new()),
+        ])),
     };
 
     // Saved user defaults. Best-effort: a missing or malformed file must not stop
@@ -732,7 +792,7 @@ pub async fn build_prepared(
     ));
 
     let options = AgentHarnessOptions {
-        model: resolved.model.clone(),
+        model: resolved.model.clone().unwrap_or_else(crate::provider::no_model),
         thinking_level: resolved.thinking_level,
         active_tool_names: active,
         tools,
@@ -759,9 +819,15 @@ pub async fn build_prepared(
                 | SessionSelection::ByExactId { .. }
                 | SessionSelection::Fork { .. }
         ),
-        stream_options: AgentHarnessStreamOptions {
-            timeout: args.timeout,
-            ..Default::default()
+        stream_options: {
+            // `retry.provider` configures the provider SDK's own retry loop:
+            // the retry budget, the delay cap and the request timeout. The
+            // CLI's `--timeout` still wins over the settings value.
+            let mut provider_retry = saved_settings.provider_retry_options();
+            if args.timeout.is_some() {
+                provider_retry.timeout = args.timeout;
+            }
+            provider_retry
         },
         // Settings-backed harness options: upstream lets users tune retry,
         // compaction and queue drain modes from settings.json. Global only,
@@ -792,6 +858,8 @@ pub async fn build_prepared(
         before_tool_call,
         after_tool_call: None,
         transform_context: None,
+        prepare_request: None,
+        finish_turn: None,
         entry_transforms: Vec::new(),
         // Extension provider hooks (B4): plugins subscribing to the
         // BeforeProviderRequest / BeforeProviderHeaders / AfterProviderResponse
@@ -832,7 +900,7 @@ pub async fn build_prepared(
                     }
                     if report.is_corrupt() {
                         eprintln!(
-                            "warning: session lane '{lane}' is corrupt ({} open operations); \
+                            "Warning: session lane '{lane}' is corrupt ({} open operations); \
                              refusing to auto-repair — inspect the session file",
                             report.open_operations.len()
                         );
@@ -852,7 +920,7 @@ pub async fn build_prepared(
             }
             Err(e) => {
                 if args.verbose {
-                    eprintln!("warning: session recovery sweep failed: {e}");
+                    eprintln!("Warning: session recovery sweep failed: {e}");
                 }
             }
         }
@@ -902,6 +970,35 @@ fn extension_tool_call_hook(
         let tool_name = ctx.tool_call.name.clone();
         let params = ctx.args.clone();
         Box::pin(async move {
+            // pi's `tool_call` event: the extensions see the call and may
+            // block it. The answer comes back through the event sink.
+            let answer = rpi_extensions::emit_event(
+                "tool_call",
+                &serde_json::json!({
+                    "type": "tool_call",
+                    "toolCallId": tool_call_id,
+                    "toolName": tool_name,
+                    "input": params,
+                }),
+            );
+            if let Some(answer) = &answer {
+                if answer.get("block").and_then(serde_json::Value::as_bool) == Some(true) {
+                    let reason = answer
+                        .get("reason")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("the extension blocked the tool call")
+                        .to_string();
+                    return Some(rpi_agent::BeforeToolCallResult {
+                        block: true,
+                        reason: Some(reason),
+                        terminate: answer
+                            .get("terminate")
+                            .and_then(serde_json::Value::as_bool)
+                            .unwrap_or(false),
+                        args: None,
+                    });
+                }
+            }
             let reason = match session {
                 Ok(session) => {
                     rpi_extensions::dispatch_tool_call_event(
@@ -1030,7 +1127,7 @@ pub struct ReloadContext {
     pub args: Args,
     /// The resolved model + thinking level (the harness's active model stays
     /// unless `set_model` changed it; reload does not touch the model).
-    pub resolved_model: rpi_ai::Model,
+    pub resolved_model: Option<rpi_ai::Model>,
     /// The broadcast emitter the harness was built with. Reload rebuilds the
     /// `TeeEmitter` over the fresh `ExtensionEmitter` (the old tee's extension
     /// child is dropped, unsubscribing from the old registry). The broadcast
@@ -1337,7 +1434,11 @@ where
             }
             args.provider = Some(current.provider.clone());
             args.model = Some(current.id);
-            if current.provider != ctx.resolved_model.provider {
+            if ctx
+                .resolved_model
+                .as_ref()
+                .is_some_and(|model| model.provider != current.provider)
+            {
                 args.api_key = None;
                 args.base_url = None;
             }
@@ -1401,6 +1502,11 @@ where
     // ---- 4. Re-run the Part-A loaders (same precedence + --no-* gates) ----
     let env = Arc::new(rpi_tools::OsExecutionEnv::with_cwd(ctx.cwd.clone()));
     let env_dyn: Arc<dyn rpi_tools::ExecutionEnv> = env.clone();
+    // The tool set the re-composed prompt advertises. Extension tools carry no
+    // prompt snippet, so the built-in set is what the model is told about.
+    let mut_env: Arc<dyn rpi_tools::MutatingEnv> = env.clone();
+    let tool_ctx = rpi_tools::ExecutionToolContext::new(env_dyn.clone(), Some(mut_env));
+    let prompt_tools = build_tools(&tool_ctx, &effective_args);
 
     let mut skills: Vec<rpi_harness::types::Skill> = Vec::new();
     let mut skill_diags: Vec<rpi_harness::skills::SkillDiagnostic> = Vec::new();
@@ -1460,7 +1566,7 @@ where
         // alternate-screen input row.
         for d in &skill_diags {
             details.push(format!(
-                "warning: skill {} ({}): {}",
+                "Warning: skill {} ({}): {}",
                 d.path,
                 d.code.as_str(),
                 d.message
@@ -1468,7 +1574,7 @@ where
         }
         for d in &prompt_diags {
             details.push(format!(
-                "warning: prompt template {} ({}): {}",
+                "Warning: prompt template {} ({}): {}",
                 d.path,
                 d.code.as_str(),
                 d.message
@@ -1478,7 +1584,7 @@ where
         for d in &resource_diags {
             if let rpi_harness::diagnostics::ResourceDiagnostic::Collision(c) = d {
                 details.push(format!(
-                    "warning: {} name \"{}\" collision: keeping {} (shadowed {})",
+                    "Warning: {} name \"{}\" collision: keeping {} (shadowed {})",
                     c.resource_type.as_str(),
                     c.name,
                     c.winner_path,
@@ -1492,16 +1598,19 @@ where
     // Same working-state wording rule as `build`; a mid-session `/model` switch
     // re-composes the prompt on the next reload, which is the same staleness the
     // rest of this path already has (provider resolution is a startup concern).
-    let prior_reasoning_replayed = rpi_ai::model::prior_reasoning_is_replayed(&ctx.resolved_model);
+    let prior_reasoning_replayed = ctx
+        .resolved_model
+        .as_ref()
+        .is_some_and(rpi_ai::model::prior_reasoning_is_replayed);
     let mut context_paths = Vec::new();
     let base_prompt = match effective_args.system_prompt.as_deref() {
         Some(explicit) => explicit.to_string(),
         None if project_trusted => match discover_system_prompt_file(&ctx.cwd) {
             Some(path) => read_prompt_source(&path, &mut context_paths)
-                .unwrap_or_else(|| default_system_prompt(&cwd_str, prior_reasoning_replayed)),
-            None => default_system_prompt(&cwd_str, prior_reasoning_replayed),
+                .unwrap_or_else(|| default_system_prompt(&cwd_str, prior_reasoning_replayed, &prompt_tools)),
+            None => default_system_prompt(&cwd_str, prior_reasoning_replayed, &prompt_tools),
         },
-        None => default_system_prompt(&cwd_str, prior_reasoning_replayed),
+        None => default_system_prompt(&cwd_str, prior_reasoning_replayed, &prompt_tools),
     };
     let mut append_texts: Vec<String> = Vec::new();
     for extra in &effective_args.append_system_prompt {
@@ -1543,9 +1652,16 @@ where
     let emitter: Arc<dyn rpi_agent::AgentEmitter> = match extension_session.snapshot_arc() {
         Some(snapshot) => {
             let ext = ExtensionEmitter::new(snapshot, extension_session.keepalive());
-            Arc::new(TeeEmitter::new(vec![ctx.broadcast.clone(), Arc::new(ext)]))
+            Arc::new(TeeEmitter::new(vec![
+                ctx.broadcast.clone(),
+                Arc::new(ext),
+                Arc::new(crate::js_emitter::JsEmitter::new()),
+            ]))
         }
-        None => ctx.broadcast.clone(),
+        None => Arc::new(TeeEmitter::new(vec![
+            ctx.broadcast.clone(),
+            Arc::new(crate::js_emitter::JsEmitter::new()),
+        ])),
     };
 
     // ---- 5. Push the rebuilt state into the live harness via the B5d setters ----
@@ -1600,14 +1716,14 @@ where
             .unwrap_or_else(|error| error.into_inner()) = catalog;
         // Refresh the public descriptor. Credentials remain in the newly bound
         // provider instances installed above and never enter the lane model.
-        let _ = harness.lane("main").set_model(resolved.model.clone()).await;
+        if let Some(model) = resolved.model.clone() {
+            let _ = harness.lane("main").set_model(model).await;
+        }
     }
 
     // Re-merge extension tools (a reloaded plugin may have added/removed a
     // tool). The built-in set is rebuilt from scratch + extension tools merged
     // on top, mirroring `build`.
-    let mut_env: Arc<dyn rpi_tools::MutatingEnv> = env.clone();
-    let tool_ctx = rpi_tools::ExecutionToolContext::new(env_dyn.clone(), Some(mut_env));
     let mut tools = build_tools(&tool_ctx, &effective_args);
     merge_extension_tools(
         &mut tools,
@@ -1844,21 +1960,41 @@ fn build_models_with_extensions(
     build_models_with_extensions_for_reload(&resolved.providers, extension_session, runtime)
 }
 
-/// Resolve project resource loading without prompting. Explicit CLI overrides
-/// win, then a stored decision; projects with no decision load by default.
+/// Resolve project trust. Fails closed, exactly as the original does
+/// (`packages/coding-agent/src/core/project-trust.ts:51-92`):
+///
+/// 1. An explicit CLI override (`--approve` / `--no-approve`) wins.
+/// 2. A folder with no trust-requiring project resources is trusted.
+/// 3. The nearest stored decision wins (a decision for a parent folder governs
+///    the folders below it).
+/// 4. `defaultProjectTrust` decides: `always` trusts, `never` does not.
+/// 5. `ask` — the default — needs the interactive prompt, which the port has
+///    not built yet, so an undecided project is **not** trusted.
 pub(crate) fn resolve_project_trust(args: &Args, cwd: &Path) -> bool {
     if let Some(override_value) = args.trust_override {
         return override_value;
     }
-    crate::config::project_trust_decision(cwd)
+    if !crate::config::has_trust_requiring_project_resources(cwd) {
+        return true;
+    }
+    if let Ok(Some(decision)) = crate::config::nearest_project_trust_decision(cwd) {
+        return decision;
+    }
+    default_project_trust() == "always"
+}
+
+/// The `defaultProjectTrust` setting (`ask` / `always` / `never`). Mirrors pi's
+/// `SETTINGS_DEFAULTS.defaultProjectTrust` (`ask`).
+fn default_project_trust() -> String {
+    crate::settings::load_settings()
         .ok()
-        .flatten()
-        .unwrap_or(true)
+        .and_then(|settings| settings.default_project_trust)
+        .unwrap_or_else(|| "ask".to_string())
 }
 
 /// Resolve the extension dirs to scan and load the cdylib plugins, returning
 /// the loaded session guard (keeps the `Library` handles alive for the harness
-/// lifetime). Scan order: configured project paths, project `.rpi/extensions`,
+/// lifetime). Scan order: configured project paths, project `.pi/extensions`,
 /// configured/global conventional paths, then any
 /// `--extensions-dir` flags (scanned after the defaults — `args.rs`).
 /// Diagnostics are a no-op sink for now; load skips/ABI mismatches surface via
@@ -1897,7 +2033,15 @@ fn load_extensions_from_dirs(
     // `!no_extensions` and threads `Some(bridge)`; `None` is only passed by the
     // `--no-extensions` branch (which calls `ExtensionSession::none()` directly)
     // and tests. Explicit `--extension`/`-e` files load after the dirs.
-    rpi_extensions::load_session_mixed(dirs, &args.extension, diagnostics, action_bridge)
+    // A TypeScript file named with `--extension` belongs to the JavaScript
+    // backend, not to the native plugin loader.
+    let native: Vec<PathBuf> = args
+        .extension
+        .iter()
+        .filter(|path| !crate::js_extensions::is_javascript_extension(path))
+        .cloned()
+        .collect();
+    rpi_extensions::load_session_mixed(dirs, &native, diagnostics, action_bridge)
 }
 
 /// Merge the loaded extension tools into the built-in set. An extension tool
@@ -1958,8 +2102,8 @@ fn build_tools(ctx: &ExecutionToolContext, args: &Args) -> Vec<HarnessTool> {
     if args.no_tools {
         return Vec::new();
     }
-    // Keep the coding tools aligned with Pi and expose rpi's read-only docs
-    // lookup as a default assistant capability.
+    // Keep the coding tools aligned with Pi: the same built-in set, the same
+    // order (`packages/coding-agent/src/core/tools/index.ts:95-105`).
     //
     // Replay policy (native `ToolDeclaration.replay`): only tools that are
     // genuinely free of side effects may be re-run when a crash leaves their
@@ -1987,8 +2131,16 @@ fn build_tools(ctx: &ExecutionToolContext, args: &Args) -> Vec<HarnessTool> {
         ("edit", HarnessTool::new(create_edit_tool(ctx))),
         ("write", HarnessTool::new(create_write_tool(ctx))),
         (
-            "docs",
-            HarnessTool::new(create_docs_tool()).with_replay(ToolReplay::Safe),
+            "grep",
+            HarnessTool::new(create_grep_tool(ctx, None)).with_replay(ToolReplay::Safe),
+        ),
+        (
+            "find",
+            HarnessTool::new(create_find_tool(ctx, None)).with_replay(ToolReplay::Safe),
+        ),
+        (
+            "ls",
+            HarnessTool::new(create_ls_tool(ctx, None)).with_replay(ToolReplay::Safe),
         ),
     ];
 
@@ -2704,7 +2856,7 @@ async fn open_session(
         Path::new(cwd),
     ) {
         eprintln!(
-            "warning: {}",
+            "Warning: {}",
             crate::session_cwd::format_missing_session_cwd_error(&issue)
         );
     }
@@ -2891,7 +3043,7 @@ mod tests {
             .block_on(async {
                 let agent = crate::config::agent_dir().unwrap();
                 let cwd = agent.join("project");
-                let project_config = cwd.join(".rpi");
+                let project_config = cwd.join(".pi");
                 std::fs::create_dir_all(&project_config).unwrap();
                 for (path, content) in [
                     (agent.join("SYSTEM.md"), "GLOBAL_BASE"),
@@ -3217,19 +3369,57 @@ mod tests {
 
     #[test]
     fn default_prompt_mentions_cwd_and_tools() {
-        let p = default_system_prompt("/tmp/proj", false);
+        let env = Arc::new(OsExecutionEnv::with_cwd(PathBuf::from(".")));
+        let env_dyn: Arc<dyn rpi_tools::ExecutionEnv> = env.clone();
+        let mut_env: Arc<dyn rpi_tools::MutatingEnv> = env.clone();
+        let context = ExecutionToolContext::new(env_dyn, Some(mut_env));
+        let tools = build_tools(&context, &Args::default());
+        let p = default_system_prompt("/tmp/proj", false, &tools);
         assert!(p.contains("/tmp/proj"));
         assert!(p.contains("read"));
         assert!(p.contains("bash"));
         assert!(p.contains("edit"));
         assert!(p.contains("write"));
-        assert!(p.contains("docs"));
-        assert!(!p.contains("- grep"));
-        assert!(!p.contains("- find"));
-        assert!(!p.contains("- ls"));
+        assert!(p.contains("grep"));
+        assert!(p.contains("find"));
+        assert!(p.contains("ls"));
         assert!(!p.contains("- powershell"));
-        assert!(p.contains("Bash/POSIX syntax, including on Windows"));
         assert!(p.contains("do not pass PowerShell cmdlets"));
+    }
+
+    /// The prompt's tool list follows the active tool set: a tool the model
+    /// does not have is never advertised.
+    #[test]
+    fn the_prompt_lists_only_the_active_tools() {
+        let env = Arc::new(OsExecutionEnv::with_cwd(PathBuf::from(".")));
+        let env_dyn: Arc<dyn rpi_tools::ExecutionEnv> = env.clone();
+        let mut_env: Arc<dyn rpi_tools::MutatingEnv> = env.clone();
+        let context = ExecutionToolContext::new(env_dyn, Some(mut_env));
+        let mut args = Args::default();
+        args.tools = Some(vec!["read".to_string()]);
+        let tools = build_tools(&context, &args);
+        let p = default_system_prompt("/tmp/proj", false, &tools);
+
+        assert!(p.contains("- read:"), "the active tool is listed: {p}");
+        for absent in ["- bash:", "- edit:", "- write:", "- grep:", "- find:", "- ls:"] {
+            assert!(
+                !p.contains(absent),
+                "{absent} must not be advertised: {p}"
+            );
+        }
+        // The per-tool guidelines follow the same rule.
+        assert!(p.contains("Use read to examine files instead of cat or sed."));
+        assert!(!p.contains("Use write only for new files or complete rewrites."));
+    }
+
+    /// The default prompt with the default tool set.
+    fn default_prompt(cwd: &str, prior_reasoning_replayed: bool) -> String {
+        let env = Arc::new(OsExecutionEnv::with_cwd(PathBuf::from(".")));
+        let env_dyn: Arc<dyn rpi_tools::ExecutionEnv> = env.clone();
+        let mut_env: Arc<dyn rpi_tools::MutatingEnv> = env.clone();
+        let context = ExecutionToolContext::new(env_dyn, Some(mut_env));
+        let tools = build_tools(&context, &Args::default());
+        default_system_prompt(cwd, prior_reasoning_replayed, &tools)
     }
 
     #[test]
@@ -3237,7 +3427,7 @@ mod tests {
         // The model must detect the user's language and answer in it, so a
         // Chinese (or any non-English) user gets a same-language reply without
         // having to ask every turn.
-        let p = default_system_prompt("/tmp/proj", false);
+        let p = default_prompt("/tmp/proj", false);
         let lower = p.to_lowercase();
         assert!(
             lower.contains("same language") && lower.contains("detect"),
@@ -3254,7 +3444,7 @@ mod tests {
         // observed session paid for that 112 times in a single run, and twice
         // hallucinated the user's input ("The user is greeting me with hello",
         // with no such message). See `docs/llm-repetition-forensics.md` §八.
-        let p = default_system_prompt("/tmp/proj", false);
+        let p = default_prompt("/tmp/proj", false);
         let lower = p.to_lowercase();
         // The rule must state the mechanism, not just "be clear".
         assert!(
@@ -3286,7 +3476,7 @@ mod tests {
         // carried into your next turn" is false, and the instruction to restate
         // the plan every turn is exactly the busy-work the re-plan analysis
         // measured. The wording must flip with the mechanism.
-        let p = default_system_prompt("/tmp/proj", true);
+        let p = default_prompt("/tmp/proj", true);
         let lower = p.to_lowercase();
         assert!(
             lower.contains("carried back"),
@@ -3332,7 +3522,7 @@ mod tests {
                 .map(|tool| tool.replay)
         };
 
-        for read_only in ["read", "docs"] {
+        for read_only in ["read", "grep", "find", "ls"] {
             assert_eq!(
                 replay_of(read_only),
                 Some(ToolReplay::Safe),
@@ -3350,8 +3540,11 @@ mod tests {
         }
     }
 
+    /// The registered tool set is pi's exactly: the same built-ins, and no
+    /// port-only `docs` tool. Mirrors pi's `allToolNames`
+    /// (`packages/coding-agent/src/core/tools/index.ts:95-105`).
     #[test]
-    fn default_tools_include_docs_lookup() {
+    fn the_default_tool_set_is_pis() {
         let env = Arc::new(OsExecutionEnv::with_cwd(PathBuf::from(".")));
         let env_dyn: Arc<dyn rpi_tools::ExecutionEnv> = env.clone();
         let mut_env: Arc<dyn rpi_tools::MutatingEnv> = env.clone();
@@ -3361,17 +3554,61 @@ mod tests {
             .map(|tool| tool.tool.schema().name.clone())
             .collect();
 
-        // `docs` is a default capability; the legacy rpi-only lookup tools stay
-        // unregistered. Asserted by membership (not exact equality) because
-        // `powershell` is Windows-only and `settings.json#defaultTools` may
-        // narrow the set in a developer's environment.
-        assert!(names.contains(&"docs".to_string()));
-        for legacy in ["grep", "find", "ls"] {
+        for expected in ["read", "bash", "edit", "write", "grep", "find", "ls"] {
             assert!(
-                !names.contains(&legacy.to_string()),
-                "legacy tool {legacy} should not be registered by default"
+                names.contains(&expected.to_string()),
+                "{expected} must be registered by default"
             );
         }
+        assert!(
+            !names.contains(&"docs".to_string()),
+            "pi has no docs tool; the port must not invent one"
+        );
+    }
+
+    /// Project trust fails closed: a project with trust-requiring resources and
+    /// no decision is not trusted. Mirrors pi's `resolveProjectTrusted`
+    /// (`packages/coding-agent/src/core/project-trust.ts:51-92`).
+    #[test]
+    fn an_undecided_project_with_resources_is_not_trusted() {
+        let _guard = crate::config::test_support::env_lock().lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = tmp.path().join("agent");
+        let project = tmp.path().join("project");
+        std::fs::create_dir_all(&agent).unwrap();
+        std::fs::create_dir_all(project.join(".pi")).unwrap();
+        // A project-local resource is what makes the question worth asking.
+        std::fs::write(project.join(".pi").join("settings.json"), "{}").unwrap();
+
+        let previous = std::env::var_os(crate::config::CONFIG_DIR_ENV);
+        std::env::set_var(crate::config::CONFIG_DIR_ENV, &agent);
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match self.0.take() {
+                    Some(value) => std::env::set_var(crate::config::CONFIG_DIR_ENV, value),
+                    None => std::env::remove_var(crate::config::CONFIG_DIR_ENV),
+                }
+            }
+        }
+        let _restore = Restore(previous);
+
+        let args = Args::default();
+        assert!(
+            !resolve_project_trust(&args, &project),
+            "an undecided project with resources must not be trusted"
+        );
+
+        // An explicit override still wins.
+        let mut approved = Args::default();
+        approved.trust_override = Some(true);
+        assert!(resolve_project_trust(&approved, &project));
+
+        // A stored decision wins over the default.
+        crate::config::set_project_trust(&project, Some(true)).unwrap();
+        assert!(resolve_project_trust(&args, &project));
+        crate::config::set_project_trust(&project, Some(false)).unwrap();
+        assert!(!resolve_project_trust(&args, &project));
     }
 
     #[test]

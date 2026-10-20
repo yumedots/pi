@@ -88,7 +88,15 @@ function runInPane(session, command, steps) {
 	tmux(["new-session", "-d", "-s", session, "-x", String(PANE_WIDTH), "-y", String(PANE_HEIGHT), "sh", "-c", command]);
 	try {
 		for (const step of steps) {
-			for (const key of step.keys ?? []) tmux(["send-keys", "-t", session, key]);
+			for (const key of step.keys ?? []) {
+				// A program that died on startup leaves no pane to send to; the
+				// capture below reports that as a failure instead of crashing.
+				try {
+					tmux(["send-keys", "-t", session, key]);
+				} catch {
+					break;
+				}
+			}
 			spawnSync("sleep", [String((step.settle ?? 1000) / 1000)]);
 		}
 		return pane(session);
@@ -144,7 +152,8 @@ function tsCommand({ cwd, agentDir, clock }) {
 function rustCommand({ cwd, agentDir, clock }) {
 	return [
 		`cd ${cwd} &&`,
-		`RPI_CODING_AGENT_DIR=${agentDir}`,
+		`PI_CODING_AGENT_DIR=${agentDir}`,
+		`PI_CODING_AGENT_DIR=${agentDir}`,
 		`PI_PARITY_CLOCK=${clock}`,
 		RUST_BIN,
 		"--offline --provider mock --model mock/mock-1 --api-key parity-key",
@@ -187,7 +196,13 @@ function produceSession(side, baseUrl, clock) {
 		{ keys: ["Enter"], settle: 5000 },
 		{ settle: 4000 },
 	]);
-	const files = sessionFiles(side === "ts" ? join(agentDir, "sessions") : join(cwd, ".rpi", "sessions"));
+	// Both sides keep their sessions in pi's place: <agent dir>/sessions.
+	// The port used to write them to <cwd>/.rpi/sessions, so that path is
+	// still looked at.
+	const files = [
+		...sessionFiles(join(agentDir, "sessions")),
+		...sessionFiles(join(cwd, ".rpi", "sessions")),
+	].sort();
 	return { screen, facts: factsIn(screen), files };
 }
 

@@ -150,6 +150,16 @@ async fn run_stream(
             headers.insert(name.clone(), value.clone());
         }
     }
+    if let Some((name, value)) =
+        crate::model::opencode_session_header(model, opts.session_id.as_deref())
+    {
+        if !headers
+            .keys()
+            .any(|existing| existing.eq_ignore_ascii_case(name))
+        {
+            headers.insert(name.to_string(), value);
+        }
+    }
     apply_api_key(&mut headers, api_key);
     // Identify rpi on provider requests (native `getPiUserAgent`), unless the
     // caller/model already set a User-Agent.
@@ -164,7 +174,7 @@ async fn run_stream(
     }
 
     let body = build_request(model, ctx, opts);
-    let url = chat_completions_url(&model.base_url);
+    let url = chat_completions_url(&crate::model::resolve_base_url(&model.base_url));
     // A silent/stalled gateway must not leave the harness in Working forever.
     // Callers can override this through SimpleStreamOptions when needed.
     let timeout = opts.request_timeout();
@@ -198,7 +208,7 @@ async fn run_stream(
                     let message = response.text().await.unwrap_or_default();
                     Err(AiError::Http {
                         status: Some(code),
-                        message,
+                        message: format!("{code}: {}", crate::error::pick_body_text(&message)),
                     })
                 }
             }
@@ -1481,6 +1491,7 @@ mod tests {
             usage: None,
             added_tool_names: vec![],
             is_error: false,
+            duration_ms: None,
             timestamp: 2,
         };
         let context = Context {

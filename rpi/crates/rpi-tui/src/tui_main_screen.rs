@@ -10,8 +10,9 @@ use super::component::Component;
 use super::container::Container;
 use super::layout::composite_tui_line;
 use super::overlay::OverlayManager;
-use super::tui::{OverlayHandle, OverlayOptions, TuiMode, TuiStopOptions, TUI};
+use super::tui::{OverlayBounds, OverlayHandle, OverlayOptions, TuiMode, TuiStopOptions, TUI};
 use crate::terminal::Terminal;
+use crate::terminal_colors::request_terminal_colors;
 
 /// Main screen TUI that uses terminal scrollback for scrolling.
 pub struct TuiMainScreen {
@@ -127,7 +128,6 @@ impl TUI for TuiMainScreen {
         Arc::new(ManagedOverlayHandle {
             handle,
             hidden: Mutex::new(false),
-            focused: Mutex::new(true),
         })
     }
 
@@ -145,6 +145,7 @@ impl TUI for TuiMainScreen {
             *running = true;
         }
         self.terminal.show_cursor();
+        self.query_terminal_colors();
         self.request_render(false);
     }
 
@@ -192,6 +193,21 @@ impl TUI for TuiMainScreen {
 }
 
 impl TuiMainScreen {
+    /// Ask the terminal for its colors and let the theme follow them.
+    fn query_terminal_colors(&self) {
+        if !self.terminal.is_tty() {
+            return;
+        }
+        let colors = request_terminal_colors(
+            self.terminal.as_ref(),
+            crate::terminal_colors::TERMINAL_COLOR_QUERY_TIMEOUT,
+        );
+        if colors == crate::terminal_colors::TerminalColors::default() {
+            return;
+        }
+        crate::theme::global_theme_manager().apply_terminal_colors(&colors);
+    }
+
     fn paint_overlays(&self, base_lines: &[String], width: usize) {
         let height = self.terminal.rows().max(1);
         let overlays = self.overlays.render_visible(width, height);
@@ -235,7 +251,6 @@ impl TuiMainScreen {
 struct ManagedOverlayHandle {
     handle: super::overlay::OverlayHandle,
     hidden: Mutex<bool>,
-    focused: Mutex<bool>,
 }
 
 impl OverlayHandle for ManagedOverlayHandle {
@@ -255,11 +270,15 @@ impl OverlayHandle for ManagedOverlayHandle {
         self.hidden.lock().map(|hidden| *hidden).unwrap_or(true)
     }
     fn focus(&self) {
-        if let Ok(mut focused) = self.focused.lock() {
-            *focused = true;
-        }
+        self.handle.focus();
+    }
+    fn unfocus(&self) {
+        self.handle.unfocus();
     }
     fn is_focused(&self) -> bool {
-        self.focused.lock().map(|focused| *focused).unwrap_or(false)
+        self.handle.is_focused()
+    }
+    fn get_bounds(&self) -> Option<OverlayBounds> {
+        self.handle.get_bounds()
     }
 }

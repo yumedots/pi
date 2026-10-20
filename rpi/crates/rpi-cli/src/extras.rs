@@ -1,10 +1,11 @@
-//! First-launch setup banner — thin host wrapper over the rpi-tui components.
+//! First-launch setup: the theme picker the original shows on the very first
+//! run (`packages/coding-agent/src/modes/interactive/components/first-time-setup.ts`).
 //!
 //! Kept out of the library crate so rpi-tui stays cli-free (project constraint).
 
 use std::sync::Arc;
 
-use rpi_tui::Container;
+use rpi_tui::{apply_theme_preset, FirstRunDialog, FirstRunOption, ThemeManager, ThemePreset};
 
 use crate::config;
 
@@ -30,47 +31,89 @@ pub fn mark_setup_done() -> std::io::Result<()> {
     std::fs::write(&path, b"1")
 }
 
-/// If first-time setup hasn't run yet, show a brief setup note in the chat
-/// container. Returns `true` if anything was shown.
-pub fn maybe_first_time_setup(chat: &Arc<Container>) -> bool {
-    use rpi_tui::Component;
-    use rpi_tui::{DynamicBorder, Spacer, Text};
-    if setup_done() {
-        return false;
-    }
-    let accent = rpi_tui::theme().colors.accent;
-    let muted = rpi_tui::theme().colors.muted;
-    let border = DynamicBorder::with_color(accent);
-    let mut lines: Vec<String> = Vec::new();
-    lines.extend(border.render(80));
-    lines.push(format!(
-        " {} Welcome to rpi!",
-        accent.fg(&bold("Welcome to rpi!"))
-    ));
-    lines.push(format!(
-        " {} Pick a theme with /theme (dark/light/monochrome).",
-        muted.fg("Pick a theme with /theme (dark/light/monochrome).")
-    ));
-    lines.push(format!(
-        " {} Type /help for commands.",
-        muted.fg("Type /help for commands.")
-    ));
-    lines.extend(border.render(80));
-    for line in lines {
-        chat.add_child(Arc::new(Text::new(line, 1, 0)));
-    }
-    chat.add_child(Arc::new(Spacer::new(1)));
-    let _ = mark_setup_done();
-    true
+/// Whether the theme picker still has to run.
+///
+/// The original shows it on a fresh install only: an agent directory that
+/// already holds a settings file is an existing profile, so the picker would
+/// interrupt a returning user.
+pub fn first_run_pending() -> bool {
+    !setup_done()
+        && !config::settings_path()
+            .map(|path| path.exists())
+            .unwrap_or(false)
 }
 
-fn bold(s: &str) -> String {
-    format!("\x1b[1m{s}\x1b[22m")
+/// The themes the picker offers, in the order the original lists them.
+fn theme_options() -> Vec<FirstRunOption> {
+    vec![
+        FirstRunOption::new(
+            "system",
+            "System (follows the terminal's light or dark mode)",
+        ),
+        FirstRunOption::new("dark", "Dark"),
+        FirstRunOption::new("light", "Light"),
+    ]
+}
+
+fn preset_for(value: &str) -> Option<ThemePreset> {
+    match value {
+        "dark" => Some(ThemePreset::Dark),
+        "light" => Some(ThemePreset::Light),
+        "monochrome" => Some(ThemePreset::Monochrome),
+        _ => None,
+    }
+}
+
+/// The first-run theme picker, or `None` when the setup already ran.
+///
+/// Moving the cursor previews the theme, confirming saves it, and either way
+/// the setup is marked done so it never comes back.
+pub fn first_run_dialog(theme_manager: &Arc<ThemeManager>) -> Option<Arc<FirstRunDialog>> {
+    if !first_run_pending() {
+        return None;
+    }
+    let dialog = Arc::new(FirstRunDialog::new(theme_options()));
+    let preview_manager = theme_manager.clone();
+    dialog.on_preview(move |option| {
+        match preset_for(&option.value) {
+            Some(preset) => {
+                apply_theme_preset(preset);
+                preview_manager.apply_preset(preset);
+            }
+            None => {
+                preview_manager.follow_terminal();
+                rpi_tui::global_theme_manager().follow_terminal();
+            }
+        }
+    });
+    let submit_manager = theme_manager.clone();
+    dialog.on_submit(move |option| {
+        let mut settings = crate::settings::load_settings().unwrap_or_default();
+        match preset_for(&option.value) {
+            Some(preset) => {
+                apply_theme_preset(preset);
+                submit_manager.apply_preset(preset);
+                settings.theme = Some(option.value.clone());
+            }
+            None => {
+                submit_manager.follow_terminal();
+                rpi_tui::global_theme_manager().follow_terminal();
+                settings.theme = None;
+            }
+        }
+        let _ = crate::settings::save_settings(&settings);
+        let _ = mark_setup_done();
+    });
+    dialog.on_cancel(|| {
+        let _ = mark_setup_done();
+    });
+    Some(dialog)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rpi_tui::Component;
 
     #[test]
     fn test_sentinel_paths_under_agent_dir() {
@@ -86,6 +129,54 @@ mod tests {
             assert!(p.ends_with(".setup_done"));
             assert_eq!(p.parent().unwrap(), agent);
         }
+        match prev {
+            Some(v) => std::env::set_var(crate::config::CONFIG_DIR_ENV, v),
+            None => std::env::remove_var(crate::config::CONFIG_DIR_ENV),
+        }
+    }
+
+    #[test]
+    fn first_run_is_pending_without_a_sentinel_or_settings() {
+        let _guard = crate::config::test_support::env_lock().lock().unwrap();
+        let prev = std::env::var_os(crate::config::CONFIG_DIR_ENV);
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::env::set_var(crate::config::CONFIG_DIR_ENV, tmp.path());
+        assert!(first_run_pending());
+        std::fs::write(tmp.path().join("settings.json"), "{}").unwrap();
+        assert!(!first_run_pending());
+        match prev {
+            Some(v) => std::env::set_var(crate::config::CONFIG_DIR_ENV, v),
+            None => std::env::remove_var(crate::config::CONFIG_DIR_ENV),
+        }
+    }
+
+    #[test]
+    fn the_picker_prints_every_line_once() {
+        let _guard = crate::config::test_support::env_lock().lock().unwrap();
+        let prev = std::env::var_os(crate::config::CONFIG_DIR_ENV);
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::env::set_var(crate::config::CONFIG_DIR_ENV, tmp.path());
+        let dialog = first_run_dialog(&Arc::new(ThemeManager::new())).expect("fresh profile");
+        let plain = rpi_tui::strip_ansi(&dialog.render(80).join("\n"));
+        assert_eq!(plain.matches("Welcome to pi").count(), 1, "{plain}");
+        assert_eq!(plain.matches("Pick a theme.").count(), 1, "{plain}");
+        assert_eq!(plain.matches("Dark").count(), 1, "{plain}");
+        assert_eq!(plain.matches("Light").count(), 1, "{plain}");
+        assert_eq!(plain.matches("System (follows").count(), 1, "{plain}");
+        match prev {
+            Some(v) => std::env::set_var(crate::config::CONFIG_DIR_ENV, v),
+            None => std::env::remove_var(crate::config::CONFIG_DIR_ENV),
+        }
+    }
+
+    #[test]
+    fn an_existing_profile_gets_no_picker() {
+        let _guard = crate::config::test_support::env_lock().lock().unwrap();
+        let prev = std::env::var_os(crate::config::CONFIG_DIR_ENV);
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::env::set_var(crate::config::CONFIG_DIR_ENV, tmp.path());
+        std::fs::write(tmp.path().join("settings.json"), "{}").unwrap();
+        assert!(first_run_dialog(&Arc::new(ThemeManager::new())).is_none());
         match prev {
             Some(v) => std::env::set_var(crate::config::CONFIG_DIR_ENV, v),
             None => std::env::remove_var(crate::config::CONFIG_DIR_ENV),

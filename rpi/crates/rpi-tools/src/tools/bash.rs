@@ -1,8 +1,11 @@
 //! Mirrors `packages/agent/src/harness/tools/bash.ts` — the built-in `bash`
 //! `AgentTool`. Drives `execute_shell_with_capture` with a 2-second checkpoint
-//! throttle, and converts ALL failures (non-zero exit, timeout, abort,
-//! executionError) into `Err(AgentError)` — the agent loop encodes those into an
-//! error `ToolResultMessage`.
+//! throttle. A non-zero exit code is a soft failure: the tool returns a result
+//! flagged `is_error` that keeps its `details` and its `structured_content`
+//! (mirrors TS `isError: true`). The hard failures (timeout, abort,
+//! executionError, a command killed without an exit code) still throw
+//! `Err(AgentError)` — the agent loop encodes those into an error
+//! `ToolResultMessage`.
 //!
 //! Throttle mirrors the TS `BASH_CHECKPOINT_INTERVAL_MS`: at most one
 //! checkpoint update per 2-second window; a final flush always follows capture
@@ -18,7 +21,7 @@ use async_trait::async_trait;
 use rpi_agent::agent_tool::AgentTool;
 use rpi_agent::error::AgentError;
 use rpi_agent::types::{AgentToolResult, TextContentOrImage, ToolResultPartial};
-use rpi_ai::types::{ConstrainedSamplingConfig, ConstrainedStrictness, Tool};
+use rpi_ai::types::{ConstrainedSamplingConfig, ConstrainedStrictness, Schema, Tool};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -30,10 +33,15 @@ use crate::shell_output::{
     execute_shell_with_capture, ShellCaptureOptions, ShellCaptureProgress, ShellCaptureResult,
 };
 use crate::tools::tool_context::ExecutionToolContext;
+use crate::tools::PromptContribution;
 use crate::truncate::{format_size, TruncationResult, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES};
 
 /// Throttle window for bash `on_update` flushes. Mirrors `BASH_UPDATE_THROTTLE_MS`.
 const BASH_UPDATE_THROTTLE_MS: u64 = 2_000;
+
+/// Output limit of `structured_content.output`, which programmatic callers
+/// receive. Mirrors TS `STRUCTURED_OUTPUT_MAX_BYTES`.
+const STRUCTURED_OUTPUT_MAX_BYTES: usize = 1024 * 1024;
 
 /// Input for the bash tool. Mirrors TS `BashToolInput`. `timeout` is in seconds.
 #[derive(Debug, Clone, JsonSchema, Deserialize)]
@@ -86,11 +94,35 @@ pub struct BashToolOptions {
 /// suffices — bash does not touch the mutation queue).
 pub struct BashTool {
     schema: Tool,
+    output_schema: Schema,
     env: Arc<dyn ExecutionEnv>,
     options: BashToolOptions,
+    prompt: PromptContribution,
 }
 
 impl BashTool {
+    /// The JSON Schema of the tool's `structured_content`. Mirrors TS
+    /// `bashOutputSchema`.
+    fn output_schema() -> Schema {
+        Schema::new(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "output": {
+                    "type": "string",
+                    "description": "Combined stdout and stderr, possibly truncated"
+                },
+                "truncated": { "type": "boolean" },
+                "full_output_path": {
+                    "type": "string",
+                    "description": "Full output, when truncated"
+                },
+                "exit_code": { "type": "number" },
+                "wall_time_seconds": { "type": "number" }
+            },
+            "required": ["output", "truncated", "exit_code", "wall_time_seconds"]
+        }))
+    }
+
     fn schema() -> Tool {
         let params = schemars::schema_for!(BashInput);
         Tool {
@@ -119,8 +151,13 @@ pub fn create_bash_tool(
 ) -> Arc<dyn AgentTool> {
     Arc::new(BashTool {
         schema: BashTool::schema(),
+        output_schema: BashTool::output_schema(),
         env: context.env().clone(),
         options: options.unwrap_or_default(),
+        prompt: PromptContribution::new(
+            "Execute bash commands (ls, grep, find, etc.)",
+            &["You can inspect PI_* environment variables for current model and session details."],
+        ),
     })
 }
 
@@ -131,6 +168,21 @@ impl AgentTool for BashTool {
     }
     fn label(&self) -> &str {
         "bash"
+    }
+
+    /// Mirrors TS `AgentTool.outputSchema` (`bashOutputSchema`).
+    fn output_schema(&self) -> Option<&Schema> {
+        Some(&self.output_schema)
+    }
+
+    /// Mirrors TS `AgentTool.promptSnippet`.
+    fn prompt_snippet(&self) -> Option<&str> {
+        Some(self.prompt.snippet)
+    }
+
+    /// Mirrors TS `AgentTool.promptGuidelines`.
+    fn prompt_guidelines(&self) -> Option<&[String]> {
+        Some(&self.prompt.guidelines)
     }
 
     async fn execute(
@@ -232,9 +284,11 @@ impl AgentTool for BashTool {
         };
 
         // execute_shell_with_capture wants `&Arc<dyn ExecutionEnv>`.
+        let started_at = Instant::now();
         let capture = execute_shell_with_capture(&env, &command, capture_opts)
             .await
             .map_err(exec_err_to_agent)?;
+        let wall_time_seconds = (started_at.elapsed().as_secs_f64() * 10.0).round() / 10.0;
 
         // Final flush + emit the terminal output via on_update.
         {
@@ -258,37 +312,61 @@ impl AgentTool for BashTool {
         let details_value = serde_json::to_value(details).unwrap_or(serde_json::Value::Null);
 
         // Resolution: cancelled → aborted; timeout → timeout; other exec error;
-        // non-zero exit → Tool error. All become Err(AgentError).
-        let append_status = |status: String| -> String {
-            if output_text.is_empty() {
-                status
+        // no exit code → terminated; a non-zero exit is a soft failure (the
+        // result keeps its details and is flagged `is_error`).
+        let append_status = |text: &str, status: &str| -> String {
+            if text.is_empty() {
+                status.to_string()
             } else {
-                format!("{output_text}\n\n{status}")
+                format!("{text}\n\n{status}")
             }
         };
         if capture.cancelled {
-            return Err(AgentError::Tool(append_status("Command aborted".into())));
+            return Err(AgentError::Tool(append_status(
+                &output_text,
+                "Command aborted",
+            )));
         }
         if let Some(ee) = &capture.execution_error {
             if ee.code == ExecutionErrorCode::Timeout {
-                // `timeout` is `Option<f64>` in seconds; `{timeout:?}` used to render
-                // `Some(2.0)`, so the message read "timed out after Some(2.0) seconds".
                 let limit = match timeout {
-                    Some(secs) => format!("after {secs}s"),
-                    None => "".to_string(),
+                    Some(secs) => format!("after {secs} seconds"),
+                    None => String::new(),
                 };
-                return Err(AgentError::Tool(append_status(format!(
-                    "Command timed out {limit}"
-                ))));
+                return Err(AgentError::Tool(append_status(
+                    &output_text,
+                    &format!("Command timed out {limit}"),
+                )));
             }
             return Err(AgentError::Tool(ee.to_string()));
         }
-        if let Some(code) = capture.exit_code {
-            if code != 0 {
-                return Err(AgentError::Tool(append_status(format!(
-                    "Command exited with code {code}"
-                ))));
-            }
+        let Some(exit_code) = capture.exit_code else {
+            return Err(AgentError::Tool(append_status(
+                &output_text,
+                "Command terminated without an exit code",
+            )));
+        };
+        let structured_content = build_structured_content(
+            &self.env,
+            &capture,
+            exit_code,
+            wall_time_seconds,
+        )
+        .await;
+        if exit_code != 0 {
+            let model_text = if output_text.is_empty() {
+                "(no output)".to_string()
+            } else {
+                output_text.clone()
+            };
+            let text = append_status(&model_text, &format!("Command exited with code {exit_code}"));
+            return Ok(AgentToolResult {
+                content: vec![TextContentOrImage::text(text)],
+                details: details_value,
+                structured_content: Some(structured_content),
+                is_error: true,
+                ..Default::default()
+            });
         }
         let text = if output_text.is_empty() {
             "(no output)".to_string()
@@ -298,6 +376,7 @@ impl AgentTool for BashTool {
         Ok(AgentToolResult {
             content: vec![TextContentOrImage::text(text)],
             details: details_value,
+            structured_content: Some(structured_content),
             ..Default::default()
         })
     }
@@ -400,6 +479,88 @@ fn build_bash_output(capture: &ShellCaptureResult) -> (String, BashToolDetails) 
         }
     };
     (output_text, details)
+}
+
+/// Build the machine-readable payload of a bash run. Mirrors TS
+/// `structuredContent` (`bashOutputSchema`).
+async fn build_structured_content(
+    env: &Arc<dyn ExecutionEnv>,
+    capture: &ShellCaptureResult,
+    exit_code: i32,
+    wall_time_seconds: f64,
+) -> serde_json::Value {
+    let (output, truncated) = full_output(env, capture).await;
+    let mut map = serde_json::Map::new();
+    map.insert("output".into(), serde_json::Value::String(output));
+    map.insert("truncated".into(), serde_json::Value::Bool(truncated));
+    if truncated {
+        if let Some(path) = &capture.full_output_path {
+            map.insert(
+                "full_output_path".into(),
+                serde_json::Value::String(path.to_string_lossy().into_owned()),
+            );
+        }
+    }
+    map.insert("exit_code".into(), serde_json::json!(exit_code));
+    map.insert(
+        "wall_time_seconds".into(),
+        serde_json::json!(wall_time_seconds),
+    );
+    serde_json::Value::Object(map)
+}
+
+/// The complete output of a run, capped at `STRUCTURED_OUTPUT_MAX_BYTES`.
+/// Mirrors TS `OutputAccumulator.readFullOutput`.
+async fn full_output(env: &Arc<dyn ExecutionEnv>, capture: &ShellCaptureResult) -> (String, bool) {
+    let content = match &capture.full_output_path {
+        Some(path) => env
+            .read_text_file(&path.to_string_lossy(), None)
+            .await
+            .unwrap_or_else(|_| capture.output.clone()),
+        None => capture.output.clone(),
+    };
+    cap_output(&content)
+}
+
+/// Cap the structured output, keeping the head and the tail around an omission
+/// marker. Mirrors TS `OutputAccumulator.readFullOutput`.
+fn cap_output(content: &str) -> (String, bool) {
+    if content.len() <= STRUCTURED_OUTPUT_MAX_BYTES {
+        return (content.to_string(), false);
+    }
+    let head_bytes = STRUCTURED_OUTPUT_MAX_BYTES / 2;
+    let tail_bytes = STRUCTURED_OUTPUT_MAX_BYTES - head_bytes;
+    let head_end = floor_char_boundary(content, head_bytes);
+    let tail_start = ceil_char_boundary(content, content.len() - tail_bytes);
+    let omitted = tail_start.saturating_sub(head_end);
+    let text = format!(
+        "{}\n\n[... {omitted} bytes omitted ...]\n\n{}",
+        &content[..head_end],
+        &content[tail_start..]
+    );
+    (text, true)
+}
+
+/// The largest index `<= idx` that is a char boundary.
+fn floor_char_boundary(text: &str, mut idx: usize) -> usize {
+    if idx >= text.len() {
+        return text.len();
+    }
+    while idx > 0 && !text.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    idx
+}
+
+/// The smallest index `>= idx` that is a char boundary.
+fn ceil_char_boundary(text: &str, mut idx: usize) -> usize {
+    if idx >= text.len() {
+        return text.len();
+    }
+    while idx < text.len() && !text.is_char_boundary(idx) {
+        idx += 1;
+    }
+    idx
 }
 
 /// Validate a timeout (seconds). Mirrors `validateTimeout`.

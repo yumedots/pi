@@ -495,6 +495,7 @@ mod tests {
             usage: None,
             added_tool_names: Vec::new(),
             is_error: false,
+            duration_ms: None,
             timestamp: 0,
         }
     }

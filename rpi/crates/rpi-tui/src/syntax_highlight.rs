@@ -17,6 +17,8 @@ use crate::theme::ThemeColors;
 pub struct Highlighter {
     in_block_comment: bool,
     profile: Profile,
+    /// The next identifier names a function (after `fn`, `def`, …).
+    expect_function_name: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -221,17 +223,24 @@ impl Highlighter {
         Self {
             in_block_comment: false,
             profile,
+            expect_function_name: false,
         }
     }
 
     /// Highlight one line, returning an ANSI-styled string. The caller is
     /// responsible for width computation on the *plain* text.
     pub fn highlight(&mut self, line: &str, colors: &ThemeColors) -> String {
-        let base = colors.md_code_block;
-        let comment = colors.muted;
-        let string = colors.success;
-        let number = colors.info;
-        let keyword = colors.accent;
+        // Pi paints an unsupported language in `mdCodeBlock`; a supported one
+        // leaves the unscoped text in the terminal's default foreground.
+        let base = if self.profile == Profile::Plain {
+            colors.md_code_block
+        } else {
+            crate::theme::Color::Default
+        };
+        let comment = colors.syntax_comment;
+        let string = colors.syntax_string;
+        let number = colors.syntax_number;
+        let keyword = colors.syntax_keyword;
 
         if self.profile == Profile::Plain {
             return base.fg(line);
@@ -368,6 +377,18 @@ impl Highlighter {
                 if keywords.contains(&word.as_str()) {
                     flush!();
                     out.push_str(&keyword.fg(&word));
+                    self.expect_function_name = matches!(
+                        word.as_str(),
+                        "fn" | "func" | "function" | "def" | "sub"
+                    );
+                    i = j;
+                    plain_start = i;
+                    continue;
+                }
+                if self.expect_function_name {
+                    flush!();
+                    out.push_str(&colors.syntax_function.fg(&word));
+                    self.expect_function_name = false;
                     i = j;
                     plain_start = i;
                     continue;

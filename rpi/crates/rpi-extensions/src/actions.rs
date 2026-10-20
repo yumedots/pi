@@ -496,6 +496,57 @@ pub trait RuntimeActionHost: Send + Sync {
     ) -> Result<serde_json::Value, String> {
         Err("session branch lookup is not configured".to_string())
     }
+
+    /// `GetEntries` — every session entry, oldest first.
+    async fn get_entries(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        Err("session entries lookup is not configured".to_string())
+    }
+
+    /// `GetAllTools` — every configured tool with its published metadata.
+    async fn get_all_tools(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        Err("tool listing is not configured".to_string())
+    }
+
+    /// `GetContextUsage` — the context usage of the active model.
+    async fn get_context_usage(
+        &self,
+        _args: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        Err("context usage lookup is not configured".to_string())
+    }
+
+    /// `GetModel` — the active model, as the published `Model` object.
+    async fn get_model(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        Err("model lookup is not configured".to_string())
+    }
+
+    /// `ListModels` — every model the session can use.
+    async fn list_models(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        Err("model listing is not configured".to_string())
+    }
+
+    /// `Abort` — stop the running agent.
+    async fn abort(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        Err("abort is not configured".to_string())
+    }
+
+    /// `Exec` — run a command and return its result.
+    async fn exec(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        Err("exec is not configured".to_string())
+    }
+
+    /// `WaitForIdle` — wait until the agent stops streaming.
+    async fn wait_for_idle(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        Ok(serde_json::Value::Null)
+    }
+
+    /// `GetSystemPromptOptions` — the base system-prompt construction options.
+    async fn get_system_prompt_options(
+        &self,
+        _args: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        Ok(serde_json::json!({}))
+    }
 }
 
 /// The host-side bridge carried in [`PluginApi::user_data`] so
@@ -740,6 +791,13 @@ impl ActionBridge {
     /// Clone the session mailbox for TUI attachment or a reload-created bridge.
     pub fn ui_dialog_mailbox(&self) -> UiDialogMailbox {
         self.ui_dialog.clone()
+    }
+
+    /// The host the bridge dispatches to. A second surface (the JavaScript
+    /// extension host) drives the same host, so both extension kinds act on
+    /// one session.
+    pub fn runtime_action_host(&self) -> Arc<dyn RuntimeActionHost> {
+        Arc::clone(&self.host)
     }
 
     /// Clone the session status registry (TUI rendering + reload-created bridges).

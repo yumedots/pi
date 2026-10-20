@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use rpi_agent::message::AgentMessage;
 use rpi_harness::error::SessionErrorCode;
-use rpi_harness::session::jsonl::{encode_mutation, JsonlSessionStorage, JsonlV4Header};
+use rpi_harness::session::jsonl::{encode_entry, JsonlSessionStorage, SessionFileHeader};
 use rpi_harness::session::memory::{CounterIdGenerator, FakeClock};
 use rpi_harness::session::types::{
     EntryOrder, EntryQuery, LaneRecord, OperationIntent, OperationStartedRecord, ProvisionedEntry,
@@ -27,8 +27,8 @@ fn user_msg(text: &str) -> AgentMessage {
     AgentMessage::User(rpi_ai::types::UserMessage::new(text, 1))
 }
 
-fn header() -> JsonlV4Header {
-    JsonlV4Header::new(
+fn header() -> SessionFileHeader {
+    SessionFileHeader::new(
         "sess-1".into(),
         1_700_000_000_000,
         "/cwd".into(),
@@ -62,12 +62,24 @@ async fn create_simple(fs: &Arc<dyn FileSystem>, path: &str) -> JsonlSessionStor
     .unwrap()
 }
 
-fn lane_mutation(seq: u64, lane: &str) -> SessionMutation {
-    SessionMutation::Lane {
-        seq,
-        lane: lane.to_string(),
-        leaf_id: None,
-    }
+fn entry_line(id: &str, parent: Option<&str>) -> String {
+    let entry = rpi_harness::session::types::Entry::Message(
+        rpi_harness::session::types::MessageEntry {
+            base: rpi_harness::session::types::EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                seq: 1,
+                parent_id: parent.map(String::from),
+                timestamp: 1_700_000_000_000,
+            },
+            message: rpi_agent::message::AgentMessage::User(rpi_ai::types::UserMessage::new(
+                "hello",
+                1_700_000_000_000,
+            )),
+            terminate: None,
+        },
+    );
+    rpi_harness::session::jsonl::encode_entry(&entry)
 }
 
 fn newest_first() -> EntryQuery {
@@ -100,7 +112,7 @@ async fn torn_tail_syntax_error_on_last_line_is_repaired() {
     let path = "/s.jsonl";
     let _ = create_simple(&fs, path).await;
     // Append a valid first mutation (seq=1) + a garbage partial last line.
-    let valid = encode_mutation(&lane_mutation(1, "main"));
+    let valid = entry_line("e1", None);
     fs.append_file(path, FileContent::Text(valid), None)
         .await
         .unwrap();
@@ -185,7 +197,7 @@ async fn syntax_error_on_non_last_line_is_hard_corruption() {
         .unwrap();
     fs.append_file(
         path,
-        FileContent::Text(encode_mutation(&lane_mutation(1, "main"))),
+        FileContent::Text(entry_line("e1", None)),
         None,
     )
     .await
@@ -216,7 +228,7 @@ async fn schema_error_on_non_last_line_is_hard_corruption() {
     .unwrap();
     fs.append_file(
         path,
-        FileContent::Text(encode_mutation(&lane_mutation(2, "main"))),
+        FileContent::Text(entry_line("e2", Some("e1"))),
         None,
     )
     .await

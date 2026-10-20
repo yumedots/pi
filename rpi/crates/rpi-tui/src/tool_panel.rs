@@ -13,17 +13,33 @@ pub(crate) struct ToolPanel {
 
 impl ToolPanel {
     pub(crate) fn new(width: usize, spacing: ThemeSpacing, background: Color) -> Option<Self> {
+        Self::with_padding(
+            width,
+            spacing.tool_panel_padding_x,
+            spacing.tool_panel_padding_y,
+            background,
+        )
+    }
+
+    /// A panel with an explicit inset, for the tools that draw themselves
+    /// with upstream's own padding.
+    pub(crate) fn with_padding(
+        width: usize,
+        padding_x: usize,
+        padding_y: usize,
+        background: Color,
+    ) -> Option<Self> {
         if width == 0 {
             return None;
         }
         // Preserve one content column, even with large insets on narrow terminals.
-        let padding_x = spacing.tool_panel_padding_x.min((width - 1) / 2);
+        let padding_x = padding_x.min((width - 1) / 2);
         Some(Self {
             width,
             padding: " ".repeat(padding_x),
             background,
             content_width: width - padding_x * 2,
-            padding_y: spacing.tool_panel_padding_y,
+            padding_y,
         })
     }
 

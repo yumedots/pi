@@ -35,6 +35,8 @@ mod commands;
 use commands::*;
 mod settings;
 use settings::*;
+mod settings_menu;
+use settings_menu::*;
 mod sessions;
 use sessions::*;
 mod run;
@@ -43,12 +45,24 @@ mod events;
 use events::*;
 mod selectors;
 use selectors::*;
+mod selector_keys;
+use selector_keys::*;
 mod autocomplete;
 use autocomplete::*;
+mod skill_autocomplete;
+use skill_autocomplete::*;
+mod config_selector;
+use config_selector::*;
+mod radius_login;
+use radius_login::*;
+mod session_search;
+use session_search::*;
 mod rendering;
 use rendering::*;
+mod empty_session;
 mod panels;
 mod pet;
+mod progress;
 mod side_questions;
 
 #[cfg(test)]
@@ -60,7 +74,7 @@ use state::*;
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use base64::Engine;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -77,16 +91,17 @@ use rpi_tui::strip_ansi;
 use rpi_tui::{
     apply_theme_preset, AltScreenSearch, AssistantBlock, AssistantMessageComponent,
     AssistantMessageOptions, AutocompleteManager, AutocompleteSuggestions, BashExecutionComponent,
-    BashTruncation, CombinedAutocompleteProvider, Component, Container, DynamicBorder, Editor,
-    EditorOptions, EditorStyle, FilePathAutocompleteProvider, Focusable, FollowMode,
-    FooterComponent, Image, ImageOptions, Input, Loader, Markdown, ProcessTerminal, ScrollView,
-    ScrollViewOptions, SearchBar, SearchableSelectList, SelectItem, SelectList, SettingItem,
-    SettingsList, SlashCommand as SlashCommandEntry, SlashCommandAutocompleteProvider, Spacer,
-    StackChild, StackEntry, StatusIndicator, Text, ThemeManager, ThemePreset,
-    ToolExecutionComponent, ToolStatus, TuiAltScreen, UserMessageComponent, VStack, WorkingState,
-    TUI,
+    BashTruncation, Centered, CombinedAutocompleteProvider, Component, Container, DynamicBorder,
+    Editor, EditorOptions, EditorStyle, EmptySessionScreen, FilePathAutocompleteProvider, Focusable,
+    FollowMode, FooterComponent, FirstRunDialog, Image, ImageOptions, Input, Loader, Markdown, ProcessTerminal,
+    ScrollView, ScrollViewOptions, SearchBar, SearchableSelectList, SelectItem, SelectList,
+    SettingItem, SettingsList, SlashCommand as SlashCommandEntry,
+    SlashCommandAutocompleteProvider, Spacer, StackChild, StackEntry, StatusIndicator, Text,
+    ThemeManager, ThemePreset, ToolExecutionComponent, ToolStatus, TuiAltScreen,
+    UserMessageComponent, VStack, WorkingState, EMPTY_SESSION_EDITOR_WIDTH, TUI,
 };
-use rpi_tui::{bold as tui_bold, theme as current_theme};
+use rpi_tui::bold as tui_bold;
+use rpi_tui::theme as current_theme;
 
 #[allow(unused_imports)]
 use rpi_tui::BashStatus;
@@ -262,8 +277,6 @@ struct CommandContext {
     cwd: std::path::PathBuf,
     /// Loaded resources for /context; refreshed after successful /reload.
     resources: Arc<Mutex<rpi_harness::types::AgentHarnessResources>>,
-    /// Context file section retained in the startup header, if visible.
-    startup_context: Option<Arc<Container>>,
     /// B5d: the reload context `/reload` drives. `Arc<ReloadContext>` so the
     /// blocking submit thread can cheaply clone it into the `ReloadCommand`
     /// without an `.await` (the command can't drive reload directly — it signals
@@ -301,6 +314,11 @@ trait SlashCommand: Send + Sync {
     /// required to surface in autocomplete even when `visible()` is true.
     fn description(&self) -> &'static str {
         ""
+    }
+    /// Argument hint shown in the autocomplete row, e.g. "<provider/model>".
+    /// The row renders "<hint> — <description>" when this is set.
+    fn argument_hint(&self) -> Option<&'static str> {
+        None
     }
     fn description_owned(&self) -> String {
         self.description().to_string()
@@ -347,6 +365,12 @@ impl CommandRegistry {
         let mut out: Vec<SlashCommandEntry> = Vec::new();
         for c in &self.commands {
             let description = c.description_owned();
+            // The original's row shows the argument hint in front of the
+            // description: `<hint> — <description>`.
+            let description = match c.argument_hint() {
+                Some(hint) if !description.is_empty() => format!("{hint} — {description}"),
+                _ => description,
+            };
             if c.visible() && !description.is_empty() {
                 out.push(SlashCommandEntry {
                     name: c.name().into(),
@@ -504,6 +528,31 @@ fn dispatch_key_event(state: &TuiState, key: &KeyEvent, editor: &Editor) -> bool
     claimed
 }
 
+/// The autocomplete description of a prompt template.
+///
+/// Mirrors the original's rendering (`packages/tui/src/autocomplete.ts:355`):
+/// the argument hint comes first, separated by an em dash, and the description
+/// follows. A template with no description shows only the hint.
+fn template_autocomplete_description(template: &rpi_harness::types::PromptTemplate) -> String {
+    let description = template
+        .description
+        .clone()
+        .unwrap_or_else(|| "Expand prompt template".to_string());
+    match template.argument_hint.as_deref() {
+        Some(hint) if !hint.is_empty() => {
+            if description.is_empty() {
+                hint.to_string()
+            } else {
+                format!("{hint} — {description}")
+            }
+        }
+        _ => description,
+    }
+}
+
+/// Aliases the original rewrites only when the input is the bare command name.
+const BARE_ALIASES: &[&str] = &["/history", "/sessions"];
+
 /// Resolve a command for a `/`-prefixed input and run it when one matches.
 ///
 /// Unknown slash-prefixed input is deliberately left for the normal prompt
@@ -515,6 +564,11 @@ fn dispatch_slash(text: &str, ctx: &CommandContext, registry: &CommandRegistry) 
     let mut parts = text.split_whitespace();
     let token = parts.next().unwrap_or("");
     let args = parts.collect::<Vec<_>>().join(" ");
+    // The original rewrites a bare alias only: `/history some text` is not an
+    // alias invocation and stays a message.
+    if !args.is_empty() && BARE_ALIASES.contains(&token) {
+        return false;
+    }
     match registry.find(token) {
         Some(cmd) => {
             cmd.execute(ctx, &args);
@@ -561,6 +615,15 @@ fn parse_user_bash(text: &str) -> Option<(&str, bool)> {
 /// `bashExecution` message (skipped from context for `!!`). Mirrors
 /// `handleBashCommand` (`interactive-mode.ts:6729`).
 fn start_user_bash(ctx: &CommandContext, command: &str, exclude_from_context: bool) {
+    rpi_extensions::emit_event(
+        "user_bash",
+        &serde_json::json!({
+            "type": "user_bash",
+            "command": command,
+            "excludeFromContext": exclude_from_context,
+            "cwd": ctx.cwd.to_string_lossy(),
+        }),
+    );
     let comp = Arc::new(BashExecutionComponent::new_with_context(
         command,
         exclude_from_context,
@@ -681,6 +744,12 @@ enum TuiMessage {
     ExportSessionWithFormat(crate::export::ExportFormat),
     /// Show live usage/context stats (from `/usage` and `/context`).
     ShowUsage,
+    /// Browse and run a skill (from `/skills`).
+    ShowSkills,
+    /// Report a bug to the original's developers (from `/bug <description>`).
+    ReportBug(String),
+    /// Show the session info and stats (from `/stats`).
+    ShowStats,
     /// Fork the current session into a new one and switch to it (from `/fork`).
     ForkSession,
     /// Rename the current session (from `/name <name>`).
@@ -791,12 +860,20 @@ struct TuiStartupSettings {
     editor_padding_x: usize,
     autocomplete_max_visible: usize,
     hide_thinking: bool,
+    /// Show Nerd Font glyphs in front of the footer groups.
+    nerd_fonts: bool,
     quiet_startup: bool,
     show_terminal_progress: bool,
     /// Render images inline (`terminal.showImages` / flat `showImages`).
     show_images: bool,
     /// Transcript notices for prompt-cache costs (`showCacheMissNotices`).
     cache_miss_notices: bool,
+    /// Show the empty-session screen while the session has no messages
+    /// (`threeDEmptySession`).
+    three_d_empty_session: bool,
+    /// The terminal buffer the TUI draws into (`tuiMode`). The original
+    /// defaults to fullscreen on every platform.
+    tui_mode: crate::args::TuiMode,
 }
 
 fn preferred_project_setting<T>(
@@ -804,6 +881,86 @@ fn preferred_project_setting<T>(
     field: impl Fn(&crate::settings::Settings) -> Option<T>,
 ) -> Option<T> {
     project_settings.iter().find_map(field)
+}
+
+/// Repaint interval of the spinning logo on the empty-session screen
+/// (upstream's `FRAME_MS`, `easter-egg-3d.ts:221`).
+const LOGO_FRAME_MS: u64 = 1000 / 30;
+
+/// The empty-session screen and the layout root it replaces.
+///
+/// Upstream shows the screen while the session has no messages
+/// (`interactive-mode.ts:922-924`) and takes the pane back as soon as the
+/// session has content.
+/// The normal layout root (the transcript and the dock), so a selector can
+/// take the pane from the 3-D empty-session screen.
+static NORMAL_ROOT: LazyLock<Mutex<Option<Arc<dyn Component>>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+/// Whether the 3-D empty-session screen owns the pane.
+static EMPTY_SESSION_ACTIVE: LazyLock<std::sync::atomic::AtomicBool> =
+    LazyLock::new(|| std::sync::atomic::AtomicBool::new(false));
+
+#[derive(Clone)]
+struct EmptySession {
+    /// The screen, when the setting is on.
+    screen: Option<Arc<dyn Component>>,
+    /// The normal layout root (transcript + dock).
+    normal_root: Arc<dyn Component>,
+    /// Whether the screen is up.
+    active: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl EmptySession {
+    /// Show the screen. A no-op when the setting is off.
+    fn activate(&self, tui: &Arc<TuiAltScreen>) {
+        let Some(screen) = self.screen.clone() else {
+            return;
+        };
+        if !self.active.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            tui.set_layout_root(Some(screen));
+            EMPTY_SESSION_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+            spawn_logo_animation(tui.clone(), self.active.clone());
+        }
+    }
+
+    /// Give the pane back to the transcript.
+    fn deactivate(&self, tui: &Arc<TuiAltScreen>) {
+        if self.active.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            EMPTY_SESSION_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+            tui.set_layout_root(Some(self.normal_root.clone()));
+        }
+    }
+}
+
+/// The logo spins while the screen is up: upstream's `PiLogo3d.setActive`
+/// repaints on a timer (`easter-egg-3d.ts:1332-1341`).
+fn spawn_logo_animation(tui: Arc<TuiAltScreen>, active: Arc<std::sync::atomic::AtomicBool>) {
+    tokio::spawn(async move {
+        while active.load(std::sync::atomic::Ordering::SeqCst) {
+            tokio::time::sleep(std::time::Duration::from_millis(LOGO_FRAME_MS)).await;
+            if !active.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+            tui.request_render(false);
+        }
+    });
+}
+
+/// Whether the session already holds a message.
+async fn session_has_messages(harness: &AgentHarness) -> bool {
+    harness
+        .session()
+        .find_entry_on_branch(
+            &EntryQuery {
+                entry_type: Some("message"),
+                ..Default::default()
+            },
+            &Default::default(),
+        )
+        .await
+        .map(|entry| entry.is_some())
+        .unwrap_or(false)
 }
 
 fn should_show_startup_listing(verbose: bool, quiet_startup: bool) -> bool {
@@ -825,7 +982,7 @@ fn resolve_tui_startup_settings(
     let editor_padding_x =
         preferred_project_setting(project_settings, |settings| settings.editor_padding_x)
             .or(global.editor_padding_x)
-            .unwrap_or(1)
+            .unwrap_or(0)
             .min(16);
     let autocomplete_max_visible = preferred_project_setting(project_settings, |settings| {
         settings.autocomplete_max_visible
@@ -836,10 +993,14 @@ fn resolve_tui_startup_settings(
     let hide_thinking =
         preferred_project_setting(project_settings, |settings| settings.hide_thinking_block)
             .or(global.hide_thinking_block)
-            .unwrap_or(false);
+            .unwrap_or(true);
+    let nerd_fonts = preferred_project_setting(project_settings, |settings| settings.nerd_fonts)
+        .or(global.nerd_fonts)
+        .unwrap_or(false);
     let quiet_startup =
-        preferred_project_setting(project_settings, |settings| settings.quiet_startup)
-            .or(global.quiet_startup)
+        preferred_project_setting(project_settings, |settings| settings.quiet_startup.clone())
+            .or(global.quiet_startup.clone())
+            .map(|mode| mode == "true")
             .unwrap_or(false);
     let show_terminal_progress = preferred_project_setting(project_settings, |settings| {
         settings.show_terminal_progress()
@@ -855,15 +1016,35 @@ fn resolve_tui_startup_settings(
     })
     .or(global.show_cache_miss_notices)
     .unwrap_or(false);
+    let three_d_empty_session = preferred_project_setting(project_settings, |settings| {
+        settings.three_d_empty_session
+    })
+    .or(global.three_d_empty_session)
+    .unwrap_or(false);
+    let tui_mode = preferred_project_setting(project_settings, |settings| {
+        settings.tui_mode.clone()
+    })
+    .or(global.tui_mode.clone())
+    .map(|mode| {
+        if mode.eq_ignore_ascii_case("regular") {
+            crate::args::TuiMode::Regular
+        } else {
+            crate::args::TuiMode::Fullscreen
+        }
+    })
+    .unwrap_or(crate::args::TuiMode::Fullscreen);
 
     TuiStartupSettings {
         editor_padding_x,
         autocomplete_max_visible,
         hide_thinking,
+        nerd_fonts,
         quiet_startup,
         show_terminal_progress,
         show_images,
         cache_miss_notices,
+        three_d_empty_session,
+        tui_mode,
     }
 }
 
@@ -909,10 +1090,19 @@ pub async fn interactive_tui(
     let editor_padding_x = tui_settings.editor_padding_x;
     let autocomplete_max_visible = tui_settings.autocomplete_max_visible;
     let mut hide_thinking = tui_settings.hide_thinking;
+    let nerd_fonts = tui_settings.nerd_fonts;
     let show_terminal_progress = tui_settings.show_terminal_progress;
     let show_images = tui_settings.show_images;
     let cache_miss_notices = tui_settings.cache_miss_notices;
     let quiet_startup = tui_settings.quiet_startup;
+    let three_d_empty_session = tui_settings.three_d_empty_session && !args.skip_3d;
+    // An explicit `--tui-mode` flag wins over the `tuiMode` setting; without
+    // it the setting decides, and the default is fullscreen everywhere.
+    let tui_mode = if args.tui_mode_set {
+        args.tui_mode
+    } else {
+        tui_settings.tui_mode
+    };
     // rpi only checks its own update channel.
     // Session display preferences (durable, latest-wins) override the
     // settings-file defaults. These are per-session facts stored as custom
@@ -929,42 +1119,47 @@ pub async fn interactive_tui(
 
     // Resolve the active model once, up front. The full id feeds the TuiState
     // tracking field + the selectors/key loop (which run on a blocking thread
-    // and can't await `lane.get_model()`); the provider-qualified label feeds
-    // the footer, matching Pi's `(provider) model` display.
+    // and can't await `lane.get_model()`); the provider + model id feed the
+    // footer, which renders them as `provider/model` (pi's footer group).
     let lane_model = lane.get_model().await.ok();
     let lane_model_id = lane_model
         .as_ref()
         .map(|model| model.id.clone())
         .unwrap_or_default();
-    let model_name = lane_model
+    // A session without an authenticated model has no model in the footer:
+    // pi shows `no-model`, no provider and no thinking group.
+    let has_model = lane_model
         .as_ref()
-        .map(|model| format!("({}) {}", model.provider, short_model_name(&model.id)))
-        .unwrap_or_else(|| short_model_name(&lane_model_id));
+        .is_some_and(|model| model.id != crate::provider::NO_MODEL_ID);
+    let model_id = if has_model {
+        lane_model
+            .as_ref()
+            .map(|model| short_model_name(&model.id))
+            .unwrap_or_else(|| short_model_name(&lane_model_id))
+    } else {
+        crate::provider::NO_MODEL_ID.to_string()
+    };
+    let model_provider = if has_model {
+        lane_model.as_ref().map(|model| model.provider.clone())
+    } else {
+        None
+    };
+    let model_reasoning = has_model
+        && lane_model.as_ref().map(|model| model.reasoning).unwrap_or(false);
+    // A subscription-backed provider shows the `(sub)` marker next to the cost
+    // (pi's `isUsingSubscription`: an OAuth-backed provider, plus kimi-coding).
+    let using_subscription = model_provider.as_deref().is_some_and(|provider| {
+        provider == "kimi-coding"
+            || crate::config::read_oauth_token(provider)
+                .ok()
+                .flatten()
+                .is_some()
+    });
 
-    // Snapshot startup capabilities for the welcome screen. Both accessors
-    // return defensive clones, so rendering this summary does not retain a
+    // Snapshot the resources for the slash-command templates and the /context
+    // panel. The accessor returns a defensive clone, so this does not retain a
     // harness lock or trigger a second resource scan.
-    let mut active_tool_names = lane.get_active_tools().await.unwrap_or_default();
-    // AgentHarness uses an empty active-name list as the default "all tools"
-    // state. Do not expose that implementation sentinel as `Tools (0) none`
-    // in the welcome banner (it is especially visible on the first prompt).
-    if active_tool_names.is_empty() {
-        active_tool_names = harness
-            .get_tools()
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|tool| tool.tool.schema().name.clone())
-            .collect();
-    }
     let resources_snapshot = harness.get_resources().await.unwrap_or_default();
-    let skill_names: Vec<String> = resources_snapshot
-        .skills
-        .as_deref()
-        .unwrap_or(&[])
-        .iter()
-        .map(|skill| skill.name.clone())
-        .collect();
 
     // Channel between the key/callback threads and the main async loop.
     let (tx, mut rx) = mpsc::unbounded_channel::<TuiMessage>();
@@ -986,34 +1181,45 @@ pub async fn interactive_tui(
     // ---- TUI + containers ----
     let terminal = Box::new(ProcessTerminal::new());
     let tui = Arc::new(TuiAltScreen::new(terminal, true, None));
+    // The alternate screen owns the mouse selection, so it copies through the
+    // system clipboard instead of an OSC 52 write the terminal may drop.
+    tui.set_copy_selection(Arc::new(|text: &str| {
+        crate::interactive_tui::run::copy_to_clipboard(text)
+    }));
+    tui.set_copy_on_select(
+        crate::settings::load_settings()
+            .ok()
+            .and_then(|settings| settings.fullscreen_copy_on_select)
+            .unwrap_or(true),
+    );
     // Plugin `ask_user` prompts (runtime action 17). Attaching marks this
     // session as interactive so a detached/headless host fails loudly instead
     // of returning a fabricated answer. The mailbox is session-scoped (held in
     // `ReloadContext`) so in-flight prompts survive a `/reload`.
     let ask_user_bridge = AskUserBridge::new(reload_context.ui_dialog.clone());
     ask_user_bridge.attach();
-    tui.set_main_screen_mode(matches!(args.tui_mode, crate::args::TuiMode::Regular));
+    tui.set_main_screen_mode(matches!(tui_mode, crate::args::TuiMode::Regular));
+    // pi sets the window title once, before the first render
+    // (`interactive-mode.ts:1232-1236`).
+    let session_name = harness.session().get_name().await.ok().flatten();
+    tui.set_title(&crate::window_title::window_title(session_name.as_deref(), &cwd));
+    // The progress hairline is gated by `terminal.showTerminalProgress`.
+    progress::set_progress_enabled(show_terminal_progress);
 
     let chat_container = Arc::new(Container::new());
-    let startup_context = if should_show_startup_listing(args.verbose, quiet_startup) {
-        Some(add_welcome_message_with_capabilities(
-            &chat_container,
-            &active_tool_names,
-            &skill_names,
-            &resources_snapshot.context_files,
-        ))
-    } else {
-        None
-    };
+    // First-launch gate: the original asks for a theme on a fresh install and
+    // never again. The picker owns the pane until it is confirmed or skipped.
+    // See `extras.rs`.
+    let first_run: Arc<std::sync::Mutex<Option<Arc<FirstRunDialog>>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    if let Some(dialog) = crate::extras::first_run_dialog(&theme_manager) {
+        *first_run.lock().unwrap() = Some(dialog);
+    }
+    if should_show_startup_listing(args.verbose, quiet_startup) {
+        add_welcome_message(&chat_container);
+    }
+    add_tmux_warning(&chat_container);
 
-    // First-launch gate: if `~/.rpi/.setup_done` is absent, show the welcome
-    // banner once, then write the sentinel. The banner covers the theme hint;
-    // the theme stays pickable via `/theme`. See `extras.rs`.
-    // Capture this before first-time setup writes its sentinel.
-    let existing_profile = crate::extras::setup_done()
-        || saved_settings.last_changelog_version.is_some()
-        || saved_settings.last_rpi_changelog_version.is_some();
-    crate::extras::maybe_first_time_setup(&chat_container);
     let collapse_changelog =
         preferred_project_setting(&project_settings, |settings| settings.collapse_changelog)
             .or(saved_settings.collapse_changelog)
@@ -1023,7 +1229,6 @@ pub async fn interactive_tui(
         &chat_container,
         &saved_settings,
         collapse_changelog,
-        existing_profile,
     )
     .await;
 
@@ -1055,6 +1260,10 @@ pub async fn interactive_tui(
     // `document_container` wraps the welcome header + chat so the scrollview
     // follows the whole transcript (mirrors TS `documentContainer`).
     let document_container = Arc::new(Container::new());
+    // The header slot an extension replaces with its own component (upstream's
+    // `headerContainer`).
+    let header_container = Arc::new(Container::new());
+    document_container.add_child(header_container.clone());
     document_container.add_child(chat_container.clone());
     // Add bottom padding to the output area for visual breathing room.
     document_container.add_child(Arc::new(Spacer::new(1)));
@@ -1087,41 +1296,31 @@ pub async fn interactive_tui(
         EditorOptions {
             padding_x: editor_padding_x,
             autocomplete_max_visible,
+            max_content_height: Some(12),
+            show_scroll_hints: false,
             ..Default::default()
         },
         EditorStyle::default(),
         keybindings.clone(),
     ));
 
-    // Bash-mode border: a `!`-prefixed draft recolors the editor border to the
-    // bash accent (upstream's `updateEditorBorderColor` / `isBashMode`). The
-    // editor fires `on_change` for keystrokes and for programmatic
-    // `clear`/`set_text`, so the color also resets after a `!command` submits.
-    {
-        let editor_for_change = editor.clone();
-        editor.on_change(Arc::new(move |text: &str| {
-            let colors = current_theme().colors;
-            let is_bash = text.trim_start().starts_with('!');
-            editor_for_change.set_border_color(if is_bash {
-                Some(colors.bash_mode)
-            } else {
-                None
-            });
-        }));
-    }
-
     // ---- Footer + status ----
     let footer = Arc::new(FooterComponent::new());
-    footer.set_model(&model_name);
-    if let Ok(level) = lane.get_thinking_level().await {
-        footer.set_thinking_level(Some(thinking_level_name(level)));
+    footer.set_model(&model_id);
+    footer.set_provider(model_provider.as_deref());
+    footer.set_model_reasoning(model_reasoning);
+    if has_model {
+        if let Ok(level) = lane.get_thinking_level().await {
+            footer.set_thinking_level(Some(thinking_level_name(level)));
+        }
     }
     footer.set_cwd(&cwd.to_string_lossy());
     footer.set_git_branch(git_branch_for(&cwd).as_deref());
     if let Some(m) = model_catalog.iter().find(|m| m.id == lane_model_id) {
         footer.set_context_window(m.context_window as i64);
     }
-    footer.set_hints("Enter: Send | Shift+Enter: New line | Ctrl+C: Clear/Exit | Esc: Abort | Ctrl+L: Model | Ctrl+P: Cycle | Ctrl+O: Expand/collapse tools | Ctrl+T: Show/hide thinking | /help");
+    footer.set_using_subscription(using_subscription);
+    footer.set_nerd_fonts(nerd_fonts);
 
     // Live git-branch refresh (native fs-watch on `.git/HEAD`): a checkout or
     // commit updates the footer's branch without a manual refresh.
@@ -1135,6 +1334,103 @@ pub async fn interactive_tui(
 
     let status_container = Arc::new(Container::new());
     let loader = Arc::new(Loader::with_text("Working…"));
+
+    // The widget slots above and below the editor (upstream's
+    // `widgetContainerAbove` / `widgetContainerBelow`).
+    let widget_above = Arc::new(Container::new());
+    let widget_below = Arc::new(Container::new());
+
+    // The JavaScript extensions the user named: a `--extension`/`-e` path that
+    // is a TypeScript file, and the `--extensions-dir` directories.
+    let js_extension_args: Vec<std::path::PathBuf> = args
+        .extension
+        .iter()
+        .chain(args.extensions_dir.iter())
+        .filter(|path| path.is_dir() || crate::js_extensions::is_javascript_extension(path))
+        .cloned()
+        .collect();
+
+    // ---- JavaScript extensions ----
+    //
+    // pi's TypeScript extensions live next to the session: the project's
+    // `.pi/extensions`, the agent directory's `extensions`, and whatever the
+    // user named with `--extension`. They load into the embedded V8 and reach
+    // the screen through the widget slots and the status line.
+    let js_agent_dir = crate::config::agent_dir().unwrap_or_else(|_| cwd.clone());
+    let js_extension_paths = crate::js_extensions::discover_extension_paths(
+        &cwd,
+        &js_agent_dir,
+        &js_extension_args,
+    );
+    let js_extensions = if js_extension_paths.is_empty() {
+        None
+    } else {
+        let extensions = crate::js_extensions::JsExtensions::new();
+        extensions.set_chat(chat_container.clone());
+        extensions.set_widget_slots(widget_above.clone(), widget_below.clone());
+        extensions.set_render_hook(Arc::new({
+            let tui = tui.clone();
+            move || tui.request_render(false)
+        }));
+        // The host answers the session questions from the same session the
+        // native plugins drive: the harness-backed actions, the editor, the
+        // chrome hooks and the session's identity.
+        let session = crate::js_extensions::JsSession {
+            actions: reload_context
+                .action_bridge
+                .lock()
+                .ok()
+                .and_then(|slot| slot.as_ref().map(|bridge| bridge.runtime_action_host())),
+            ui_dialog: Some(reload_context.ui_dialog.clone()),
+            editor_text: Some(reload_context.editor_text.clone()),
+            runtime: Some(reload_context.runtime.clone()),
+            editor: Some(editor.clone()),
+            set_title: Some(Arc::new({
+                let tui = tui.clone();
+                move |title: &str| {
+                    tui.set_title(title);
+                }
+            })),
+            set_working: Some(Arc::new({
+                let editor = editor.clone();
+                move |message: Option<String>| {
+                    match message {
+                        Some(text) => editor.set_working(Some(rpi_tui::WorkingState {
+                            frame: 0,
+                            started_at: std::time::Instant::now(),
+                            message: text,
+                        })),
+                        None => editor.set_working(None),
+                    }
+                }
+            })),
+            project_trusted: std::sync::atomic::AtomicBool::new(reload_context.project_trusted),
+            ..Default::default()
+        };
+        let session = Arc::new(session);
+        extensions.set_session(Arc::clone(&session));
+        // Every pi event the host publishes reaches the extensions through one
+        // sink, so the provider hooks (which live in the extension crate) and
+        // the agent events (which the harness emits) arrive the same way.
+        let sink = crate::js_emitter::JsEventSink::new();
+        sink.set_extensions(extensions.clone());
+        rpi_extensions::install_event_sink(sink);
+        for path in &js_extension_paths {
+            if let Err(error) = extensions.load(path) {
+                add_note_message(
+                    &chat_container,
+                    &format!("Extension \"{}\" error: {error}", path.display()),
+                );
+            }
+        }
+        if let Err(error) = extensions.dispatch(
+            "session_start",
+            serde_json::json!({ "type": "session_start", "reason": "startup" }),
+        ) {
+            add_note_message(&chat_container, &format!("Extension error: {error}"));
+        }
+        Some(extensions)
+    };
 
     // ---- Autocomplete (slash commands + @file paths, rooted at cwd) ----
     // Prompt templates discovered at session build (Part A2) are surfaced as
@@ -1154,10 +1450,7 @@ pub async fn interactive_tui(
         .iter()
         .map(|t| SlashCommandEntry {
             name: format!("/{}", t.name),
-            description: t
-                .description
-                .clone()
-                .unwrap_or_else(|| "Expand prompt template".to_string()),
+            description: template_autocomplete_description(t),
         })
         .collect();
     let resources_arc = Arc::new(Mutex::new(resources_snapshot));
@@ -1171,14 +1464,36 @@ pub async fn interactive_tui(
         &mut command_registry,
         reload_context.extension_session.clone(),
     );
+    if let Some(extensions) = js_extensions.clone() {
+        register_js_extension_commands(&mut command_registry, extensions);
+    }
     let registry = Arc::new(command_registry);
     let mut all_slash_commands = registry.visible_entries();
     all_slash_commands.extend(template_slash_commands);
+    let skill_mentions = resources_arc
+        .lock()
+        .unwrap()
+        .skills
+        .clone()
+        .unwrap_or_default();
+    // The original registers every loaded skill as a slash command named
+    // `skill:<name>` with the skill's description
+    // (`packages/coding-agent/src/core/agent-session.ts:3443`).
+    let skill_slash_commands: Vec<SlashCommandEntry> = skill_mentions
+        .iter()
+        .map(|skill| SlashCommandEntry {
+            name: format!("/skill:{}", skill.name),
+            description: skill.description.clone(),
+        })
+        .collect();
     let autocomplete = AutocompleteManager::new();
     {
         let mut combined = CombinedAutocompleteProvider::new();
         combined.add_provider(Arc::new(SlashCommandAutocompleteProvider::new(
             all_slash_commands,
+        )));
+        combined.add_provider(Arc::new(SkillMentionAutocompleteProvider::new(
+            skill_mentions,
         )));
         combined.add_provider(Arc::new(FilePathAutocompleteProvider::with_root(
             cwd.clone(),
@@ -1210,6 +1525,10 @@ pub async fn interactive_tui(
         footer: footer.clone(),
         status_container: status_container.clone(),
         chat_container: chat_container.clone(),
+        warning_container: Arc::new(Container::new()),
+        warning_message: std::sync::Mutex::new(String::new()),
+        session_menu: std::sync::Mutex::new(SessionMenuState::default()),
+        tree_menu: std::sync::Mutex::new(TreeMenuState::default()),
         loader: loader.clone(),
         editor: editor.clone(),
         last_assistant_text: std::sync::Mutex::new(String::new()),
@@ -1240,6 +1559,8 @@ pub async fn interactive_tui(
         markdown_transformer: Arc::new(std::sync::Mutex::new(initial_transformer)),
         extension_claimed_keys: Mutex::new(Default::default()),
         extension_session: reload_context.extension_session.clone(),
+        js_extensions: js_extensions.clone(),
+        turn_index: std::sync::atomic::AtomicUsize::new(0),
         search: Arc::new(AltScreenSearch::new()),
         search_bar: Arc::new(SearchBar::new()),
         pending_container: Arc::new(Container::new()),
@@ -1301,11 +1622,13 @@ pub async fn interactive_tui(
     let dock = Arc::new(VStack::from_children(vec![
         StackChild::Entry(StackEntry::new(Arc::new(panels::RegularPanels {
             mailbox: reload_context.ext_status.clone(),
-            enabled: matches!(args.tui_mode, crate::args::TuiMode::Regular),
+            enabled: matches!(tui_mode, crate::args::TuiMode::Regular),
         }))),
         StackChild::Entry(StackEntry::new(state.pending_container().clone())),
+        StackChild::Entry(StackEntry::new(state.warning_container.clone())),
         StackChild::Entry(StackEntry::new(status_container.clone())),
         StackChild::Entry(StackEntry::new(autocomplete_container.clone())),
+        StackChild::Entry(StackEntry::new(widget_above.clone())),
         // NOTE: no Spacer here. The scroll content already ends with a blank line
         // (`document_container`), and a second one in the dock stacked into a
         // two-row gap between the last message and the input box. One row of
@@ -1313,9 +1636,10 @@ pub async fn interactive_tui(
         // own padding so a long message never touches the editor border.
         StackChild::Entry(
             StackEntry::new(editor_container.clone())
-                .shrink(0)
+                .shrink(1)
                 .min_size(3),
         ),
+        StackChild::Entry(StackEntry::new(widget_below.clone())),
         StackChild::Entry(StackEntry::new(state.search_bar.clone())),
         StackChild::Entry(StackEntry::new(footer.clone())),
         StackChild::Entry(StackEntry::new(Arc::new(panels::FooterPanels(
@@ -1331,6 +1655,9 @@ pub async fn interactive_tui(
     .shrink(1)
     .min_size(1)]));
     let root = VStack::from_children(vec![
+        // The progress hairline sits at the top of the screen, above the
+        // transcript (upstream's `chat-viewport.ts:48-52`).
+        StackChild::Entry(StackEntry::new(progress::progress_bar().clone()).shrink(0)),
         StackChild::Entry(
             StackEntry::new(transcript_stack.clone())
                 .basis(0)
@@ -1341,12 +1668,82 @@ pub async fn interactive_tui(
         StackChild::Entry(StackEntry::new(dock).shrink(1)),
     ]);
 
+    // The progress hairline advances one cell per 100 ms while a run is going
+    // (upstream's `components/progress-bar.ts:22`).
+    {
+        let tui_for_progress = tui.clone();
+        tokio::spawn(async move {
+            let mut ticker =
+                tokio::time::interval(std::time::Duration::from_millis(100));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                ticker.tick().await;
+                progress::progress_bar().tick();
+                tui_for_progress.request_render(false);
+            }
+        });
+    }
+
     let side_ui = Arc::new(Mutex::new(side_questions::SideQuestionUi::new(
         Arc::new(root),
         editor.clone(),
-        matches!(args.tui_mode, crate::args::TuiMode::Regular),
+        matches!(tui_mode, crate::args::TuiMode::Regular),
     )));
-    tui.set_layout_root(Some(side_ui.lock().unwrap().root()));
+    let normal_root: Arc<dyn Component> = side_ui.lock().unwrap().root();
+    *NORMAL_ROOT.lock().unwrap() = Some(normal_root.clone());
+
+    // ---- Empty-session screen ----
+    // While the session has no messages the whole pane is the screen: the
+    // spinning logo above a greeting and the centred input box (upstream's
+    // `threeDEmptySession`, `interactive-mode.ts:901-924`). The first message
+    // takes the pane back.
+    let empty_session_screen: Option<Arc<dyn Component>> = if three_d_empty_session
+        && !session_has_messages(harness).await
+        && first_run.lock().unwrap().is_none()
+    {
+        let background = if theme == Some("light") {
+            [255.0, 255.0, 255.0]
+        } else {
+            [0.0, 0.0, 0.0]
+        };
+        let logo = Arc::new(rpi_tui::logo3d::Logo3d::new(background));
+        let centered_editor = Arc::new(Centered::new(
+            editor_container.clone(),
+            EMPTY_SESSION_EDITOR_WIDTH,
+        ));
+        let tui_weak = Arc::downgrade(&tui);
+        let height = Arc::new(move || {
+            tui_weak
+                .upgrade()
+                .map(|tui| tui.height())
+                .filter(|height| *height > 0)
+                .unwrap_or(24)
+        });
+        Some(Arc::new(EmptySessionScreen::new(
+            logo,
+            empty_session::greeting(),
+            centered_editor,
+            height,
+        )))
+    } else {
+        None
+    };
+    let empty_session = EmptySession {
+        screen: empty_session_screen,
+        normal_root: normal_root.clone(),
+        active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    };
+    if empty_session.screen.is_some() {
+        empty_session.activate(&tui);
+    } else if let Some(dialog) = first_run.lock().unwrap().clone() {
+        // The picker gets the pane to itself, like the original's startup
+        // screen (`cli/startup-ui.ts`), and gives it back when it is done.
+        let screen = Arc::new(Container::new());
+        screen.add_child(dialog);
+        tui.set_layout_root(Some(screen));
+    } else {
+        tui.set_layout_root(Some(normal_root.clone()));
+    }
     tui.set_focus(Some(editor.clone()));
     editor.set_focused(true);
 
@@ -1388,13 +1785,14 @@ pub async fn interactive_tui(
         model_catalog: model_catalog_arc.clone(),
         cwd: cwd.clone(),
         resources: resources_arc.clone(),
-        startup_context,
         reload_context: Arc::new(reload_context.clone()),
         session: agent_session.clone(),
     };
 
     let ctx_for_cb = ctx.clone();
     let registry_for_cb = registry.clone();
+    let empty_session_for_submit = empty_session.clone();
+    let js_extensions_for_cb = js_extensions.clone();
     editor.on_submit(Arc::new(move |text: &str| {
         let text = text.trim();
         if text.is_empty() && ctx_for_cb.state.pending_images.lock().unwrap().is_empty() {
@@ -1404,6 +1802,30 @@ pub async fn interactive_tui(
         if text.starts_with('/') && dispatch_slash(text, &ctx_for_cb, &registry_for_cb) {
             return;
         }
+
+        // The JavaScript extensions see the input before the agent does: one
+        // can transform it, or handle it without an agent run.
+        let mut prompt = text.to_string();
+        if let Some(extensions) = js_extensions_for_cb.as_ref() {
+            match extensions.emit_input(&prompt) {
+                Ok(value) => {
+                    let action = value.get("action").and_then(|action| action.as_str());
+                    if action == Some("handled") {
+                        ctx_for_cb.tui.request_render(false);
+                        return;
+                    }
+                    if let Some(transformed) = value.get("text").and_then(|text| text.as_str()) {
+                        prompt = transformed.to_string();
+                    }
+                }
+                Err(error) => {
+                    add_error_message(&ctx_for_cb.chat, &format!("Extension error: {error}"));
+                    ctx_for_cb.tui.request_render(false);
+                    return;
+                }
+            }
+        }
+        let text = prompt.as_str();
 
         // User-initiated shell mode: `!command` runs in the background and is
         // recorded in the session context; `!!command` is excluded from it.
@@ -1418,6 +1840,7 @@ pub async fn interactive_tui(
                 ctx_for_cb.tui.request_render(false);
                 return;
             }
+            empty_session_for_submit.deactivate(&ctx_for_cb.tui);
             start_user_bash(&ctx_for_cb, command, exclude_from_context);
             return;
         }
@@ -1474,6 +1897,7 @@ pub async fn interactive_tui(
         // `crates/rpi-harness/tests/harness_run_e2e.rs`. Queued steering /
         // follow-up prompts DO get a `message_start` (the loop drains those
         // itself), so those are deliberately rendered from the event instead.
+        empty_session_for_submit.deactivate(&ctx_for_cb.tui);
         add_user_message(&ctx_for_cb.chat, text);
         // A new prompt starts a fresh interaction at the tail even when the
         // user had scrolled up to inspect older output.
@@ -1568,13 +1992,20 @@ pub async fn interactive_tui(
         scroll_view.clone(),
         reload_context.ext_status.clone(),
     );
-    plugin_panels.regular_mode = matches!(args.tui_mode, crate::args::TuiMode::Regular);
+    plugin_panels.regular_mode = matches!(tui_mode, crate::args::TuiMode::Regular);
     plugin_panels.sync(tui.as_ref(), &reload_context.ext_status);
     let scroll_tick = scroll_view.clone();
     let side_tick = side_ui.clone();
     let side_context = reload_context.clone();
     let side_parent = harness.clone();
     let side_keys = keybindings.clone();
+    let js_extensions_tick = js_extensions.clone();
+    let widget_above_tick = widget_above.clone();
+    let widget_below_tick = widget_below.clone();
+    let mut js_status_keys: Vec<String> = Vec::new();
+    let mut js_widgets_applied: Vec<String> = Vec::new();
+    let mut js_header_applied: Option<String> = None;
+    let header_container_tick = header_container.clone();
     let tick_handle = tokio::spawn(async move {
         // 80ms per frame — upstream's `DEFAULT_INTERVAL_MS`, i.e. a full
         // 10-frame cycle every 800ms. The tick only *requests a repaint*; the
@@ -1613,6 +2044,42 @@ pub async fn interactive_tui(
                 // Status/panel updates leave chat content untouched. The scroll
                 // cache regenerates itself if enabling a sidebar changes width.
                 tui_tick.request_render_reusing_scroll_content();
+            }
+            // The JavaScript extensions publish a status line and the widget
+            // slots above and below the editor.
+            if let Some(extensions) = js_extensions_tick.as_ref() {
+                let mut status_changed = false;
+                let statuses = extensions.statuses();
+                for (key, text) in &statuses {
+                    status_changed |= state_tick.ext_status.set(key, text);
+                }
+                for key in js_status_keys.drain(..) {
+                    if !statuses.iter().any(|(current, _)| current == &key) {
+                        status_changed |= state_tick.ext_status.set(&key, "");
+                    }
+                }
+                js_status_keys = statuses.into_iter().map(|(key, _)| key).collect();
+                if status_changed {
+                    state_tick.sync_extension_status();
+                    tui_tick.request_render_reusing_scroll_content();
+                }
+                if sync_js_widgets(
+                    extensions,
+                    &widget_above_tick,
+                    &widget_below_tick,
+                    tui_tick.width(),
+                    &mut js_widgets_applied,
+                ) {
+                    tui_tick.request_render(false);
+                }
+                if sync_js_header(
+                    extensions,
+                    &header_container_tick,
+                    tui_tick.width(),
+                    &mut js_header_applied,
+                ) {
+                    tui_tick.request_render(false);
+                }
             }
             if pet_tick.tick(scroll_tick.viewport_height()) {
                 tui_tick.request_render(false);
@@ -1667,6 +2134,8 @@ pub async fn interactive_tui(
     let state_for_key = state.clone();
     let model_catalog_for_key = model_catalog_arc.clone();
     let ask_user_for_key = ask_user_bridge.clone();
+    let first_run_for_key = first_run.clone();
+    let normal_root_for_key = normal_root.clone();
     // Ctrl+L routes through the same registry as `/model` (one path, not two),
     // so the key loop needs the same `CommandContext` + registry the submit
     // handler uses. All fields are `Arc`/cheap, so this clone is free.
@@ -1759,6 +2228,12 @@ pub async fn interactive_tui(
                         .unwrap()
                         .mouse(&m, &tui_for_key, &scroll_for_key)
                 {
+                    continue;
+                }
+                // The alternate screen owns the mouse: it routes the event to
+                // the component under the pointer, drags the scrollbar, opens
+                // links and copies a text selection.
+                if tui_for_key.handle_mouse_event(&m) {
                     continue;
                 }
                 if tui_for_key.handle_scroll_to_end_indicator_mouse_event(&m) {
@@ -1952,6 +2427,20 @@ pub async fn interactive_tui(
                 continue;
             }
 
+            // The first-run theme picker owns the input slot until it is
+            // confirmed or skipped: every key goes to it, and the pane goes
+            // back to the transcript once it is done.
+            let first_run_dialog = first_run_for_key.lock().unwrap().clone();
+            if let Some(dialog) = first_run_dialog {
+                dialog.handle_key(key);
+                if dialog.is_finished() {
+                    *first_run_for_key.lock().unwrap() = None;
+                    tui_for_key.set_layout_root(Some(normal_root_for_key.clone()));
+                }
+                tui_for_key.request_render(false);
+                continue;
+            }
+
             // Prompt preparation runs on a blocking worker before the agent
             // lane owns the turn. Cancel it directly: an abort queued only to
             // the lane cannot wake a JS factory or lifecycle hook that never
@@ -2077,17 +2566,17 @@ pub async fn interactive_tui(
                 }
             }
 
-            // 0. Ctrl+C: upstream's `handleCtrlC`. A second press inside the
-            //    double-press window quits; any other press only clears the
-            //    editor (text *and* selection — native `clearEditor`). It never
-            //    aborts — `app.interrupt` (Esc) owns cancelling a run — so a
-            //    stray Ctrl+C while streaming can no longer kill the turn.
-            //    Open selectors and extension dialogs are handled above so
-            //    their cancellation callbacks get first chance.
+            // 0. Ctrl+C: upstream's `app.quit`. A press inside the
+            //    double-press window quits; any other press shows the
+            //    "press again to exit" warning. It never touches the editor
+            //    content and never aborts — `app.interrupt` (Esc) owns
+            //    cancelling a run. Open selectors and extension dialogs are
+            //    handled above so their cancellation callbacks get first
+            //    chance.
             if keybinding_matches(
                 &keybindings_for_key,
                 &key,
-                rpi_tui::keybindings::keys::CLEAR,
+                rpi_tui::keybindings::keys::QUIT,
             ) {
                 // A held key auto-repeats: only a fresh Press may arm or
                 // consume the window, so holding Ctrl+C cannot turn one tap
@@ -2097,6 +2586,7 @@ pub async fn interactive_tui(
                     match ctrl_c_action(last_sigint_time, now) {
                         CtrlCAction::Exit => {
                             last_sigint_time = None;
+                            state_for_key.clear_warning();
                             // The async loop parks inside
                             // `run_prompt_streaming(..).await` for the whole run,
                             // so a queued `Exit` would not be read until the run
@@ -2108,12 +2598,27 @@ pub async fn interactive_tui(
                                 emergency_exit(&tui_for_key);
                             }
                         }
-                        CtrlCAction::Clear => {
-                            editor_for_key.clear();
-                            state_for_key.take_pending_images();
-                            refresh_autocomplete(&state_for_key, &editor_for_key);
+                        CtrlCAction::Warn => {
                             last_sigint_time = Some(now);
+                            let quit_key = rpi_tui::key_display_text(
+                                rpi_tui::keybindings::keys::QUIT,
+                            );
+                            let message = if quit_key.is_empty() {
+                                "Press again to exit".to_string()
+                            } else {
+                                format!("Press {quit_key} again to exit")
+                            };
+                            state_for_key.show_warning(&message);
                             tui_for_key.request_render(false);
+                            // Upstream clears the banner after three seconds.
+                            let state_warn = state_for_key.clone();
+                            let tui_warn = tui_for_key.clone();
+                            let message_warn = message.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep(std::time::Duration::from_millis(3000)).await;
+                                state_warn.clear_warning_if(&message_warn);
+                                tui_warn.request_render(false);
+                            });
                         }
                     }
                 }
@@ -2157,6 +2662,21 @@ pub async fn interactive_tui(
             //    escape to the selector; on done/cancel the selector callbacks
             //    restore the editor and clear `active_selector`.
             if state_for_key.selector_open() {
+                // The app keybindings that belong to the open screen (the
+                // session menu, the tree selector, the scoped-models selector,
+                // the thinking selector) are matched before the list sees the
+                // key, exactly as upstream matches them inside the component.
+                if handle_selector_key(
+                    &state_for_key,
+                    &keybindings_for_key,
+                    &key,
+                    &lane_for_key,
+                    &model_catalog_for_key,
+                    &tui_for_key,
+                ) {
+                    tui_for_key.request_render_reusing_scroll_content();
+                    continue;
+                }
                 // Esc always cancels the selector (even with modifiers off).
                 // Route through `SelectList::handle_key(Esc)` so the list's
                 // `on_cancel` fires (the `/scoped-models` toggle selector saves
@@ -2536,6 +3056,50 @@ pub async fn interactive_tui(
                 rpi_tui::keybindings::keys::MODEL_SELECT,
             ) {
                 if let Some(cmd) = registry_for_key.find("/model") {
+                    cmd.execute(&ctx_for_key, "");
+                }
+                continue;
+            }
+
+            // 3a. The session actions (upstream's `app.session.*`). They have
+            //      no default key, so they only fire when the user binds one;
+            //      each one runs the same command as its slash counterpart.
+            if keybinding_matches(
+                &keybindings_for_key,
+                &key,
+                rpi_tui::keybindings::keys::SESSION_NEW,
+            ) {
+                if let Some(cmd) = registry_for_key.find("/clear") {
+                    cmd.execute(&ctx_for_key, "");
+                }
+                continue;
+            }
+            if keybinding_matches(
+                &keybindings_for_key,
+                &key,
+                rpi_tui::keybindings::keys::SESSION_TREE,
+            ) {
+                if let Some(cmd) = registry_for_key.find("/tree") {
+                    cmd.execute(&ctx_for_key, "");
+                }
+                continue;
+            }
+            if keybinding_matches(
+                &keybindings_for_key,
+                &key,
+                rpi_tui::keybindings::keys::SESSION_FORK,
+            ) {
+                if let Some(cmd) = registry_for_key.find("/fork") {
+                    cmd.execute(&ctx_for_key, "");
+                }
+                continue;
+            }
+            if keybinding_matches(
+                &keybindings_for_key,
+                &key,
+                rpi_tui::keybindings::keys::SESSION_RESUME,
+            ) {
+                if let Some(cmd) = registry_for_key.find("/resume") {
                     cmd.execute(&ctx_for_key, "");
                 }
                 continue;
@@ -2985,6 +3549,13 @@ pub async fn interactive_tui(
                 tui.request_render(false);
             }
             Some(TuiMessage::Exit) => {
+                // pi's `session_shutdown`: the extensions learn that the
+                // session is going away before it goes.
+                dispatch_js_event(
+                    &state,
+                    "session_shutdown",
+                    serde_json::json!({ "type": "session_shutdown", "reason": "quit" }),
+                );
                 *running.lock().unwrap() = false;
                 break;
             }
@@ -2999,6 +3570,15 @@ pub async fn interactive_tui(
                     &reload_context.tool_context,
                 )
                 .await;
+                // A switched-to session can be empty again, so the empty-session
+                // screen follows it (upstream's `syncEmptySessionScreen`).
+                if three_d_empty_session {
+                    if session_has_messages(harness).await {
+                        empty_session.deactivate(&tui);
+                    } else {
+                        empty_session.activate(&tui);
+                    }
+                }
                 tui.request_render(false);
             }
             Some(TuiMessage::ImportSession(path)) => {
@@ -3283,11 +3863,7 @@ pub async fn interactive_tui(
                     crate::session::reload_extension_resources(&harness, &reload_ctx).await;
                 if !outcome.had_errors {
                     if let Ok(resources) = harness.get_resources().await {
-                        update_resource_listing(
-                            &ctx.resources,
-                            ctx.startup_context.as_ref(),
-                            resources,
-                        );
+                        *ctx.resources.lock().unwrap() = resources;
                     }
                 }
                 // B5e: the reload swapped a fresh `ExtensionSession` into the
@@ -3324,6 +3900,11 @@ pub async fn interactive_tui(
                 }
                 tui.request_render(false);
             }
+            // The original's `/skills`, `/bug` and `/stats` are registered and
+            // dispatch here; the bodies belong to the interactive mode port.
+            Some(TuiMessage::ShowSkills) => {}
+            Some(TuiMessage::ReportBug(_)) => {}
+            Some(TuiMessage::ShowStats) => {}
             None => break,
         }
     }
@@ -3356,7 +3937,6 @@ pub async fn interactive_tui(
     if let Some(command) = format_resume_command(&session_id, &cwd, args.session_dir.as_deref()) {
         println!("\x1b[2mTo resume this session:\x1b[0m {command}");
     }
-    println!("\nGoodbye!");
     let _ = args;
 
     0

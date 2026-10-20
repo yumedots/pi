@@ -616,10 +616,10 @@ impl Component for Input {
             value.clone()
         };
 
-        // Show placeholder if empty and not focused
-        if value.is_empty() && !focused {
+        // Show the placeholder when the field is empty, focused or not.
+        if value.is_empty() {
             if let Some(ref placeholder) = self.placeholder {
-                let dimmed = format!("\x1b[90m{}\x1b[0m", placeholder);
+                let dimmed = crate::theme::theme().colors.muted.fg(placeholder);
                 return vec![format!("{}{}", self.prompt, dimmed)];
             }
         }
@@ -692,6 +692,10 @@ impl Component for Input {
 
     fn invalidate(&self) {
         // No cached state to invalidate
+    }
+
+    fn as_focusable(&self) -> Option<&dyn crate::component::Focusable> {
+        Some(self)
     }
 
     fn as_any(&self) -> &dyn Any {

@@ -37,12 +37,19 @@ pub enum QueueMode {
 /// Result returned from a tool `execute`. Mirrors TS `AgentToolResult<T>`:
 /// `content` goes back to the model, `details` are structured log/UI payload,
 /// `usage` is optionally reported, and `terminate` hints the batch should stop.
+///
+/// `is_error` reports a soft failure without throwing: the model sees the
+/// content as an error result, but `details` and `structured_content` survive
+/// for the UI and programmatic callers. `structured_content` is the
+/// machine-readable payload matching the tool's `output_schema`.
 #[derive(Debug, Clone, Default)]
 pub struct AgentToolResult {
     pub content: Vec<TextContentOrImage>,
     pub details: serde_json::Value,
+    pub structured_content: Option<serde_json::Value>,
     pub usage: Option<Usage>,
     pub added_tool_names: Vec<String>,
+    pub is_error: bool,
     pub terminate: bool,
 }
 /// an enum so tool authors stay within the provider-content language without
@@ -69,16 +76,21 @@ impl AgentToolResult {
         Self {
             content: vec![TextContentOrImage::text(message)],
             details: serde_json::Value::Null,
+            structured_content: None,
             usage: None,
             added_tool_names: Vec::new(),
+            is_error: false,
             terminate: false,
         }
     }
 
-    /// Convenience: an error text block. `is_error` is carried on the
-    /// `ToolResultMessage`, not the result; this just builds the content.
+    /// Convenience: an error text block. The result is flagged `is_error`, so
+    /// the model sees it as a failure while `details` and `structured_content`
+    /// survive for the UI.
     pub fn error_text(message: impl Into<String>) -> Self {
-        Self::text(message)
+        let mut result = Self::text(message);
+        result.is_error = true;
+        result
     }
 
     pub fn into_content(self) -> Vec<rpi_ai::types::Content> {
@@ -124,10 +136,16 @@ pub struct BeforeToolCallResult {
 /// Partial override returned from `after_tool_call`. Field-by-field merge:
 /// provided values replace the executed result's fields; omitted fields keep
 /// the original. No deep merge.
+///
+/// `structured_content` is a double option: the outer one says "the hook
+/// provided a value", the inner one says what the value is. `Some(None)` drops
+/// the structured content (the hook replaced the content but not the machine
+/// readable payload, which no longer matches it), `None` keeps it.
 #[derive(Debug, Clone, Default)]
 pub struct AfterToolCallResult {
     pub content: Option<Vec<TextContentOrImage>>,
     pub details: Option<serde_json::Value>,
+    pub structured_content: Option<Option<serde_json::Value>>,
     pub is_error: Option<bool>,
     pub usage: Option<Usage>,
     pub terminate: Option<bool>,
@@ -157,6 +175,40 @@ pub struct ShouldStopAfterTurnContext<'a> {
     pub tool_results: &'a [ToolResultMessage],
     pub context: &'a AgentContext,
     pub new_messages: &'a [AgentMessage],
+}
+
+/// Context passed to `finish_turn`. Mirrors TS `AgentTurnContext`.
+pub struct AgentTurnContext<'a> {
+    pub message: &'a AssistantMessage,
+    pub tool_results: &'a [ToolResultMessage],
+    pub context: &'a AgentContext,
+    pub new_messages: &'a [AgentMessage],
+}
+
+/// What `finish_turn` decided. Mirrors TS `AgentTurnDecision`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentTurnDecision {
+    /// Force one more provider request, even when the model asked for no tools.
+    Continue,
+    /// End the run after this turn.
+    End,
+}
+
+/// Context handed to `prepare_request` immediately before a provider request.
+/// Mirrors TS `PrepareRequestContext`.
+pub struct PrepareRequestContext<'a> {
+    pub context: &'a AgentContext,
+    pub model: &'a rpi_ai::model::Model,
+    pub thinking_level: rpi_ai::types::ThinkingLevel,
+}
+
+/// Replacement runtime state for the provider request being prepared. Mirrors
+/// TS `AgentRequestUpdate` (the turn update without `messages`).
+#[derive(Debug, Clone, Default)]
+pub struct AgentRequestUpdate {
+    pub context: Option<AgentContext>,
+    pub model: Option<rpi_ai::model::Model>,
+    pub thinking_level: Option<rpi_ai::types::ThinkingLevel>,
 }
 
 /// A context snapshot handed to the low-level loop. Mirrors TS `AgentContext`.

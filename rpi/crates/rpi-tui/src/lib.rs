@@ -9,8 +9,13 @@
 //! - Image support (Kitty/iTerm2 protocols)
 //! - Autocomplete, search, and more
 
+pub mod agent_progress;
 pub mod alt_screen_search;
 pub mod ansi;
+pub mod announcement;
+pub mod armin;
+pub mod auth_url;
+pub mod clock;
 pub mod assistant_message;
 pub mod autocomplete;
 pub mod bash_execution;
@@ -22,7 +27,10 @@ pub mod countdown_timer;
 pub mod diff;
 pub mod dynamic_border;
 pub mod editor;
+pub mod easter_egg_3d;
+pub mod empty_session;
 pub mod footer;
+pub mod first_run;
 pub mod fuzzy;
 pub mod hstack;
 pub mod image;
@@ -35,10 +43,13 @@ pub mod kill_ring;
 pub mod latex;
 pub mod layout;
 pub mod layout_node;
+pub mod list_hover;
 mod line_diff;
 pub mod loader;
+pub mod logo3d;
 pub mod markdown;
 pub mod mermaid;
+pub mod mouse;
 pub mod overlay;
 pub mod render;
 pub mod scroll_view;
@@ -48,6 +59,7 @@ pub mod select_list;
 pub mod settings_list;
 pub mod spacer;
 pub mod status_indicator;
+pub mod summary_cards;
 pub mod stdin_buffer;
 pub mod syntax_highlight;
 pub mod terminal;
@@ -57,6 +69,7 @@ pub mod text;
 pub mod theme;
 pub mod tool_execution;
 mod tool_panel;
+pub mod tool_renderers;
 pub mod truncated_text;
 pub mod tui;
 pub mod tui_alt_screen;
@@ -82,13 +95,17 @@ pub use autocomplete::{
 pub use bash_execution::{BashExecutionComponent, BashStatus, BashTruncation};
 pub use bordered_loader::{BorderedLoader, BorderedLoaderInner};
 pub use box_component::Box;
-pub use component::{Component, Focusable};
+pub use component::{
+    Component, Focusable, MouseButton, MouseEvent, MouseEventKind, MouseEventResult,
+};
 pub use container::Container;
 pub use countdown_timer::CountdownTimer;
 pub use diff::render_diff;
 pub use dynamic_border::DynamicBorder;
 pub use editor::{Editor, EditorOptions, EditorStyle, WorkingState};
+pub use empty_session::{Centered, EmptySessionScreen, EMPTY_SESSION_EDITOR_WIDTH};
 pub use footer::FooterComponent;
+pub use first_run::{FirstRunDialog, FirstRunOption};
 pub use fuzzy::{fuzzy_filter, fuzzy_match, FuzzyMatch};
 pub use hstack::HStack;
 pub use image::{Image, ImageOptions, ImageTheme};
@@ -107,31 +124,42 @@ pub use keys::{
 pub use kill_ring::{KillRing, PushOptions};
 pub use latex::{is_latex, render_latex, strip_latex, RenderLatexOptions};
 pub use layout::{
-    composite_tui_line, extract_cursor_position, hit_test, render_layout_frame, LayoutBox,
-    LayoutFrame, LayoutRect,
+    composite_tui_line, extract_cursor_position, get_scroll_view_box, get_scrollbar_geometry,
+    hit_test, hit_test_all, render_layout_frame, LayoutBox, LayoutFrame, LayoutRect,
+    ScrollbarGeometry,
 };
 pub use layout_node::{
     allocate_stack_sizes, LayoutNode, LayoutNodeProvider, LayoutViewport, StackLayoutEntry,
 };
+pub use list_hover::{apply_hover, HoverableList};
 pub use loader::{
     CancellableLoader, Loader, LoaderIndicatorOptions, ProgressLoader, SPINNER_FRAMES,
     SPINNER_FRAME_MS,
 };
 pub use markdown::{Markdown, MarkdownOptions};
 pub use mermaid::Mermaid;
+pub use mouse::{
+    dispatch_mouse_event, retarget_mouse_event, MouseDispatchResult, MouseDispatchTarget,
+    MouseRegion, MouseRegionHandler,
+};
 pub use overlay::{Dialog, OverlayHandle, OverlayManager, Selector, SelectorItem};
 pub use scroll_view::{FollowMode, ScrollView, ScrollViewOptions};
 pub use search_bar::SearchBar;
 pub use searchable_select::SearchableSelectList;
 pub use select_list::{SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme};
-pub use settings_list::{SettingItem, SettingType, SettingsList, SettingsListTheme};
+pub use settings_list::{
+    SettingItem, SettingType, SettingsList, SettingsListTheme, SubmenuDone, SubmenuFactory,
+    SubmenuView,
+};
 pub use spacer::Spacer;
 pub use status_indicator::{CompactionReason, IdleStatus, StatusIndicator, StatusKind};
 pub use stdin_buffer::{StdinBuffer, StdinBufferEvent, StdinBufferOptions};
 pub use terminal::{InputEvent, ProcessTerminal, Terminal, TerminalError, TerminalInfo};
 pub use terminal_colors::{
-    parse_osc11_background_color, parse_terminal_color_scheme_report, query_background_color,
-    query_color_scheme, query_cursor_color, query_foreground_color, RgbColor, TerminalColorScheme,
+    is_device_attributes_response, parse_osc_color_response, query_background_color,
+    query_device_attributes, query_foreground_color, query_palette_color, query_terminal_colors,
+    read_terminal_colors, request_terminal_colors, OscColorTarget, ReplySplitter, RgbColor,
+    TerminalColorQuery, TerminalColors, TERMINAL_PALETTE_SIZE,
 };
 pub use terminal_image::{
     allocate_image_id, calculate_image_rows, delete_all_kitty_images, delete_kitty_image,

@@ -39,6 +39,131 @@ pub(super) struct ProviderFormState {
     pub(super) model_name: String,
 }
 
+/// How the session picker orders its rows (upstream's `SortMode`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum SessionSort {
+    /// Newest first (upstream's `recent`).
+    #[default]
+    Recent,
+    /// Oldest first.
+    Oldest,
+}
+
+/// One row of the session picker.
+#[derive(Clone, Debug)]
+pub(super) struct SessionMenuEntry {
+    /// The session file stem — the list item's value.
+    pub(super) stem: String,
+    /// The session file path.
+    pub(super) path: std::path::PathBuf,
+    /// The display label (the session name, or its first prompt).
+    pub(super) label: String,
+    /// The recorded session name, when it has one.
+    pub(super) name: Option<String>,
+    /// The session file's size in bytes.
+    pub(super) bytes: u64,
+}
+
+/// The session picker's rows and display options (upstream's session menu).
+#[derive(Clone, Debug, Default)]
+pub(super) struct SessionMenuState {
+    /// The directory the sessions are listed from.
+    pub(super) dir: std::path::PathBuf,
+    /// The listed sessions, in display order.
+    pub(super) entries: Vec<SessionMenuEntry>,
+    /// The current sort mode (`app.session.toggleSort`).
+    pub(super) sort: SessionSort,
+    /// Whether the rows show the session path (`app.session.togglePath`).
+    pub(super) show_path: bool,
+    /// Whether only named sessions are listed (`app.session.toggleNamedFilter`).
+    pub(super) named_only: bool,
+    /// The session awaiting the delete confirmation, by file stem.
+    pub(super) pending_delete: Option<String>,
+    /// The session being renamed, by file stem.
+    pub(super) renaming: Option<String>,
+}
+
+/// Which entries the tree selector shows (upstream's `FilterMode`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum TreeFilter {
+    /// Everything except the settings entries (upstream's `default`).
+    #[default]
+    Default,
+    /// Without tool results (upstream's `no-tools`).
+    NoTools,
+    /// Only user messages (upstream's `user-only`).
+    UserOnly,
+    /// Only labeled entries (upstream's `labeled-only`).
+    LabeledOnly,
+    /// Every entry (upstream's `all`).
+    All,
+}
+
+impl TreeFilter {
+    /// The filter modes in upstream's cycle order.
+    pub(super) const CYCLE: [TreeFilter; 5] = [
+        TreeFilter::Default,
+        TreeFilter::NoTools,
+        TreeFilter::UserOnly,
+        TreeFilter::LabeledOnly,
+        TreeFilter::All,
+    ];
+
+    /// The next filter in the cycle (upstream's `cycleForward`).
+    pub(super) fn cycle_forward(self) -> TreeFilter {
+        let index = Self::CYCLE.iter().position(|f| *f == self).unwrap_or(0);
+        Self::CYCLE[(index + 1) % Self::CYCLE.len()]
+    }
+
+    /// The previous filter in the cycle (upstream's `cycleBackward`).
+    pub(super) fn cycle_backward(self) -> TreeFilter {
+        let index = Self::CYCLE.iter().position(|f| *f == self).unwrap_or(0);
+        Self::CYCLE[(index + Self::CYCLE.len() - 1) % Self::CYCLE.len()]
+    }
+}
+
+/// One row of the tree selector.
+#[derive(Clone, Debug)]
+pub(super) struct TreeMenuEntry {
+    /// The entry id — the list item's value.
+    pub(super) id: String,
+    /// The row label.
+    pub(super) label: String,
+    /// The row description.
+    pub(super) description: String,
+    /// The text the search box filters on.
+    pub(super) search_text: String,
+    /// The entry's label, when it has one.
+    pub(super) label_text: Option<String>,
+    /// The label's timestamp (ms since the epoch).
+    pub(super) label_timestamp: Option<i64>,
+    /// Whether the entry is a user message.
+    pub(super) is_user: bool,
+    /// Whether the entry is a tool result.
+    pub(super) is_tool_result: bool,
+    /// Whether the entry is a settings entry (hidden in the default view).
+    pub(super) is_settings: bool,
+    /// Whether the entry is a usage entry (never listed).
+    pub(super) is_usage: bool,
+}
+
+/// The tree selector's rows and view state (upstream's tree list).
+#[derive(Clone, Debug, Default)]
+pub(super) struct TreeMenuState {
+    /// Every entry of the current branch, in log order.
+    pub(super) entries: Vec<TreeMenuEntry>,
+    /// The active filter (`app.tree.filter.*`).
+    pub(super) filter: TreeFilter,
+    /// Whether the rows show the label timestamps
+    /// (`app.tree.toggleLabelTimestamp`).
+    pub(super) show_label_timestamps: bool,
+    /// Whether the search box is editing the selected entry's label
+    /// (`app.tree.editLabel`).
+    pub(super) editing_label: bool,
+    /// The entry whose label is being edited.
+    pub(super) editing_label_id: Option<String>,
+}
+
 /// Which selector overlay (if any) is currently swapped into the editor slot.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SelectorKind {
@@ -214,6 +339,17 @@ pub(super) struct TuiState {
     pub(super) status_container: Arc<Container>,
     /// The chat transcript container.
     pub(super) chat_container: Arc<Container>,
+    /// Dock slot for the transient warning banner (upstream's
+    /// `warningContainer`). Empty when no warning is showing, so it renders
+    /// zero rows and never affects the layout.
+    pub(super) warning_container: Arc<Container>,
+    /// The session picker's rows and display options (upstream's session menu).
+    pub(super) session_menu: std::sync::Mutex<SessionMenuState>,
+    /// The tree selector's rows and view state (upstream's tree list).
+    pub(super) tree_menu: std::sync::Mutex<TreeMenuState>,
+    /// The warning currently shown in [`Self::warning_container`], so a
+    /// timeout only clears the banner it armed.
+    pub(super) warning_message: std::sync::Mutex<String>,
     /// The active loader shown while `Working`.
     pub(super) loader: Arc<Loader>,
     /// The editor, so status changes can drive its top-border working
@@ -310,6 +446,10 @@ pub(super) struct TuiState {
     pub(super) markdown_transformer: Arc<std::sync::Mutex<Option<MarkdownTransformer>>>,
     /// Live extension registry used by message/entry renderer dispatch.
     pub(super) extension_session: crate::session::ExtensionSessionCell,
+    /// The JavaScript extensions, when the session loaded any.
+    pub(super) js_extensions: Option<crate::js_extensions::JsExtensions>,
+    /// How many turns the session ran; the extensions count them too.
+    pub(super) turn_index: std::sync::atomic::AtomicUsize,
     /// Releases for already-claimed presses must reach the plugin even if a
     /// draft or modal appears while the key is held (e.g. push-to-talk).
     pub(super) extension_claimed_keys: Mutex<std::collections::HashSet<KeyCode>>,
@@ -411,43 +551,10 @@ pub(crate) fn configured_keybindings() -> Arc<rpi_tui::Keybindings> {
         rpi_tui::set_keybindings(bindings.clone());
         return Arc::new(bindings);
     };
-    let known: &[(&str, rpi_tui::KeybindingId)] = &[
-        ("app.interrupt", rpi_tui::keybindings::keys::INTERRUPT),
-        ("app.clear", rpi_tui::keybindings::keys::CLEAR),
-        ("app.exit", rpi_tui::keybindings::keys::EXIT),
-        ("app.model.select", rpi_tui::keybindings::keys::MODEL_SELECT),
-        (
-            "app.model.cycleForward",
-            rpi_tui::keybindings::keys::MODEL_CYCLE_FORWARD,
-        ),
-        ("app.tools.expand", rpi_tui::keybindings::keys::TOOLS_EXPAND),
-        (
-            "app.thinking.toggle",
-            rpi_tui::keybindings::keys::THINKING_TOGGLE,
-        ),
-        (
-            "app.editor.external",
-            rpi_tui::keybindings::keys::EXTERNAL_EDITOR,
-        ),
-        (
-            "app.thinking.cycle",
-            rpi_tui::keybindings::keys::THINKING_CYCLE,
-        ),
-        (
-            "app.clipboard.pasteImage",
-            rpi_tui::keybindings::keys::PASTE_IMAGE,
-        ),
-        ("app.message.dequeue", rpi_tui::keybindings::keys::DEQUEUE),
-        ("tui.altScreen.bottom", rpi_tui::keybindings::keys::BOTTOM),
-        ("tui.altScreen.top", rpi_tui::keybindings::keys::TOP),
-        ("tui.altScreen.pageUp", rpi_tui::keybindings::keys::PAGE_UP),
-        (
-            "tui.altScreen.pageDown",
-            rpi_tui::keybindings::keys::PAGE_DOWN,
-        ),
-    ];
-    for (name, id) in known {
-        let Some(value) = overrides.get(*name) else {
+    // Every registered id can be overridden, exactly like upstream (the
+    // registry is the list of known keybinding names).
+    for id in bindings.ids() {
+        let Some(value) = overrides.get(id) else {
             continue;
         };
         let values: Vec<String> = match value {
@@ -516,17 +623,18 @@ pub(super) fn double_escape_trigger(
     })
 }
 
-/// What one Ctrl+C press should do, per upstream's `handleCtrlC`.
+/// What one Ctrl+C press should do, per upstream's `handleQuit`.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum CtrlCAction {
-    /// First press: clear the editor and arm the double-press window.
-    Clear,
+    /// First press: warn that a second press exits, and arm the window.
+    Warn,
     /// The window was already open → quit.
     Exit,
 }
 
-/// upstream's `handleCtrlC`: a press inside the 500ms window quits, otherwise
-/// it clears. It never aborts a run — cancelling is `app.interrupt` (Esc)'s job.
+/// upstream's `handleQuit`: a press inside the 500ms window quits, otherwise
+/// it warns. It never touches the editor content and never aborts a run —
+/// cancelling is `app.interrupt` (Esc)'s job.
 pub(super) fn ctrl_c_action(
     last_sigint: Option<std::time::Instant>,
     now: std::time::Instant,
@@ -534,7 +642,7 @@ pub(super) fn ctrl_c_action(
     if double_escape_trigger(last_sigint, now) {
         CtrlCAction::Exit
     } else {
-        CtrlCAction::Clear
+        CtrlCAction::Warn
     }
 }
 
@@ -817,7 +925,7 @@ pub(super) fn poll_auto_send(
             let secs = remaining.as_millis() as f64 / 1000.0;
             let label = format!("{AUTO_SEND_PREFIX}{secs:.1}s · any key to edit");
             if state.footer.get_status() != label {
-                state.footer.set_status(&label);
+                state.set_status_text(&label);
                 true
             } else {
                 false
@@ -849,22 +957,21 @@ pub(super) fn navigate_history(state: &Arc<TuiState>, editor: &Arc<Editor>, dire
         // Exited browse mode: restore the draft (or clear if there was none).
         let draft = state.history_draft.lock().unwrap().take();
         match draft {
-            Some(d) => {
-                let len = d.len();
-                editor.set_text(&d);
-                editor.set_cursor(0, len);
-            }
+            Some(d) => editor.set_text_at_start(&d),
             None => editor.set_text(""),
         }
     } else {
         let text = history[new_index as usize].clone();
-        let len = text.len();
-        editor.set_text(&text);
-        editor.set_cursor(0, len);
+        editor.set_text_at_start(&text);
     }
 }
 
 impl TuiState {
+    /// The number of turns the session ran.
+    pub(super) fn turn_index(&self) -> usize {
+        self.turn_index.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     pub(super) fn cancel_js_preparation(&self) -> bool {
         let cancellation = self.js_preparation_cancel.lock().unwrap().take();
         if let Some(cancellation) = cancellation {
@@ -916,6 +1023,10 @@ impl TuiState {
 
     pub(super) fn set_status(&self, status: RunStatus) {
         *self.status.lock().unwrap() = status;
+        match status {
+            RunStatus::Working => super::progress::progress_bar().start(),
+            RunStatus::Idle | RunStatus::Aborting => super::progress::progress_bar().complete(),
+        }
         self.apply_status(status);
     }
 
@@ -923,6 +1034,34 @@ impl TuiState {
     /// `pendingMessagesContainer`).
     pub(super) fn pending_container(&self) -> &Arc<Container> {
         &self.pending_container
+    }
+
+    /// Show a transient warning in the banner slot (upstream's
+    /// `showWarningBanner`). The caller clears it after the banner timeout.
+    pub(super) fn show_warning(&self, message: &str) {
+        let colors = current_theme().colors;
+        let container = &self.warning_container;
+        container.clear();
+        container.add_child(Arc::new(rpi_tui::Text::new(
+            colors.warning.fg(message),
+            1,
+            0,
+        )));
+        *self.warning_message.lock().unwrap() = message.to_string();
+    }
+
+    /// Clear the warning banner (upstream's `clearWarningBanner`).
+    pub(super) fn clear_warning(&self) {
+        self.warning_container.clear();
+        self.warning_message.lock().unwrap().clear();
+    }
+
+    /// Clear the warning banner only when it still shows `message` — a
+    /// timeout must not wipe a newer warning.
+    pub(super) fn clear_warning_if(&self, message: &str) {
+        if self.warning_message.lock().unwrap().as_str() == message {
+            self.clear_warning();
+        }
     }
 
     /// Render the current queue into the pending dock slot. Mirrors native
@@ -990,13 +1129,7 @@ impl TuiState {
                 // The status dock already shows the active loader. Keep the
                 // footer focused on the model and shortcuts instead of
                 // repeating a second `Working…` at the bottom of the TUI.
-                self.footer.set_status("");
-                // Reflect the in-flight turn in the terminal window/tab title
-                // (OSC 2). No-op when `tui` is absent (unit tests).
-                if let Some(tui) = &self.tui {
-                    tui.set_title(&crate::brand::window_title("⟳"));
-                }
-                self.status_container.clear();
+                self.set_status_text("");
                 // The working indicator renders inside the editor's top border.
                 // `show_terminal_progress` disables it entirely.
                 if self.show_terminal_progress {
@@ -1010,22 +1143,33 @@ impl TuiState {
                 }
             }
             RunStatus::Aborting => {
-                self.footer.set_status("Aborting…");
                 // Do not leave a frozen "Working" spinner on screen after the
                 // render tick intentionally stops advancing in this state.
                 self.loader.stop();
-                self.status_container.clear();
+                self.set_status_text("Aborting…");
                 self.editor.set_working(None);
             }
             RunStatus::Idle => {
-                self.footer.set_status("");
-                if let Some(tui) = &self.tui {
-                    tui.set_title(&crate::brand::window_title(""));
-                }
+                self.set_status_text("");
                 self.loader.stop();
-                self.status_container.clear();
                 self.editor.set_working(None);
             }
+        }
+    }
+
+    /// Show a transient status text in the status slot (above the editor).
+    ///
+    /// pi renders the run status in its status indicator, not in the footer
+    /// line, so the text is kept in the footer component (as the single
+    /// source of truth for the auto-send countdown) but painted in the status
+    /// slot here.
+    pub(super) fn set_status_text(&self, text: &str) {
+        self.footer.set_status(text);
+        self.status_container.clear();
+        if !text.is_empty() {
+            let colors = current_theme().colors;
+            self.status_container
+                .add_child(Arc::new(Text::new(colors.muted.fg(text), 1, 0)));
         }
     }
 
@@ -1120,7 +1264,7 @@ impl TuiState {
         if self.auto_send.lock().unwrap().take().is_some()
             && self.footer.get_status().starts_with(AUTO_SEND_PREFIX)
         {
-            self.footer.set_status("");
+            self.set_status_text("");
         }
     }
 
@@ -1224,9 +1368,8 @@ impl TuiState {
 
     pub(super) fn show_retry(&self, attempt: u32, max_retries: u32, delay_ms: u64) {
         *self.status.lock().unwrap() = RunStatus::Working;
-        self.footer.set_status("");
+        self.set_status_text("");
         if let Some(tui) = &self.tui {
-            tui.set_title(&crate::brand::window_title("↻"));
         }
         self.loader.stop();
         self.status_container.clear();
@@ -1287,11 +1430,19 @@ impl TuiState {
     /// cycle). Called from the `/model` on_select and the Ctrl+P handler.
     pub(super) fn set_current_model(&self, model: &rpi_ai::Model) {
         *self.current_model_id.lock().unwrap() = model.id.clone();
-        self.footer.set_model(&format!(
-            "({}) {}",
-            model.provider,
-            short_model_name(&model.id)
-        ));
+        self.footer.set_model(&short_model_name(&model.id));
+        self.footer.set_provider(Some(&model.provider));
+        self.footer.set_model_reasoning(model.reasoning);
+        // A subscription-backed provider shows the `(sub)` marker next to the
+        // cost (pi's `isUsingSubscription`: an OAuth-backed provider, plus
+        // kimi-coding).
+        self.footer.set_using_subscription(
+            model.provider == "kimi-coding"
+                || crate::config::read_oauth_token(&model.provider)
+                    .ok()
+                    .flatten()
+                    .is_some(),
+        );
         // A model switch changes the context window, so the `%/{window}` badge
         // must rescale against the same last-reported token count.
         self.footer.set_context_window(model.context_window as i64);

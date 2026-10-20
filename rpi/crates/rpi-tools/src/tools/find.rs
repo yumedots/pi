@@ -32,6 +32,7 @@ use crate::env::ExecutionEnv;
 use crate::env::FileKind;
 use crate::path_utils::resolve_read_tool_path;
 use crate::tools::tool_context::ExecutionToolContext;
+use crate::tools::PromptContribution;
 use crate::truncate::{
     format_size, truncate_head, TruncationOptions, TruncationResult, DEFAULT_MAX_BYTES,
 };
@@ -71,6 +72,7 @@ pub struct FindToolOptions {}
 pub struct FindTool {
     schema: Tool,
     env: Arc<dyn ExecutionEnv>,
+    prompt: PromptContribution,
 }
 
 impl FindTool {
@@ -99,6 +101,7 @@ pub fn create_find_tool(
     Arc::new(FindTool {
         schema: FindTool::schema(),
         env: context.env().clone(),
+        prompt: PromptContribution::new("Find files by glob pattern (respects .gitignore)", &[]),
     })
 }
 
@@ -109,6 +112,16 @@ impl AgentTool for FindTool {
     }
     fn label(&self) -> &str {
         "find"
+    }
+
+    /// Mirrors TS `AgentTool.promptSnippet`.
+    fn prompt_snippet(&self) -> Option<&str> {
+        Some(self.prompt.snippet)
+    }
+
+    /// Mirrors TS `AgentTool.promptGuidelines`.
+    fn prompt_guidelines(&self) -> Option<&[String]> {
+        Some(&self.prompt.guidelines)
     }
 
     async fn execute(

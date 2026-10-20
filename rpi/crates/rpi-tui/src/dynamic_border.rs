@@ -8,14 +8,12 @@
 use std::any::Any;
 
 use super::component::Component;
-use crate::ansi::dim;
 use crate::theme::{theme, Color};
 
 /// A single-row horizontal rule (`─` repeated to `width`) in a chosen color.
 ///
-/// `None` resolves to the low-contrast `border_muted` theme token and is also
-/// rendered faint, so command separators never compete with the editor border.
-/// Explicit colors remain full strength for intentional accent components.
+/// `None` resolves to the theme's `border` token, like pi's dynamic border.
+/// Explicit colors remain for intentional accent components.
 pub struct DynamicBorder {
     color: Option<Color>,
 }
@@ -43,7 +41,7 @@ impl Component for DynamicBorder {
         let rule = "─".repeat(width.max(1));
         let rendered = match self.color {
             Some(color) => color.fg(&rule),
-            None => dim(&theme().colors.border_muted.fg(&rule)),
+            None => theme().colors.border.fg(&rule),
         };
         vec![rendered]
     }
@@ -67,9 +65,8 @@ mod tests {
         let border = DynamicBorder::new();
         let lines = border.render(40);
         assert_eq!(lines.len(), 1);
-        // Visible width is stable and default separators are deliberately faint.
         assert_eq!(visible_width(&lines[0]), 40);
-        assert!(lines[0].contains("\x1b[2m"));
+        assert!(lines[0].contains(&theme().colors.border.to_fg()));
     }
 
     #[test]

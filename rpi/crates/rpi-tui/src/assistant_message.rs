@@ -13,11 +13,13 @@
 //! it to [`AssistantMessageComponent::update_blocks`].
 
 use std::any::Any;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use super::component::Component;
 use super::container::Container;
 use super::image::{Image, ImageOptions};
+use super::loader::SPINNER_FRAMES;
 use super::markdown::Markdown;
 use super::spacer::Spacer;
 use super::text::Text;
@@ -41,7 +43,7 @@ pub enum AssistantBlock {
 /// Configuration for assistant message rendering.
 #[derive(Debug, Clone)]
 pub struct AssistantMessageOptions {
-    /// Hide thinking blocks (show placeholder instead)
+    /// Hide thinking blocks (show the collapsed summary instead)
     pub hide_thinking: bool,
     /// Label to show when thinking is hidden
     pub hidden_thinking_label: String,
@@ -52,10 +54,107 @@ pub struct AssistantMessageOptions {
 impl Default for AssistantMessageOptions {
     fn default() -> Self {
         Self {
-            hide_thinking: false,
+            hide_thinking: true,
             hidden_thinking_label: "Thinking...".to_string(),
             output_pad: 1,
         }
+    }
+}
+
+/// The timing of one thinking run, used for the collapsed summary line.
+#[derive(Debug, Clone, Default)]
+struct ThinkingRunTiming {
+    /// The thinking text last seen for this run.
+    text: Option<String>,
+    /// When the first chunk of this run arrived (ms).
+    started_at: Option<f64>,
+    /// When the last chunk of this run arrived (ms).
+    ended_at: Option<f64>,
+}
+
+/// Format a duration the way pi formats a tool duration (`3.7s`, `1m 5s`).
+pub fn format_tool_duration(ms: f64) -> String {
+    let seconds = ms / 1000.0;
+    if seconds < 60.0 {
+        return format!("{seconds:.1}s");
+    }
+    let total_seconds = seconds.floor() as i64;
+    let minutes = total_seconds / 60;
+    let remainder = total_seconds % 60;
+    if minutes < 60 {
+        return format!("{minutes}m {remainder}s");
+    }
+    format!("{}h {}m {}s", minutes / 60, minutes % 60, remainder)
+}
+
+/// The braille frame for a point in time (pi's `spinnerFrame`).
+fn spinner_frame(now_ms: f64) -> String {
+    let index = ((now_ms / super::loader::SPINNER_FRAME_MS as f64).floor() as usize)
+        % SPINNER_FRAMES.len();
+    SPINNER_FRAMES[index].to_string()
+}
+
+/// The summary line of a thinking run: `+ Thought · 3.7s` while collapsed,
+/// `- Thought · 3.7s` while the block is shown. A run without a measured
+/// duration (a message restored from a session) shows no duration.
+pub fn format_thought_summary(expanded: bool, duration_ms: Option<f64>) -> String {
+    let colors = theme().colors;
+    let summary = format!(
+        "{} {}",
+        colors.accent.fg(if expanded { "-" } else { "+" }),
+        colors.thinking_text.fg("Thought")
+    );
+    match duration_ms {
+        Some(duration) => format!(
+            "{summary}{}",
+            colors
+                .muted
+                .fg(&format!(" · {}", format_tool_duration(duration)))
+        ),
+        None => summary,
+    }
+}
+
+/// Collapsed thinking label with a braille sign in front of it.
+///
+/// While the message streams, the sign advances with the terminal's redraws:
+/// the frame comes from the clock, so the label needs no timer of its own and
+/// cannot leak one when the message is rebuilt.
+struct ThinkingIndicator {
+    label: String,
+    spinning: bool,
+    text: Text,
+}
+
+impl ThinkingIndicator {
+    fn new(label: String, output_pad: usize, spinning: bool) -> Self {
+        Self {
+            label,
+            spinning,
+            text: Text::new("", output_pad, 0),
+        }
+    }
+}
+
+impl Component for ThinkingIndicator {
+    fn render(&self, width: usize) -> Vec<String> {
+        let colors = theme().colors;
+        let now = if self.spinning { crate::clock::now_ms() } else { 0.0 };
+        let frame = spinner_frame(now);
+        self.text.set_text(format!(
+            "{} {}",
+            colors.accent.fg(&frame),
+            italic(&colors.thinking_text.fg(&self.label))
+        ));
+        self.text.render(width)
+    }
+
+    fn invalidate(&self) {
+        self.text.invalidate();
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -78,6 +177,10 @@ pub struct AssistantMessageComponent {
     has_tool_calls: Mutex<bool>,
     /// Whether currently streaming
     is_streaming: Mutex<bool>,
+    /// Timing of each collapsed thinking run, used for the summary line.
+    thinking_run_timings: Mutex<Vec<ThinkingRunTiming>>,
+    /// Per-run visibility overrides (toggled one run at a time).
+    thinking_visibility_overrides: Mutex<HashMap<usize, bool>>,
     /// The last blocks rendered (kept so `invalidate`/option changes can rebuild).
     last_blocks: Mutex<Vec<AssistantBlock>>,
     /// B5e: an optional markdown transformer applied to the raw assistant text
@@ -104,6 +207,8 @@ impl AssistantMessageComponent {
             trailing_spacing: Mutex::new(0),
             has_tool_calls: Mutex::new(false),
             is_streaming: Mutex::new(false),
+            thinking_run_timings: Mutex::new(Vec::new()),
+            thinking_visibility_overrides: Mutex::new(HashMap::new()),
             last_blocks: Mutex::new(Vec::new()),
             markdown_transformer: Mutex::new(None),
         }
@@ -207,6 +312,7 @@ impl AssistantMessageComponent {
         // one above. A leading spacer stacked with the host's trailing one
         // produced a double blank between messages.
         let mut i = 0;
+        let mut thinking_run_index = 0usize;
         while i < blocks.len() {
             let block = &blocks[i];
             match block {
@@ -254,14 +360,42 @@ impl AssistantMessageComponent {
                         continue;
                     }
 
-                    if opts.hide_thinking {
-                        // One static dim label per thinking run (TS path).
+                    let body = joined.join("\n\n");
+                    let run_index = thinking_run_index;
+                    thinking_run_index += 1;
+                    self.track_thinking_run(run_index, &body);
+                    let hidden = self
+                        .thinking_visibility_overrides
+                        .lock()
+                        .unwrap()
+                        .get(&run_index)
+                        .copied()
+                        .unwrap_or(opts.hide_thinking);
+
+                    if hidden {
+                        if *self.is_streaming.lock().unwrap() {
+                            // A live run shows the spinning label instead of
+                            // the summary (pi's `ThinkingIndicator`).
+                            self.content_container.add_child(Arc::new(ThinkingIndicator::new(
+                                opts.hidden_thinking_label.clone(),
+                                opts.output_pad,
+                                true,
+                            )));
+                        } else {
+                            self.content_container.add_child(Arc::new(Text::new(
+                                self.thought_summary(run_index, false),
+                                opts.output_pad,
+                                0,
+                            )));
+                        }
+                    } else {
+                        // The expanded run shows the summary line (`- Thought ·
+                        // 3.7s`) followed by the thinking itself.
                         self.content_container.add_child(Arc::new(Text::new(
-                            italic(&theme().colors.thinking_text.fg(&opts.hidden_thinking_label)),
+                            self.thought_summary(run_index, true),
                             opts.output_pad,
                             0,
                         )));
-                    } else {
                         // Render the joined thinking as one dim italic markdown
                         // section — the TS `color: thinkingText, italic: true`
                         // styling. The base style must be applied per rendered
@@ -270,7 +404,6 @@ impl AssistantMessageComponent {
                         // links, headings) emit `SGR 0` resets, which would
                         // otherwise drop the enclosing italic/color from the
                         // rest of the block.
-                        let body = joined.join("\n\n");
                         // B5e: transform the PLAIN thinking markdown first (the
                         // plugin must see markdown, not ANSI).
                         let transformed = self.transform_markdown(&body);
@@ -297,6 +430,74 @@ impl AssistantMessageComponent {
         }
     }
 
+    /// Record when a thinking run's content last changed, so the collapsed
+    /// summary can show how long the thinking took. The clock starts with the
+    /// first chunk and stops with the last one. Only live streams are timed: a
+    /// message restored from a session has no run time to show.
+    fn track_thinking_run(&self, run_index: usize, text: &str) {
+        if !*self.is_streaming.lock().unwrap() {
+            return;
+        }
+        let now = crate::clock::now_ms();
+        let mut timings = self.thinking_run_timings.lock().unwrap();
+        if timings.len() <= run_index {
+            timings.resize(run_index + 1, ThinkingRunTiming::default());
+        }
+        let timing = &mut timings[run_index];
+        if timing.text.as_deref() == Some(text) {
+            return;
+        }
+        timing.text = Some(text.to_string());
+        if timing.started_at.is_none() {
+            timing.started_at = Some(now);
+        }
+        timing.ended_at = Some(now);
+    }
+
+    /// The summary line of a thinking run: `+ Thought · 3.7s` while
+    /// collapsed, `- Thought · 3.7s` while the block is shown.
+    fn thought_summary(&self, run_index: usize, expanded: bool) -> String {
+        let timing = self
+            .thinking_run_timings
+            .lock()
+            .unwrap()
+            .get(run_index)
+            .cloned();
+        let duration = timing.and_then(|timing| {
+            let started_at = timing.started_at?;
+            let ended_at = timing.ended_at.unwrap_or(started_at);
+            Some(ended_at - started_at)
+        });
+        format_thought_summary(expanded, duration)
+    }
+
+    /// Toggle one thinking run between the collapsed summary and the expanded
+    /// body. Returns the new visibility.
+    pub fn toggle_thinking_run(&self, run_index: usize) -> bool {
+        let current = {
+            let overrides = self.thinking_visibility_overrides.lock().unwrap();
+            overrides
+                .get(&run_index)
+                .copied()
+                .unwrap_or_else(|| {
+                    self.options
+                        .lock()
+                        .unwrap()
+                        .hide_thinking
+                })
+        };
+        let next = !current;
+        self.thinking_visibility_overrides
+            .lock()
+            .unwrap()
+            .insert(run_index, next);
+        let blocks = self.last_blocks.lock().unwrap().clone();
+        if !blocks.is_empty() {
+            self.rebuild_content(&blocks);
+        }
+        next
+    }
+
     /// Update with error message.
     pub fn update_error(&self, error: &str, stop_reason: &str) {
         // Clear content container
@@ -308,10 +509,10 @@ impl AssistantMessageComponent {
 
         // Add error message
         let error_text = match stop_reason {
-            "aborted" => format!("❌ Operation aborted: {}", error),
-            "error" => format!("❌ Error: {}", error),
-            "length" => "⚠️ Response was truncated before completion.".to_string(),
-            _ => format!("❌ {}", error),
+            "aborted" => "Operation aborted".to_string(),
+            "error" => format!("Error: {}", error),
+            "length" => "Response was truncated before completion.".to_string(),
+            _ => error.to_string(),
         };
 
         let error_component = Arc::new(Text::new(error_text, 1, 0));
@@ -329,6 +530,7 @@ impl AssistantMessageComponent {
             opts.hide_thinking = hide;
             self.last_blocks.lock().unwrap().clone()
         };
+        self.thinking_visibility_overrides.lock().unwrap().clear();
         self.rebuild_content(&blocks);
     }
 
@@ -379,10 +581,21 @@ impl AssistantMessageComponent {
         *self.trailing_spacing.lock().unwrap() = rows;
     }
 
-    /// Set streaming state.
+    /// Set streaming state. A finished message rebuilds its content so the
+    /// collapsed summary replaces the live thinking indicator.
     pub fn set_streaming(&self, streaming: bool) {
-        if let Ok(mut s) = self.is_streaming.lock() {
-            *s = streaming;
+        let changed = {
+            let mut current = self.is_streaming.lock().unwrap();
+            let changed = *current != streaming;
+            *current = streaming;
+            changed
+        };
+        if !changed {
+            return;
+        }
+        let blocks = self.last_blocks.lock().unwrap().clone();
+        if !blocks.is_empty() {
+            self.rebuild_content(&blocks);
         }
     }
 }
@@ -487,7 +700,10 @@ mod tests {
     fn test_thinking_and_text_render_in_order() {
         // A thinking block followed by a text block should render BOTH, in
         // order, with a blank separator between them.
-        let msg = AssistantMessageComponent::default();
+        let msg = AssistantMessageComponent::new(AssistantMessageOptions {
+            hide_thinking: false,
+            ..Default::default()
+        });
         msg.update_blocks(&[
             AssistantBlock::Thinking("Let me consider the options.".to_string()),
             AssistantBlock::Text("Here is the answer.".to_string()),
@@ -511,7 +727,10 @@ mod tests {
         // the whole markdown source with ANSI. Inline code emits an `SGR 0`
         // reset, which dropped the italic + thinking color for the rest of the
         // block. The base style must be re-opened after that reset.
-        let msg = AssistantMessageComponent::default();
+        let msg = AssistantMessageComponent::new(AssistantMessageOptions {
+            hide_thinking: false,
+            ..Default::default()
+        });
         msg.update_blocks(&[AssistantBlock::Thinking(
             "consider `render_inline` then keep thinking".to_string(),
         )]);
@@ -532,7 +751,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hide_thinking_shows_label_only() {
+    fn test_hide_thinking_shows_the_summary_only() {
         let msg = AssistantMessageComponent::new(AssistantMessageOptions {
             hide_thinking: true,
             hidden_thinking_label: "Thinking...".to_string(),
@@ -543,7 +762,7 @@ mod tests {
             AssistantBlock::Text("Public answer.".to_string()),
         ]);
         let joined = strip_ansi(&msg.render(80).join("\n"));
-        assert!(joined.contains("Thinking..."), "label missing: {joined}");
+        assert!(joined.contains("+ Thought"), "summary missing: {joined}");
         assert!(
             !joined.contains("secret reasoning"),
             "hidden thinking leaked: {joined}"
@@ -556,7 +775,10 @@ mod tests {
         // Two adjacent thinking blocks coalesce into one section (no trailing
         // blank between them — the spacer goes between the run and the next
         // visible block, not between thinking blocks).
-        let msg = AssistantMessageComponent::default();
+        let msg = AssistantMessageComponent::new(AssistantMessageOptions {
+            hide_thinking: false,
+            ..Default::default()
+        });
         msg.update_blocks(&[
             AssistantBlock::Thinking("part one".to_string()),
             AssistantBlock::Thinking("part two".to_string()),
@@ -571,7 +793,10 @@ mod tests {
     #[test]
     fn test_set_hide_thinking_rebuilds() {
         // Toggling hide_thinking after an update should rebuild the render.
-        let msg = AssistantMessageComponent::default();
+        let msg = AssistantMessageComponent::new(AssistantMessageOptions {
+            hide_thinking: false,
+            ..Default::default()
+        });
         msg.update_blocks(&[
             AssistantBlock::Thinking("internal".to_string()),
             AssistantBlock::Text("visible".to_string()),
@@ -584,7 +809,7 @@ mod tests {
             !after.contains("internal"),
             "not rebuilt after toggle: {after}"
         );
-        assert!(after.contains("Thinking..."));
+        assert!(after.contains("+ Thought"), "summary missing: {after}");
     }
 
     #[test]
@@ -593,7 +818,10 @@ mod tests {
         // A trivial uppercasing transformer proves the text arm + the thinking
         // arm both route through `transform_markdown` (and that the thinking arm
         // transforms the PLAIN body, not the ANSI-wrapped output).
-        let msg = AssistantMessageComponent::default();
+        let msg = AssistantMessageComponent::new(AssistantMessageOptions {
+            hide_thinking: false,
+            ..Default::default()
+        });
         let transformer: Arc<dyn Fn(&str) -> String + Send + Sync> =
             Arc::new(|raw: &str| raw.to_uppercase());
         msg.set_markdown_transformer(Some(transformer));
@@ -636,5 +864,93 @@ mod tests {
         msg.update_blocks(&[AssistantBlock::Text("plain text".to_string())]);
         assert!(msg.markdown_transformer().is_none());
         assert!(strip_ansi(&msg.render(80).join("\n")).contains("plain text"));
+    }
+
+    #[test]
+    fn the_collapsed_thinking_run_shows_the_summary_line() {
+        // A finished message (no live stream ⇒ no measured duration) shows
+        // the `+ Thought` summary instead of the thinking body.
+        let msg = AssistantMessageComponent::default();
+        msg.update_blocks(&[AssistantBlock::Thinking("secret reasoning".to_string())]);
+        let joined = strip_ansi(&msg.render(80).join("\n"));
+        assert!(joined.contains("+ Thought"), "summary missing: {joined}");
+        assert!(
+            !joined.contains("secret reasoning"),
+            "thinking leaked: {joined}"
+        );
+    }
+
+    #[test]
+    fn the_expanded_thinking_run_shows_the_summary_and_the_body() {
+        let msg = AssistantMessageComponent::new(AssistantMessageOptions {
+            hide_thinking: false,
+            ..Default::default()
+        });
+        msg.update_blocks(&[AssistantBlock::Thinking("secret reasoning".to_string())]);
+        let joined = strip_ansi(&msg.render(80).join("\n"));
+        assert!(joined.contains("- Thought"), "summary missing: {joined}");
+        assert!(joined.contains("secret reasoning"), "body missing: {joined}");
+    }
+
+    #[test]
+    fn a_live_thinking_run_shows_the_streaming_indicator() {
+        let msg = AssistantMessageComponent::default();
+        msg.set_streaming(true);
+        msg.update_blocks(&[AssistantBlock::Thinking("secret reasoning".to_string())]);
+        let joined = strip_ansi(&msg.render(80).join("\n"));
+        assert!(
+            joined.contains("Thinking..."),
+            "streaming indicator missing: {joined}"
+        );
+        assert!(!joined.contains("+ Thought"), "summary leaked: {joined}");
+        // The indicator is a braille spinner in front of the label.
+        let spinner = SPINNER_FRAMES
+            .iter()
+            .any(|frame| joined.contains(*frame));
+        assert!(spinner, "spinner missing: {joined}");
+    }
+
+    #[test]
+    fn the_summary_line_text_is_pinned() {
+        assert_eq!(
+            strip_ansi(&format_thought_summary(false, Some(3700.0))),
+            "+ Thought · 3.7s"
+        );
+        assert_eq!(
+            strip_ansi(&format_thought_summary(true, Some(3700.0))),
+            "- Thought · 3.7s"
+        );
+        assert_eq!(
+            strip_ansi(&format_thought_summary(false, None)),
+            "+ Thought"
+        );
+    }
+
+    #[test]
+    fn the_duration_format_is_pinned() {
+        assert_eq!(format_tool_duration(0.0), "0.0s");
+        assert_eq!(format_tool_duration(3_700.0), "3.7s");
+        assert_eq!(format_tool_duration(59_900.0), "59.9s");
+        assert_eq!(format_tool_duration(65_000.0), "1m 5s");
+        assert_eq!(format_tool_duration(3_600_000.0), "1h 0m 0s");
+    }
+
+    #[test]
+    fn toggling_one_thinking_run_expands_only_that_run() {
+        let msg = AssistantMessageComponent::default();
+        msg.update_blocks(&[
+            AssistantBlock::Thinking("first run".to_string()),
+            AssistantBlock::Text("between".to_string()),
+            AssistantBlock::Thinking("second run".to_string()),
+        ]);
+        let before = strip_ansi(&msg.render(80).join("\n"));
+        assert!(!before.contains("first run"), "run visible: {before}");
+        assert!(!before.contains("second run"), "run visible: {before}");
+
+        msg.toggle_thinking_run(0);
+        let after = strip_ansi(&msg.render(80).join("\n"));
+        assert!(after.contains("first run"), "run not expanded: {after}");
+        assert!(!after.contains("second run"), "wrong run expanded: {after}");
+        assert!(after.contains("- Thought"), "summary missing: {after}");
     }
 }

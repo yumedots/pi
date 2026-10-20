@@ -6,11 +6,52 @@
 
 use crate::types::{Api, InputModality, ModelCost, ProviderId, ThinkingLevelMap};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+/// Materialize the provider endpoint placeholders from the environment.
+///
+/// Mirrors the TS `resolveCloudflareModel`: `{CLOUDFLARE_ACCOUNT_ID}` and
+/// `{CLOUDFLARE_GATEWAY_ID}` are replaced with their environment value; an
+/// unset variable leaves the placeholder in place so the request fails with
+/// the provider's own error.
+pub fn resolve_base_url(base_url: &str) -> String {
+    if !base_url.contains("{CLOUDFLARE_") {
+        return base_url.to_string();
+    }
+    base_url
+        .replace(
+            "{CLOUDFLARE_ACCOUNT_ID}",
+            &env_or_placeholder("CLOUDFLARE_ACCOUNT_ID"),
+        )
+        .replace(
+            "{CLOUDFLARE_GATEWAY_ID}",
+            &env_or_placeholder("CLOUDFLARE_GATEWAY_ID"),
+        )
+}
+
+fn env_or_placeholder(name: &str) -> String {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| format!("{{{name}}}"))
+}
+
+/// The per-conversation routing header OpenCode requires.
+///
+/// Mirrors the TS `withOpenCodeSessionHeader`: the header carries the request's
+/// session id and is only added when the caller did not set it already.
+pub fn opencode_session_header(model: &Model, session_id: Option<&str>) -> Option<(&'static str, String)> {
+    if !matches!(model.provider.as_str(), "opencode" | "opencode-go") {
+        return None;
+    }
+    let session_id = session_id?;
+    Some(("x-opencode-session", session_id.to_string()))
+}
 
 /// Compatibility flags for Anthropic Messages-compatible APIs.
 /// Mirrors TS `AnthropicMessagesCompat`. `Default` matches the documented defaults
 /// at each field.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AnthropicMessagesCompat {
     /// Default: true.
@@ -31,6 +72,25 @@ pub struct AnthropicMessagesCompat {
     pub supports_strict_tools: Option<bool>,
     /// Default: true for first-party Anthropic (except Haiku / Claude ≤ 4.4); false otherwise.
     pub supports_tool_references: Option<bool>,
+    /// Session-affinity header format. `"openrouter"` sends `x-session-id`.
+    pub session_affinity_format: Option<String>,
+    /// Whether the model transport supports effort-only system messages.
+    pub supports_mid_convo_effort: Option<bool>,
+    /// Whether the model accepts system-role messages inside the conversation.
+    pub supports_mid_convo_system_messages: Option<bool>,
+    /// Whether the model accepts mid-conversation tool addition/removal blocks.
+    pub supports_mid_convo_tool_changes: Option<bool>,
+    /// Models Anthropic accepts for server-side refusal fallback.
+    pub allowed_fallback_models: Option<Vec<AnthropicAllowedFallbackModel>>,
+}
+
+/// An Anthropic server-side refusal fallback target with local pricing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AnthropicAllowedFallbackModel {
+    pub provider: String,
+    pub id: String,
+    pub cost: ModelCost,
 }
 
 impl AnthropicMessagesCompat {
@@ -94,7 +154,7 @@ pub fn prior_reasoning_is_replayed(model: &Model) -> bool {
 /// Compatibility flags for OpenAI Completions-compat APIs. Only a subset is
 /// modeled for v1 (we have no OpenAI provider yet); the rest live here as
 /// `Option`s for forward-compat.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct OpenaiCompletionsCompat {
     pub supports_store: Option<bool>,
@@ -112,6 +172,38 @@ pub struct OpenaiCompletionsCompat {
     pub supports_strict_mode: Option<bool>,
     pub send_session_affinity_headers: Option<bool>,
     pub supports_long_cache_retention: Option<bool>,
+    /// Whether replayed assistant messages must carry an empty `reasoning_content`.
+    pub requires_reasoning_content_on_assistant_messages: Option<bool>,
+    /// Reasoning-parameter format (`openai`, `openrouter`, `deepseek`, `together`,
+    /// `baseten`, `zai`, `qwen`, `chat-template`, `qwen-chat-template`,
+    /// `string-thinking`, `ant-ling`).
+    pub thinking_format: Option<String>,
+    /// Kwargs sent as `chat_template_kwargs` when `thinking_format` is `chat-template`.
+    pub chat_template_kwargs: Option<BTreeMap<String, serde_json::Value>>,
+    /// Args sent as `chat_template_args` when `thinking_format` is `baseten`.
+    pub chat_template_args: Option<BTreeMap<String, serde_json::Value>>,
+    /// OpenRouter routing preferences.
+    pub open_router_routing: Option<serde_json::Value>,
+    /// Vercel AI Gateway routing preferences.
+    pub vercel_gateway_routing: Option<serde_json::Value>,
+    /// Whether z.ai supports top-level `tool_stream`.
+    pub zai_tool_stream: Option<bool>,
+    /// Top-level request field used to cap reasoning tokens.
+    pub thinking_token_budget_field: Option<String>,
+    /// Alias for `thinking_token_budget_field`.
+    pub supports_thinking_token_budget: Option<bool>,
+    /// Whether the endpoint accepts OpenAI custom tools with Lark/regex grammars.
+    pub supports_openai_grammar_tools: Option<bool>,
+    /// Whether the model accepts system messages after the conversation started.
+    pub supports_mid_convo_system_messages: Option<bool>,
+    /// Whether system messages may introduce additional tools mid-conversation.
+    pub supports_mid_convo_tool_additions: Option<bool>,
+    /// Cache-control convention for prompt caching (`anthropic`).
+    pub cache_control_format: Option<String>,
+    /// Session-affinity header format (`openai`, `openai-nosession`, `openrouter`).
+    pub session_affinity_format: Option<String>,
+    /// vLLM scheduler priority.
+    pub vllm_priority: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,6 +225,20 @@ pub struct OpenaiResponsesCompat {
     /// when this is unset or false.
     #[serde(rename = "supportsOpenAIGrammarTools")]
     pub supports_openai_grammar_tools: Option<bool>,
+    /// Whether the model accepts developer/system messages after the conversation started.
+    pub supports_mid_convo_system_messages: Option<bool>,
+    /// Session-affinity header format (`openai`, `openai-nosession`, `openrouter`).
+    pub session_affinity_format: Option<String>,
+    /// Whether the model supports message-anchored `additional_tools` input items.
+    pub supports_additional_tools: Option<bool>,
+    /// Whether the model supports client-executed tool search.
+    pub supports_tool_search: Option<bool>,
+    /// Whether the model accepts `prompt_cache_options`.
+    pub supports_explicit_prompt_cache_mode: Option<bool>,
+    /// Whether thinking-level changes travel as `configuration_update` input items.
+    pub supports_mid_convo_effort: Option<bool>,
+    /// Whether the provider accepts `max_output_tokens`.
+    pub supports_max_output_tokens: Option<bool>,
 }
 
 /// Compatibility flags for Bedrock.
@@ -143,7 +249,7 @@ pub struct BedrockCompat {
 }
 
 /// Per-API compat blob. Matches the TS `compat?` discriminator on `Model`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum StreamingProtocolCompat {
     AnthropicMessages(AnthropicMessagesCompat),
@@ -233,10 +339,14 @@ impl Model {
     }
 
     /// Returns the supported thinking levels for this model. Mirrors
-    /// `getSupportedThinkingLevels`: `xhigh`/`max` are only listed when their map
-    /// entry is a non-null string; other levels are supported unless mapped to `null`.
+    /// `getSupportedThinkingLevels`: a model that cannot reason supports only
+    /// `off`; `xhigh`/`max` are only listed when their map entry is a non-null
+    /// string; other levels are supported unless mapped to `null`.
     pub fn supported_thinking_levels(&self) -> Vec<crate::types::ThinkingLevel> {
         use crate::types::ThinkingLevel::*;
+        if !self.reasoning {
+            return vec![Off];
+        }
         let map = self.thinking_level_map.as_ref();
         let supported = |lvl: crate::types::ThinkingLevel| -> bool {
             match map.and_then(|m| m.get(&lvl)) {
@@ -279,5 +389,47 @@ impl Model {
             }
         }
         Off
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::ThinkingLevel;
+
+    fn model() -> Model {
+        Model::new("m", "M", Api::OpenaiCompletions, "p", "https://example.test")
+    }
+
+    #[test]
+    fn a_model_that_cannot_reason_supports_only_off() {
+        let mut m = model();
+        m.reasoning = false;
+        m.thinking_level_map = None;
+        assert_eq!(m.supported_thinking_levels(), vec![ThinkingLevel::Off]);
+    }
+
+    #[test]
+    fn a_reasoning_model_without_a_map_supports_the_five_levels() {
+        let mut m = model();
+        m.reasoning = true;
+        m.thinking_level_map = None;
+        assert_eq!(
+            m.supported_thinking_levels(),
+            vec![
+                ThinkingLevel::Off,
+                ThinkingLevel::Minimal,
+                ThinkingLevel::Low,
+                ThinkingLevel::Medium,
+                ThinkingLevel::High,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_requested_level_is_clamped_to_off_on_a_model_that_cannot_reason() {
+        let mut m = model();
+        m.reasoning = false;
+        assert_eq!(m.clamp_thinking_level(ThinkingLevel::High), ThinkingLevel::Off);
     }
 }

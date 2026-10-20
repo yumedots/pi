@@ -574,8 +574,8 @@ fn long_transcript_stream_rewrite_keeps_dock_visible() {
         "after a streamed rewrite above the viewport the dock must stay visible: {visible:?}"
     );
     assert!(
-        visible.iter().any(|row| row.contains('─')),
-        "the editor border (input area) must remain visible after the rewrite: {visible:?}"
+        visible.iter().any(|row| row.contains('>')),
+        "the editor input (prompt gutter) must remain visible after the rewrite: {visible:?}"
     );
     assert!(
         term.document_row(50).contains("REWRAPPED"),

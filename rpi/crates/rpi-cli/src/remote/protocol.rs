@@ -236,6 +236,7 @@ impl RemoteEvent {
                 tool_name,
                 result,
                 is_error,
+                ..
             } => RemoteEvent::ToolExecutionEnd {
                 tool_call_id: tool_call_id.clone(),
                 tool_name: tool_name.clone(),
@@ -265,6 +266,7 @@ pub fn tool_result_json(result: &AgentToolResult) -> Value {
     serde_json::json!({
         "content": content,
         "details": result.details,
+        "structured_content": result.structured_content,
         "usage": result.usage.as_ref().and_then(|usage| serde_json::to_value(usage).ok()),
         "addedToolNames": result.added_tool_names,
         "terminate": result.terminate,

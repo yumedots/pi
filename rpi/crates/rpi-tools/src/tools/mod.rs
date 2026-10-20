@@ -15,6 +15,26 @@ pub mod read;
 pub mod tool_context;
 pub mod write;
 
+/// A tool's contribution to the system prompt. Mirrors TS
+/// `ToolDefinition.promptSnippet` / `promptGuidelines`.
+#[derive(Debug, Clone)]
+pub struct PromptContribution {
+    /// One-line description used in the prompt's tool list.
+    pub snippet: &'static str,
+    /// Guideline bullets contributed to the prompt's rules.
+    pub guidelines: Vec<String>,
+}
+
+impl PromptContribution {
+    /// Build a contribution from a static snippet and its guideline bullets.
+    pub fn new(snippet: &'static str, guidelines: &[&str]) -> Self {
+        Self {
+            snippet,
+            guidelines: guidelines.iter().map(|g| (*g).to_string()).collect(),
+        }
+    }
+}
+
 pub use bash::{create_bash_tool, BashExecution, BashPrepare, BashToolOptions};
 pub use edit::create_edit_tool;
 pub use find::create_find_tool;

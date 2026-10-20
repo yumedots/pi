@@ -22,8 +22,7 @@ docs/rpi-tool/agent-project.md:agent-project.md \
 docs/rpi-tool/architecture.md:architecture.md \
 docs/rpi-tool/extension-authoring.md:extension-authoring.md \
 docs/rpi-tool/rust-debugging.md:rust-debugging.md \
-docs/rpi-tool/user-guide.md:user-guide.md \
-CHANGELOG.md:changelog.md"
+docs/rpi-tool/user-guide.md:user-guide.md"
 
 for entry in $FILES; do
   src="${entry%%:*}"
@@ -31,5 +30,16 @@ for entry in $FILES; do
   [ -f "$src" ] || { echo "missing source document: $src" >&2; exit 1; }
   cp "$src" "${DEST}/${name}"
 done
+
+# The release note the TUI shows is the original's changelog, not the port's.
+# It is copied when the original's checkout is next to this repository; the
+# bundled copy is kept otherwise, so the build never depends on that checkout.
+PI_CHANGELOG="${PI_CHANGELOG:-$(dirname "$0")/../../pi/packages/coding-agent/CHANGELOG.md}"
+if [ -f "${PI_CHANGELOG}" ]; then
+  cp "${PI_CHANGELOG}" "${DEST}/pi-changelog.md"
+  echo "synced ${DEST}/pi-changelog.md from ${PI_CHANGELOG}"
+else
+  echo "kept ${DEST}/pi-changelog.md (no original changelog at ${PI_CHANGELOG})"
+fi
 
 echo "synced ${DEST} from the repository documents"

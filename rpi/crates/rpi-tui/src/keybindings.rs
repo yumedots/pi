@@ -160,10 +160,10 @@ impl Keybindings {
             },
         );
         map.insert(
-            "app.clear",
+            "app.quit",
             KeybindingDefinition {
                 default_keys: vec![KeyCombo::new(Char('c'), M::CONTROL)],
-                description: Some("Clear editor"),
+                description: Some("Exit (press twice)"),
             },
         );
         map.insert(
@@ -230,19 +230,13 @@ impl Keybindings {
         map.insert(
             "app.clipboard.pasteImage",
             KeybindingDefinition {
-                // Upstream: `alt+v` on Windows, `ctrl+v` elsewhere. rpi keeps
-                // `ctrl+v` on Windows too — its clipboard *text* fallback
-                // (crossterm never emits `Event::Paste` on the Windows console)
-                // rides the same binding, so native's key is added, not swapped.
+                // Upstream: `alt+v` on Windows, `ctrl+v` elsewhere.
                 default_keys: if cfg!(windows) {
-                    vec![
-                        KeyCombo::new(Char('v'), M::CONTROL),
-                        KeyCombo::new(Char('v'), M::ALT),
-                    ]
+                    vec![KeyCombo::new(Char('v'), M::ALT)]
                 } else {
                     vec![KeyCombo::new(Char('v'), M::CONTROL)]
                 },
-                description: Some("Paste image from clipboard"),
+                description: Some("Paste files on macOS, images, or text from clipboard"),
             },
         );
         map.insert(
@@ -260,14 +254,9 @@ impl Keybindings {
         map.insert(
             "app.message.followUp",
             KeybindingDefinition {
-                // Upstream: `ctrl+q` on Windows, `alt+enter` elsewhere. rpi
-                // keeps `alt+enter` on Windows as well (it already worked) and
-                // adds native's key alongside it.
+                // Upstream: `ctrl+q` on Windows, `alt+enter` elsewhere.
                 default_keys: if cfg!(windows) {
-                    vec![
-                        KeyCombo::new(Char('q'), M::CONTROL),
-                        KeyCombo::new(Enter, M::ALT),
-                    ]
+                    vec![KeyCombo::new(Char('q'), M::CONTROL)]
                 } else {
                     vec![KeyCombo::new(Enter, M::ALT)]
                 },
@@ -291,6 +280,224 @@ impl Keybindings {
             KeybindingDefinition {
                 default_keys: vec![KeyCombo::new(Char('x'), M::CONTROL)],
                 description: Some("Copy selection or last assistant message"),
+            },
+        );
+        map.insert(
+            "app.thinking.save",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('s'), M::CONTROL)],
+                description: Some("Save thinking level"),
+            },
+        );
+        map.insert(
+            "app.session.toggleNamedFilter",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('n'), M::CONTROL)],
+                description: Some("Toggle named session filter"),
+            },
+        );
+        map.insert(
+            "app.session.new",
+            KeybindingDefinition {
+                default_keys: vec![],
+                description: Some("Start a new session"),
+            },
+        );
+        map.insert(
+            "app.session.tree",
+            KeybindingDefinition {
+                default_keys: vec![],
+                description: Some("Open session tree"),
+            },
+        );
+        map.insert(
+            "app.session.fork",
+            KeybindingDefinition {
+                default_keys: vec![],
+                description: Some("Fork current session"),
+            },
+        );
+        map.insert(
+            "app.session.resume",
+            KeybindingDefinition {
+                default_keys: vec![],
+                description: Some("Resume a session"),
+            },
+        );
+        map.insert(
+            "app.tree.foldOrUp",
+            KeybindingDefinition {
+                // Upstream: `alt+left` first on macOS, `ctrl+left` first elsewhere.
+                default_keys: if cfg!(target_os = "macos") {
+                    vec![
+                        KeyCombo::new(Left, M::ALT),
+                        KeyCombo::new(Left, M::CONTROL),
+                    ]
+                } else {
+                    vec![
+                        KeyCombo::new(Left, M::CONTROL),
+                        KeyCombo::new(Left, M::ALT),
+                    ]
+                },
+                description: Some("Fold tree branch or move up"),
+            },
+        );
+        map.insert(
+            "app.tree.unfoldOrDown",
+            KeybindingDefinition {
+                // Upstream: `alt+right` first on macOS, `ctrl+right` first elsewhere.
+                default_keys: if cfg!(target_os = "macos") {
+                    vec![
+                        KeyCombo::new(Right, M::ALT),
+                        KeyCombo::new(Right, M::CONTROL),
+                    ]
+                } else {
+                    vec![
+                        KeyCombo::new(Right, M::CONTROL),
+                        KeyCombo::new(Right, M::ALT),
+                    ]
+                },
+                description: Some("Unfold tree branch or move down"),
+            },
+        );
+        map.insert(
+            "app.tree.editLabel",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('l'), M::SHIFT)],
+                description: Some("Edit tree label"),
+            },
+        );
+        map.insert(
+            "app.tree.toggleLabelTimestamp",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('t'), M::SHIFT)],
+                description: Some("Toggle tree label timestamps"),
+            },
+        );
+        map.insert(
+            "app.session.togglePath",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('p'), M::CONTROL)],
+                description: Some("Toggle session path display"),
+            },
+        );
+        map.insert(
+            "app.session.toggleSort",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('s'), M::CONTROL)],
+                description: Some("Toggle session sort mode"),
+            },
+        );
+        map.insert(
+            "app.session.rename",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('r'), M::CONTROL)],
+                description: Some("Rename session"),
+            },
+        );
+        map.insert(
+            "app.session.delete",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('d'), M::CONTROL)],
+                description: Some("Delete session"),
+            },
+        );
+        map.insert(
+            "app.session.deleteNoninvasive",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Backspace, M::CONTROL)],
+                description: Some("Delete session when query is empty"),
+            },
+        );
+        map.insert(
+            "app.models.save",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('s'), M::CONTROL)],
+                description: Some("Save model selection"),
+            },
+        );
+        map.insert(
+            "app.models.enableAll",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('a'), M::CONTROL)],
+                description: Some("Enable all models"),
+            },
+        );
+        map.insert(
+            "app.models.clearAll",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('x'), M::CONTROL)],
+                description: Some("Clear all models"),
+            },
+        );
+        map.insert(
+            "app.models.toggleProvider",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('p'), M::CONTROL)],
+                description: Some("Toggle all models for provider"),
+            },
+        );
+        map.insert(
+            "app.models.reorderUp",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Up, M::ALT)],
+                description: Some("Move model up in order"),
+            },
+        );
+        map.insert(
+            "app.models.reorderDown",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Down, M::ALT)],
+                description: Some("Move model down in order"),
+            },
+        );
+        map.insert(
+            "app.tree.filter.default",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('d'), M::CONTROL)],
+                description: Some("Tree filter: default view"),
+            },
+        );
+        map.insert(
+            "app.tree.filter.noTools",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('t'), M::CONTROL)],
+                description: Some("Tree filter: hide tool results"),
+            },
+        );
+        map.insert(
+            "app.tree.filter.userOnly",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('u'), M::CONTROL)],
+                description: Some("Tree filter: user messages only"),
+            },
+        );
+        map.insert(
+            "app.tree.filter.labeledOnly",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('l'), M::CONTROL)],
+                description: Some("Tree filter: labeled entries only"),
+            },
+        );
+        map.insert(
+            "app.tree.filter.all",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('a'), M::CONTROL)],
+                description: Some("Tree filter: show all entries"),
+            },
+        );
+        map.insert(
+            "app.tree.filter.cycleForward",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('o'), M::CONTROL)],
+                description: Some("Tree filter: cycle forward"),
+            },
+        );
+        map.insert(
+            "app.tree.filter.cycleBackward",
+            KeybindingDefinition {
+                default_keys: vec![KeyCombo::new(Char('o'), M::CONTROL | M::SHIFT)],
+                description: Some("Tree filter: cycle backward"),
             },
         );
 
@@ -370,21 +577,9 @@ impl Keybindings {
             KeybindingDefinition {
                 default_keys: vec![
                     KeyCombo::new(Home, M::NONE),
-                    KeyCombo::new(Home, M::CONTROL),
                     KeyCombo::new(Char('a'), M::CONTROL),
                 ],
                 description: Some("Move to line start"),
-            },
-        );
-        map.insert(
-            "tui.editor.cursorLineEnd",
-            KeybindingDefinition {
-                default_keys: vec![
-                    KeyCombo::new(End, M::NONE),
-                    KeyCombo::new(End, M::CONTROL),
-                    KeyCombo::new(Char('e'), M::CONTROL),
-                ],
-                description: Some("Move to line end"),
             },
         );
         map.insert(
@@ -489,7 +684,12 @@ impl Keybindings {
         map.insert(
             "tui.editor.undo",
             KeybindingDefinition {
-                default_keys: vec![KeyCombo::new(Char('-'), M::CONTROL)],
+                // Upstream: `ctrl+z` on Windows, `ctrl+-` elsewhere.
+                default_keys: if cfg!(windows) {
+                    vec![KeyCombo::new(Char('z'), M::CONTROL)]
+                } else {
+                    vec![KeyCombo::new(Char('-'), M::CONTROL)]
+                },
                 description: Some("Undo"),
             },
         );
@@ -620,21 +820,44 @@ impl Keybindings {
         map.insert(
             "tui.altScreen.previousPrompt",
             KeybindingDefinition {
-                default_keys: vec![KeyCombo::new(Up, M::CONTROL | M::SHIFT)],
+                // Upstream: `ctrl+up` alone on Windows, the shifted and plain
+                // arrows elsewhere.
+                default_keys: if cfg!(windows) {
+                    vec![KeyCombo::new(Up, M::CONTROL)]
+                } else {
+                    vec![
+                        KeyCombo::new(Up, M::CONTROL | M::SHIFT),
+                        KeyCombo::new(Up, M::CONTROL),
+                    ]
+                },
                 description: Some("Jump to previous semantic prompt"),
             },
         );
         map.insert(
             "tui.altScreen.nextPrompt",
             KeybindingDefinition {
-                default_keys: vec![KeyCombo::new(Down, M::CONTROL | M::SHIFT)],
+                // Upstream: `ctrl+down` alone on Windows, the shifted and plain
+                // arrows elsewhere.
+                default_keys: if cfg!(windows) {
+                    vec![KeyCombo::new(Down, M::CONTROL)]
+                } else {
+                    vec![
+                        KeyCombo::new(Down, M::CONTROL | M::SHIFT),
+                        KeyCombo::new(Down, M::CONTROL),
+                    ]
+                },
                 description: Some("Jump to next semantic prompt"),
             },
         );
         map.insert(
             "tui.altScreen.search",
             KeybindingDefinition {
-                default_keys: vec![KeyCombo::new(Char('f'), M::CONTROL | M::SHIFT)],
+                // Upstream: `ctrl+f` on Windows, `ctrl+shift+f` elsewhere.
+                default_keys: if cfg!(windows) {
+                    vec![KeyCombo::new(Char('f'), M::CONTROL)]
+                } else {
+                    vec![KeyCombo::new(Char('f'), M::CONTROL | M::SHIFT)]
+                },
                 description: Some("Search the primary scroll view"),
             },
         );
@@ -668,14 +891,14 @@ impl Keybindings {
         map.insert(
             "tui.altScreen.top",
             KeybindingDefinition {
-                default_keys: vec![KeyCombo::new(Home, M::NONE)],
+                default_keys: vec![],
                 description: Some("Scroll viewport to top"),
             },
         );
         map.insert(
             "tui.altScreen.bottom",
             KeybindingDefinition {
-                default_keys: vec![KeyCombo::new(End, M::NONE)],
+                default_keys: vec![KeyCombo::new(Char('e'), M::CONTROL)],
                 description: Some("Scroll viewport to bottom"),
             },
         );
@@ -711,6 +934,13 @@ impl Keybindings {
     /// Get definition for a keybinding.
     pub fn get_definition(&self, binding_id: KeybindingId) -> Option<&KeybindingDefinition> {
         self.definitions.get(binding_id)
+    }
+
+    /// Every registered keybinding id.
+    pub fn ids(&self) -> Vec<KeybindingId> {
+        let mut ids: Vec<KeybindingId> = self.definitions.keys().copied().collect();
+        ids.sort_unstable();
+        ids
     }
 
     /// Get conflicts.
@@ -794,30 +1024,63 @@ pub mod keys {
     use super::KeybindingId;
 
     pub const INTERRUPT: KeybindingId = "app.interrupt";
-    pub const CLEAR: KeybindingId = "app.clear";
+    pub const QUIT: KeybindingId = "app.quit";
     pub const EXIT: KeybindingId = "app.exit";
-    pub const MODEL_SELECT: KeybindingId = "app.model.select";
+    pub const SUSPEND: KeybindingId = "app.suspend";
+    pub const THINKING_CYCLE: KeybindingId = "app.thinking.cycle";
+    pub const THINKING_SAVE: KeybindingId = "app.thinking.save";
     pub const MODEL_CYCLE_FORWARD: KeybindingId = "app.model.cycleForward";
     pub const MODEL_CYCLE_BACKWARD: KeybindingId = "app.model.cycleBackward";
+    pub const MODEL_SELECT: KeybindingId = "app.model.select";
     pub const TOOLS_EXPAND: KeybindingId = "app.tools.expand";
     pub const THINKING_TOGGLE: KeybindingId = "app.thinking.toggle";
+    pub const SESSION_TOGGLE_NAMED_FILTER: KeybindingId = "app.session.toggleNamedFilter";
     pub const EXTERNAL_EDITOR: KeybindingId = "app.editor.external";
-    pub const THINKING_CYCLE: KeybindingId = "app.thinking.cycle";
-    pub const PASTE_IMAGE: KeybindingId = "app.clipboard.pasteImage";
-    pub const SUSPEND: KeybindingId = "app.suspend";
+    pub const MESSAGE_COPY: KeybindingId = "app.message.copy";
     pub const MESSAGE_FOLLOW_UP: KeybindingId = "app.message.followUp";
     pub const DEQUEUE: KeybindingId = "app.message.dequeue";
-    pub const MESSAGE_COPY: KeybindingId = "app.message.copy";
+    pub const PASTE_IMAGE: KeybindingId = "app.clipboard.pasteImage";
+    pub const SESSION_NEW: KeybindingId = "app.session.new";
+    pub const SESSION_TREE: KeybindingId = "app.session.tree";
+    pub const SESSION_FORK: KeybindingId = "app.session.fork";
+    pub const SESSION_RESUME: KeybindingId = "app.session.resume";
+    pub const TREE_FOLD_OR_UP: KeybindingId = "app.tree.foldOrUp";
+    pub const TREE_UNFOLD_OR_DOWN: KeybindingId = "app.tree.unfoldOrDown";
+    pub const TREE_EDIT_LABEL: KeybindingId = "app.tree.editLabel";
+    pub const TREE_TOGGLE_LABEL_TIMESTAMP: KeybindingId = "app.tree.toggleLabelTimestamp";
+    pub const SESSION_TOGGLE_PATH: KeybindingId = "app.session.togglePath";
+    pub const SESSION_TOGGLE_SORT: KeybindingId = "app.session.toggleSort";
+    pub const SESSION_RENAME: KeybindingId = "app.session.rename";
+    pub const SESSION_DELETE: KeybindingId = "app.session.delete";
+    pub const SESSION_DELETE_NONINVASIVE: KeybindingId = "app.session.deleteNoninvasive";
+    pub const MODELS_SAVE: KeybindingId = "app.models.save";
+    pub const MODELS_ENABLE_ALL: KeybindingId = "app.models.enableAll";
+    pub const MODELS_CLEAR_ALL: KeybindingId = "app.models.clearAll";
+    pub const MODELS_TOGGLE_PROVIDER: KeybindingId = "app.models.toggleProvider";
+    pub const MODELS_REORDER_UP: KeybindingId = "app.models.reorderUp";
+    pub const MODELS_REORDER_DOWN: KeybindingId = "app.models.reorderDown";
+    pub const TREE_FILTER_DEFAULT: KeybindingId = "app.tree.filter.default";
+    pub const TREE_FILTER_NO_TOOLS: KeybindingId = "app.tree.filter.noTools";
+    pub const TREE_FILTER_USER_ONLY: KeybindingId = "app.tree.filter.userOnly";
+    pub const TREE_FILTER_LABELED_ONLY: KeybindingId = "app.tree.filter.labeledOnly";
+    pub const TREE_FILTER_ALL: KeybindingId = "app.tree.filter.all";
+    pub const TREE_FILTER_CYCLE_FORWARD: KeybindingId = "app.tree.filter.cycleForward";
+    pub const TREE_FILTER_CYCLE_BACKWARD: KeybindingId = "app.tree.filter.cycleBackward";
 
     // Editor
     pub const CURSOR_UP: KeybindingId = "tui.editor.cursorUp";
     pub const CURSOR_DOWN: KeybindingId = "tui.editor.cursorDown";
+    pub const HISTORY_PREVIOUS: KeybindingId = "tui.editor.historyPrevious";
+    pub const HISTORY_NEXT: KeybindingId = "tui.editor.historyNext";
     pub const CURSOR_LEFT: KeybindingId = "tui.editor.cursorLeft";
     pub const CURSOR_RIGHT: KeybindingId = "tui.editor.cursorRight";
     pub const CURSOR_WORD_LEFT: KeybindingId = "tui.editor.cursorWordLeft";
     pub const CURSOR_WORD_RIGHT: KeybindingId = "tui.editor.cursorWordRight";
     pub const CURSOR_LINE_START: KeybindingId = "tui.editor.cursorLineStart";
-    pub const CURSOR_LINE_END: KeybindingId = "tui.editor.cursorLineEnd";
+    pub const JUMP_FORWARD: KeybindingId = "tui.editor.jumpForward";
+    pub const JUMP_BACKWARD: KeybindingId = "tui.editor.jumpBackward";
+    pub const EDITOR_PAGE_UP: KeybindingId = "tui.editor.pageUp";
+    pub const EDITOR_PAGE_DOWN: KeybindingId = "tui.editor.pageDown";
     pub const DELETE_CHAR_BACKWARD: KeybindingId = "tui.editor.deleteCharBackward";
     pub const DELETE_CHAR_FORWARD: KeybindingId = "tui.editor.deleteCharForward";
     pub const DELETE_WORD_BACKWARD: KeybindingId = "tui.editor.deleteWordBackward";
@@ -829,8 +1092,8 @@ pub mod keys {
     pub const UNDO: KeybindingId = "tui.editor.undo";
 
     // Input
-    pub const INPUT_SUBMIT: KeybindingId = "tui.input.submit";
     pub const INPUT_NEW_LINE: KeybindingId = "tui.input.newLine";
+    pub const INPUT_SUBMIT: KeybindingId = "tui.input.submit";
     pub const INPUT_TAB: KeybindingId = "tui.input.tab";
     pub const INPUT_COPY: KeybindingId = "tui.input.copy";
 
@@ -849,14 +1112,14 @@ pub mod keys {
     pub const HALF_PAGE_DOWN: KeybindingId = "tui.altScreen.halfPageDown";
     pub const LINE_UP: KeybindingId = "tui.altScreen.lineUp";
     pub const LINE_DOWN: KeybindingId = "tui.altScreen.lineDown";
-    pub const TOP: KeybindingId = "tui.altScreen.top";
-    pub const BOTTOM: KeybindingId = "tui.altScreen.bottom";
+    pub const PREVIOUS_PROMPT: KeybindingId = "tui.altScreen.previousPrompt";
+    pub const NEXT_PROMPT: KeybindingId = "tui.altScreen.nextPrompt";
     pub const SEARCH: KeybindingId = "tui.altScreen.search";
     pub const SEARCH_NEXT: KeybindingId = "tui.altScreen.searchNext";
     pub const SEARCH_PREVIOUS: KeybindingId = "tui.altScreen.searchPrevious";
     pub const SEARCH_CLOSE: KeybindingId = "tui.altScreen.searchClose";
-    pub const PREVIOUS_PROMPT: KeybindingId = "tui.altScreen.previousPrompt";
-    pub const NEXT_PROMPT: KeybindingId = "tui.altScreen.nextPrompt";
+    pub const TOP: KeybindingId = "tui.altScreen.top";
+    pub const BOTTOM: KeybindingId = "tui.altScreen.bottom";
 }
 
 #[cfg(test)]
@@ -931,5 +1194,527 @@ mod tests {
             crossterm::event::KeyEvent::new(KeyCode::Up, KeyModifiers::ALT)
         };
         assert!(kb.matches(&event, keys::DEQUEUE));
+    }
+
+    /// Every id the original registers, with its default keys and its
+    /// description. Mirrors `packages/coding-agent/src/core/keybindings.ts`
+    /// (the `KEYBINDINGS` export: the TUI registry plus the app registry).
+    fn original_registry() -> Vec<(KeybindingId, Vec<KeyCombo>, Option<&'static str>)> {
+        use KeyCode::*;
+        use KeyModifiers as M;
+        let ctrl = M::CONTROL;
+        let shift = M::SHIFT;
+        let alt = M::ALT;
+        let none = M::NONE;
+        let ch = |c: char, modifiers: KeyModifiers| KeyCombo::new(Char(c), modifiers);
+        vec![
+            (
+                "app.interrupt",
+                vec![KeyCombo::new(Esc, none)],
+                Some("Cancel or abort"),
+            ),
+            (
+                "app.quit",
+                vec![ch('c', ctrl)],
+                Some("Exit (press twice)"),
+            ),
+            (
+                "app.exit",
+                vec![ch('d', ctrl)],
+                Some("Exit when editor is empty"),
+            ),
+            (
+                "app.suspend",
+                if cfg!(windows) {
+                    vec![]
+                } else {
+                    vec![ch('z', ctrl)]
+                },
+                Some("Suspend to background"),
+            ),
+            (
+                "app.thinking.cycle",
+                vec![KeyCombo::new(Tab, shift)],
+                Some("Cycle thinking level"),
+            ),
+            (
+                "app.thinking.save",
+                vec![ch('s', ctrl)],
+                Some("Save thinking level"),
+            ),
+            (
+                "app.model.cycleForward",
+                vec![ch('p', ctrl)],
+                Some("Cycle to next model"),
+            ),
+            (
+                "app.model.cycleBackward",
+                if cfg!(windows) {
+                    vec![ch('p', alt)]
+                } else {
+                    vec![ch('p', ctrl | shift)]
+                },
+                Some("Cycle to previous model"),
+            ),
+            (
+                "app.model.select",
+                vec![ch('l', ctrl)],
+                Some("Open model selector"),
+            ),
+            (
+                "app.tools.expand",
+                vec![ch('o', ctrl)],
+                Some("Toggle tool output"),
+            ),
+            (
+                "app.thinking.toggle",
+                vec![ch('t', ctrl)],
+                Some("Toggle thinking blocks"),
+            ),
+            (
+                "app.session.toggleNamedFilter",
+                vec![ch('n', ctrl)],
+                Some("Toggle named session filter"),
+            ),
+            (
+                "app.editor.external",
+                vec![ch('g', ctrl)],
+                Some("Open external editor"),
+            ),
+            (
+                "app.message.copy",
+                vec![ch('x', ctrl)],
+                Some("Copy selection or last assistant message"),
+            ),
+            (
+                "app.message.followUp",
+                if cfg!(windows) {
+                    vec![ch('q', ctrl)]
+                } else {
+                    vec![KeyCombo::new(Enter, alt)]
+                },
+                Some("Queue follow-up message"),
+            ),
+            (
+                "app.message.dequeue",
+                if cfg!(windows) {
+                    vec![ch('q', alt)]
+                } else {
+                    vec![KeyCombo::new(Up, alt)]
+                },
+                Some("Restore queued messages"),
+            ),
+            (
+                "app.clipboard.pasteImage",
+                if cfg!(windows) {
+                    vec![ch('v', alt)]
+                } else {
+                    vec![ch('v', ctrl)]
+                },
+                Some("Paste files on macOS, images, or text from clipboard"),
+            ),
+            ("app.session.new", vec![], Some("Start a new session")),
+            ("app.session.tree", vec![], Some("Open session tree")),
+            ("app.session.fork", vec![], Some("Fork current session")),
+            ("app.session.resume", vec![], Some("Resume a session")),
+            (
+                "app.tree.foldOrUp",
+                if cfg!(target_os = "macos") {
+                    vec![KeyCombo::new(Left, alt), KeyCombo::new(Left, ctrl)]
+                } else {
+                    vec![KeyCombo::new(Left, ctrl), KeyCombo::new(Left, alt)]
+                },
+                Some("Fold tree branch or move up"),
+            ),
+            (
+                "app.tree.unfoldOrDown",
+                if cfg!(target_os = "macos") {
+                    vec![KeyCombo::new(Right, alt), KeyCombo::new(Right, ctrl)]
+                } else {
+                    vec![KeyCombo::new(Right, ctrl), KeyCombo::new(Right, alt)]
+                },
+                Some("Unfold tree branch or move down"),
+            ),
+            (
+                "app.tree.editLabel",
+                vec![ch('l', shift)],
+                Some("Edit tree label"),
+            ),
+            (
+                "app.tree.toggleLabelTimestamp",
+                vec![ch('t', shift)],
+                Some("Toggle tree label timestamps"),
+            ),
+            (
+                "app.session.togglePath",
+                vec![ch('p', ctrl)],
+                Some("Toggle session path display"),
+            ),
+            (
+                "app.session.toggleSort",
+                vec![ch('s', ctrl)],
+                Some("Toggle session sort mode"),
+            ),
+            (
+                "app.session.rename",
+                vec![ch('r', ctrl)],
+                Some("Rename session"),
+            ),
+            (
+                "app.session.delete",
+                vec![ch('d', ctrl)],
+                Some("Delete session"),
+            ),
+            (
+                "app.session.deleteNoninvasive",
+                vec![KeyCombo::new(Backspace, ctrl)],
+                Some("Delete session when query is empty"),
+            ),
+            (
+                "app.models.save",
+                vec![ch('s', ctrl)],
+                Some("Save model selection"),
+            ),
+            (
+                "app.models.enableAll",
+                vec![ch('a', ctrl)],
+                Some("Enable all models"),
+            ),
+            (
+                "app.models.clearAll",
+                vec![ch('x', ctrl)],
+                Some("Clear all models"),
+            ),
+            (
+                "app.models.toggleProvider",
+                vec![ch('p', ctrl)],
+                Some("Toggle all models for provider"),
+            ),
+            (
+                "app.models.reorderUp",
+                vec![KeyCombo::new(Up, alt)],
+                Some("Move model up in order"),
+            ),
+            (
+                "app.models.reorderDown",
+                vec![KeyCombo::new(Down, alt)],
+                Some("Move model down in order"),
+            ),
+            (
+                "app.tree.filter.default",
+                vec![ch('d', ctrl)],
+                Some("Tree filter: default view"),
+            ),
+            (
+                "app.tree.filter.noTools",
+                vec![ch('t', ctrl)],
+                Some("Tree filter: hide tool results"),
+            ),
+            (
+                "app.tree.filter.userOnly",
+                vec![ch('u', ctrl)],
+                Some("Tree filter: user messages only"),
+            ),
+            (
+                "app.tree.filter.labeledOnly",
+                vec![ch('l', ctrl)],
+                Some("Tree filter: labeled entries only"),
+            ),
+            (
+                "app.tree.filter.all",
+                vec![ch('a', ctrl)],
+                Some("Tree filter: show all entries"),
+            ),
+            (
+                "app.tree.filter.cycleForward",
+                vec![ch('o', ctrl)],
+                Some("Tree filter: cycle forward"),
+            ),
+            (
+                "app.tree.filter.cycleBackward",
+                vec![ch('o', ctrl | shift)],
+                Some("Tree filter: cycle backward"),
+            ),
+            (
+                "tui.editor.cursorUp",
+                vec![KeyCombo::new(Up, none)],
+                Some("Move cursor up"),
+            ),
+            (
+                "tui.editor.cursorDown",
+                vec![KeyCombo::new(Down, none)],
+                Some("Move cursor down"),
+            ),
+            (
+                "tui.editor.historyPrevious",
+                vec![],
+                Some("Select previous prompt history entry"),
+            ),
+            (
+                "tui.editor.historyNext",
+                vec![],
+                Some("Select next prompt history entry"),
+            ),
+            (
+                "tui.editor.cursorLeft",
+                vec![KeyCombo::new(Left, none), ch('b', ctrl)],
+                Some("Move cursor left"),
+            ),
+            (
+                "tui.editor.cursorRight",
+                vec![KeyCombo::new(Right, none), ch('f', ctrl)],
+                Some("Move cursor right"),
+            ),
+            (
+                "tui.editor.cursorWordLeft",
+                vec![
+                    KeyCombo::new(Left, alt),
+                    KeyCombo::new(Left, ctrl),
+                    ch('b', alt),
+                ],
+                Some("Move cursor word left"),
+            ),
+            (
+                "tui.editor.cursorWordRight",
+                vec![
+                    KeyCombo::new(Right, alt),
+                    KeyCombo::new(Right, ctrl),
+                    ch('f', alt),
+                ],
+                Some("Move cursor word right"),
+            ),
+            (
+                "tui.editor.cursorLineStart",
+                vec![KeyCombo::new(Home, none), ch('a', ctrl)],
+                Some("Move to line start"),
+            ),
+            (
+                "tui.editor.jumpForward",
+                vec![ch(']', ctrl)],
+                Some("Jump forward to character"),
+            ),
+            (
+                "tui.editor.jumpBackward",
+                vec![ch(']', ctrl | alt)],
+                Some("Jump backward to character"),
+            ),
+            (
+                "tui.editor.pageUp",
+                vec![KeyCombo::new(PageUp, none), KeyCombo::new(PageUp, ctrl)],
+                Some("Page up"),
+            ),
+            (
+                "tui.editor.pageDown",
+                vec![KeyCombo::new(PageDown, none), KeyCombo::new(PageDown, ctrl)],
+                Some("Page down"),
+            ),
+            (
+                "tui.editor.deleteCharBackward",
+                vec![KeyCombo::new(Backspace, none)],
+                Some("Delete character backward"),
+            ),
+            (
+                "tui.editor.deleteCharForward",
+                vec![KeyCombo::new(Delete, none), ch('d', ctrl)],
+                Some("Delete character forward"),
+            ),
+            (
+                "tui.editor.deleteWordBackward",
+                vec![ch('w', ctrl), KeyCombo::new(Backspace, alt)],
+                Some("Delete word backward"),
+            ),
+            (
+                "tui.editor.deleteWordForward",
+                vec![ch('d', alt), KeyCombo::new(Delete, alt)],
+                Some("Delete word forward"),
+            ),
+            (
+                "tui.editor.deleteToLineStart",
+                vec![ch('u', ctrl)],
+                Some("Delete to line start"),
+            ),
+            (
+                "tui.editor.deleteToLineEnd",
+                vec![ch('k', ctrl)],
+                Some("Delete to line end"),
+            ),
+            ("tui.editor.yank", vec![ch('y', ctrl)], Some("Yank")),
+            ("tui.editor.yankPop", vec![ch('y', alt)], Some("Yank pop")),
+            (
+                "tui.editor.undo",
+                if cfg!(windows) {
+                    vec![ch('z', ctrl)]
+                } else {
+                    vec![ch('-', ctrl)]
+                },
+                Some("Undo"),
+            ),
+            (
+                "tui.input.newLine",
+                vec![KeyCombo::new(Enter, shift), ch('j', ctrl)],
+                Some("Insert newline"),
+            ),
+            (
+                "tui.input.submit",
+                vec![KeyCombo::new(Enter, none)],
+                Some("Submit input"),
+            ),
+            (
+                "tui.input.tab",
+                vec![KeyCombo::new(Tab, none)],
+                Some("Tab / autocomplete"),
+            ),
+            (
+                "tui.input.copy",
+                vec![ch('c', ctrl)],
+                Some("Copy selection"),
+            ),
+            (
+                "tui.select.up",
+                vec![KeyCombo::new(Up, none)],
+                Some("Move selection up"),
+            ),
+            (
+                "tui.select.down",
+                vec![KeyCombo::new(Down, none)],
+                Some("Move selection down"),
+            ),
+            (
+                "tui.select.pageUp",
+                vec![KeyCombo::new(PageUp, none)],
+                Some("Selection page up"),
+            ),
+            (
+                "tui.select.pageDown",
+                vec![KeyCombo::new(PageDown, none)],
+                Some("Selection page down"),
+            ),
+            (
+                "tui.select.confirm",
+                vec![KeyCombo::new(Enter, none)],
+                Some("Confirm selection"),
+            ),
+            (
+                "tui.select.cancel",
+                vec![KeyCombo::new(Esc, none), ch('c', ctrl)],
+                Some("Cancel selection"),
+            ),
+            (
+                "tui.altScreen.pageUp",
+                vec![KeyCombo::new(PageUp, none)],
+                Some("Scroll viewport up one page"),
+            ),
+            (
+                "tui.altScreen.pageDown",
+                vec![KeyCombo::new(PageDown, none)],
+                Some("Scroll viewport down one page"),
+            ),
+            (
+                "tui.altScreen.halfPageUp",
+                vec![],
+                Some("Scroll viewport up half a page"),
+            ),
+            (
+                "tui.altScreen.halfPageDown",
+                vec![],
+                Some("Scroll viewport down half a page"),
+            ),
+            (
+                "tui.altScreen.lineUp",
+                vec![],
+                Some("Scroll viewport up one line"),
+            ),
+            (
+                "tui.altScreen.lineDown",
+                vec![],
+                Some("Scroll viewport down one line"),
+            ),
+            (
+                "tui.altScreen.previousPrompt",
+                if cfg!(windows) {
+                    vec![KeyCombo::new(Up, ctrl)]
+                } else {
+                    vec![KeyCombo::new(Up, ctrl | shift), KeyCombo::new(Up, ctrl)]
+                },
+                Some("Jump to previous semantic prompt"),
+            ),
+            (
+                "tui.altScreen.nextPrompt",
+                if cfg!(windows) {
+                    vec![KeyCombo::new(Down, ctrl)]
+                } else {
+                    vec![KeyCombo::new(Down, ctrl | shift), KeyCombo::new(Down, ctrl)]
+                },
+                Some("Jump to next semantic prompt"),
+            ),
+            (
+                "tui.altScreen.search",
+                if cfg!(windows) {
+                    vec![ch('f', ctrl)]
+                } else {
+                    vec![ch('f', ctrl | shift)]
+                },
+                Some("Search the primary scroll view"),
+            ),
+            (
+                "tui.altScreen.searchNext",
+                vec![KeyCombo::new(Enter, none), ch('g', ctrl)],
+                Some("Select the next search match"),
+            ),
+            (
+                "tui.altScreen.searchPrevious",
+                vec![KeyCombo::new(Enter, shift), ch('g', ctrl | shift)],
+                Some("Select the previous search match"),
+            ),
+            (
+                "tui.altScreen.searchClose",
+                vec![KeyCombo::new(Esc, none)],
+                Some("Close transcript search"),
+            ),
+            (
+                "tui.altScreen.top",
+                vec![],
+                Some("Scroll viewport to top"),
+            ),
+            (
+                "tui.altScreen.bottom",
+                vec![ch('e', ctrl)],
+                Some("Scroll viewport to bottom"),
+            ),
+        ]
+    }
+
+    #[test]
+    fn registry_matches_the_original() {
+        let kb = Keybindings::new();
+        let expected = original_registry();
+        let mut missing = Vec::new();
+        let mut different = Vec::new();
+        for (id, keys, description) in &expected {
+            let Some(definition) = kb.get_definition(id) else {
+                missing.push(*id);
+                continue;
+            };
+            if definition.default_keys != *keys {
+                different.push((*id, definition.default_keys.clone(), keys.clone()));
+            }
+            if definition.description != *description {
+                different.push((*id, definition.default_keys.clone(), keys.clone()));
+            }
+        }
+        assert!(missing.is_empty(), "missing ids: {missing:?}");
+        assert!(
+            different.is_empty(),
+            "different defaults or descriptions: {different:?}"
+        );
+        let expected_ids: Vec<KeybindingId> = expected.iter().map(|(id, _, _)| *id).collect();
+        let mut actual_ids = kb.ids();
+        actual_ids.sort_unstable();
+        let mut expected_ids = expected_ids;
+        expected_ids.sort_unstable();
+        assert_eq!(
+            actual_ids, expected_ids,
+            "the registry must hold exactly the original's ids"
+        );
     }
 }

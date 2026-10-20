@@ -396,18 +396,42 @@ pub(super) async fn render_session_history(
                     rendered_any = true;
                 }
             },
+            // The entries pi writes that the transcript does not render
+            // (usage, labels, the session info, the context edits) pass
+            // through untouched; the custom message is a transcript entry.
+            Entry::CustomMessage(message) => {
+                let rendered = extension_session.as_ref().and_then(|session| {
+                    extension_entry_component(
+                        session,
+                        &message.custom_type,
+                        Some(message.content.clone()),
+                    )
+                });
+                if let Some(component) = rendered {
+                    chat.add_child(component);
+                    chat.add_child(Arc::new(Spacer::new(1)));
+                    rendered_any = true;
+                } else if let Some(text) = message.content.as_str() {
+                    add_note_message(chat, text);
+                    rendered_any = true;
+                }
+            }
+            Entry::Usage(_) | Entry::Label(_) | Entry::SessionInfo(_) | Entry::ContextEdit(_) => {}
             Entry::Compaction(compaction) => {
-                add_note_message(
-                    chat,
-                    &format!(
-                        "Compacted {} tokens: {}",
-                        compaction.tokens_before, compaction.summary
+                chat.add_child(Arc::new(
+                    rpi_tui::summary_cards::CompactionSummaryCard::new(
+                        &compaction.summary,
+                        compaction.tokens_before.max(0) as u64,
                     ),
-                );
+                ));
+                chat.add_child(Arc::new(Spacer::new(1)));
                 rendered_any = true;
             }
             Entry::BranchSummary(summary) => {
-                add_note_message(chat, &format!("Branch summary: {}", summary.summary));
+                chat.add_child(Arc::new(
+                    rpi_tui::summary_cards::BranchSummaryCard::new(&summary.summary),
+                ));
+                chat.add_child(Arc::new(Spacer::new(1)));
                 rendered_any = true;
             }
             Entry::Custom(custom) => {
@@ -458,6 +482,18 @@ pub(super) async fn render_session_history(
                     &format!("Active tools: {}", change.active_tool_names.join(", ")),
                 );
                 rendered_any = true;
+            }
+            Entry::CustomMessage(custom) => {
+                if custom.display {
+                    let text = match &custom.content {
+                        serde_json::Value::String(text) => text.clone(),
+                        other => other.to_string(),
+                    };
+                    add_note_message(chat, &text);
+                    rendered_any = true;
+                }
+            }
+            Entry::Usage(_) | Entry::Label(_) | Entry::SessionInfo(_) | Entry::ContextEdit(_) => {
             }
         }
     }

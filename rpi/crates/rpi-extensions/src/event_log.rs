@@ -10,7 +10,7 @@
 //! Off by default (zero disk writes / zero overhead when disabled — the global
 //! logger resolves to a no-op). One file, append-only:
 //! `$RPI_EVENT_LOG_PATH`, else `<root>/logs/events.jsonl`, where `<root>` is
-//! `$RPI_CODING_AGENT_DIR`'s parent (i.e. `~/.rpi`) or `~/.rpi`.
+//! `$PI_CODING_AGENT_DIR`'s parent (i.e. `~/.pi`) or `~/.pi`.
 //!
 //! [`dispatch_to_handlers`]: crate::translate::dispatch_to_handlers
 
@@ -124,20 +124,20 @@ fn now_ms() -> u64 {
 }
 
 /// Resolve the event-log path (`$RPI_EVENT_LOG_PATH`, else
-/// `<root>/logs/events.jsonl`, where `<root>` is `$RPI_CODING_AGENT_DIR`'s
+/// `<root>/logs/events.jsonl`, where `<root>` is `$PI_CODING_AGENT_DIR`'s
 /// parent or `~/.rpi`). Public so `rpi events tail` can find the same file the
 /// logger writes.
 pub fn event_log_path() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("RPI_EVENT_LOG_PATH") {
         return Some(PathBuf::from(path));
     }
-    let root = if let Some(agent) = std::env::var_os("RPI_CODING_AGENT_DIR") {
+    let root = if let Some(agent) = std::env::var_os("PI_CODING_AGENT_DIR") {
         // The override is the *agent* dir (`~/.rpi/agent`); logs live in the
         // parent (`~/.rpi/logs`). A parentless override falls back to itself.
         let agent = PathBuf::from(agent);
         agent.parent().map(PathBuf::from).unwrap_or(agent)
     } else {
-        dirs::home_dir()?.join(".rpi")
+        dirs::home_dir()?.join(".pi")
     };
     Some(root.join("logs").join("events.jsonl"))
 }

@@ -72,6 +72,49 @@ fn the_host_answers_the_node_surfaces() {
 	assert!(platform.is_string());
 }
 
+/// An extension may import the node builtins.
+///
+/// A builtin that does not resolve is fatal: the extension host throws
+/// `cannot resolve "<spec>"` and the whole extension fails to load.
+#[test]
+fn an_extension_imports_the_node_builtins() {
+	const IMPORTS: &str = r#"
+		import * as os from "node:os";
+		import * as url from "node:url";
+		import * as perfHooks from "node:perf_hooks";
+		import * as childProcess from "node:child_process";
+		import * as path from "node:path";
+
+		export default function (api) {
+			api.registerCommand("node-builtins", {
+				description: "the node builtins resolve",
+				handler: async () => ({
+					home: os.homedir(),
+					platform: os.platform(),
+					file: url.fileURLToPath("file:///tmp/x"),
+					now: typeof perfHooks.performance.now,
+					exec: typeof childProcess.exec,
+					join: path.join("a", "b"),
+				}),
+			});
+		}
+	"#;
+
+	let host = Arc::new(ProcessHost::new());
+	let mut runtime = Runtime::new(host).expect("the runtime starts");
+	runtime
+		.load_extension("builtins.ts", IMPORTS)
+		.expect("the extension loads");
+
+	let answer = runtime
+		.call("__piExtensionHost.runCommand", &[json!("node-builtins"), json!("")])
+		.expect("the command runs");
+	assert_eq!(answer["platform"], std::env::consts::OS);
+	assert_eq!(answer["join"], "a/b");
+	assert_eq!(answer["now"], "function");
+	assert_eq!(answer["exec"], "function");
+}
+
 #[test]
 fn an_extension_imports_a_file_next_to_it() {
 	let directory = tempfile::tempdir().expect("a directory");
@@ -105,6 +148,78 @@ fn an_extension_imports_a_file_next_to_it() {
 		.call_tool("greet", json!({ "who": "world" }))
 		.expect("the tool runs");
 	assert_eq!(result["content"][0]["text"], "hello world");
+}
+
+/// An extension that imports a subpath the host does not publish still loads.
+///
+/// The original publishes every subpath of its packages, so a missing one is
+/// a gap on this side. Throwing would kill the whole extension, so the
+/// subpath resolves to an empty module and only the names it wanted are
+/// missing.
+#[test]
+fn an_extension_imports_a_subpath_the_host_does_not_publish() {
+	const IMPORTS: &str = r#"
+		import { somethingProvider } from "@earendil-works/pi-ai/providers/anthropic";
+
+		export default function (api) {
+			api.registerCommand("subpath", {
+				description: "the extension loaded",
+				handler: async () => ({ loaded: true, provider: typeof somethingProvider }),
+			});
+		}
+	"#;
+
+	let host = Arc::new(ProcessHost::new());
+	let mut runtime = Runtime::new(host).expect("the runtime starts");
+	runtime
+		.load_extension("subpath.ts", IMPORTS)
+		.expect("the extension loads");
+
+	let answer = runtime
+		.call("__piExtensionHost.runCommand", &[json!("subpath"), json!("")])
+		.expect("the command runs");
+	assert_eq!(answer["loaded"], true);
+	assert_eq!(answer["provider"], "undefined");
+}
+
+/// An extension whose factory registers after an `await` is registered.
+///
+/// The original awaits the factory before it commits the registrations, so an
+/// extension that registers late is registered by the time the load returns.
+#[test]
+fn an_async_factory_registers_before_the_load_returns() {
+	const ASYNC: &str = r#"
+		export default async function (api) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			api.registerCommand("async-cmd", {
+				description: "registered after an await",
+				handler: async () => "late",
+			});
+			api.registerTool({
+				name: "async_tool",
+				label: "Async",
+				description: "d",
+				parameters: { type: "object", properties: {} },
+				execute: async () => ({ output: "late" }),
+			});
+		}
+	"#;
+
+	let host = Arc::new(ProcessHost::new());
+	let mut runtime = Runtime::new(host).expect("the runtime starts");
+	runtime
+		.load_extension("async.ts", ASYNC)
+		.expect("the extension loads");
+
+	let tools = runtime.tools().expect("the tools are listed");
+	assert_eq!(tools.as_array().expect("a list").len(), 1);
+	assert_eq!(tools[0]["name"], "async_tool");
+
+	let commands = runtime
+		.call("__piExtensionHost.listCommands", &[])
+		.expect("the commands are listed");
+	assert_eq!(commands.as_array().expect("a list").len(), 1);
+	assert_eq!(commands[0]["name"], "async-cmd");
 }
 
 /// A host that records the operations the extension host asks for.

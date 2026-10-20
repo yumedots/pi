@@ -68,6 +68,23 @@
 			return [...Array(up).fill(".."), ...toParts.slice(common)].join("/");
 		},
 		isAbsolute: (value) => value.startsWith("/"),
+		delimiter: ":",
+		parse: (value) => {
+			const normalized = path.normalize(value);
+			const base = path.basename(normalized);
+			const index = base.lastIndexOf(".");
+			return {
+				root: normalized.startsWith("/") ? "/" : "",
+				dir: path.dirname(normalized),
+				base,
+				ext: index <= 0 ? "" : base.slice(index),
+				name: index <= 0 ? base : base.slice(0, index),
+			};
+		},
+		format: (parts) => {
+			const dir = parts.dir ? path.join(parts.dir, parts.name ?? parts.base ?? "") : (parts.base ?? "");
+			return dir;
+		},
 	};
 
 	const fs = {
@@ -77,10 +94,35 @@
 		readdirSync: (file) => call("fs.readdir", { path: String(file) }),
 		statSync: (file) => call("fs.stat", { path: String(file) }),
 		mkdirSync: (file) => call("fs.mkdir", { path: String(file) }),
+		unlinkSync: (file) => call("fs.unlink", { path: String(file) }),
+		renameSync: (from, to) => call("fs.rename", { from: String(from), to: String(to) }),
+		copyFileSync: (from, to) => call("fs.copyFile", { from: String(from), to: String(to) }),
+		appendFileSync: (file, data) => call("fs.appendFile", { path: String(file), content: String(data) }),
+		accessSync: (file) => call("fs.access", { path: String(file) }),
+		realpathSync: (file) => call("fs.realpath", { path: String(file) }),
+		constants: {
+			F_OK: 0,
+			R_OK: 4,
+			W_OK: 2,
+			X_OK: 1,
+			O_RDONLY: 0,
+			O_WRONLY: 1,
+			O_RDWR: 2,
+			O_CREAT: 64,
+			O_TRUNC: 512,
+			O_APPEND: 1024,
+		},
 	};
 
 	const fsPromises = {
 		readFile: async (file) => fs.readFileSync(file),
+		mkdir: async (file) => fs.mkdirSync(file),
+		unlink: async (file) => fs.unlinkSync(file),
+		rename: async (from, to) => fs.renameSync(from, to),
+		copyFile: async (from, to) => fs.copyFileSync(from, to),
+		appendFile: async (file, data) => fs.appendFileSync(file, data),
+		access: async (file) => fs.accessSync(file),
+		realpath: async (file) => fs.realpathSync(file),
 		writeFile: async (file, data) => fs.writeFileSync(file, data),
 		exists: async (file) => fs.existsSync(file),
 		readdir: async (file) => fs.readdirSync(file),
@@ -142,6 +184,66 @@
 		warn: log("warn"),
 		error: log("error"),
 		debug: log("debug"),
+	};
+
+	// ---- timers -----------------------------------------------------------
+	//
+	// The embedded host has no event loop: a timer is a deadline on a virtual
+	// clock that only moves when the runtime pumps the queue. The pump runs
+	// while the runtime waits for a promise to settle, so an extension that
+	// awaits a timer makes progress instead of hanging.
+	let timerNow = 0;
+	let timerId = 0;
+	const timers = new Map();
+
+	globalThis.setTimeout = (callback, delay = 0, ...args) => {
+		const id = ++timerId;
+		timers.set(id, {
+			at: timerNow + Math.max(0, Number(delay) || 0),
+			callback,
+			args,
+			period: null,
+		});
+		return id;
+	};
+	globalThis.setInterval = (callback, delay = 0, ...args) => {
+		const id = ++timerId;
+		const period = Math.max(1, Number(delay) || 1);
+		timers.set(id, { at: timerNow + period, callback, args, period });
+		return id;
+	};
+	globalThis.clearTimeout = (id) => {
+		timers.delete(id);
+	};
+	globalThis.clearInterval = (id) => {
+		timers.delete(id);
+	};
+	globalThis.queueMicrotask = (callback) => {
+		Promise.resolve().then(() => callback());
+	};
+
+	/// Run every timer whose deadline has come, oldest first.
+	globalThis.__piRunDueTimers = () => {
+		let fired = 0;
+		for (let round = 0; round < 10000; round++) {
+			let next = null;
+			for (const [id, timer] of timers) {
+				if (next === null || timer.at < next.at) next = { id, at: timer.at };
+			}
+			if (!next) break;
+			timerNow = next.at;
+			const timer = timers.get(next.id);
+			if (!timer) continue;
+			if (timer.period === null) timers.delete(next.id);
+			else timer.at = timerNow + timer.period;
+			try {
+				timer.callback(...timer.args);
+			} catch (error) {
+				console.error(error);
+			}
+			fired++;
+		}
+		return fired;
 	};
 
 	globalThis.__piCall = async (encodedName, encodedArguments) => {

@@ -220,6 +220,8 @@ async fn harness_with_compaction(
         transform_context: None,
         entry_transforms: Vec::new(),
         provider_hooks: None,
+        prepare_request: None,
+        finish_turn: None,
     };
     let harness = Arc::new(AgentHarness::create(options).await.unwrap());
     if let Some(emitter) = emitter {
@@ -1227,6 +1229,7 @@ async fn all_accepted_message_roles_keep_delivery_ids_across_restart() {
             usage: None,
             added_tool_names: Vec::new(),
             is_error: false,
+            duration_ms: None,
             timestamp: 0,
         })),
     ];

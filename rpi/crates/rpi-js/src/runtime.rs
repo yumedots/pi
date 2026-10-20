@@ -202,6 +202,29 @@ impl Runtime {
 		self.settle(&value)
 	}
 
+	/// Run the timers whose deadline has come.
+	///
+	/// The embedded host has no event loop, so a timer only fires when the
+	/// runtime pumps the queue — which it does while it waits for a promise to
+	/// settle. An extension that awaits a timer therefore makes progress.
+	fn run_due_timers(&mut self) {
+		v8::scope!(let scope, &mut *self.isolate);
+		let context = v8::Local::new(scope, &self.context);
+		let scope = &mut v8::ContextScope::new(scope, context);
+		let global = context.global(scope);
+		let Some(key) = v8::String::new(scope, "__piRunDueTimers") else {
+			return;
+		};
+		let Some(target) = global.get(scope, key.into()) else {
+			return;
+		};
+		let Ok(function) = v8::Local::<v8::Function>::try_from(target) else {
+			return;
+		};
+		let undefined = v8::undefined(scope).into();
+		function.call(scope, undefined, &[]);
+	}
+
 	fn settle(&mut self, value: &v8::Global<v8::Value>) -> Result<Value, Error> {
 		for _ in 0..100_000 {
 			let state = {
@@ -215,7 +238,10 @@ impl Runtime {
 				}
 			};
 			match state {
-				v8::PromiseState::Pending => self.isolate.perform_microtask_checkpoint(),
+				v8::PromiseState::Pending => {
+					self.isolate.perform_microtask_checkpoint();
+					self.run_due_timers();
+				}
 				_ => break,
 			}
 		}

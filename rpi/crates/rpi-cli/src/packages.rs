@@ -38,7 +38,7 @@ pub fn run(args: &[String]) -> i32 {
         Some("update") => update(&args[1..]),
         Some("unlink") => unlink(&args[1..]),
         Some(other) => {
-            eprintln!("error: unknown package command `{other}`");
+            eprintln!("Error: unknown package command `{other}`");
             print_help();
             2
         }
@@ -84,12 +84,12 @@ fn link(args: &[String]) -> i32 {
                 return 0;
             }
             value if value.starts_with('-') => {
-                eprintln!("error: unknown link option `{value}`");
+                eprintln!("Error: unknown link option `{value}`");
                 return 2;
             }
             value => {
                 if name.replace(value.to_string()).is_some() {
-                    eprintln!("error: link accepts one package name");
+                    eprintln!("Error: link accepts one package name");
                     return 2;
                 }
             }
@@ -99,7 +99,7 @@ fn link(args: &[String]) -> i32 {
     let project_root = match std::env::current_dir() {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             return 1;
         }
     };
@@ -109,66 +109,66 @@ fn link(args: &[String]) -> i32 {
     let metadata = match cargo_metadata(&source) {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             return 1;
         }
     };
     let selected = match select_package(&metadata, cargo_package.as_deref(), &source) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             return 1;
         }
     };
     let package_name = name.unwrap_or_else(|| selected.name.clone());
     if !valid_name(&package_name) {
-        eprintln!("error: invalid package name `{package_name}`");
+        eprintln!("Error: invalid package name `{package_name}`");
         return 2;
     }
     eprintln!("package: building {}...", selected.name);
     let artifact = match build(&selected, release, locked) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             return 1;
         }
     };
     let root = project_root.join(".rpi/packages").join(&package_name);
     let ext = root.join("extensions");
     if let Err(e) = std::fs::create_dir_all(&ext) {
-        eprintln!("error: could not create {}: {e}", ext.display());
+        eprintln!("Error: could not create {}: {e}", ext.display());
         return 1;
     }
     let file = match artifact.file_name().and_then(|n| n.to_str()) {
         Some(n) => n.to_string(),
         None => {
-            eprintln!("error: invalid artifact name");
+            eprintln!("Error: invalid artifact name");
             return 1;
         }
     };
     let target = ext.join(&file);
     if target.exists() && !force {
-        eprintln!("error: package already exists; use --force");
+        eprintln!("Error: package already exists; use --force");
         return 1;
     }
     let tmp = ext.join(format!(".{file}.tmp"));
     if force {
         if let Err(e) = std::fs::remove_file(&target) {
             if e.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("error: could not replace existing package artifact: {e}");
+                eprintln!("Error: could not replace existing package artifact: {e}");
                 return 1;
             }
         }
     }
     if let Err(e) = std::fs::copy(&artifact, &tmp).and_then(|_| std::fs::rename(&tmp, &target)) {
         let _ = std::fs::remove_file(&tmp);
-        eprintln!("error: could not activate package: {e}");
+        eprintln!("Error: could not activate package: {e}");
         return 1;
     }
     let mut registry = match read_registry(&project_root) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             return 1;
         }
     };
@@ -182,7 +182,7 @@ fn link(args: &[String]) -> i32 {
     });
     registry.packages.sort_by(|a, b| a.name.cmp(&b.name));
     if let Err(e) = write_registry(&project_root, &registry) {
-        eprintln!("error: {e}");
+        eprintln!("Error: {e}");
         return 1;
     }
     println!("linked project package `{package_name}`; run `rpi` in this directory to load it");
@@ -191,13 +191,13 @@ fn link(args: &[String]) -> i32 {
 
 fn list(args: &[String]) -> i32 {
     if !args.is_empty() && args[0] != "--help" && args[0] != "-h" {
-        eprintln!("error: unexpected list argument");
+        eprintln!("Error: unexpected list argument");
         return 2;
     }
     let cwd = match std::env::current_dir() {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             return 1;
         }
     };
@@ -213,7 +213,7 @@ fn list(args: &[String]) -> i32 {
             0
         }
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             1
         }
     }
@@ -223,7 +223,7 @@ fn update(args: &[String]) -> i32 {
     let cwd = match std::env::current_dir() {
         Ok(path) => path,
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             return 1;
         }
     };
@@ -246,12 +246,12 @@ fn update_at(
                 return 0;
             }
             value if value.starts_with('-') => {
-                eprintln!("error: unknown update option `{value}`");
+                eprintln!("Error: unknown update option `{value}`");
                 return 2;
             }
             value => {
                 if name.replace(value.to_string()).is_some() {
-                    eprintln!("error: update accepts at most one package name");
+                    eprintln!("Error: update accepts at most one package name");
                     return 2;
                 }
             }
@@ -262,7 +262,7 @@ fn update_at(
     let registry = match read_registry(cwd) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             return 1;
         }
     };
@@ -291,7 +291,7 @@ fn update_at(
             })
             .collect::<Vec<_>>(),
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             return 1;
         }
     };
@@ -302,7 +302,7 @@ fn update_at(
             .any(|package| package.name == wanted);
         let global_found = global_packages.iter().any(|package| package.name == wanted);
         if !project_found && !global_found {
-            eprintln!("error: package `{wanted}` is not installed");
+            eprintln!("Error: package `{wanted}` is not installed");
             return 1;
         }
     }
@@ -366,7 +366,7 @@ fn update_global_package(
     let executable = match std::env::current_exe() {
         Ok(path) => path,
         Err(error) => {
-            eprintln!("error: could not resolve rpi executable: {error}");
+            eprintln!("Error: could not resolve rpi executable: {error}");
             return false;
         }
     };
@@ -375,11 +375,11 @@ fn update_global_package(
     match command.status() {
         Ok(exit) if exit.success() => true,
         Ok(exit) => {
-            eprintln!("error: updating global package `{name}` failed with {exit}");
+            eprintln!("Error: updating global package `{name}` failed with {exit}");
             false
         }
         Err(error) => {
-            eprintln!("error: could not run rpi install for `{name}`: {error}");
+            eprintln!("Error: could not run rpi install for `{name}`: {error}");
             false
         }
     }
@@ -387,39 +387,39 @@ fn update_global_package(
 
 fn unlink(args: &[String]) -> i32 {
     let Some(name) = args.first() else {
-        eprintln!("error: missing package name");
+        eprintln!("Error: missing package name");
         return 2;
     };
     if args.len() != 1 || !valid_name(name) {
-        eprintln!("error: invalid package name or arguments");
+        eprintln!("Error: invalid package name or arguments");
         return 2;
     }
     let cwd = match std::env::current_dir() {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             return 1;
         }
     };
     let mut registry = match read_registry(&cwd) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             return 1;
         }
     };
     if !registry.packages.iter().any(|p| p.name == *name) {
-        eprintln!("error: project package `{name}` is not installed");
+        eprintln!("Error: project package `{name}` is not installed");
         return 1;
     }
     let dir = cwd.join(".rpi/packages").join(name);
     if let Err(e) = std::fs::remove_dir_all(&dir) {
-        eprintln!("error: could not remove package: {e}");
+        eprintln!("Error: could not remove package: {e}");
         return 1;
     }
     registry.packages.retain(|p| p.name != *name);
     if let Err(e) = write_registry(&cwd, &registry) {
-        eprintln!("error: {e}");
+        eprintln!("Error: {e}");
         return 1;
     }
     println!("unlinked project package `{name}`");
@@ -579,7 +579,7 @@ fn value(args: &[String], i: usize, flag: &str) -> Option<String> {
     match args.get(i) {
         Some(v) if !v.starts_with('-') => Some(v.clone()),
         _ => {
-            eprintln!("error: {flag} requires a value");
+            eprintln!("Error: {flag} requires a value");
             None
         }
     }
@@ -611,7 +611,7 @@ pub fn project_package_dirs(cwd: &Path, kind: &str) -> Vec<PathBuf> {
             .map(|p| cwd.join(".rpi/packages").join(p.name).join(kind))
             .collect(),
         Err(error) => {
-            eprintln!("warning: could not load project package registry: {error}");
+            eprintln!("Warning: could not load project package registry: {error}");
             Vec::new()
         }
     }

@@ -16,7 +16,6 @@ pub mod cache_control;
 pub mod cost;
 pub mod json_parse;
 pub mod mapper;
-pub mod models;
 pub mod retry;
 pub mod sse;
 
@@ -34,7 +33,6 @@ use std::sync::Arc;
 use crate::providers::anthropic::build_params::build_params;
 use crate::providers::anthropic::cost::calculate_cost;
 use crate::providers::anthropic::mapper::{emit_terminal_error, run_mapper, MapperState};
-use crate::providers::anthropic::models::anthropic_models;
 use crate::providers::anthropic::retry::retry_provider_request;
 use crate::providers::anthropic::sse::SseEventStream;
 
@@ -66,13 +64,13 @@ pub struct AnthropicProvider {
 impl AnthropicProvider {
     /// Build a provider with an explicit default API key + custom
     /// `reqwest::Client` (useful for proxies / custom TLS). Serves the
-    /// hand-curated catalog from [`models::anthropic_models`].
+    /// shipped catalog from [`crate::providers::catalog`].
     pub fn new(api_key: Option<String>, http: reqwest::Client) -> Self {
         Self {
             api_key,
             allow_env_api_key: true,
             http,
-            models: anthropic_models(),
+            models: crate::providers::catalog::builtin_models_for("anthropic"),
         }
     }
 
@@ -254,7 +252,10 @@ async fn run_anthropic_stream(
         api_key_for_header.as_deref(),
     );
 
-    let url = format!("{}/v1/messages", model.base_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/v1/messages",
+        crate::model::resolve_base_url(&model.base_url).trim_end_matches('/')
+    );
     let timeout = opts.request_timeout();
     let signal = opts.signal.clone();
 
@@ -304,7 +305,7 @@ async fn run_anthropic_stream(
                     };
                     return Err(AiError::Http {
                         status: Some(code),
-                        message: text,
+                        message: format!("{code} {text}"),
                     });
                 }
                 Ok(resp)
@@ -582,6 +583,17 @@ fn assemble_headers(
         }
     }
 
+    // OpenCode's per-conversation routing header.
+    if let Some((name, value)) = crate::model::opencode_session_header(model, opts.session_id.as_deref())
+    {
+        if !headers
+            .iter()
+            .any(|(existing, _)| existing.eq_ignore_ascii_case(name))
+        {
+            headers.push((name.to_string(), value));
+        }
+    }
+
     // model.headers then opts.headers (later wins). Mirrors `mergeHeaders`.
     if let Some(model_headers) = &model.headers {
         for (k, v) in model_headers {
@@ -637,9 +649,16 @@ fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::anthropic::models::claude_haiku_4_5;
     use crate::types::{Api, InputModality, ModelCost};
     use std::collections::BTreeMap;
+
+    /// The catalog's Haiku model, used by the header/auth tests.
+    fn claude_haiku_4_5() -> Model {
+        crate::providers::catalog::builtin_models_for("anthropic")
+            .into_iter()
+            .find(|model| model.id == "claude-haiku-4-5")
+            .expect("the shipped catalog carries claude-haiku-4-5")
+    }
 
     /// Build a minimal model for header/auth tests (no network).
     fn test_model() -> Model {

@@ -73,7 +73,14 @@ pub struct PromptTemplate {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// The `argument-hint` frontmatter value. Shown in the `/`-autocomplete as
+    /// `<hint> — <description>` (mirrors the original's `argumentHint`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub argument_hint: Option<String>,
     pub content: String,
+    /// Absolute path to the template file. Mirrors the original's `filePath`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<String>,
 }
 
 /// Resources made available to explicit invocation methods and system-prompt
@@ -294,8 +301,12 @@ impl Default for RetryPolicy {
             // Pi retries transient assistant failures by default. Provider
             // SDK retries remain disabled separately in the agent stream
             // options so one failure is not retried twice.
+            //
+            // The budget is three attempts (2 s, 4 s, 8 s ≈ 14 s), matching
+            // pi's `retry.maxRetries` default
+            // (`packages/coding-agent/src/core/settings-defaults.ts`).
             enabled: true,
-            max_retries: 10,
+            max_retries: 3,
             base_delay_ms: 2000,
             max_agent_delay_ms: 60_000,
         }
@@ -443,6 +454,18 @@ pub struct AgentHarnessOptions {
     /// Mirrors `AgentLoopConfig.transform_context`.
     pub transform_context: Option<TransformContext>,
 
+    /// `(context, signal) -> Option<AgentRequestUpdate>` — runs immediately
+    /// before every provider request and may replace the context, the model and
+    /// the thinking level. Mirrors `AgentLoopConfig.prepare_request`; the
+    /// session projection, the virtual-model routing and the pre-request
+    /// compaction hang on it.
+    pub prepare_request: Option<rpi_agent::PrepareRequest>,
+
+    /// `(context, signal) -> Option<AgentTurnDecision>` — runs after a completed
+    /// assistant turn and all of its tool-result messages, before `turn_end`.
+    /// Mirrors `AgentLoopConfig.finish_turn`.
+    pub finish_turn: Option<rpi_agent::FinishTurn>,
+
     /// Caller-supplied context-entry transforms applied AFTER the default
     /// compaction-boundary transform during the per-turn `build_session_context`.
     /// Previously the harness hardcoded `Vec::new()` at the `build_opts` site
@@ -506,6 +529,8 @@ impl Default for AgentHarnessOptions {
             before_tool_call: None,
             after_tool_call: None,
             transform_context: None,
+            prepare_request: None,
+            finish_turn: None,
             entry_transforms: Vec::new(),
             provider_hooks: None,
         }
@@ -517,9 +542,10 @@ mod tests {
     use super::RetryPolicy;
 
     #[test]
-    fn retry_policy_allows_ten_retries_by_default() {
+    fn retry_policy_allows_three_retries_by_default() {
         let retry = RetryPolicy::default();
         assert!(retry.enabled);
-        assert_eq!(retry.max_retries, 10);
+        // pi's `retry.maxRetries` default: three attempts (2 s, 4 s, 8 s).
+        assert_eq!(retry.max_retries, 3);
     }
 }

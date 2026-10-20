@@ -374,6 +374,7 @@ pub fn transform_messages(messages: &[Message], model: &Model) -> Vec<Message> {
                     usage: None,
                     added_tool_names: Vec::new(),
                     is_error: true,
+                    duration_ms: None,
                     timestamp: 0,
                 })));
             }
@@ -1562,6 +1563,7 @@ mod tests {
             usage: None,
             added_tool_names: vec!["b".into()],
             is_error: false,
+            duration_ms: None,
             timestamp: 0,
         };
         let messages = vec![Message::ToolResult(Box::new(tr))];

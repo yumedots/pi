@@ -83,6 +83,14 @@ pub(super) fn open_selector_with_view<V: Component + 'static>(
     // A selector replaces the editor slot. Drop stale slash/@file
     // suggestions so they cannot reappear after the selector closes.
     state.autocomplete_container.clear();
+    // The 3-D empty-session screen owns the whole pane; a selector takes it
+    // over, the way the original's startup screen gives the pane up.
+    if super::EMPTY_SESSION_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+        super::EMPTY_SESSION_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+        if let Some(root) = super::NORMAL_ROOT.lock().unwrap().clone() {
+            tui.set_layout_root(Some(root));
+        }
+    }
     // Swap: clear the container and add the selector view.
     editor_container.clear();
     editor_container.add_child(view.clone());
@@ -129,12 +137,12 @@ pub(super) fn open_model_selector(
     chat: &Arc<Container>,
     initial_search: Option<&str>,
 ) -> Option<Arc<SearchableSelectList>> {
-    let items = model_selector_items(catalog, lane_model_id);
+    let default_model = crate::settings::load_settings()
+        .ok()
+        .and_then(|settings| settings.default_model);
+    let items = model_selector_items(catalog, lane_model_id, default_model.as_deref());
     if items.is_empty() {
-        add_note_message(
-            chat,
-            "No models in the catalog. Use --model at startup to select one.",
-        );
+        add_note_message(chat, &crate::auth_guidance::no_models_available_message());
         tui.request_render(false);
         return None;
     }
@@ -310,33 +318,14 @@ pub(super) fn open_session_selector(
     tx: &mpsc::UnboundedSender<TuiMessage>,
 ) {
     let dir = crate::session::default_session_dir(cwd);
-    let mut items: Vec<SelectItem> = Vec::new();
-    for path in crate::session::list_session_files_sync(&dir) {
-        let summary = crate::session::summarize_session_file(&path);
-        if summary.empty {
-            continue;
-        }
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("(unnamed)")
-            .to_string();
-        let label = crate::session::session_display_label(&summary);
-        // The file stem is `<timestamp>_<uuid>`; the id tail disambiguates rows
-        // that share a timestamp.
-        let id_tail = stem.rsplit('_').next().unwrap_or(&stem);
-        let short_id = crate::session::short_session_id(id_tail);
-        let description = format!(
-            "{} · {}",
-            crate::session::format_session_bytes(summary.bytes),
-            short_id,
-        );
-        items.push(
-            SelectItem::new(&stem, &label)
-                .with_description(&description)
-                .with_search_text(&format!("{label} {short_id} {stem}")),
-        );
-    }
+    let items = {
+        let mut menu = state.session_menu.lock().unwrap();
+        menu.dir = dir.clone();
+        let entries = session_menu_entries(&dir, &menu);
+        let items = session_menu_items(&entries, menu.show_path);
+        menu.entries = entries;
+        items
+    };
     if items.is_empty() {
         add_note_message(
             &state.chat_container,
@@ -434,23 +423,49 @@ pub(super) async fn open_tree_selector(
         }
     };
     let current = harness.session().get_leaf_id().await.ok().flatten();
-    let items: Vec<SelectItem> = entries
-        .iter()
-        .map(|entry| {
-            let label = if current.as_deref() == Some(entry.id()) {
-                format!("{} #{} (current)", entry.entry_type(), entry.seq())
-            } else {
-                format!("{} #{}", entry.entry_type(), entry.seq())
-            };
-            let short_id = &entry.id()[..entry.id().len().min(12)];
-            // Search on the entry type, sequence, and id so `/tree` stays
-            // usable in long sessions.
-            let search_text = format!("{} {} {}", entry.entry_type(), entry.seq(), entry.id());
-            SelectItem::new(entry.id(), &label)
-                .with_description(short_id)
-                .with_search_text(&search_text)
-        })
-        .collect();
+    let mut menu_entries: Vec<TreeMenuEntry> = Vec::new();
+    for entry in &entries {
+        let label = if current.as_deref() == Some(entry.id()) {
+            format!("{} #{} (current)", entry.entry_type(), entry.seq())
+        } else {
+            format!("{} #{}", entry.entry_type(), entry.seq())
+        };
+        let short_id = &entry.id()[..entry.id().len().min(12)];
+        // Search on the entry type, sequence, and id so `/tree` stays
+        // usable in long sessions.
+        let search_text = format!("{} {} {}", entry.entry_type(), entry.seq(), entry.id());
+        let role = entry.message_role();
+        let label_text = harness.session().get_label(entry.id()).await.ok().flatten();
+        menu_entries.push(TreeMenuEntry {
+            id: entry.id().to_string(),
+            label,
+            description: short_id.to_string(),
+            search_text,
+            label_timestamp: label_text.as_ref().map(|_| entry.base().timestamp),
+            label_text,
+            is_user: matches!(role, Some(rpi_agent::message::AgentMessageRole::User)),
+            is_tool_result: matches!(
+                role,
+                Some(rpi_agent::message::AgentMessageRole::ToolResult)
+            ),
+            // Upstream's `isSettingsEntry`: the entries the default view hides.
+            is_settings: matches!(
+                entry.entry_type(),
+                "label"
+                    | "context_edit"
+                    | "custom"
+                    | "model_change"
+                    | "thinking_level_change"
+                    | "session_info"
+            ),
+            is_usage: entry.entry_type() == "usage",
+        });
+    }
+    let items = {
+        let mut menu = state.tree_menu.lock().unwrap();
+        menu.entries = menu_entries;
+        tree_menu_items(&menu.entries, menu.filter, menu.show_label_timestamps)
+    };
     if items.is_empty() {
         add_note_message(chat, "The current session has no entries to navigate.");
         tui.request_render(false);
@@ -786,13 +801,13 @@ pub(super) fn open_provider_remove_selector(
 pub(super) fn thinking_level_description(level: rpi_ai::types::ThinkingLevel) -> &'static str {
     use rpi_ai::types::ThinkingLevel::*;
     match level {
-        Off => "Off — No reasoning",
-        Minimal => "Minimal — Brief reasoning (~1k tokens)",
-        Low => "Low — Light reasoning (~1k tokens)",
-        Medium => "Medium — Moderate reasoning (~80% of max)",
-        High => "High — Extensive reasoning (~95% of max)",
-        Xhigh => "Xhigh — Near-maximal reasoning",
-        Max => "Max — Maximum reasoning",
+        Off => "No reasoning",
+        Minimal => "Very brief reasoning (~1k tokens)",
+        Low => "Light reasoning (~2k tokens)",
+        Medium => "Moderate reasoning (~8k tokens)",
+        High => "Deep reasoning (~16k tokens)",
+        Xhigh => "Extra-high reasoning (~32k tokens)",
+        Max => "Maximum reasoning",
     }
 }
 

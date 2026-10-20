@@ -45,7 +45,7 @@ my-agent/
 │       ├── core.rs            # single run_tool entry point + domain logic
 │       └── content.rs         # AgentTool adapter (used by the embedded Agent)
 ├── .rpi/
-│   ├── settings.json          # skillDirs / promptDirs / extensionDirs / defaultTools
+│   ├── settings.json          # skills / prompts / extensions / defaultTools
 │   └── extensions/            # compiled cdylibs (build output, do not commit)
 └── tests/
     └── behavior.rs
@@ -266,7 +266,7 @@ the host discovers the resources natively:
 
 ```json
 {
-  "skillDirs": ["./skills"],
+  "skills": ["./skills"],
   "defaultTools": ["read", "bash", "edit", "write", "docs"]
 }
 ```

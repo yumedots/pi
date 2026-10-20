@@ -32,6 +32,7 @@ use crate::env::ExecutionEnv;
 use crate::env::FileKind;
 use crate::path_utils::resolve_read_tool_path;
 use crate::tools::tool_context::ExecutionToolContext;
+use crate::tools::PromptContribution;
 use crate::truncate::{
     format_size, truncate_head, truncate_line_default, TruncationOptions, TruncationResult,
     DEFAULT_MAX_BYTES, GREP_MAX_LINE_LENGTH,
@@ -89,6 +90,7 @@ pub struct GrepToolOptions {}
 pub struct GrepTool {
     schema: Tool,
     env: Arc<dyn ExecutionEnv>,
+    prompt: PromptContribution,
 }
 
 impl GrepTool {
@@ -120,6 +122,7 @@ pub fn create_grep_tool(
     Arc::new(GrepTool {
         schema: GrepTool::schema(),
         env: context.env().clone(),
+        prompt: PromptContribution::new("Search file contents for patterns (respects .gitignore)", &[]),
     })
 }
 
@@ -130,6 +133,16 @@ impl AgentTool for GrepTool {
     }
     fn label(&self) -> &str {
         "grep"
+    }
+
+    /// Mirrors TS `AgentTool.promptSnippet`.
+    fn prompt_snippet(&self) -> Option<&str> {
+        Some(self.prompt.snippet)
+    }
+
+    /// Mirrors TS `AgentTool.promptGuidelines`.
+    fn prompt_guidelines(&self) -> Option<&[String]> {
+        Some(&self.prompt.guidelines)
     }
 
     async fn execute(

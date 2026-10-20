@@ -43,6 +43,22 @@ pub fn event_tag_for(event: &AgentEvent) -> Option<EventTag> {
     }
 }
 
+/// The assistant message event as JSON.
+///
+/// The published contract carries the provider event as an object, so the
+/// second surface (the JavaScript extension host) needs it parsed.
+pub fn assistant_message_event_json(
+    event: &rpi_ai::types::AssistantMessageEvent,
+) -> serde_json::Value {
+    serde_json::from_str(&assistant_message_event_to_json(event))
+        .unwrap_or(serde_json::Value::Null)
+}
+
+/// The tool result as JSON.
+pub fn agent_tool_result_json(result: &rpi_agent::types::AgentToolResult) -> serde_json::Value {
+    serde_json::from_str(&agent_tool_result_to_json(result)).unwrap_or(serde_json::Value::Null)
+}
+
 /// Serialize an [`AgentMessage`](rpi_agent::message::AgentMessage) to an owning
 /// `StbString` for a message-payload event. The host produced this string, so
 /// the **handler** (plugin side) frees it via the host's `free_string`.
@@ -99,6 +115,7 @@ pub fn translate(event: &AgentEvent) -> Option<StablePluginEvent> {
             tool_name,
             result,
             is_error,
+            ..
         } => {
             // Serialize the AgentToolResult to JSON for the result payload.
             let result_json = agent_tool_result_to_json(result);
@@ -126,7 +143,7 @@ pub fn translate(event: &AgentEvent) -> Option<StablePluginEvent> {
 /// Do not include `partial`: it is a cumulative snapshot and the native JSON /
 /// RPC contract deliberately omits it so consumers process each delta exactly
 /// once and stream size stays linear.
-fn assistant_message_event_to_json(event: &rpi_ai::types::AssistantMessageEvent) -> String {
+pub fn assistant_message_event_to_json(event: &rpi_ai::types::AssistantMessageEvent) -> String {
     use rpi_ai::types::AssistantMessageEvent as E;
 
     let value = match event {
@@ -226,7 +243,7 @@ fn event_type_name(event: &rpi_ai::types::AssistantMessageEvent) -> &'static str
 /// the tool adapter uses). Kept here (not reusing tool.rs's `result_to_stb`)
 /// because the emitter must not depend on adapter internals, and this is the
 /// event-side direction.
-fn agent_tool_result_to_json(result: &rpi_agent::types::AgentToolResult) -> String {
+pub fn agent_tool_result_to_json(result: &rpi_agent::types::AgentToolResult) -> String {
     let mut txt = String::new();
     txt.push('{');
     txt.push_str("\"content\":[");
@@ -1045,6 +1062,7 @@ mod tests {
                 tool_name: "echo".into(),
                 result: AgentToolResult::text("done"),
                 is_error: false,
+                duration_ms: None,
             },
         ];
         for e in &events {

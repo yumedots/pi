@@ -60,7 +60,7 @@ const RUNTIMES = {
 	rpi: {
 		command: RPI_BINARY,
 		args: ["--mode", "rpc", "--no-session"],
-		agentDirEnv: "RPI_CODING_AGENT_DIR",
+		agentDirEnv: "PI_CODING_AGENT_DIR",
 		rpc: RPI_RPC,
 	},
 };

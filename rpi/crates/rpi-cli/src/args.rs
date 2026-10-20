@@ -87,17 +87,9 @@ pub enum TuiMode {
     Regular,
 }
 
-const fn default_tui_mode_for(is_macos: bool) -> TuiMode {
-    if is_macos {
-        TuiMode::Regular
-    } else {
-        TuiMode::Fullscreen
-    }
-}
-
 impl Default for TuiMode {
     fn default() -> Self {
-        default_tui_mode_for(cfg!(target_os = "macos"))
+        TuiMode::Fullscreen
     }
 }
 
@@ -122,9 +114,16 @@ pub struct Args {
     pub print: bool,
     pub mode: Mode,
     /// `--tui-mode regular|fullscreen` controls the interactive terminal
-    /// buffer. macOS defaults to regular so native selection and terminal
-    /// scrollback remain available together; other platforms use fullscreen.
+    /// buffer. The default is fullscreen on every platform, like the original;
+    /// the `tuiMode` setting is the other way to pick regular mode.
     pub tui_mode: TuiMode,
+    /// True when `--tui-mode` was passed, so the `tuiMode` setting does not
+    /// override an explicit flag.
+    pub tui_mode_set: bool,
+    /// `--skip-3d` — never show the 3D empty-session screen, whatever the
+    /// `threeDEmptySession` setting says. A port addition: the original has
+    /// no such flag.
+    pub skip_3d: bool,
 
     /// `--list-models [search]`: list the merged model catalog and exit.
     /// `Some("")` represents the bare flag; `None` means absent.
@@ -303,7 +302,7 @@ pub fn parse_args(args: &[String]) -> Args {
         // Take a value: prefer the inline `--flag=value`, else the next argv
         // token (when it isn't flag-shaped). Advances `i` past a consumed token.
         // (For unknown-flag diagnostics the closing arm reads `flag_key` itself.)
-        let mut take_value = |result: &mut Args, _flag: &str| -> Option<String> {
+        let mut take_value = |result: &mut Args, missing: Option<&str>| -> Option<String> {
             if let Some(v) = inline.clone() {
                 return Some(v);
             }
@@ -314,7 +313,10 @@ pub fn parse_args(args: &[String]) -> Args {
                     return Some(args[i].clone());
                 }
             }
-            result.errors.push(format!("{flag_key} requires a value"));
+            result.errors.push(match missing {
+                Some(message) => message.to_string(),
+                None => format!("{flag_key} requires a value"),
+            });
             None
         };
 
@@ -336,14 +338,14 @@ pub fn parse_args(args: &[String]) -> Args {
                 }
             }
             "--mode" => {
-                if let Some(v) = take_value(&mut result, "--mode") {
+                if let Some(v) = take_value(&mut result, Some("--mode requires text, json, or rpc")) {
                     result.mode = match v.as_str() {
                         "text" => Mode::Text,
                         "json" => Mode::Json,
                         "rpc" => Mode::Rpc,
                         other => {
                             result.errors.push(format!(
-                                "Invalid --mode \"{other}\". Valid: text, json, rpc"
+                                "Invalid mode \"{other}\". Valid values: text, json, rpc"
                             ));
                             Mode::Text
                         }
@@ -351,13 +353,14 @@ pub fn parse_args(args: &[String]) -> Args {
                 }
             }
             "--tui-mode" => {
-                if let Some(v) = take_value(&mut result, "--tui-mode") {
+                if let Some(v) = take_value(&mut result, Some("--tui-mode requires regular or fullscreen")) {
+                    result.tui_mode_set = true;
                     result.tui_mode = match v.to_ascii_lowercase().as_str() {
                         "regular" => TuiMode::Regular,
                         "fullscreen" => TuiMode::Fullscreen,
                         other => {
                             result.errors.push(format!(
-                                "Invalid --tui-mode \"{other}\". Valid: regular, fullscreen"
+                                "Invalid TUI mode \"{other}\". Valid values: regular, fullscreen"
                             ));
                             TuiMode::Fullscreen
                         }
@@ -376,18 +379,18 @@ pub fn parse_args(args: &[String]) -> Args {
             "--local-only" => result.dev_local_only = true,
             "--package-only" | "--project-only" => result.project_only = true,
             "--extensions-dir" | "-ed" => {
-                if let Some(v) = take_value(&mut result, &flag_key) {
+                if let Some(v) = take_value(&mut result, None) {
                     result.extensions_dir.push(PathBuf::from(v));
                 }
             }
             "--verbose" => result.verbose = true,
             "--debug-system-prompt" => result.debug_system_prompt = true,
-            "--provider" => result.provider = take_value(&mut result, "--provider"),
-            "--model" => result.model = take_value(&mut result, "--model"),
-            "--api-key" => result.api_key = take_value(&mut result, "--api-key"),
-            "--base-url" => result.base_url = take_value(&mut result, "--base-url"),
+            "--provider" => result.provider = take_value(&mut result, None),
+            "--model" => result.model = take_value(&mut result, None),
+            "--api-key" => result.api_key = take_value(&mut result, None),
+            "--base-url" => result.base_url = take_value(&mut result, None),
             "--timeout" => {
-                if let Some(v) = take_value(&mut result, "--timeout") {
+                if let Some(v) = take_value(&mut result, None) {
                     match v.parse::<u64>() {
                         Ok(seconds) if seconds > 0 => {
                             result.timeout = Some(Duration::from_secs(seconds));
@@ -398,59 +401,59 @@ pub fn parse_args(args: &[String]) -> Args {
                     }
                 }
             }
-            "--system-prompt" => result.system_prompt = take_value(&mut result, "--system-prompt"),
+            "--system-prompt" => result.system_prompt = take_value(&mut result, None),
             "--append-system-prompt" => {
-                if let Some(v) = take_value(&mut result, "--append-system-prompt") {
+                if let Some(v) = take_value(&mut result, None) {
                     result.append_system_prompt.push(v);
                 }
             }
-            "--name" | "-n" => result.name = take_value(&mut result, "--name"),
-            "--session" => result.session = take_value(&mut result, "--session"),
-            "--session-id" => result.session_id = take_value(&mut result, "--session-id"),
-            "--fork" => result.fork = take_value(&mut result, "--fork"),
+            "--name" | "-n" => result.name = take_value(&mut result, None),
+            "--session" => result.session = take_value(&mut result, None),
+            "--session-id" => result.session_id = take_value(&mut result, None),
+            "--fork" => result.fork = take_value(&mut result, None),
             "--models" => {
-                if let Some(v) = take_value(&mut result, &flag_key) {
+                if let Some(v) = take_value(&mut result, None) {
                     result.models = Some(split_csv(&v));
                 }
             }
             "--extension" | "-e" => {
-                if let Some(v) = take_value(&mut result, &flag_key) {
+                if let Some(v) = take_value(&mut result, None) {
                     result.extension.push(PathBuf::from(v));
                 }
             }
             "--skill" => {
-                if let Some(v) = take_value(&mut result, &flag_key) {
+                if let Some(v) = take_value(&mut result, None) {
                     result.skill.push(PathBuf::from(v));
                 }
             }
             "--prompt-template" => {
-                if let Some(v) = take_value(&mut result, &flag_key) {
+                if let Some(v) = take_value(&mut result, None) {
                     result.prompt_template.push(PathBuf::from(v));
                 }
             }
             "--session-dir" => {
-                if let Some(v) = take_value(&mut result, "--session-dir") {
+                if let Some(v) = take_value(&mut result, None) {
                     result.session_dir = Some(PathBuf::from(v));
                 }
             }
             "--thinking" => {
-                if let Some(v) = take_value(&mut result, "--thinking") {
+                if let Some(v) = take_value(&mut result, None) {
                     match parse_thinking_level(&v) {
                         Some(lvl) => result.thinking = Some(lvl),
                         None => result.ignored.push(format!(
-                            "Invalid --thinking \"{v}\". Valid: {}",
+                            "Invalid thinking level \"{v}\". Valid values: {}",
                             VALID_THINKING_LEVELS.join(", ")
                         )),
                     }
                 }
             }
             "--tools" | "-t" => {
-                if let Some(v) = take_value(&mut result, &flag_key) {
+                if let Some(v) = take_value(&mut result, None) {
                     result.tools = Some(split_csv(&v));
                 }
             }
             "--exclude-tools" | "-xt" => {
-                if let Some(v) = take_value(&mut result, &flag_key) {
+                if let Some(v) = take_value(&mut result, None) {
                     result.exclude_tools = Some(split_csv(&v));
                 }
             }
@@ -470,7 +473,7 @@ pub fn parse_args(args: &[String]) -> Args {
             }
             "--offline" => result.offline = true,
             "--export" => {
-                if let Some(value) = take_value(&mut result, &flag_key) {
+                if let Some(value) = take_value(&mut result, None) {
                     result.export = Some(PathBuf::from(value));
                 }
             }
@@ -501,9 +504,10 @@ pub fn parse_args(args: &[String]) -> Args {
                     .push(format!("{other} is not supported in v1 (ignored)"));
             }
             "--theme" => {
-                result.theme = take_value(&mut result, "--theme");
+                result.theme = take_value(&mut result, None);
             }
             "--no-themes" => result.no_themes = true,
+            "--skip-3d" => result.skip_3d = true,
             // Unknown long flag (with or without `=`). Preserve it for an
             // extension to claim after extension registration, matching Pi's
             // `unknownFlags` behavior. A bare flag is boolean true; a following
@@ -586,133 +590,221 @@ pub enum RunMode {
     Rpc,
 }
 
-/// Print the help text to stdout. Mirrors TS `printHelp`, scoped to v1 flags.
+/// Print the help text to stdout. Mirrors TS `printHelp`.
 pub fn print_help() {
-    let builtin = "read, bash, edit, write, docs";
-    println!(
-        "{name} - AI coding assistant with read, bash, edit, write, docs tools
-
-{u}Usage:{r}
-  {name} [options] [@files...] [messages...]
-
-{u}Options:{r}
-  --provider <name>              Provider name (built-in, installed package, or models.json id)
-  --model <pattern>              Model pattern or ID (supports \"provider/id\" and optional \":<thinking>\")
-  --api-key <key>                API key override for the selected provider
-  --base-url <url>               Override the selected model endpoint
-  --timeout <seconds>            LLM API request timeout (default: 600)
-  --system-prompt <text>         Replace the default system prompt
-  --append-system-prompt <text>  Append text to the system prompt (repeatable)
-  --thinking <level>             off, minimal, low, medium, high, xhigh, max
-  --mode <mode>                  Output mode: text (default), json, or rpc
-  --server [--port <n>] [--bind <ip>]
-                                 Headless server: serve a remote-connectable agent (no TUI)
-  --connect <host:port>          Remote client: connect to a `--server` instance and run the TUI
-                                 (no local provider/tools/session; all agent work is remote)
-  --token <token>                Auth token for `--connect` (printed by `--server`; may also
-                                 be provided via the RPI_SERVER_TOKEN env var)
-  --tui-mode <mode>              TUI buffer: regular or fullscreen (macOS default: regular)
-  --list-models [search]         List available models (with optional fuzzy search)
-  --offline                      Disable startup network operations (same as RPI_OFFLINE=1)
-  --export <file>                Export a JSONL session to HTML and exit
-  --approve, -a                  Force-enable current-project resources
-  --no-approve, -na              Disable current-project resources
-  --print, -p                    Non-interactive: process prompt(s) and exit
-  --continue, -c                 Continue the most recent session
-  --resume, -r                   Browse and select a session to resume
-  --session <id|path>            Use a specific session (partial UUID or file)
-  --session-dir <dir>            Directory for session storage
-  --no-session                   Ephemeral mode (do not persist the session)
-  --name, -n <name>              Set the session display name
-  --tools, -t <list>             Comma-separated allowlist of tool names to enable
-  --exclude-tools, -xt <list>    Comma-separated denylist of tool names to disable
-  --no-tools, -nt                Disable all tools
-  --no-builtin-tools, -nbt       Disable the built-in tools (read, bash, edit, write, docs)
-  --no-skills, -ns               Skip skill discovery (no <available_skills> block)
-  --no-prompt-templates, -np     Skip prompt-template discovery (/expand templates)
-  --no-context-files, -nc        Skip AGENTS.md/CLAUDE.md discovery (no <project_context>)
-  --no-extensions, -ne           Skip Rust cdylib extension loading
-  --extensions-dir, -ed <dir>    Extra dir to scan for plugins (.dll/.so/.dylib); repeatable
-                                 (also via RPI_EXTENSIONS_DIR env: ';' on Windows, ':' on Unix)
-  --local-only                   Skip automatic extension discovery: load only
-                                 --extensions-dir / --extension paths (no project
-                                 .rpi/extensions, no global extensions)
-  --package-only, --project-only Load project skills/prompts/extensions/packages
-                                 from the active project; exclude global resources
-  --debug-system-prompt          Print the resolved system-prompt sections to stderr (verification)
-  --verbose                      Show startup warnings (e.g. ignored flags)
-  --help, -h                     Show this help
-  --version, -v                  Show version
-
-{u}Subcommands:{r}
-  update                       Update the rpi CLI from crates.io
-  auth login|check|logout        Manage persisted credentials in ~/.rpi/auth.json
-                                (see `rpi auth --help`)
-  events path|tail               Inspect the extension event journal (needs
-                                RPI_EVENT_LOG=1; see `rpi events --help`)
-  install <crate>                Install a prebuilt Rust extension (--build for source)
-                                (see `rpi install --help`)
-  uninstall <crate>              Remove an installed Rust cdylib extension
-  package link|list|update|unlink Manage project-local Rust extension packages
-                                (see `rpi package --help`)
-  dev [options]                  Build, watch, and hot-reload a Rust extension
-                                (see `rpi dev --help`)
-  dev-local [options]            Debug only the current Rust extension
-                                (shortcut for `rpi dev --local-only`)
-
-{u}Built-in Tools:{r}
-  {builtin}  (enabled by default)
-
-{u}Examples:{r}
-  # Interactive with an initial prompt
-  {name} \"List all .rs files in src/\"
-
-  # Single-shot print mode
-  {name} -p \"Summarize this project\"
-
-  # Include a file in the initial message
-  {name} @README.md \"What does this project do?\"
-
-  # Continue the previous session
-  {name} -c \"What did we discuss?\"
-
-  # Use a specific model + thinking level
-  {name} --model claude-sonnet-5 --thinking high \"Refactor this\"
-
-  # JSON event stream (one JSON object per line on stdout)
-  {name} --mode json -p \"Inspect the code\"
-
-  # Read-only: no file-modifying tools
-  {name} --tools read,bash -p \"Review the code in src/\"
-
-{u}Environment:{r}
-  ANTHROPIC_API_KEY              Anthropic API key (x-api-key) — fallback when no stored credential
-  ANTHROPIC_AUTH_TOKEN           Bearer token (Authorization: Bearer) for third-party gateways
-  ANTHROPIC_BASE_URL             Override the Anthropic endpoint (e.g. a compatible proxy)
-  OPENAI_API_KEY                 Bearer token for openai-completions/responses
-  RPI_OFFLINE                     Disable startup network operations when set to 1/true/yes
-  RPI_CODING_AGENT_DIR           Override the ~/.rpi config directory (auth.json + models.json)
-  RPI_SESSION_ID                 Session id served by a plugin (set by the host; also honored as an override)
-  RPI_NO_EMOJI                   Render the brand lockup without the crab (1/true/yes)
-
-{u}Notes:{r}
-  Supported HTTP protocols are Anthropic Messages and OpenAI Chat Completions.
-  Define custom model catalogs and provider apiKey values in
-  ~/.rpi/agent/models.json. The interactive TUI, Rust extensions, skills,
-  prompt templates, themes, model cycling, session fork/export, and trust
-  commands are available in the current build. OAuth, RPC, and full model
-  cycling remain outside the current implementation.
-",
-        name = crate::APP_NAME,
-        builtin = builtin,
-        u = "\x1b[1m",
-        r = "\x1b[0m",
-    );
+    println!("{}", help_text());
 }
 
-/// Print the version line. Mirrors TS `--version` output (`pi <version>`).
+/// The help text, the way the original prints it.
+pub fn help_text() -> String {
+    let name = "pi";
+    format!(
+        "{u}{name}{r} - AI coding assistant with read, bash, edit, write tools
+
+{u}Usage:{r}
+  {name} [options] [--] [@files...] [messages...]
+
+{u}Commands:{r}
+  {name} install <source> [-l]     Install extension source and add to settings
+  {name} remove <source> [-l]      Remove extension source from settings
+  {name} uninstall <source> [-l]   Alias for remove
+  {name} update [source|self|pi]   Update pi, extensions, or model catalogs
+  {name} list                      List installed extensions from settings
+  {name} config [-l]               Open TUI to enable/disable package resources (Tab switches scope)
+  {name} auth <command>            Print credentials or check provider readiness
+  {name} mcp <command>             Check MCP servers, sign in to or out of OAuth servers
+  {name} <command> --help          Show help for install/remove/uninstall/update/list/config/auth/mcp
+  {name} events path|tail           Inspect the extension event journal (port-specific)
+  {name} package <command>          Manage project-local Rust extension packages (port-specific)
+  {name} dev [options]              Build, watch and hot-reload a Rust extension (port-specific)
+  {name} dev-local [options]        Debug only the current Rust extension (port-specific)
+
+{u}Options:{r}
+  --provider <name>              Provider to search for --model (requires --model)
+  --model <pattern>              Model pattern or ID (supports \"provider/id\" and optional \":<thinking>\")
+  --api-key <key>                API key (defaults to env vars)
+  --system-prompt <text>         System prompt (default: coding assistant prompt)
+  --append-system-prompt <text>  Append text or file contents to the system prompt (can be used multiple times)
+  --mode <mode>                  Output mode: text (default), json, or rpc
+  --print, -p                    Non-interactive mode: process prompt and exit
+  --continue, -c                 Continue previous session
+  --resume, -r                   Select a session to resume
+  --session <path|id>            Use specific session file or partial UUID
+  --session-id <id>              Use exact project session ID, creating it if missing
+  --fork <path|id>               Fork specific session file or partial UUID into a new session
+  --session-dir <dir>            Directory for session storage and lookup
+  --no-session                   Don't save session (ephemeral)
+  --name, -n <name>              Set session display name
+  --models <patterns>            Comma-separated model patterns for Ctrl+P cycling
+                                 Supports globs (anthropic/*, *sonnet*) and fuzzy matching
+  --no-tools, -nt                Disable all tools by default (built-in and extension)
+  --no-builtin-tools, -nbt       Disable built-in tools by default but keep extension/custom tools enabled
+  --tools, -t <tools>            Comma-separated allowlist of tool names or patterns (*) to enable
+                                 Keeps MCP tools unless an entry starts with mcp__
+                                 Only +name/-name entries add to or remove from the defaults
+  --exclude-tools, -xt <tools>   Comma-separated denylist of tool names or patterns (*) to disable
+                                 Applies to all tools, MCP tools included
+  --thinking <level>             Set thinking level: off, minimal, low, medium, high, xhigh, max
+  --extension, -e <path>         Load an extension file or builtin:<name> (can be used multiple times)
+  --no-extensions, -ne           Disable extension discovery and built-in extensions (explicit -e paths still work)
+  --no-mcp                       Disable built-in MCP support: no servers connect and no MCP tools
+  --skill <path>                 Load a skill file or directory (can be used multiple times)
+  --no-skills, -ns               Disable skills discovery and loading
+  --prompt-template <path>       Load a prompt template file or directory (can be used multiple times)
+  --no-prompt-templates, -np     Disable prompt template discovery and loading
+  --theme <path>                 Load a theme file or directory (can be used multiple times)
+  --use-theme <name[/name]>      Set the initial interactive theme for this run
+  --no-themes                    Disable theme discovery and loading
+  --no-context-files, -nc        Disable AGENTS.md and CLAUDE.md discovery and loading
+  --export <file>                Export session file to HTML and exit
+  --list-models [search]         List available models (with optional fuzzy search)
+  --verbose                      Force verbose startup (overrides quietStartup setting)
+  --tui-mode <mode>              TUI mode: fullscreen (default) or regular
+  --approve, -a                  Trust project-local files for this run
+  --no-approve, -na              Ignore project-local files for this run
+  --offline                      Disable startup network operations (same as PI_OFFLINE=1)
+  --base-url <url>               Override the selected model endpoint (port-specific)
+  --timeout <seconds>            LLM API request timeout (port-specific, default: 600)
+  --server [--port <n>] [--bind <ip>]
+                                 Headless server: serve a remote-connectable agent (no TUI) (port-specific)
+  --connect <host:port>          Remote client: connect to a `--server` instance and run the TUI (port-specific)
+  --token <token>                Auth token for `--connect` (port-specific)
+  --extensions-dir, -ed <dir>    Extra dir to scan for plugins (.dll/.so/.dylib); repeatable (port-specific)
+  --local-only                   Skip automatic extension discovery (port-specific)
+  --package-only, --project-only Load project resources only (port-specific)
+  --debug-system-prompt          Print the resolved system-prompt sections to stderr (port-specific)
+  --                             End option parsing; treat remaining arguments as messages/files
+  --help, -h                     Show this help
+  --version, -v                  Show version number
+
+Extensions can register additional flags (e.g., --plan from plan-mode extension).
+
+{u}Examples:{r}
+  # Print a provider API key for an external client
+  {name} auth print-api-key --provider openai
+
+  # Print an OAuth bearer token for an external client (refreshes if expired)
+  {name} auth print-bearer-token --provider openai-codex
+
+  # Interactive mode
+  {name}
+
+  # Interactive mode with initial prompt
+  {name} \"List all .ts files in src/\"
+
+  # Include files in initial message
+  {name} @prompt.md @image.png \"What color is the sky?\"
+
+  # Non-interactive mode (process and exit)
+  {name} -p \"List all .ts files in src/\"
+
+  # Prompt beginning with a dash
+  {name} -p -- \"- Summarize these points\"
+
+  # Multiple messages (interactive)
+  {name} \"Read package.json\" \"What dependencies do we have?\"
+
+  # Continue previous session
+  {name} --continue \"What did we discuss?\"
+
+  # Start a named session
+  {name} --name \"Refactor auth module\"
+
+  # Use different model
+  {name} --provider openai --model gpt-4o-mini \"Help me refactor this code\"
+
+  # Use model with provider prefix (no --provider needed)
+  {name} --model openai/gpt-4o \"Help me refactor this code\"
+
+  # Use model with thinking level shorthand
+  {name} --model sonnet:high \"Solve this complex problem\"
+
+  # Limit model cycling to specific models
+  {name} --models claude-sonnet,claude-haiku,gpt-4o
+
+  # Limit to a specific provider with glob pattern
+  {name} --models \"github-copilot/*\"
+
+  # Cycle models with fixed thinking levels
+  {name} --models sonnet:high,haiku:low
+
+  # Start with a specific thinking level
+  {name} --thinking high \"Solve this complex problem\"
+
+  # Read-only mode (no file modifications possible)
+  {name} --tools read,grep,find,ls -p \"Review the code in src/\"
+
+  # Export a session file to HTML
+  {name} --export session.jsonl output.html
+
+{u}Environment Variables:{r}
+  ANTHROPIC_AUTH_TOKEN             - Anthropic bearer auth token
+  ANTHROPIC_API_KEY                - Anthropic Claude API key
+  ANTHROPIC_OAUTH_TOKEN            - Anthropic OAuth token (alternative to API key)
+  ANT_LING_API_KEY                 - Ant Ling API key
+  OPENAI_API_KEY                   - OpenAI GPT API key
+  AZURE_OPENAI_API_KEY             - Azure OpenAI API key
+  AZURE_OPENAI_BASE_URL            - Azure OpenAI/Cognitive Services base URL (e.g. https://{{resource}}.openai.azure.com)
+  AZURE_OPENAI_RESOURCE_NAME       - Azure OpenAI resource name (alternative to base URL)
+  AZURE_OPENAI_API_VERSION         - Azure OpenAI API version (default: v1)
+  AZURE_OPENAI_DEPLOYMENT_NAME_MAP - Azure OpenAI model=deployment map (comma-separated)
+  DEEPSEEK_API_KEY                 - DeepSeek API key
+  NVIDIA_API_KEY                   - NVIDIA NIM API key
+  GEMINI_API_KEY                   - Google Gemini API key
+  GROQ_API_KEY                     - Groq API key
+  CEREBRAS_API_KEY                 - Cerebras API key
+  XAI_API_KEY                      - xAI Grok API key
+  FIREWORKS_API_KEY                - Fireworks AI API key
+  TOGETHER_API_KEY                 - Together AI API key
+  BASETEN_API_KEY                  - Baseten API key
+  OPENROUTER_API_KEY               - OpenRouter API key
+  AI_GATEWAY_API_KEY               - Vercel AI Gateway API key
+  ZAI_API_KEY                      - ZAI Coding Plan API key (Global)
+  ZAI_CODING_CN_API_KEY            - ZAI Coding Plan API key (China)
+  MISTRAL_API_KEY                  - Mistral API key
+  MINIMAX_API_KEY                  - MiniMax API key
+  MOONSHOT_API_KEY                 - Moonshot AI API key
+  OPENCODE_API_KEY                 - OpenCode Zen/OpenCode Go API key
+  KIMI_API_KEY                     - Kimi For Coding API key
+  META_API_KEY                     - Meta Model API key
+  CLOUDFLARE_API_KEY               - Cloudflare API token (Workers AI and AI Gateway)
+  CLOUDFLARE_ACCOUNT_ID            - Cloudflare account id (required for both)
+  CLOUDFLARE_GATEWAY_ID            - Cloudflare AI Gateway slug (required for AI Gateway)
+  QWEN_TOKEN_PLAN_API_KEY          - Qwen Token Plan API key (international region)
+  QWEN_TOKEN_PLAN_CN_API_KEY       - Qwen Token Plan API key (China region)
+  XIAOMI_API_KEY                   - Xiaomi MiMo API key (api.xiaomimimo.com billing)
+  XIAOMI_TOKEN_PLAN_CN_API_KEY     - Xiaomi MiMo Token Plan API key (China region)
+  XIAOMI_TOKEN_PLAN_AMS_API_KEY    - Xiaomi MiMo Token Plan API key (Amsterdam region)
+  XIAOMI_TOKEN_PLAN_SGP_API_KEY    - Xiaomi MiMo Token Plan API key (Singapore region)
+  AWS_PROFILE                      - AWS profile for Amazon Bedrock
+  AWS_ACCESS_KEY_ID                - AWS access key for Amazon Bedrock
+  AWS_SECRET_ACCESS_KEY            - AWS secret key for Amazon Bedrock
+  AWS_BEARER_TOKEN_BEDROCK         - Bedrock API key (bearer token)
+  AWS_REGION                       - AWS region for Amazon Bedrock (e.g., us-east-1)
+  PI_CODING_AGENT_DIR              - Config directory (default: ~/.pi/agent)
+  PI_CODING_AGENT_SESSION_DIR      - Session storage directory (overridden by --session-dir)
+  PI_PACKAGE_DIR                   - Override package directory (for Nix/Guix store paths)
+  PI_OFFLINE                       - Disable startup network operations when set to 1/true/yes
+  PI_SHARE_VIEWER_URL              - Base URL for /share command (default: https://pi.dev/session/)
+
+{u}Built-in Tool Names:{r}
+  read       - Read file contents
+  bash       - Execute bash commands
+  powershell - Execute PowerShell commands on Windows
+  edit       - Edit files with find/replace
+  write      - Write files (creates/overwrites)
+  grep       - Search file contents (read-only, off by default)
+  find       - Find files by glob pattern (read-only, off by default)
+  ls         - List directory contents (read-only, off by default)
+",
+        u = "\x1b[1m",
+        r = "\x1b[0m",
+    )
+}
+
+/// Print the version line. Mirrors TS `--version` output (the bare version).
 pub fn print_version() {
-    println!("{} {}", crate::APP_NAME, crate::VERSION);
+    println!("{}", crate::changelog::current_version());
 }
 
 #[cfg(test)]
@@ -1076,6 +1168,7 @@ mod tests {
             parse_args(&s(&["--tui-mode", "regular"])).tui_mode,
             TuiMode::Regular
         );
+        assert!(parse_args(&s(&["--tui-mode", "regular"])).tui_mode_set);
         assert_eq!(
             parse_args(&s(&["--tui-mode=fullscreen"])).tui_mode,
             TuiMode::Fullscreen
@@ -1085,9 +1178,16 @@ mod tests {
     }
 
     #[test]
-    fn tui_mode_default_preserves_native_macos_scrollback() {
-        assert_eq!(default_tui_mode_for(true), TuiMode::Regular);
-        assert_eq!(default_tui_mode_for(false), TuiMode::Fullscreen);
+    fn tui_mode_defaults_to_fullscreen_on_every_platform() {
+        assert_eq!(TuiMode::default(), TuiMode::Fullscreen);
+        assert_eq!(parse_args(&s(&[])).tui_mode, TuiMode::Fullscreen);
+        assert!(!parse_args(&s(&[])).tui_mode_set);
+    }
+
+    #[test]
+    fn skip_3d_flag_is_parsed() {
+        assert!(!parse_args(&s(&[])).skip_3d);
+        assert!(parse_args(&s(&["--skip-3d"])).skip_3d);
     }
 
     #[test]
@@ -1117,4 +1217,6 @@ mod tests {
         // stdout not a TTY ⇒ print even without -p (mirrors TS).
         assert_eq!(resolve_mode(&a, true, false), RunMode::Print);
     }
+
+
 }

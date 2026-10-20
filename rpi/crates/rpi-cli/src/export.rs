@@ -46,10 +46,9 @@ pub fn export_file(input: &Path, output: &Path) -> Result<(), String> {
     }
 }
 
-/// Parse a JSONL v4 session file into its entry list (oldest first).
+/// Parse a JSONL session file into its entry list (oldest first).
 fn read_jsonl_session_entries(input: &Path) -> Result<Vec<Entry>, String> {
-    use rpi_harness::session::jsonl::parse_mutation;
-    use rpi_harness::session::types::SessionMutation;
+    use rpi_harness::session::jsonl::parse_entry;
 
     let content = std::fs::read_to_string(input)
         .map_err(|e| format!("Could not read input file {}: {e}", input.display()))?;
@@ -62,11 +61,11 @@ fn read_jsonl_session_entries(input: &Path) -> Result<Vec<Entry>, String> {
             continue;
         }
         if !saw_header {
-            // A valid session file starts with the v4 header line. Validate it
-            // so a plain JSON/old file fails with a clear message.
+            // A valid session file starts with the header line. Validate it so
+            // a plain JSON/old file fails with a clear message.
             rpi_harness::session::jsonl::codec::parse_header(line).map_err(|e| {
                 format!(
-                    "{} is not a JSONL v4 session file (line {}): {e}",
+                    "{} is not a JSONL session file (line {}): {e}",
                     input.display(),
                     index + 1
                 )
@@ -74,16 +73,10 @@ fn read_jsonl_session_entries(input: &Path) -> Result<Vec<Entry>, String> {
             saw_header = true;
             continue;
         }
-        let mutation = parse_mutation(line).map_err(|e| {
-            format!(
-                "could not parse mutation at {}:{}: {e}",
-                input.display(),
-                index + 1
-            )
+        let entry = parse_entry(line).map_err(|e| {
+            format!("could not parse entry at {}:{}: {e}", input.display(), index + 1)
         })?;
-        if let SessionMutation::Entry { entry, .. } = mutation {
-            entries.push(entry);
-        }
+        entries.push(entry);
     }
     if !saw_header {
         return Err(format!("{} is empty", input.display()));

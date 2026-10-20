@@ -7,6 +7,8 @@
 
 pub mod faux;
 
+pub mod catalog;
+
 #[cfg(feature = "providers")]
 pub mod anthropic;
 

@@ -60,6 +60,7 @@ fn tool_result_message(tool_call_id: &str, tool_name: &str) -> AgentMessage {
         usage: None,
         added_tool_names: vec![],
         is_error: false,
+        duration_ms: None,
         timestamp: 1,
     }))
 }

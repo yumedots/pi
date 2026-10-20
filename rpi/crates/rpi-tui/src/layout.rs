@@ -636,6 +636,102 @@ pub fn hit_test(frame: &LayoutFrame, x: usize, y: usize) -> Option<&LayoutBox> {
     hit_test_box(&frame.root, x, y)
 }
 
+/// Return the visual hit path from the deepest component to the layout root.
+///
+/// Mirrors upstream's `getLayoutBoxesAt` (`packages/tui/src/layout.ts`): the
+/// boxes are ordered by depth, deepest first, and a box whose clip holds the
+/// pointer is part of the path even when a child covers it.
+pub fn hit_test_all(frame: &LayoutFrame, x: usize, y: usize) -> Vec<&LayoutBox> {
+    let mut result: Vec<(usize, &LayoutBox)> = Vec::new();
+    collect_hit_path(&frame.root, x, y, 0, &mut result);
+    result.sort_by(|a, b| b.0.cmp(&a.0));
+    result.into_iter().map(|(_, lbox)| lbox).collect()
+}
+
+fn collect_hit_path<'a>(
+    lbox: &'a LayoutBox,
+    x: usize,
+    y: usize,
+    depth: usize,
+    result: &mut Vec<(usize, &'a LayoutBox)>,
+) {
+    if lbox.clip.contains(x, y) {
+        result.push((depth, lbox));
+    }
+    for child in &lbox.children {
+        collect_hit_path(child, x, y, depth + 1, result);
+    }
+}
+
+/// Find the box of a scroll view in the frame.
+pub fn get_scroll_view_box<'a>(
+    frame: &'a LayoutFrame,
+    scroll_view: &Arc<ScrollView>,
+) -> Option<&'a LayoutBox> {
+    fn visit<'a>(lbox: &'a LayoutBox, scroll_view: &Arc<ScrollView>) -> Option<&'a LayoutBox> {
+        if let Some(sv) = &lbox.scroll_view {
+            if sv.is_same_view(scroll_view) {
+                return Some(lbox);
+            }
+        }
+        for child in &lbox.children {
+            if let Some(found) = visit(child, scroll_view) {
+                return Some(found);
+            }
+        }
+        None
+    }
+    visit(&frame.root, scroll_view)
+}
+
+/// Geometry of the scrollbar of a scroll view box.
+#[derive(Debug, Clone, Copy)]
+pub struct ScrollbarGeometry {
+    /// Screen column of the scrollbar.
+    pub column: usize,
+    /// Screen row of the first track row.
+    pub track_top: usize,
+    /// Height of the track in rows.
+    pub track_height: usize,
+    /// Screen row of the first thumb row.
+    pub thumb_top: usize,
+    /// Height of the thumb in rows.
+    pub thumb_height: usize,
+    /// Largest scroll offset of the scroll view.
+    pub max_scroll_top: usize,
+}
+
+/// Scrollbar geometry of a scroll view box, or `None` when it has no visible
+/// scrollbar.
+pub fn get_scrollbar_geometry(lbox: &LayoutBox) -> Option<ScrollbarGeometry> {
+    let scroll_view = lbox.scroll_view.as_ref()?;
+    if lbox.rect.width == 0 || lbox.rect.height == 0 {
+        return None;
+    }
+    if !scroll_view.is_scrollbar_visible() {
+        return None;
+    }
+    let content_height = scroll_view.content_height();
+    let track_height = lbox.rect.height;
+    if content_height <= track_height {
+        return None;
+    }
+    let (thumb_height, thumb_offset) =
+        crate::scroll_view::scrollbar_thumb_geometry(content_height, track_height, scroll_view.scroll_top());
+    let column = lbox.rect.x + lbox.rect.width - 1;
+    if column < lbox.clip.x || column >= lbox.clip.x + lbox.clip.width {
+        return None;
+    }
+    Some(ScrollbarGeometry {
+        column,
+        track_top: lbox.rect.y,
+        track_height,
+        thumb_top: lbox.rect.y + thumb_offset,
+        thumb_height,
+        max_scroll_top: content_height - track_height,
+    })
+}
+
 fn hit_test_box(lbox: &LayoutBox, x: usize, y: usize) -> Option<&LayoutBox> {
     // Check if point is in clip
     if !lbox.clip.contains(x, y) {
@@ -832,9 +928,9 @@ mod tests {
             "frame should be clipped to viewport height"
         );
 
-        // The dock (editor borders + footer) must occupy the bottom rows of
-        // the painted screen — the editor renders 3 rows (top border, content,
-        // bottom border) + the footer 1 row = 4 dock rows. The bottom-most
+        // The dock (editor card + footer) must occupy the bottom rows of
+        // the painted screen — the editor renders 3 rows (card top, content,
+        // card bottom) + the footer 1 row = 4 dock rows. The bottom-most
         // painted row must be the footer.
         let bottom = frame.lines.last().expect("non-empty frame");
         assert!(
@@ -842,13 +938,12 @@ mod tests {
             "footer should be the last painted row; got: {bottom:?}"
         );
 
-        // The editor's top border (a run of `─`) must appear on-screen just
-        // above the footer region. Borders are colored via the theme border
-        // color, so check for the `─` glyph rather than a raw repeat.
+        // The editor's input (the card with the `> ` prompt in its gutter) must
+        // appear on-screen just above the footer region.
         let on_screen: String = frame.lines.join("\n");
         assert!(
-            on_screen.contains('─'),
-            "editor top border `─` should be visible on-screen; rendered:\n{on_screen}"
+            on_screen.contains('>'),
+            "editor input `> ` should be visible on-screen; rendered:\n{on_screen}"
         );
 
         // The scrollview must NOT paint all 40 transcript lines — it must be
@@ -975,5 +1070,59 @@ mod scroll_layout_tests {
             3,
             "a width change must invalidate wrapped transcript lines",
         );
+    }
+
+    #[test]
+    fn the_hit_path_lists_the_deepest_component_first() {
+        let first: Arc<dyn Component> = Arc::new(Text::new("first", 0, 0));
+        let dock: Arc<dyn Component> = Arc::new(Text::new("dock", 0, 0));
+        let root = Arc::new(VStack::from_children(vec![
+            crate::StackChild::Entry(crate::StackEntry::new(first.clone()).basis(1)),
+            crate::StackChild::Entry(crate::StackEntry::new(dock)),
+        ]));
+
+        let frame = render_layout_frame(root, 40, 10);
+        let path = hit_test_all(&frame, 2, 0);
+        assert!(path.len() >= 2, "the path must hold the box and its parent");
+        assert!(
+            Arc::ptr_eq(&path[0].component, &first),
+            "the deepest component comes first"
+        );
+        assert!(
+            path[1].rect.height >= path[0].rect.height,
+            "the parent holds the child"
+        );
+        assert!(hit_test_all(&frame, 2, 40).is_empty());
+    }
+
+    #[test]
+    fn the_scrollbar_geometry_matches_the_painted_thumb() {
+        let transcript = Arc::new(Container::new());
+        for index in 0..100 {
+            transcript.add_child(Arc::new(Text::new(format!("row {index:03}"), 0, 0)));
+        }
+        let scroll = Arc::new(ScrollView::new(
+            transcript,
+            ScrollViewOptions {
+                follow: crate::FollowMode::None,
+                primary: true,
+                scrollbar: crate::scroll_view::ScrollbarMode::Always,
+                ..Default::default()
+            },
+        ));
+        let root: Arc<dyn Component> = scroll.clone();
+        let frame = render_layout_frame(root, 20, 10);
+
+        let lbox = get_scroll_view_box(&frame, &scroll).expect("the scroll view box");
+        let geometry = get_scrollbar_geometry(lbox).expect("a visible scrollbar");
+        assert_eq!(geometry.column, 19);
+        assert_eq!(geometry.track_top, 0);
+        assert_eq!(geometry.track_height, 10);
+        assert_eq!(geometry.max_scroll_top, 90);
+
+        let (thumb_height, thumb_offset) =
+            crate::scroll_view::scrollbar_thumb_geometry(100, 10, scroll.scroll_top());
+        assert_eq!(geometry.thumb_height, thumb_height);
+        assert_eq!(geometry.thumb_top, thumb_offset);
     }
 }

@@ -157,6 +157,7 @@ pub fn map_agent_event(event: &AgentEvent) -> Option<UiEvent> {
             tool_name,
             result,
             is_error,
+            duration_ms: _,
         } => Some(UiEvent::ToolEnd {
             id: tool_call_id.clone(),
             name: tool_name.clone(),
@@ -251,7 +252,7 @@ impl RemoteDriver {
                 if session.last_error != last_error {
                     last_error = session.last_error.clone();
                     if let Some(error) = &last_error {
-                        let _ = tx.send(DriverEvent::Notice(format!("error: {error}")));
+                        let _ = tx.send(DriverEvent::Notice(format!("Error: {error}")));
                     }
                 }
                 if let Ok(event) = serde_json::from_value::<RemoteEvent>(line) {
@@ -493,7 +494,7 @@ impl SessionDriver for LocalDriver {
                 let tx = self.status_tx.clone();
                 tokio::spawn(async move {
                     if let Err(error) = lane.prompt_text(&text, Vec::new()).await {
-                        let _ = tx.send(DriverEvent::Notice(format!("error: {error}")));
+                        let _ = tx.send(DriverEvent::Notice(format!("Error: {error}")));
                     }
                 });
                 Ok(())

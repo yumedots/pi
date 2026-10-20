@@ -195,9 +195,9 @@ impl TranscriptView {
                 }
             }
             UiEvent::AssistantEnd { blocks } => {
-                if let Some(comp) = self.current_assistant.lock().unwrap().take() {
-                    comp.update_blocks(blocks);
+                if let Some(comp) = self.current_assistant.lock().unwrap().as_ref() {
                     comp.set_streaming(false);
+                    comp.update_blocks(blocks);
                 }
             }
             UiEvent::ToolStart { id, name, args } => self.tool_start(id, name, args, width),
@@ -245,9 +245,14 @@ impl TranscriptView {
         *self.expanded.lock().unwrap()
     }
 
-    /// Hide/show thinking blocks on the in-flight assistant message.
+    /// Hide/show thinking blocks on every assistant message.
     pub fn set_hide_thinking(&self, hide: bool) {
         *self.hide_thinking.lock().unwrap() = hide;
+        for child in self.chat.get_children() {
+            if let Some(component) = child.as_any().downcast_ref::<AssistantMessageComponent>() {
+                component.set_hide_thinking(hide);
+            }
+        }
         if let Some(comp) = self.current_assistant.lock().unwrap().as_ref() {
             comp.set_hide_thinking(hide);
         }
@@ -275,17 +280,20 @@ impl TranscriptView {
     }
 
     /// Finalize any still-streaming assistant panel (used at turn/run end).
+    ///
+    /// The panel stays the current one: a streaming update that arrives after
+    /// the turn ended must land in the same message, not in a second one.
     pub fn finalize_assistant(&self) {
-        if let Some(comp) = self.current_assistant.lock().unwrap().take() {
+        if let Some(comp) = self.current_assistant.lock().unwrap().as_ref() {
             comp.set_streaming(false);
         }
     }
 
     /// Finalize the assistant panel with an authoritative final block list.
     pub fn finalize_assistant_blocks(&self, blocks: &[AssistantBlock]) {
-        if let Some(comp) = self.current_assistant.lock().unwrap().take() {
-            comp.update_blocks(blocks);
+        if let Some(comp) = self.current_assistant.lock().unwrap().as_ref() {
             comp.set_streaming(false);
+            comp.update_blocks(blocks);
         }
     }
 
@@ -484,6 +492,7 @@ impl TranscriptView {
                 if tool_update_has_payload(&text, result) {
                     comp.set_result(&text, false);
                     if !ask_user {
+                        set_tool_details(&comp, result.get("details"));
                         apply_edit_diff(&comp, name, result.get("details"), width);
                     }
                 }
@@ -508,6 +517,7 @@ impl TranscriptView {
                     comp.set_running();
                     comp.set_result(&text, false);
                     if !ask_user {
+                        set_tool_details(&comp, result.get("details"));
                         apply_edit_diff(&comp, name, result.get("details"), width);
                     }
                     self.chat.add_child(comp.clone());
@@ -584,6 +594,7 @@ impl TranscriptView {
             if tool_result_requests_markdown(details) {
                 comp.set_result_markdown(true);
             }
+            set_tool_details(&comp, details);
             apply_edit_diff(&comp, name, details, width);
         }
     }
@@ -924,6 +935,18 @@ fn tool_update_has_payload(text: &str, result: &Value) -> bool {
             .unwrap_or(false)
 }
 
+/// Hand the tool result details to the panel — the per-tool renderers that
+/// report a truncation read them from there.
+fn set_tool_details(comp: &ToolExecutionComponent, details: Option<&Value>) {
+    let Some(details) = details else {
+        return;
+    };
+    if details.is_null() {
+        return;
+    }
+    comp.set_details(&details.to_string());
+}
+
 /// Attach a colored diff to an `edit` tool panel. `write` carries no diff and
 /// stays a plain summary.
 fn apply_edit_diff(
@@ -947,11 +970,18 @@ fn apply_edit_diff(
     comp.set_diff(render_diff(diff_text, width));
 }
 
-/// Mark a bash panel complete from the wire result payload. The exit code is
-/// derived from `is_error`; truncation info is read from `details`.
+/// Mark a bash panel complete from the wire result payload. The exit code
+/// comes from the tool result's `structured_content` when it carries one; it
+/// is derived from `is_error` otherwise. Truncation info is read from
+/// `details`.
 fn finalize_bash(comp: &Arc<BashExecutionComponent>, result: &Value, is_error: bool) {
     let details = result.get("details");
-    let exit_code = Some(if is_error { 1 } else { 0 });
+    let exit_code = result
+        .get("structured_content")
+        .and_then(|structured| structured.get("exit_code"))
+        .and_then(Value::as_i64)
+        .map(|code| code as i32)
+        .or(Some(if is_error { 1 } else { 0 }));
     let truncated = details
         .and_then(|details| details.get("truncation"))
         .and_then(|truncation| truncation.get("truncated"))

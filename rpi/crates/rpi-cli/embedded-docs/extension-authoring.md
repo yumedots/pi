@@ -584,18 +584,19 @@ root, and configured paths come before the conventional directories:
 
 ```json
 {
-  "skillDirs": ["./team-skills"],
-  "promptDirs": ["./prompts/shared"],
-  "extensionDirs": ["./target/debug"],
+  "skills": ["./team-skills"],
+  "prompts": ["./prompts/shared"],
+  "extensions": ["./target/debug"],
   "packages": ["./packages/review-tools"]
 }
 ```
 
-`skills`, `prompts`, and `extensions` can also each be used as shorthand for
-the three path arrays. The global `~/.rpi/agent/settings.json` supports the
-same `skillDirs`, `promptDirs`, and `extensionDirs`, where relative paths are
-relative to the global agent directory. Project configuration takes precedence
-over global configuration; `.rpi` resources and settings come before `.pi`.
+The keys `skillDirs`, `promptDirs`, and `extensionDirs` are the older
+spellings of the same three path arrays and are still read. The global
+`~/.pi/agent/settings.json` supports the same `skills`, `prompts`, and
+`extensions`, where relative paths are relative to the global agent directory.
+Project configuration takes precedence over global configuration; `.rpi`
+resources and settings come before `.pi`.
 
 A single run can explicitly add paths:
 

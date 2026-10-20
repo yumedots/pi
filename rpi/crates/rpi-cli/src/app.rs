@@ -118,7 +118,7 @@ async fn run_inner() -> i32 {
                 Some(options)
             }
             Err(error) => {
-                eprintln!("error: {error}");
+                eprintln!("Error: {error}");
                 crate::dev_extension::print_help();
                 return EXIT_USAGE;
             }
@@ -141,7 +141,7 @@ async fn run_inner() -> i32 {
             let args = crate::args::parse_args(&argv[1..]);
             if !args.errors.is_empty() {
                 for error in &args.errors {
-                    eprintln!("error: {error}");
+                    eprintln!("Error: {error}");
                 }
                 return EXIT_USAGE;
             }
@@ -159,13 +159,13 @@ async fn run_inner() -> i32 {
         // falling through to the prompt path.
         Some(removed @ ("pi-package" | "pi-update" | "install-pi" | "uninstall-pi")) => {
             eprintln!(
-                "error: `rpi {removed}` is not available; use `rpi package`, `rpi install`, or `rpi update`."
+                "Error: `rpi {removed}` is not available; use `rpi package`, `rpi install`, or `rpi update`."
             );
             return EXIT_USAGE;
         }
         // // Never a working invocation; the same fall-through applies.
         // Some("self-update") => {
-        //     eprintln!("error: unknown command `self-update`; use `rpi update`");
+        //     eprintln!("Error: unknown command `self-update`; use `rpi update`");
         //     return EXIT_USAGE;
         // }
         _ => {}
@@ -187,7 +187,6 @@ async fn run_inner() -> i32 {
     // ---- Legacy-layout migration (flat ~/.rpi → ~/.rpi/agent/) ----
     // Best-effort; never blocks startup. Skipped when RPI_CODING_AGENT_DIR is
     // set (an explicit override is its own layout).
-    let _ = crate::config::migrate_legacy_layout();
     crate::timings::time("config migrated", crate::timings::TimingNamespace::Main);
 
     if let Some(code) = export_if_requested(&parsed) {
@@ -238,7 +237,7 @@ async fn run_inner() -> i32 {
     let (file_text, file_images) = match process_file_args(&parsed.file_args, &cwd) {
         Ok(t) => t,
         Err(msg) => {
-            eprintln!("error: {msg}");
+            eprintln!("Error: {msg}");
             return EXIT_USAGE;
         }
     };
@@ -262,7 +261,7 @@ async fn run_inner() -> i32 {
         Err(e) => {
             print_resolve_error(&e);
             return match e {
-                ResolveError::NoApiKey { .. } | ResolveError::Config(_) => EXIT_USAGE,
+                ResolveError::Config(_) => EXIT_USAGE,
                 _ => EXIT_RUNTIME,
             };
         }
@@ -272,6 +271,7 @@ async fn run_inner() -> i32 {
     // selector, derived from the built provider runtimes so auth headers and
     // base-url overrides survive.
     let model_catalog = crate::provider::authenticated_catalog(&resolved);
+
 
     // `--models <patterns>`: persist the Ctrl+P cycle scope to settings.json
     // (the same set `/scoped-models` edits). Each pattern matches catalog ids
@@ -286,7 +286,7 @@ async fn run_inner() -> i32 {
                 .map(|m| m.id.clone())
                 .collect();
             if hits.is_empty() {
-                eprintln!("warning: --models pattern \"{p}\" matched no model");
+                eprintln!("Warning: --models pattern \"{p}\" matched no model");
             }
             matched.extend(hits);
         }
@@ -297,7 +297,7 @@ async fn run_inner() -> i32 {
             Some(matched)
         };
         if let Err(e) = crate::settings::save_settings(&settings) {
-            eprintln!("warning: could not save --models scope: {e}");
+            eprintln!("Warning: could not save --models scope: {e}");
         }
     }
 
@@ -331,7 +331,7 @@ async fn run_inner() -> i32 {
         .map(|bridge| bridge.stdio_lifecycle());
     if let Some(lifecycle) = &stdio_lifecycle {
         if let Err(error) = lifecycle.validate() {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             return EXIT_RUNTIME;
         }
     }
@@ -380,7 +380,21 @@ async fn run_inner() -> i32 {
     // plugin owns.
     let mode = if stdio_claimed { RunMode::Rpc } else { mode };
 
+    // Print and JSON modes report the missing model on stderr, like pi
+    // (`packages/coding-agent/src/main.ts:942-945`). The interactive TUI and
+    // the headless server start anyway and report the same guidance when a
+    // prompt is sent.
+    if matches!(mode, RunMode::Print | RunMode::Json) {
+        if let Some(message) = resolved.model_fallback_message.as_deref() {
+            eprintln!("{message}");
+            return EXIT_RUNTIME;
+        }
+    }
+
     let dev_cleanup = reload_context.dev_extension.clone();
+    // TS `main.ts`: a one-shot run cannot answer without a model — it prints
+    // the guidance and exits. The interactive TUI and the headless server
+    // start anyway and report the same guidance when a prompt is sent.
     let dev_watcher = if matches!(mode, RunMode::Interactive) {
         reload_context
             .dev_extension
@@ -534,7 +548,7 @@ fn handle_parse_short_circuits(parsed: &Args) -> Option<i32> {
     // ---- Parse errors → help + usage exit ----
     if !parsed.errors.is_empty() {
         for err in &parsed.errors {
-            eprintln!("error: {err}");
+            eprintln!("Error: {err}");
         }
         eprintln!();
         print_help();
@@ -546,7 +560,7 @@ fn handle_parse_short_circuits(parsed: &Args) -> Option<i32> {
 
 fn resolve_cwd() -> Result<std::path::PathBuf, i32> {
     std::env::current_dir().map_err(|error| {
-        eprintln!("error: could not determine the current directory: {error}");
+        eprintln!("Error: could not determine the current directory: {error}");
         EXIT_USAGE
     })
 }
@@ -563,7 +577,7 @@ fn export_if_requested(parsed: &Args) -> Option<i32> {
                 .file_stem()
                 .and_then(|value| value.to_str())
                 .unwrap_or("session");
-            Path::new(&format!("rpi-session-{stem}.html")).to_path_buf()
+            Path::new(&format!("pi-session-{stem}.html")).to_path_buf()
         });
 
     match crate::export::export_file(input, &output) {
@@ -572,7 +586,7 @@ fn export_if_requested(parsed: &Args) -> Option<i32> {
             Some(0)
         }
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             Some(EXIT_RUNTIME)
         }
     }
@@ -590,11 +604,11 @@ fn prepare_dev_extension(
     match crate::dev_extension::DevExtension::detect(cwd, options) {
         Ok(extension) => {
             if let Err(error) = extension.rebuild() {
-                eprintln!("error: initial extension build failed: {error}");
+                eprintln!("Error: initial extension build failed: {error}");
                 return Err(EXIT_RUNTIME);
             }
             if let Err(error) = extension.apply_to_args(parsed) {
-                eprintln!("error: {error}");
+                eprintln!("Error: {error}");
                 return Err(EXIT_RUNTIME);
             }
             Ok(Some(extension))
@@ -619,7 +633,7 @@ async fn resolve_resume(parsed: &mut Args, cwd: &Path) -> Option<i32> {
         return None;
     }
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        eprintln!("error: --resume requires an interactive terminal");
+        eprintln!("Error: --resume requires an interactive terminal");
         return Some(EXIT_USAGE);
     }
 
@@ -631,7 +645,7 @@ async fn resolve_resume(parsed: &mut Args, cwd: &Path) -> Option<i32> {
         }
         Ok(None) => Some(0),
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             Some(EXIT_RUNTIME)
         }
     }
@@ -641,11 +655,11 @@ fn emit_startup_warnings(parsed: &Args) {
     // ---- Startup warnings (ignored-but-recognized flags) ----
     if parsed.verbose {
         for warn in &parsed.ignored {
-            eprintln!("warning: {warn}");
+            eprintln!("Warning: {warn}");
         }
     }
     if parsed.no_themes && parsed.theme.is_some() {
-        eprintln!("warning: --no-themes overrides --theme; using the built-in default theme");
+        eprintln!("Warning: --no-themes overrides --theme; using the built-in default theme");
     }
 }
 
@@ -664,20 +678,32 @@ async fn list_models(search: &str, args: &Args, cwd: &Path) -> i32 {
     let catalog = match crate::provider::catalog_with_manifests(&manifests) {
         Ok(models) => models,
         Err(error) => {
-            eprintln!("warning: could not load models.json: {error}");
+            eprintln!("Warning: could not load models.json: {error}");
             Vec::new()
         }
     };
+    // The original lists only the models of providers that have a credential
+    // (TS `Models.getAvailable`).
+    let credentialed = crate::provider::providers_with_credentials(&manifests).unwrap_or_default();
+    let catalog: Vec<_> = catalog
+        .into_iter()
+        .filter(|model| credentialed.contains(&model.provider))
+        .collect();
     let needle = search.trim().to_ascii_lowercase();
     let mut models: Vec<_> = catalog
         .into_iter()
         .filter(|model| {
             needle.is_empty()
-                || format!("{} {} {}", model.provider, model.id, model.name)
+                || format!("{} {}", model.provider, model.id)
                     .to_ascii_lowercase()
                     .contains(&needle)
         })
         .collect();
+    models.sort_by(|left, right| {
+        left.provider
+            .cmp(&right.provider)
+            .then_with(|| left.id.cmp(&right.id))
+    });
     if models.is_empty() {
         if needle.is_empty() {
             println!("{}", crate::auth_guidance::no_models_available_message());
@@ -889,17 +915,18 @@ fn build_initial_message(
 /// auth-guidance / model-resolver error formatting (condensed to stderr lines).
 fn print_resolve_error(e: &ResolveError) {
     match e {
-        ResolveError::NoApiKey { hint } => {
-            eprintln!("error: {e}");
-            eprintln!();
-            eprintln!("Provide credentials via one of: {hint}.");
-        }
         ResolveError::Config(_) => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             eprintln!();
-            eprintln!("Check ~/.rpi/auth.json / ~/.rpi/models.json (set RPI_CODING_AGENT_DIR to relocate).");
+            let dir = crate::config::agent_dir()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|_| crate::config::CONFIG_DIR_NAME.to_string());
+            eprintln!(
+                "Check {dir}/auth.json / {dir}/models.json (set {} to relocate).",
+                crate::config::CONFIG_DIR_ENV
+            );
         }
-        _ => eprintln!("error: {e}"),
+        _ => eprintln!("Error: {e}"),
     }
 }
 
@@ -907,11 +934,11 @@ fn print_resolve_error(e: &ResolveError) {
 fn print_build_error(e: &BuildError) {
     match e {
         BuildError::SessionNotFound { .. } => {
-            eprintln!("error: {e}");
+            eprintln!("Error: {e}");
             eprintln!();
             eprintln!("List saved sessions with the /session command in interactive mode.");
         }
-        _ => eprintln!("error: {e}"),
+        _ => eprintln!("Error: {e}"),
     }
 }
 

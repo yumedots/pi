@@ -42,12 +42,41 @@ pub(crate) struct ResolvedCredential {
 
 /// Only these identities have a built-in environment fallback. Other providers
 /// need a loaded declaration or an explicit models.json apiKey reference.
+///
+/// Mirrors the TS `getApiKeyEnvVars` map in `packages/ai/src/env-api-keys.ts`.
 pub(crate) fn builtin_api_key_env(provider: &str) -> Option<&'static str> {
+    rpi_ai::providers::catalog::builtin_provider(provider)
+        .and_then(|provider| provider.api_key_env)
+}
+
+/// The extra environment variables a provider needs before its key counts.
+///
+/// Mirrors the TS `resolveCloudflareEnv`: Cloudflare needs the account id, and
+/// the AI Gateway also needs the gateway id.
+fn required_env(provider: &str) -> &'static [&'static str] {
     match provider {
-        "anthropic" => Some("ANTHROPIC_API_KEY"),
-        "openai" => Some("OPENAI_API_KEY"),
-        _ => None,
+        "cloudflare-workers-ai" => &["CLOUDFLARE_ACCOUNT_ID"],
+        "cloudflare-ai-gateway" => &["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_GATEWAY_ID"],
+        _ => &[],
     }
+}
+
+/// Whether every required environment variable is set. A stored credential's
+/// own env map wins over the ambient environment.
+fn required_env_present(
+    provider: &str,
+    credential_env: Option<&std::collections::BTreeMap<String, String>>,
+) -> bool {
+    required_env(provider).iter().all(|name| {
+        credential_env
+            .and_then(|env| env.get(*name))
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| {
+                std::env::var(name)
+                    .map(|value| !value.trim().is_empty())
+                    .unwrap_or(false)
+            })
+    })
 }
 
 fn nonempty(value: Option<String>) -> Option<String> {
@@ -74,7 +103,9 @@ pub(crate) fn resolve(
             env,
         }) => {
             if let Some(key) = nonempty(config::resolve_config_value(key, env.as_ref())) {
-                return credential(key, CredentialSource::StoredApiKey, bearer);
+                if required_env_present(provider, env.as_ref()) {
+                    return credential(key, CredentialSource::StoredApiKey, bearer);
+                }
             }
         }
         Some(Credential::Oauth {
@@ -94,7 +125,9 @@ pub(crate) fn resolve(
         .and_then(|config| config.api_key.as_deref())
         .and_then(|raw| nonempty(config::resolve_config_value(raw, None)))
     {
-        return credential(key, CredentialSource::ModelsJson, bearer);
+        if required_env_present(provider, None) {
+            return credential(key, CredentialSource::ModelsJson, bearer);
+        }
     }
     // A package declaration is authoritative even for a built-in identity.
     if manifest.is_none() && provider == "anthropic" {
@@ -112,7 +145,9 @@ pub(crate) fn resolve(
     };
     if let Some(name) = env {
         if let Some(key) = nonempty(std::env::var(name).ok()) {
-            return credential(key, CredentialSource::Environment(name.into()), bearer);
+            if required_env_present(provider, None) {
+                return credential(key, CredentialSource::Environment(name.into()), bearer);
+            }
         }
     }
     ResolvedCredential {
@@ -143,7 +178,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deepseek_environment_requires_an_explicit_package_declaration() {
+    fn a_builtin_environment_fallback_resolves_without_a_package_declaration() {
         let _guard = config::test_support::env_lock().lock().unwrap();
         let previous = std::env::var_os("DEEPSEEK_API_KEY");
         std::env::set_var("DEEPSEEK_API_KEY", "fixture-package-key");
@@ -160,13 +195,50 @@ mod tests {
             Some(value) => std::env::set_var("DEEPSEEK_API_KEY", value),
             None => std::env::remove_var("DEEPSEEK_API_KEY"),
         }
-        assert_eq!(without_package.source, CredentialSource::Missing);
-        assert!(without_package.key.is_none());
+        assert_eq!(
+            without_package.source,
+            CredentialSource::Environment("DEEPSEEK_API_KEY".into())
+        );
+        assert_eq!(without_package.key.as_deref(), Some("fixture-package-key"));
         assert_eq!(
             with_package.source,
             CredentialSource::Environment("DEEPSEEK_API_KEY".into())
         );
         assert_eq!(with_package.key.as_deref(), Some("fixture-package-key"));
+    }
+
+    #[test]
+    fn cloudflare_needs_its_account_id_before_the_key_counts() {
+        let _guard = config::test_support::env_lock().lock().unwrap();
+        let key = std::env::var_os("CLOUDFLARE_API_KEY");
+        let account = std::env::var_os("CLOUDFLARE_ACCOUNT_ID");
+        let gateway = std::env::var_os("CLOUDFLARE_GATEWAY_ID");
+        std::env::set_var("CLOUDFLARE_API_KEY", "fixture-key");
+        std::env::remove_var("CLOUDFLARE_ACCOUNT_ID");
+        std::env::remove_var("CLOUDFLARE_GATEWAY_ID");
+        let workers = resolve("cloudflare-workers-ai", None, &AuthStore::new(), None);
+        let gateway_provider = resolve("cloudflare-ai-gateway", None, &AuthStore::new(), None);
+        std::env::set_var("CLOUDFLARE_ACCOUNT_ID", "account");
+        let with_account = resolve("cloudflare-workers-ai", None, &AuthStore::new(), None);
+        let gateway_without_gateway = resolve("cloudflare-ai-gateway", None, &AuthStore::new(), None);
+        for (name, value) in [
+            ("CLOUDFLARE_API_KEY", key),
+            ("CLOUDFLARE_ACCOUNT_ID", account),
+            ("CLOUDFLARE_GATEWAY_ID", gateway),
+        ] {
+            match value {
+                Some(value) => std::env::set_var(name, value),
+                None => std::env::remove_var(name),
+            }
+        }
+        assert_eq!(workers.source, CredentialSource::Missing);
+        assert!(workers.key.is_none());
+        assert_eq!(gateway_provider.source, CredentialSource::Missing);
+        assert_eq!(
+            with_account.source,
+            CredentialSource::Environment("CLOUDFLARE_API_KEY".into())
+        );
+        assert_eq!(gateway_without_gateway.source, CredentialSource::Missing);
     }
 
     #[test]

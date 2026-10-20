@@ -79,16 +79,20 @@ fn main() {
         println!("{}", line);
     }
 
-    // ---- Footer: separator + [model] status row with right-aligned hints ----
+    // ---- Footer: one line with the model, the thinking level and the
+    // context meter, plus the right-aligned path/branch/session/cost ----
     let footer = FooterComponent::new();
     footer.set_model("glm-5");
-    footer.set_status("Working…");
+    footer.set_provider(Some("zhipuai"));
+    footer.set_model_reasoning(true);
     footer.set_thinking_level(Some("medium"));
-    footer.set_hints(
-        "Enter: Send | Shift+Enter: New line | Ctrl+C: Clear/Exit | Ctrl+P: Cycle | Ctrl+T: Expand",
-    );
+    footer.set_cwd("/home/user/project");
+    footer.set_git_branch(Some("main"));
+    footer.set_context_window(200_000);
+    footer.set_context_tokens(Some(63_200));
+    footer.add_usage(12_300, 3_400, 40_000, 1_200, 0.421);
     println!();
-    println!("╔══ Footer (working + thinking) ════════════════════════════════════╗");
+    println!("╔══ Footer (model + context + path) ════════════════════════════════╗");
     for line in footer.render(width) {
         println!("{}", line);
     }

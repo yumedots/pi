@@ -5,17 +5,48 @@
 //! it" messages so every entry point (startup, `/model`, provider resolution)
 //! says the same thing.
 
-/// Where the login help points. rpi keeps its documentation embedded in the
-/// crate, so this is a stable identifier rather than a filesystem path.
-pub const DOCS_PROVIDERS: &str = "docs/providers.md";
-pub const DOCS_MODELS: &str = "docs/models.md";
+/// Where the login help points. The documentation lives in a directory next
+/// to the installed binary; the source tree keeps it under `docs`.
+const DOCS_DIR: &str = "docs";
 
-/// Native `getProviderLoginHelp`.
+/// The documentation directory the login help points at.
+///
+/// The installed binary keeps the docs next to it; the source tree keeps them
+/// under `rpi/docs`. The path in the message must exist on the machine, so it
+/// is resolved at runtime and the source-tree path is the fallback.
+fn docs_dir() -> std::path::PathBuf {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join(DOCS_DIR));
+            candidates.push(dir.join("..").join(DOCS_DIR));
+            candidates.push(dir.join("..").join("..").join(DOCS_DIR));
+            candidates.push(dir.join("..").join("..").join("rpi").join(DOCS_DIR));
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join(DOCS_DIR));
+    }
+    let found = candidates
+        .iter()
+        .find(|dir| dir.join("providers.md").is_file())
+        .cloned();
+    let dir = found.unwrap_or_else(|| std::path::PathBuf::from(DOCS_DIR));
+    // The message names an absolute path, like pi's `getDocsPath()`.
+    if dir.is_absolute() {
+        return dir;
+    }
+    std::env::current_dir()
+        .map(|cwd| cwd.join(&dir))
+        .unwrap_or(dir)
+}
+
 pub fn provider_login_help() -> String {
+    let dir = docs_dir();
     [
-        "Use /login to log into a provider via OAuth or API key. See:",
-        &format!("  {DOCS_PROVIDERS}"),
-        &format!("  {DOCS_MODELS}"),
+        "Use /login to log into a provider via OAuth or API key. See:".to_string(),
+        format!("  {}", dir.join("providers.md").display()),
+        format!("  {}", dir.join("models.md").display()),
     ]
     .join("\n")
 }

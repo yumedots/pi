@@ -160,13 +160,13 @@ pub async fn run_async(args: &[String]) -> i32 {
     let options = match parse_args(args) {
         Ok(options) => options,
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             print_help();
             return 2;
         }
     };
     if let Err(error) = installed_native_packages_strict() {
-        eprintln!("error: cannot safely install while native package metadata is invalid: {error}");
+        eprintln!("Error: cannot safely install while native package metadata is invalid: {error}");
         return 1;
     }
     if options.build || options.path.is_some() {
@@ -174,13 +174,13 @@ pub async fn run_async(args: &[String]) -> i32 {
         return match tokio::task::spawn_blocking(move || run(&args)).await {
             Ok(code) => code,
             Err(error) => {
-                eprintln!("error: extension build failed: {error}");
+                eprintln!("Error: extension build failed: {error}");
                 1
             }
         };
     }
     if crate::args::offline_env_enabled() {
-        eprintln!("error: prebuilt installation requires network access; use --build for an explicit Cargo build");
+        eprintln!("Error: prebuilt installation requires network access; use --build for an explicit Cargo build");
         return 1;
     }
     match crate::prebuilt_extensions::install(
@@ -193,7 +193,7 @@ pub async fn run_async(args: &[String]) -> i32 {
     {
         Ok(()) => 0,
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             1
         }
     }
@@ -228,7 +228,7 @@ pub fn run(args: &[String]) -> i32 {
     let options = match parse_args(args) {
         Ok(options) => options,
         Err(message) => {
-            eprintln!("error: {message}");
+            eprintln!("Error: {message}");
             print_help();
             return 2;
         }
@@ -241,14 +241,14 @@ pub fn run(args: &[String]) -> i32 {
         Ok(records) => records,
         Err(error) => {
             eprintln!(
-                "error: cannot safely install while native package metadata is invalid: {error}"
+                "Error: cannot safely install while native package metadata is invalid: {error}"
             );
             return 1;
         }
     };
     if !options.build && options.path.is_none() {
         eprintln!(
-            "error: prebuilt installs use the async dispatcher; Cargo compilation requires --build"
+            "Error: prebuilt installs use the async dispatcher; Cargo compilation requires --build"
         );
         return 2;
     }
@@ -256,25 +256,25 @@ pub fn run(args: &[String]) -> i32 {
     let temp = match tempfile::tempdir() {
         Ok(temp) => temp,
         Err(error) => {
-            eprintln!("error: could not create a temporary Cargo workspace: {error}");
+            eprintln!("Error: could not create a temporary Cargo workspace: {error}");
             return 1;
         }
     };
     let manifest = temp.path().join("Cargo.toml");
     if let Err(error) = write_manifest(&manifest, &options) {
-        eprintln!("error: could not prepare Cargo workspace: {error}");
+        eprintln!("Error: could not prepare Cargo workspace: {error}");
         return 1;
     }
 
     if let Err(error) = cargo_command("fetch", &manifest, &options, false) {
-        eprintln!("error: could not resolve `{}`: {error}", options.package);
+        eprintln!("Error: could not resolve `{}`: {error}", options.package);
         return 1;
     }
 
     let metadata = match cargo_metadata(&manifest, &options) {
         Ok(metadata) => metadata,
         Err(error) => {
-            eprintln!("error: could not inspect `{}`: {error}", options.package);
+            eprintln!("Error: could not inspect `{}`: {error}", options.package);
             return 1;
         }
     };
@@ -286,7 +286,7 @@ pub fn run(args: &[String]) -> i32 {
         Some(package) => package,
         None => {
             eprintln!(
-                "error: Cargo did not resolve a package named `{}`",
+                "Error: Cargo did not resolve a package named `{}`",
                 options.package
             );
             return 1;
@@ -307,7 +307,7 @@ pub fn run(args: &[String]) -> i32 {
             return 0;
         }
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             return 1;
         }
     }
@@ -318,7 +318,7 @@ pub fn run(args: &[String]) -> i32 {
         .collect();
     if cdylib_targets.is_empty() {
         eprintln!(
-            "error: `{}` is not an rpi extension crate; it has no `cdylib` target",
+            "Error: `{}` is not an rpi extension crate; it has no `cdylib` target",
             options.package
         );
         eprintln!("{CDYLIB_EXTENSION_HINT}");
@@ -326,7 +326,7 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     if let Err(error) = cargo_command("build", &manifest, &options, true) {
-        eprintln!("error: failed to build `{}`: {error}", options.package);
+        eprintln!("Error: failed to build `{}`: {error}", options.package);
         return 1;
     }
 
@@ -334,7 +334,7 @@ pub fn run(args: &[String]) -> i32 {
     let artifacts = match find_artifacts(&artifact_dir, &cdylib_targets) {
         Ok(artifacts) => artifacts,
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             return 1;
         }
     };
@@ -342,14 +342,14 @@ pub fn run(args: &[String]) -> i32 {
     let agent_dir = match crate::config::agent_dir() {
         Ok(dir) => dir,
         Err(error) => {
-            eprintln!("error: could not resolve the rpi config directory: {error}");
+            eprintln!("Error: could not resolve the rpi config directory: {error}");
             return 1;
         }
     };
     let destination = agent_dir.join("extensions");
     if let Err(error) = std::fs::create_dir_all(&destination) {
         eprintln!(
-            "error: could not create extension directory {}: {error}",
+            "Error: could not create extension directory {}: {error}",
             destination.display()
         );
         return 1;
@@ -380,7 +380,7 @@ pub fn run(args: &[String]) -> i32 {
     ) {
         Ok(installed) => installed,
         Err(error) => {
-            eprintln!("error: could not install `{}`: {error}", options.package);
+            eprintln!("Error: could not install `{}`: {error}", options.package);
             return 1;
         }
     };
@@ -404,7 +404,7 @@ pub fn uninstall(args: &[String]) -> i32 {
     let name = match parse_uninstall_name(args) {
         Ok(name) => name,
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             print_uninstall_help();
             return 2;
         }
@@ -412,7 +412,7 @@ pub fn uninstall(args: &[String]) -> i32 {
     let agent = match crate::config::agent_dir() {
         Ok(path) => path,
         Err(error) => {
-            eprintln!("error: could not resolve the rpi config directory: {error}");
+            eprintln!("Error: could not resolve the rpi config directory: {error}");
             return 1;
         }
     };
@@ -421,7 +421,7 @@ pub fn uninstall(args: &[String]) -> i32 {
     let _lock = match NativePackageMutationLock::acquire(&metadata_path) {
         Ok(lock) => lock,
         Err(error) => {
-            eprintln!("error: cannot safely uninstall: {error}");
+            eprintln!("Error: cannot safely uninstall: {error}");
             return 1;
         }
     };
@@ -429,7 +429,7 @@ pub fn uninstall(args: &[String]) -> i32 {
         Ok(registry) => registry.into_records(),
         Err(error) => {
             eprintln!(
-                "error: cannot safely uninstall while native package metadata is invalid: {error}"
+                "Error: cannot safely uninstall while native package metadata is invalid: {error}"
             );
             return 1;
         }
@@ -478,14 +478,14 @@ pub fn uninstall(args: &[String]) -> i32 {
             let registry = match serde_json::to_vec_pretty(&remaining) {
                 Ok(registry) => registry,
                 Err(error) => {
-                    eprintln!("error: could not serialize native package metadata: {error}");
+                    eprintln!("Error: could not serialize native package metadata: {error}");
                     return 1;
                 }
             };
             let staged = match stage_native_bytes(&registry, &metadata_path) {
                 Ok(staged) => staged,
                 Err(error) => {
-                    eprintln!("error: could not stage native package metadata: {error}");
+                    eprintln!("Error: could not stage native package metadata: {error}");
                     return 1;
                 }
             };
@@ -496,7 +496,7 @@ pub fn uninstall(args: &[String]) -> i32 {
         }
     }
     if let Err(error) = activate_native_transaction(&replacements, &removals, &mut |_, _| Ok(())) {
-        eprintln!("error: could not uninstall Rust extension {name}: {error}");
+        eprintln!("Error: could not uninstall Rust extension {name}: {error}");
         return 1;
     }
     for path in &artifact_targets {
@@ -1029,7 +1029,7 @@ fn activate_native_transaction(
     for backup in backups {
         if let Err(error) = std::fs::remove_file(&backup.backup) {
             eprintln!(
-                "warning: native package updated but backup {} could not be removed: {error}",
+                "Warning: native package updated but backup {} could not be removed: {error}",
                 backup.backup.display()
             );
         }

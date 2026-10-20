@@ -27,6 +27,7 @@ use crate::env::ExecutionEnv;
 use crate::env::FileKind;
 use crate::path_utils::resolve_read_tool_path;
 use crate::tools::tool_context::ExecutionToolContext;
+use crate::tools::PromptContribution;
 use crate::truncate::{
     format_size, truncate_head, TruncationOptions, TruncationResult, DEFAULT_MAX_BYTES,
 };
@@ -65,6 +66,7 @@ pub struct LsToolOptions {}
 pub struct LsTool {
     schema: Tool,
     env: Arc<dyn ExecutionEnv>,
+    prompt: PromptContribution,
 }
 
 impl LsTool {
@@ -93,6 +95,7 @@ pub fn create_ls_tool(
     Arc::new(LsTool {
         schema: LsTool::schema(),
         env: context.env().clone(),
+        prompt: PromptContribution::new("List directory contents", &[]),
     })
 }
 
@@ -103,6 +106,16 @@ impl AgentTool for LsTool {
     }
     fn label(&self) -> &str {
         "ls"
+    }
+
+    /// Mirrors TS `AgentTool.promptSnippet`.
+    fn prompt_snippet(&self) -> Option<&str> {
+        Some(self.prompt.snippet)
+    }
+
+    /// Mirrors TS `AgentTool.promptGuidelines`.
+    fn prompt_guidelines(&self) -> Option<&[String]> {
+        Some(&self.prompt.guidelines)
     }
 
     async fn execute(

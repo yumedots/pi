@@ -3212,6 +3212,7 @@ version = "0.6.3"
 dependencies = [
  "async-trait",
  "futures",
+ "regex",
  "rpi-agent",
  "rpi-ai",
  "rpi-tools",
@@ -3233,6 +3234,7 @@ name = "rpi-js"
 version = "0.6.3"
 dependencies = [
  "oxc",
+ "rpi-tui",
  "serde_json",
  "tempfile",
  "v8",
@@ -3286,6 +3288,7 @@ version = "0.6.3"
 dependencies = [
  "base64 0.22.1",
  "crossterm",
+ "libc",
  "pulldown-cmark",
  "regex",
  "similar",

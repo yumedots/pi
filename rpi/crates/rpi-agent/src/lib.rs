@@ -36,15 +36,16 @@ pub use agent_tool::AgentTool;
 pub use error::AgentError;
 pub use events::{AgentEmitter, AgentEvent, CollectorEmitter};
 pub use hooks::{
-    AfterToolCall, AfterToolResults, AgentLoopConfig, BeforeToolCall, ConvertToLlm, GetApiKey,
-    GetFollowUpMessages, GetSteeringMessages, PrepareNextTurn, ShouldStopAfterTurn,
-    TransformContext,
+    AfterToolCall, AfterToolResults, AgentLoopConfig, BeforeToolCall, ConvertToLlm, FinishTurn,
+    GetApiKey, GetFollowUpMessages, GetSteeringMessages, PrepareNextTurn, PrepareRequest,
+    ShouldStopAfterTurn, TransformContext,
 };
 pub use message::{AgentMessage, AgentMessageRole, CustomMessage};
 pub use queue::PendingMessageQueue;
 pub use stream_fn::{stream_fn, StreamFn};
 pub use types::{
-    AfterToolCallContext, AfterToolCallResult, AgentContext, AgentLoopTurnUpdate, AgentState,
-    AgentToolResult, BeforeToolCallContext, BeforeToolCallResult, QueueMode,
-    ShouldStopAfterTurnContext, TextContentOrImage, ToolExecutionMode, ToolResultPartial,
+    AfterToolCallContext, AfterToolCallResult, AgentContext, AgentLoopTurnUpdate, AgentRequestUpdate,
+    AgentState, AgentToolResult, AgentTurnContext, AgentTurnDecision, BeforeToolCallContext,
+    BeforeToolCallResult, PrepareRequestContext, QueueMode, ShouldStopAfterTurnContext,
+    TextContentOrImage, ToolExecutionMode, ToolResultPartial,
 };

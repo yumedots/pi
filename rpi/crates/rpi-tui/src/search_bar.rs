@@ -62,7 +62,6 @@ impl Component for SearchBar {
         let colors = &theme.colors;
 
         // Build search bar text
-        let search_icon = "🔍";
         let match_info = if match_count == 0 {
             if query.is_empty() {
                 String::new()
@@ -73,7 +72,7 @@ impl Component for SearchBar {
             format!("{}/{}", current_match + 1, match_count)
         };
 
-        let left = format!("{} Search: {}", search_icon, query);
+        let left = format!("Find in transcript {}", query);
         let right = match_info;
 
         // Calculate padding
@@ -87,7 +86,7 @@ impl Component for SearchBar {
 
         let line = format!(
             "{}{}{}{}",
-            colors.background.fg(&left),
+            crate::theme::Color::Default.fg(&left),
             " ".repeat(padding),
             colors.dim.fg(&right),
             " ".repeat(2)

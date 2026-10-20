@@ -12,8 +12,9 @@
 
 use crate::message::AgentMessage;
 use crate::types::{
-    AfterToolCallContext, AfterToolCallResult, AgentLoopTurnUpdate, BeforeToolCallContext,
-    BeforeToolCallResult, ShouldStopAfterTurnContext, ToolExecutionMode,
+    AfterToolCallContext, AfterToolCallResult, AgentLoopTurnUpdate, AgentRequestUpdate,
+    AgentTurnContext, AgentTurnDecision, BeforeToolCallContext, BeforeToolCallResult,
+    PrepareRequestContext, ShouldStopAfterTurnContext, ToolExecutionMode,
 };
 use futures::future::BoxFuture;
 use rpi_ai::provider::{CacheRetention, SimpleStreamOptions};
@@ -49,6 +50,28 @@ pub type ShouldStopAfterTurn =
 /// for the next turn, if any.
 pub type PrepareNextTurn = Arc<
     dyn Fn(ShouldStopAfterTurnContext<'_>) -> BoxFuture<'static, Option<AgentLoopTurnUpdate>>
+        + Send
+        + Sync,
+>;
+
+/// `(context, signal) -> Option<AgentRequestUpdate>` — runs immediately before
+/// every provider request (including the first) and may replace the context,
+/// the model and the thinking level. Mirrors TS `prepareRequest`.
+pub type PrepareRequest = Arc<
+    dyn Fn(
+            PrepareRequestContext<'_>,
+            CancellationToken,
+        ) -> BoxFuture<'static, Option<AgentRequestUpdate>>
+        + Send
+        + Sync,
+>;
+
+/// `(context, signal) -> Option<AgentTurnDecision>` — runs after a completed
+/// assistant turn and all of its tool-result messages, before `turn_end`.
+/// `Continue` forces one more provider request; `End` stops the run. Mirrors
+/// TS `finishTurn`.
+pub type FinishTurn = Arc<
+    dyn Fn(AgentTurnContext<'_>, CancellationToken) -> BoxFuture<'static, Option<AgentTurnDecision>>
         + Send
         + Sync,
 >;
@@ -108,6 +131,8 @@ pub struct AgentLoopConfig {
     pub get_api_key: Option<GetApiKey>,
     pub should_stop_after_turn: Option<ShouldStopAfterTurn>,
     pub prepare_next_turn: Option<PrepareNextTurn>,
+    pub prepare_request: Option<PrepareRequest>,
+    pub finish_turn: Option<FinishTurn>,
     pub after_tool_results: Option<AfterToolResults>,
     pub get_steering_messages: Option<GetSteeringMessages>,
     pub get_follow_up_messages: Option<GetFollowUpMessages>,
@@ -144,6 +169,8 @@ impl std::fmt::Debug for AgentLoopConfig {
                 &self.should_stop_after_turn.is_some(),
             )
             .field("prepare_next_turn", &self.prepare_next_turn.is_some())
+            .field("prepare_request", &self.prepare_request.is_some())
+            .field("finish_turn", &self.finish_turn.is_some())
             .field("after_tool_results", &self.after_tool_results.is_some())
             .field(
                 "get_steering_messages",

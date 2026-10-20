@@ -99,6 +99,218 @@ pub fn format_skill_invocation(skill: &Skill, additional_instructions: Option<&s
 }
 
 // ---------------------------------------------------------------------------
+// Invocation — `/skill:name args` and `@name` mentions
+// ---------------------------------------------------------------------------
+
+/// A skill invocation parsed from the start of a message. Mirrors TS
+/// `SkillInvocation`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillInvocation {
+    /// Name of the skill to load.
+    pub name: String,
+    /// Arguments that followed the invocation, empty when none were given.
+    pub args: String,
+}
+
+/// Parse a `/skill:name args` command from the start of a message. Mirrors TS
+/// `parseSkillCommand`.
+pub fn parse_skill_command(text: &str) -> Option<SkillInvocation> {
+    let rest = text.strip_prefix("/skill:")?;
+    let name_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    let name = &rest[..name_end];
+    if name.is_empty() {
+        return None;
+    }
+    let args = rest[name_end..].trim().to_string();
+    Some(SkillInvocation {
+        name: name.to_string(),
+        args,
+    })
+}
+
+/// A skill mention (`@name`) found in message text. Mirrors TS `SkillMention`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillMention {
+    /// Name of the skill, without the `@`.
+    pub name: String,
+    /// Byte index of the `@` in the text.
+    pub start: usize,
+    /// Byte index just after the name.
+    pub end: usize,
+}
+
+/// Find the `@name` mentions in a message. Mirrors TS `findSkillMentions`.
+///
+/// The name is `[a-z0-9-]+` and must not be followed by a word character or a
+/// hyphen; the `@` must not be preceded by a word character or another `@`, so
+/// `user@example.com` is not a mention.
+pub fn find_skill_mentions(text: &str) -> Vec<SkillMention> {
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let mut mentions = Vec::new();
+    for (index, (offset, ch)) in chars.iter().enumerate() {
+        if *ch != '@' {
+            continue;
+        }
+        let prefix_ok = index == 0 || {
+            let previous = chars[index - 1].1;
+            !is_word_char(previous) && previous != '@'
+        };
+        if !prefix_ok {
+            continue;
+        }
+        let mut end = index + 1;
+        while end < chars.len() && is_skill_name_char(chars[end].1) {
+            end += 1;
+        }
+        // The original's `(?![\w-])` lookahead forces the name to be as long as
+        // possible without a word character or hyphen right after it.
+        let mut name_end = end;
+        while name_end > index + 1 {
+            let follows = chars.get(name_end).map(|(_, c)| *c);
+            let blocked = follows.map(is_word_char).unwrap_or(false)
+                || follows == Some('-');
+            if !blocked {
+                break;
+            }
+            name_end -= 1;
+        }
+        if name_end == index + 1 {
+            continue;
+        }
+        let name: String = chars[index + 1..name_end].iter().map(|(_, c)| *c).collect();
+        let start = *offset;
+        let end_offset = chars[name_end - 1].0 + chars[name_end - 1].1.len_utf8();
+        mentions.push(SkillMention {
+            name,
+            start,
+            end: end_offset,
+        });
+    }
+    mentions
+}
+
+/// Remove the mentions from the text, leaving the request they were part of.
+/// Mirrors TS `removeSkillMentions`.
+pub fn remove_skill_mentions(text: &str, mentions: &[SkillMention]) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut last = 0;
+    for mention in mentions {
+        if mention.start > last {
+            result.push_str(&text[last..mention.start]);
+        }
+        last = mention.end;
+    }
+    if last < text.len() {
+        result.push_str(&text[last..]);
+    }
+    collapse_spaces(&result).trim().to_string()
+}
+
+/// Collapse runs of spaces/tabs, drop the space before closing punctuation and
+/// remove empty parentheses. Mirrors the three `.replace()` calls in TS
+/// `removeSkillMentions`.
+fn collapse_spaces(text: &str) -> String {
+    let mut collapsed = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == ' ' || ch == '\t' {
+            while let Some(&next) = chars.peek() {
+                if next == ' ' || next == '\t' {
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            collapsed.push(' ');
+            if let Some(&next) = chars.peek() {
+                if matches!(next, ',' | '.' | ';' | ':' | '!' | '?') {
+                    collapsed.pop();
+                }
+            }
+            continue;
+        }
+        collapsed.push(ch);
+    }
+    remove_empty_parens(&collapsed)
+}
+
+/// Remove `(` + whitespace + `)`. Mirrors TS `.replace(/\(\s*\)/g, "")`.
+fn remove_empty_parens(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'(' {
+            let mut j = i + 1;
+            while j < bytes.len() && (bytes[j] as char).is_whitespace() {
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b')' {
+                i = j + 1;
+                continue;
+            }
+        }
+        let ch = text[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+/// Expand a skill command or mention into the skill's invocation block.
+/// Mirrors TS `AgentSession._expandSkillCommand`.
+///
+/// A `/skill:name args` command is replaced by the skill block followed by the
+/// arguments. An `@name` mention in prose is replaced by the skill block, and
+/// the mention is removed from the request. Unknown skills are passed through
+/// unchanged.
+pub fn expand_skill_command(text: &str, skills: &[Skill]) -> String {
+    let mentions: Vec<SkillMention> = find_skill_mentions(text)
+        .into_iter()
+        .filter(|mention| skills.iter().any(|s| s.name == mention.name))
+        .collect();
+    if !mentions.is_empty() {
+        let blocks: Vec<String> = mentions
+            .iter()
+            .filter_map(|mention| skills.iter().find(|s| s.name == mention.name))
+            .map(|skill| format_skill_invocation(skill, None))
+            .collect();
+        if blocks.is_empty() {
+            return text.to_string();
+        }
+        let request = remove_skill_mentions(text, &mentions);
+        return if request.is_empty() {
+            blocks.join("\n\n")
+        } else {
+            format!("{}\n\n{}", blocks.join("\n\n"), request)
+        };
+    }
+
+    let Some(command) = parse_skill_command(text) else {
+        return text.to_string();
+    };
+    let Some(skill) = skills.iter().find(|s| s.name == command.name) else {
+        return text.to_string();
+    };
+    let block = format_skill_invocation(skill, None);
+    if command.args.is_empty() {
+        block
+    } else {
+        format!("{block}\n\n{}", command.args)
+    }
+}
+
+/// JS `\w`: `[A-Za-z0-9_]`.
+fn is_word_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_'
+}
+
+/// The skill-name charset `[a-z0-9-]`.
+fn is_skill_name_char(ch: char) -> bool {
+    ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-'
+}
+
+// ---------------------------------------------------------------------------
 // System-prompt listing (XML-escaped) — invariant §9 path (1)
 // ---------------------------------------------------------------------------
 
@@ -117,7 +329,7 @@ pub fn format_skills_for_system_prompt(skills: &[Skill]) -> String {
 
     let mut lines: Vec<String> = vec![
         "The following skills provide specialized instructions for specific tasks.".to_string(),
-        "Read the full skill file when the task matches its description.".to_string(),
+        "Use the read tool to load a skill's file when the task matches its description.".to_string(),
         "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.".to_string(),
         String::new(),
         "<available_skills>".to_string(),
@@ -482,7 +694,7 @@ async fn load_skill_from_file(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     let name = frontmatter_name.unwrap_or_else(|| parent_dir_name.to_string());
-    for err in validate_name(&name, parent_dir_name) {
+    for err in validate_name(&name) {
         diagnostics.push(SkillDiagnostic {
             code: SkillDiagnosticCode::InvalidMetadata,
             message: err,
@@ -517,13 +729,8 @@ async fn load_skill_from_file(
     }
 }
 
-fn validate_name(name: &str, parent_dir_name: &str) -> Vec<String> {
+fn validate_name(name: &str) -> Vec<String> {
     let mut errors = Vec::new();
-    if name != parent_dir_name {
-        errors.push(format!(
-            "name \"{name}\" does not match parent directory \"{parent_dir_name}\""
-        ));
-    }
     if name.chars().count() > MAX_NAME_LENGTH {
         errors.push(format!(
             "name exceeds {MAX_NAME_LENGTH} characters ({})",
@@ -979,11 +1186,10 @@ mod tests {
 
     #[test]
     fn validate_name_rules() {
-        assert!(validate_name("example", "example").is_empty());
-        assert!(!validate_name("Example", "example").is_empty()); // uppercase invalid
-        assert!(!validate_name("ex--ample", "ex--ample").is_empty()); // consecutive hyphens
-        assert!(!validate_name("-lead", "-lead").is_empty());
-        assert!(!validate_name("wrong", "right").is_empty()); // mismatch with parent dir
+        assert!(validate_name("example").is_empty());
+        assert!(!validate_name("Example").is_empty()); // uppercase invalid
+        assert!(!validate_name("ex--ample").is_empty()); // consecutive hyphens
+        assert!(!validate_name("-lead").is_empty());
     }
 
     #[test]

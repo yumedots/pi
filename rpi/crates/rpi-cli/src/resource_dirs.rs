@@ -19,7 +19,7 @@
 //! `APPEND_SYSTEM.md` (and some project resources) behind
 //! `settingsManager.isProjectTrusted()`. rpi v1 has **no trust prompt**
 //! (`config.rs:349`: "does not gate any project resources behind trust in v1"),
-//! so project resources are read unconditionally here. A copied `.rpi/`
+//! so project resources are read unconditionally here. A copied `.pi/`
 //! directory drops in and works (the documented intent). Full trust gating is
 //! deferred.
 //!
@@ -40,38 +40,40 @@ use rpi_harness::skills::{load_skills, LoadSkillsResult, SkillDiagnostic, SkillD
 use rpi_harness::types::{PromptTemplate, Skill};
 use rpi_tools::env::ExecutionEnv;
 
-/// The project-local rpi configuration directory.
-pub const PROJECT_CONFIG_DIR_NAME: &str = ".rpi";
+/// The project-local configuration directory. Same name as pi's
+/// (`CONFIG_DIR_NAME` in `packages/coding-agent/src/config.ts:589`), so the
+/// port reads the project's own `.pi/` directory.
+pub const PROJECT_CONFIG_DIR_NAME: &str = ".pi";
 
-/// Resolve the preferred project-local resource subdir `<cwd>/.rpi/<sub>`.
+/// Resolve the preferred project-local resource subdir `<cwd>/.pi/<sub>`.
 pub fn project_dir(cwd: &Path, sub: &str) -> PathBuf {
     cwd.join(PROJECT_CONFIG_DIR_NAME).join(sub)
 }
 
-/// Resolve project-local resource dirs. Only `.rpi` is read.
+/// Resolve project-local resource dirs. Only `.pi` is read.
 pub fn project_dirs(cwd: &Path, sub: &str) -> Vec<PathBuf> {
     vec![project_dir(cwd, sub)]
 }
 
 /// Resolve the global resource subdir `<agent_dir>/<sub>` (e.g.
-/// `~/.rpi/agent/skills`). Returns `None` if the agent dir can't be resolved
-/// (no home dir + no `RPI_CODING_AGENT_DIR`) — callers then proceed project-only.
+/// `~/.pi/agent/skills`). Returns `None` if the agent dir can't be resolved
+/// (no home dir + no `PI_CODING_AGENT_DIR`) — callers then proceed project-only.
 pub fn global_dir(sub: &str) -> Option<PathBuf> {
     crate::config::agent_dir().ok().map(|d| d.join(sub))
 }
 
 /// The candidate context/SYSTEM/APPEND filenames live directly under
-/// `<cwd>/.rpi/` and `<agent_dir>/`.
+/// `<cwd>/.pi/` and `<agent_dir>/`.
 pub fn project_config_file(cwd: &Path, name: &str) -> PathBuf {
     cwd.join(PROJECT_CONFIG_DIR_NAME).join(name)
 }
 
-/// Resolve project config files. Only `.rpi` is read.
+/// Resolve project config files. Only `.pi` is read.
 pub fn project_config_files(cwd: &Path, name: &str) -> Vec<PathBuf> {
     vec![project_config_file(cwd, name)]
 }
 
-/// Global config file under `<agent_dir>/<name>` (`~/.rpi/agent/SYSTEM.md`).
+/// Global config file under `<agent_dir>/<name>` (`~/.pi/agent/SYSTEM.md`).
 pub fn global_config_file(name: &str) -> Option<PathBuf> {
     crate::config::agent_dir().ok().map(|d| d.join(name))
 }
@@ -410,7 +412,9 @@ mod tests {
         PromptTemplate {
             name: name.to_string(),
             description: None,
+            argument_hint: None,
             content: "c".to_string(),
+            file_path: None,
         }
     }
 

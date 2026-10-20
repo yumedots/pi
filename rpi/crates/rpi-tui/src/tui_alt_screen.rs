@@ -4,22 +4,24 @@
 //! transcript and fixed bottom dock, as described in `tui-plan.md`.
 
 use std::any::Any;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use super::component::Component;
+use super::component::{Component, MouseButton, MouseEvent, MouseEventKind};
 use super::container::Container;
 use super::layout::{
     composite_tui_line, extract_cursor_position, render_layout_frame,
-    render_layout_frame_reusing_scroll_content, LayoutFrame,
+    render_layout_frame_reusing_scroll_content, LayoutFrame, ScrollbarGeometry,
 };
+use super::mouse::{dispatch_mouse_event, retarget_mouse_event, MouseDispatchResult, MouseDispatchTarget};
 use super::overlay::OverlayManager;
 use super::scroll_view::ScrollView;
-use super::tui::{OverlayHandle, OverlayOptions, TuiMode, TuiStopOptions, TUI};
-use crate::ansi::{visible_width, CURSOR_MARKER};
+use super::tui::{OverlayBounds, OverlayHandle, OverlayOptions, TuiMode, TuiStopOptions, TUI};
+use crate::ansi::{visible_width, CURSOR_MARKER, FAKE_CURSOR_END, FAKE_CURSOR_START};
 use crate::terminal::{InputEvent, Terminal, TerminalInfo};
+use crate::terminal_colors::request_terminal_colors;
 
 /// Symbol for ViewportTUI capability check.
 pub const VIEWPORT_TUI: &[u8] = b"rpi-tui/viewport";
@@ -33,6 +35,194 @@ pub const VIEWPORT_TUI: &[u8] = b"rpi-tui/viewport";
 /// is what keeps long, fast output from saturating the terminal — and the
 /// GPU-backed compositor behind it.
 pub const MIN_RENDER_INTERVAL_MS: u64 = 16;
+
+/// Interval within which two clicks on the same spot count as a double click.
+const DOUBLE_CLICK_INTERVAL_MS: u64 = 500;
+
+/// State of an ongoing mouse gesture.
+#[derive(Default)]
+struct MouseState {
+    /// Component that took the press; it owns the follow-up events.
+    press_target: Option<MouseDispatchTarget>,
+    /// Component that captured the gesture explicitly.
+    capture_target: Option<MouseDispatchTarget>,
+    /// Where the press happened, to tell a click from a drag.
+    press_point: Option<(usize, usize)>,
+    press_moved: bool,
+    /// Last click, to compute the click count.
+    last_click: Option<MouseClick>,
+    /// Scrollbar being dragged.
+    scrollbar_drag: Option<ScrollbarDrag>,
+    /// Link under the pointer when the press started.
+    pressed_url: Option<String>,
+}
+
+/// A click, used to compute the click count.
+#[derive(Clone, Copy)]
+struct MouseClick {
+    at: Instant,
+    count: u32,
+    x: usize,
+    y: usize,
+    component: usize,
+}
+
+/// A scrollbar the user grabbed.
+#[derive(Clone)]
+struct ScrollbarDrag {
+    scroll_view: Arc<ScrollView>,
+    grab_offset: usize,
+}
+
+/// A dispatched mouse event and the component that should take the focus.
+struct MouseDispatch {
+    result: MouseDispatchResult,
+    focus_target: Option<Arc<dyn Component>>,
+}
+
+/// A point of a text selection, in screen coordinates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SelectionPoint {
+    row: usize,
+    col: usize,
+}
+
+/// A text selection in the transcript.
+#[derive(Default)]
+struct TextSelection {
+    anchor: Option<SelectionPoint>,
+    focus: Option<SelectionPoint>,
+    pressed: bool,
+}
+
+/// Length of the ANSI sequence at the start of a string.
+fn ansi_sequence_len(s: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    if bytes.first() != Some(&0x1b) {
+        return None;
+    }
+    match bytes.get(1) {
+        Some(b'[') => {
+            let mut index = 2;
+            while index < bytes.len() {
+                let byte = bytes[index];
+                index += 1;
+                if (0x40..=0x7e).contains(&byte) {
+                    return Some(index);
+                }
+            }
+            None
+        }
+        Some(b']') => {
+            let mut index = 2;
+            while index < bytes.len() {
+                let byte = bytes[index];
+                index += 1;
+                if byte == 0x07 {
+                    return Some(index);
+                }
+                if byte == 0x1b && bytes.get(index) == Some(&b'\\') {
+                    return Some(index + 1);
+                }
+            }
+            None
+        }
+        Some(_) => Some(2),
+        None => None,
+    }
+}
+
+/// Wrap text in reverse video, re-applying it after every style change.
+fn apply_selection_highlight(text: &str) -> String {
+    let mut result = String::from("\x1b[7m");
+    let mut index = 0;
+    while index < text.len() {
+        if text[index..].starts_with('\x1b') {
+            if let Some(len) = ansi_sequence_len(&text[index..]) {
+                let code = &text[index..index + len];
+                result.push_str(code);
+                if code.ends_with('m') {
+                    result.push_str("\x1b[7m");
+                }
+                index += len;
+                continue;
+            }
+        }
+        let character = text[index..].chars().next().unwrap_or(' ');
+        result.push(character);
+        index += character.len_utf8();
+    }
+    result.push_str("\x1b[27m");
+    result
+}
+
+/// The deepest focusable component of a hit path.
+fn focus_target_in_path(path: &[&crate::layout::LayoutBox]) -> Option<Arc<dyn Component>> {
+    path.iter().find_map(|lbox| {
+        lbox.component
+            .as_focusable()
+            .map(|_| lbox.component.clone())
+    })
+}
+
+/// Turn the fake-cursor markers into reverse video. When the hardware cursor
+/// is shown, the fake cursor that sits right after the hardware cursor marker
+/// is dropped: the terminal already draws a caret on that cell.
+fn resolve_fake_cursors(lines: Vec<String>, show_hardware_cursor: bool) -> Vec<String> {
+    static FOCUSED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(\x1b_pi:c\x07)\x1b_pi:fc\x07(.*?)(?:\x1b_pi:/fc\x07|$)")
+            .expect("focused fake cursor")
+    });
+    lines
+        .into_iter()
+        .map(|line| {
+            if !line.contains(FAKE_CURSOR_START) {
+                return line;
+            }
+            let resolved = if show_hardware_cursor {
+                FOCUSED.replace_all(&line, "$1$2").to_string()
+            } else {
+                line
+            };
+            resolved
+                .replace(FAKE_CURSOR_START, "\x1b[7m")
+                .replace(FAKE_CURSOR_END, "\x1b[27m")
+        })
+        .collect()
+}
+
+/// Normalize a terminal mouse event.
+fn normalize_mouse_event(
+    event: &crossterm::event::MouseEvent,
+    width: usize,
+    height: usize,
+) -> Option<MouseEvent> {
+    use crossterm::event::{KeyModifiers, MouseButton as CrosstermButton, MouseEventKind as CrosstermKind};
+
+    let (kind, button, wheel_delta) = match event.kind {
+        CrosstermKind::Down(button) => (MouseEventKind::Press, Some(button), None),
+        CrosstermKind::Up(button) => (MouseEventKind::Release, Some(button), None),
+        CrosstermKind::Drag(button) => (MouseEventKind::Drag, Some(button), None),
+        CrosstermKind::Moved => (MouseEventKind::Move, None, None),
+        CrosstermKind::ScrollUp => (MouseEventKind::Wheel, None, Some(-1)),
+        CrosstermKind::ScrollDown => (MouseEventKind::Wheel, None, Some(1)),
+        _ => return None,
+    };
+    let button = match button {
+        Some(CrosstermButton::Left) => MouseButton::Left,
+        Some(CrosstermButton::Right) => MouseButton::Right,
+        Some(CrosstermButton::Middle) => MouseButton::Middle,
+        _ => MouseButton::None,
+    };
+    let mut normalized = MouseEvent::new(kind, button, event.column as usize, event.row as usize);
+    normalized.width = width.max(1);
+    normalized.height = height.max(1);
+    normalized.shift = event.modifiers.contains(KeyModifiers::SHIFT);
+    normalized.alt = event.modifiers.contains(KeyModifiers::ALT);
+    normalized.ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
+    normalized.wheel_delta = wheel_delta;
+    Some(normalized)
+}
 
 /// Merge an incoming frame request into one that is already parked.
 ///
@@ -139,6 +329,11 @@ pub struct TuiAltScreen {
     /// the terminal reflowed its rows, so the frame cannot be patched cell by
     /// cell and must be repainted whole.
     painted_size: Mutex<(usize, usize)>,
+    /// The size the frame being rendered was laid out for. Components that
+    /// need the viewport height (e.g. the empty-session screen) read it here:
+    /// the terminal's own lock is held while the frame renders, so asking the
+    /// terminal for its size from inside a render would deadlock.
+    viewport_size: Mutex<(usize, usize)>,
     /// Set when a resize event reaches the loop. The window can end up at the
     /// size it already had (dragged out and back) while every intermediate
     /// resize reflowed the terminal's rows, so the next frame repaints whole.
@@ -171,6 +366,18 @@ pub struct TuiAltScreen {
     /// The scheduler thread, joined by [`TuiAltScreen::stop`] so a parked frame
     /// cannot repaint the terminal after shutdown.
     scheduler_thread: Mutex<Option<JoinHandle<()>>>,
+    /// State of the ongoing mouse gesture.
+    mouse: Mutex<MouseState>,
+    /// Callback that opens an OSC 8 hyperlink.
+    url_opener: Mutex<Option<Arc<dyn Fn(&str) + Send + Sync>>>,
+    /// Text selection in the transcript.
+    selection: Mutex<TextSelection>,
+    /// Callback that copies the selected text to the clipboard.
+    copy_selection: Mutex<Option<Arc<dyn Fn(&str) -> bool + Send + Sync>>>,
+    /// Whether a mouse release copies the selected text.
+    copy_on_select: AtomicBool,
+    /// Logical lines moved for each mouse-wheel event.
+    wheel_scroll_lines: AtomicI32,
 }
 
 impl TuiAltScreen {
@@ -198,6 +405,7 @@ impl TuiAltScreen {
             full_redraw_count: Mutex::new(0),
             previous_screen: Mutex::new(Vec::new()),
             painted_size: Mutex::new((0, 0)),
+            viewport_size: Mutex::new((0, 0)),
             resize_dirty: AtomicBool::new(false),
             scroll_top: Mutex::new(0),
             stick_to_bottom: Mutex::new(true),
@@ -213,7 +421,18 @@ impl TuiAltScreen {
             scheduler: Arc::new(RenderScheduler::new()),
             scheduler_started: AtomicBool::new(false),
             scheduler_thread: Mutex::new(None),
+            mouse: Mutex::new(MouseState::default()),
+            url_opener: Mutex::new(None),
+            selection: Mutex::new(TextSelection::default()),
+            copy_selection: Mutex::new(None),
+            copy_on_select: AtomicBool::new(true),
+            wheel_scroll_lines: AtomicI32::new(3),
         }
+    }
+
+    /// Logical lines moved for each mouse-wheel event.
+    pub fn set_wheel_scroll_lines(&self, lines: i32) {
+        self.wheel_scroll_lines.store(lines, Ordering::Relaxed);
     }
 
     /// Start the coalescing render scheduler — the Rust port of upstream's
@@ -516,6 +735,16 @@ impl TuiAltScreen {
         self.terminal.lock().map(|t| t.columns()).unwrap_or(80)
     }
 
+    /// Get the row count of the frame being rendered.
+    ///
+    /// Unlike [`Self::width`] this does not read the terminal: the renderer
+    /// holds the terminal's lock while it paints, so a component that asks
+    /// the terminal for its size from inside a render would deadlock. The
+    /// value is the size of the current frame (0 before the first one).
+    pub fn height(&self) -> usize {
+        self.viewport_size.lock().map(|size| size.1).unwrap_or(0)
+    }
+
     /// Set the terminal window/tab title.
     ///
     /// The [`Terminal`] trait's `set_title` on the real `ProcessTerminal` emits
@@ -678,10 +907,14 @@ impl TuiAltScreen {
         terminal.refresh_size();
         let width = terminal.columns();
         let height = terminal.rows();
+        if let Ok(mut viewport) = self.viewport_size.lock() {
+            *viewport = (width, height);
+        }
         let root: Arc<dyn Component> = self
             .get_layout_root()
             .unwrap_or_else(|| Arc::new(self.container.clone()));
         let raw_lines = root.render(width);
+        let raw_lines = resolve_fake_cursors(raw_lines, self.get_show_hardware_cursor());
         let cursor = raw_lines.iter().enumerate().rev().find_map(|(row, line)| {
             line.find(CURSOR_MARKER)
                 .map(|idx| (row, visible_width(&line[..idx])))
@@ -935,6 +1168,9 @@ impl TuiAltScreen {
         } else {
             return;
         };
+        if let Ok(mut viewport) = self.viewport_size.lock() {
+            *viewport = (width, height);
+        }
 
         // Get layout root or use container
         let root = self.get_layout_root();
@@ -958,11 +1194,13 @@ impl TuiAltScreen {
         self.jump_to_end
             .paint(&frame, &mut visible, self.has_overlay());
         self.paint_overlays(&mut visible, width, height);
+        self.apply_selection(&mut visible);
 
         // Cursor markers are an internal layout protocol, not terminal output.
         // Extract the location first, then strip every marker before diffing or
         // writing. Sending the APC marker to some Windows terminals caused the
         // character under the cursor to be erased when moving left/right.
+        let mut visible = resolve_fake_cursors(visible, self.get_show_hardware_cursor());
         let cursor = extract_cursor_position(&visible, height);
         for line in &mut visible {
             *line = line.replace(CURSOR_MARKER, "");
@@ -1067,6 +1305,677 @@ impl TuiAltScreen {
             }
         }
     }
+
+    /// Set the callback that opens an OSC 8 hyperlink.
+    pub fn set_url_opener(&self, opener: Arc<dyn Fn(&str) + Send + Sync>) {
+        if let Ok(mut slot) = self.url_opener.lock() {
+            *slot = Some(opener);
+        }
+    }
+
+    /// Set the callback that copies the selected text to the clipboard.
+    ///
+    /// Without it the selection is copied through an OSC 52 write.
+    pub fn set_copy_selection(&self, copy: Arc<dyn Fn(&str) -> bool + Send + Sync>) {
+        if let Ok(mut slot) = self.copy_selection.lock() {
+            *slot = Some(copy);
+        }
+    }
+
+    /// Whether a mouse release copies the selected text (default: true).
+    pub fn set_copy_on_select(&self, enabled: bool) {
+        self.copy_on_select.store(enabled, Ordering::Relaxed);
+    }
+
+    /// Handle a mouse event coming from the terminal.
+    ///
+    /// Returns true when the TUI consumed the event, so the host can leave it
+    /// to the TUI instead of handling it itself.
+    pub fn handle_mouse_event(&self, event: &crossterm::event::MouseEvent) -> bool {
+        let Some(normalized) = normalize_mouse_event(event, self.width(), self.height()) else {
+            return false;
+        };
+        self.handle_mouse(&normalized)
+    }
+
+    /// Handle a normalized mouse event.
+    fn handle_mouse(&self, event: &MouseEvent) -> bool {
+        if self.handle_mouse_gesture(event) {
+            return true;
+        }
+        if event.kind == MouseEventKind::Wheel {
+            return self.handle_mouse_wheel(event);
+        }
+        if self.handle_scrollbar_mouse_event(event) {
+            return true;
+        }
+        let dispatched = self
+            .dispatch_mouse_to_overlay(event)
+            .or_else(|| self.dispatch_mouse_to_layout(event));
+        let Some(dispatched) = dispatched else {
+            return self.handle_mouse_without_component(event);
+        };
+        let render = self.apply_mouse_result(event, &dispatched);
+        if event.kind == MouseEventKind::Press {
+            self.remember_mouse_press(event, &dispatched.result.target);
+        }
+        if render {
+            self.request_render(false);
+        }
+        true
+    }
+
+    /// Continue a gesture that is already owned by a component.
+    fn handle_mouse_gesture(&self, event: &MouseEvent) -> bool {
+        let target = {
+            let Ok(mut state) = self.mouse.lock() else {
+                return false;
+            };
+            if let Some(point) = state.press_point {
+                if point != (event.screen_x, event.screen_y) {
+                    state.press_moved = true;
+                    state.last_click = None;
+                }
+            }
+            state.capture_target.clone().or(state.press_target.clone())
+        };
+        let Some(target) = target else {
+            return false;
+        };
+        let retargeted = retarget_mouse_event(event, &target);
+        let mut render = false;
+        if let Some(dispatched) = dispatch_mouse_event(&target.component, &retargeted) {
+            let focus_target = if dispatched.result.focus {
+                target
+                    .component
+                    .as_focusable()
+                    .map(|_| target.component.clone())
+            } else {
+                None
+            };
+            let dispatched = MouseDispatch {
+                result: dispatched,
+                focus_target,
+            };
+            render = self.apply_mouse_result(event, &dispatched);
+        }
+        if event.kind == MouseEventKind::Release {
+            let click = {
+                let Ok(state) = self.mouse.lock() else {
+                    return true;
+                };
+                !state.press_moved && state.press_point == Some((event.screen_x, event.screen_y))
+            };
+            if click {
+                let click_count = self.next_click_count(event, &target);
+                let click_event = MouseEvent {
+                    kind: MouseEventKind::Click,
+                    click_count: Some(click_count),
+                    ..retargeted
+                };
+                if let Some(dispatched) = dispatch_mouse_event(&target.component, &click_event) {
+                    let focus_target = if dispatched.result.focus {
+                        target
+                            .component
+                            .as_focusable()
+                            .map(|_| target.component.clone())
+                    } else {
+                        None
+                    };
+                    let dispatched = MouseDispatch {
+                        result: dispatched,
+                        focus_target,
+                    };
+                    render = self.apply_mouse_result(&click_event, &dispatched) || render;
+                }
+            }
+            self.clear_mouse_gesture();
+        }
+        if render {
+            self.request_render(false);
+        }
+        true
+    }
+
+    /// Route a wheel event to the components, and scroll the transcript when
+    /// no component took it.
+    fn handle_mouse_wheel(&self, event: &MouseEvent) -> bool {
+        let dispatched = self
+            .dispatch_mouse_to_overlay(event)
+            .or_else(|| self.dispatch_mouse_to_layout(event));
+        if let Some(dispatched) = dispatched {
+            let render = self.apply_mouse_result(event, &dispatched);
+            if render {
+                self.request_render(false);
+            }
+            return true;
+        }
+        self.scroll_under_pointer(event);
+        true
+    }
+
+    /// Scroll the scroll view under the pointer.
+    fn scroll_under_pointer(&self, event: &MouseEvent) {
+        let Some(delta) = event.wheel_delta else {
+            return;
+        };
+        if delta == 0 {
+            return;
+        }
+        let lines = self.wheel_scroll_lines.load(Ordering::Relaxed);
+        let delta = delta * lines;
+        let mut remaining = delta;
+        let mut seen: Vec<Arc<ScrollView>> = Vec::new();
+        for scroll_view in self.scroll_views_at(event.screen_x, event.screen_y) {
+            seen.push(scroll_view.clone());
+            remaining = scroll_view.scroll_by(remaining);
+            if remaining == 0 {
+                break;
+            }
+        }
+        if remaining != 0 {
+            if let Some(primary) = self.get_primary_scroll_view() {
+                if !seen.iter().any(|sv| Arc::ptr_eq(sv, &primary)) {
+                    primary.scroll_by(remaining);
+                }
+            }
+        }
+        self.request_render_reusing_scroll_content();
+    }
+
+    /// Scroll views under a screen position, deepest first.
+    fn scroll_views_at(&self, x: usize, y: usize) -> Vec<Arc<ScrollView>> {
+        let Ok(frame) = self.current_frame.lock() else {
+            return Vec::new();
+        };
+        let Some(frame) = frame.as_ref() else {
+            return Vec::new();
+        };
+        crate::layout::get_scroll_views_at(frame, x, y)
+    }
+
+    /// Start a scrollbar drag, or move the one in progress.
+    fn handle_scrollbar_mouse_event(&self, event: &MouseEvent) -> bool {
+        let drag = self.mouse.lock().ok().and_then(|state| state.scrollbar_drag.clone());
+        if let Some(drag) = drag {
+            if event.kind == MouseEventKind::Release {
+                if let Ok(mut state) = self.mouse.lock() {
+                    state.scrollbar_drag = None;
+                }
+                return true;
+            }
+            if let Some(geometry) = self.scrollbar_geometry(&drag.scroll_view) {
+                self.scroll_scrollbar_to_pointer(
+                    &drag.scroll_view,
+                    &geometry,
+                    event.screen_y,
+                    drag.grab_offset,
+                );
+                self.request_render_reusing_scroll_content();
+            }
+            return true;
+        }
+        if event.kind != MouseEventKind::Press || event.button != MouseButton::Left {
+            return false;
+        }
+        let Some((scroll_view, geometry)) = self.scrollbar_target_at(event.screen_x, event.screen_y)
+        else {
+            return false;
+        };
+        let on_thumb = event.screen_y >= geometry.thumb_top
+            && event.screen_y < geometry.thumb_top + geometry.thumb_height;
+        let grab_offset = if on_thumb {
+            event.screen_y - geometry.thumb_top
+        } else {
+            geometry.thumb_height / 2
+        };
+        if !on_thumb {
+            self.scroll_scrollbar_to_pointer(
+                &scroll_view,
+                &geometry,
+                event.screen_y,
+                grab_offset,
+            );
+        }
+        if let Ok(mut state) = self.mouse.lock() {
+            state.scrollbar_drag = Some(ScrollbarDrag {
+                scroll_view,
+                grab_offset,
+            });
+        }
+        self.request_render_reusing_scroll_content();
+        true
+    }
+
+    /// The scrollbar under a screen position.
+    fn scrollbar_target_at(&self, x: usize, y: usize) -> Option<(Arc<ScrollView>, ScrollbarGeometry)> {
+        let frame = self.current_frame.lock().ok()?;
+        let frame = frame.as_ref()?;
+        for scroll_view in crate::layout::get_scroll_views_at(frame, x, y) {
+            let Some(lbox) = crate::layout::get_scroll_view_box(frame, &scroll_view) else {
+                continue;
+            };
+            let Some(geometry) = crate::layout::get_scrollbar_geometry(lbox) else {
+                continue;
+            };
+            if x == geometry.column
+                && y >= geometry.track_top
+                && y < geometry.track_top + geometry.track_height
+            {
+                return Some((scroll_view, geometry));
+            }
+        }
+        None
+    }
+
+    /// Geometry of the scrollbar of a scroll view.
+    fn scrollbar_geometry(&self, scroll_view: &Arc<ScrollView>) -> Option<ScrollbarGeometry> {
+        let frame = self.current_frame.lock().ok()?;
+        let frame = frame.as_ref()?;
+        let lbox = crate::layout::get_scroll_view_box(frame, scroll_view)?;
+        crate::layout::get_scrollbar_geometry(lbox)
+    }
+
+    /// Move a scrollbar thumb to the pointer.
+    fn scroll_scrollbar_to_pointer(
+        &self,
+        scroll_view: &Arc<ScrollView>,
+        geometry: &ScrollbarGeometry,
+        pointer_y: usize,
+        grab_offset: usize,
+    ) {
+        let max_thumb_offset = geometry.track_height.saturating_sub(geometry.thumb_height);
+        let thumb_offset = pointer_y
+            .saturating_sub(geometry.track_top)
+            .saturating_sub(grab_offset)
+            .min(max_thumb_offset);
+        let scroll_top = if max_thumb_offset == 0 {
+            0
+        } else {
+            (thumb_offset * geometry.max_scroll_top + max_thumb_offset / 2) / max_thumb_offset
+        };
+        scroll_view.scroll_to(scroll_top);
+    }
+
+    /// Handle a press that no component took: an OSC 8 link, or a text
+    /// selection in the transcript.
+    fn handle_mouse_without_component(&self, event: &MouseEvent) -> bool {
+        match event.kind {
+            MouseEventKind::Press => {
+                let url = self.link_at(event.screen_x, event.screen_y);
+                if let Ok(mut state) = self.mouse.lock() {
+                    state.pressed_url = url;
+                }
+                self.start_text_selection(event);
+                false
+            }
+            MouseEventKind::Drag => {
+                if event.button != MouseButton::Left {
+                    return false;
+                }
+                self.extend_text_selection(event)
+            }
+            MouseEventKind::Release => {
+                let url = self.mouse.lock().ok().and_then(|state| state.pressed_url.clone());
+                if let Ok(mut state) = self.mouse.lock() {
+                    state.pressed_url = None;
+                }
+                if let Some(url) = url {
+                    if event.button == MouseButton::Left
+                        && self.link_at(event.screen_x, event.screen_y).as_deref() == Some(url.as_str())
+                    {
+                        self.open_url(&url);
+                        self.clear_text_selection();
+                        self.request_render(false);
+                        return true;
+                    }
+                }
+                self.finish_text_selection(event)
+            }
+            _ => false,
+        }
+    }
+
+    /// Start a text selection at the pointer.
+    fn start_text_selection(&self, event: &MouseEvent) {
+        if event.button != MouseButton::Left {
+            return;
+        }
+        let point = self.selection_point(event.screen_x, event.screen_y);
+        if let Ok(mut selection) = self.selection.lock() {
+            selection.anchor = Some(point);
+            selection.focus = Some(point);
+            selection.pressed = true;
+        }
+    }
+
+    /// Extend the text selection to the pointer.
+    fn extend_text_selection(&self, event: &MouseEvent) -> bool {
+        let point = self.selection_point(event.screen_x, event.screen_y);
+        let changed = {
+            let Ok(mut selection) = self.selection.lock() else {
+                return false;
+            };
+            if !selection.pressed || selection.anchor.is_none() {
+                return false;
+            }
+            if selection.focus == Some(point) {
+                return true;
+            }
+            selection.focus = Some(point);
+            true
+        };
+        if changed {
+            self.request_render(false);
+        }
+        true
+    }
+
+    /// Finish a text selection and copy it.
+    fn finish_text_selection(&self, event: &MouseEvent) -> bool {
+        if event.button != MouseButton::Left {
+            return false;
+        }
+        let had_selection = {
+            let Ok(mut selection) = self.selection.lock() else {
+                return false;
+            };
+            let had = selection.pressed;
+            selection.pressed = false;
+            had
+        };
+        if !had_selection {
+            return false;
+        }
+        if !self.copy_on_select.load(Ordering::Relaxed) {
+            self.request_render(false);
+            return false;
+        }
+        let copied = self.copy_selection_to_clipboard();
+        self.request_render(false);
+        copied
+    }
+
+    /// Clear the text selection.
+    fn clear_text_selection(&self) {
+        if let Ok(mut selection) = self.selection.lock() {
+            selection.anchor = None;
+            selection.focus = None;
+            selection.pressed = false;
+        }
+    }
+
+    /// The pointer position as a selection point.
+    fn selection_point(&self, x: usize, y: usize) -> SelectionPoint {
+        let (width, height) = (self.width(), self.height());
+        SelectionPoint {
+            row: y.min(height.saturating_sub(1)),
+            col: x.min(width.saturating_sub(1)),
+        }
+    }
+
+    /// The ordered bounds of the text selection.
+    fn selection_bounds(&self) -> Option<(SelectionPoint, SelectionPoint)> {
+        let selection = self.selection.lock().ok()?;
+        let anchor = selection.anchor?;
+        let focus = selection.focus?;
+        if anchor == focus {
+            return None;
+        }
+        let anchor_before_focus = anchor.row < focus.row || (anchor.row == focus.row && anchor.col < focus.col);
+        Some(if anchor_before_focus {
+            (anchor, focus)
+        } else {
+            (focus, anchor)
+        })
+    }
+
+    /// The selected text.
+    fn selection_text(&self) -> Option<String> {
+        let (start, end) = self.selection_bounds()?;
+        let frame = self.current_frame.lock().ok()?;
+        let frame = frame.as_ref()?;
+        let mut lines = Vec::new();
+        for row in start.row..=end.row {
+            let line = frame.lines.get(row)?;
+            let line_width = visible_width(line);
+            let mut start_col = 0;
+            let mut end_col = line_width;
+            if row == start.row {
+                start_col = start.col.min(line_width);
+            }
+            if row == end.row {
+                end_col = end.col.min(line_width);
+            }
+            if end_col <= start_col {
+                continue;
+            }
+            let text = crate::ansi::slice_by_column(line, start_col, end_col - start_col, true);
+            lines.push(crate::ansi::strip_ansi(&text).trim_end().to_string());
+        }
+        let text = lines.join("\n");
+        if text.is_empty() {
+            None
+        } else {
+            Some(text)
+        }
+    }
+
+    /// Copy the selected text to the clipboard.
+    fn copy_selection_to_clipboard(&self) -> bool {
+        let Some(text) = self.selection_text() else {
+            return false;
+        };
+        let copier = self.copy_selection.lock().ok().and_then(|slot| slot.clone());
+        if let Some(copier) = copier {
+            return copier(&text);
+        }
+        let encoded = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            text.as_bytes(),
+        );
+        if let Ok(terminal) = self.terminal.lock() {
+            terminal.write(&format!("\x1b]52;c;{encoded}\x07"));
+            terminal.flush();
+        }
+        true
+    }
+
+    /// Paint the text selection over the screen lines.
+    fn apply_selection(&self, lines: &mut [String]) {
+        let Some((start, end)) = self.selection_bounds() else {
+            return;
+        };
+        for (row, line) in lines.iter_mut().enumerate() {
+            if row < start.row || row > end.row {
+                continue;
+            }
+            let line_width = visible_width(line);
+            let mut start_col = 0;
+            let mut end_col = line_width;
+            if row == start.row {
+                start_col = start.col.min(line_width);
+            }
+            if row == end.row {
+                end_col = end.col.min(line_width);
+            }
+            if end_col <= start_col {
+                continue;
+            }
+            let before = crate::ansi::slice_by_column(line, 0, start_col, true);
+            let selected = crate::ansi::slice_by_column(line, start_col, end_col - start_col, true);
+            let after = crate::ansi::slice_by_column(line, end_col, line_width.saturating_sub(end_col), true);
+            *line = format!("{before}{}{after}", apply_selection_highlight(&selected));
+        }
+    }
+
+    /// The OSC 8 link under a screen position.
+    fn link_at(&self, x: usize, y: usize) -> Option<String> {
+        let screen = self.previous_screen.lock().ok()?;
+        let line = screen.get(y)?;
+        crate::utils::get_osc8_link_at_column(line, x)
+    }
+
+    /// Open a hyperlink.
+    fn open_url(&self, url: &str) {
+        let opener = self.url_opener.lock().ok().and_then(|slot| slot.clone());
+        if let Some(opener) = opener {
+            opener(url);
+        }
+    }
+
+    /// Dispatch an event to the component under the pointer.
+    fn dispatch_mouse_to_layout(&self, event: &MouseEvent) -> Option<MouseDispatch> {
+        let frame = self.current_frame.lock().ok()?.clone();
+        let frame = frame?;
+        let path = crate::layout::hit_test_all(&frame, event.screen_x, event.screen_y);
+        for lbox in &path {
+            let local = MouseEvent {
+                x: event.screen_x.saturating_sub(lbox.rect.x),
+                y: event.screen_y.saturating_sub(lbox.rect.y),
+                width: lbox.rect.width,
+                height: lbox.rect.height,
+                ..*event
+            };
+            if let Some(dispatched) = dispatch_mouse_event(&lbox.component, &local) {
+                let focus_target = if dispatched.result.focus {
+                    focus_target_in_path(&path)
+                } else {
+                    None
+                };
+                return Some(MouseDispatch {
+                    result: dispatched,
+                    focus_target,
+                });
+            }
+        }
+        None
+    }
+
+    /// Dispatch an event to the overlay under the pointer.
+    fn dispatch_mouse_to_overlay(&self, event: &MouseEvent) -> Option<MouseDispatch> {
+        let (width, height) = (self.width(), self.height());
+        for (component, options) in self.overlays.get_visible() {
+            if options.non_capturing {
+                continue;
+            }
+            let Some(overlay) = crate::overlay::render_overlay(component.as_ref(), &options, width, height)
+            else {
+                continue;
+            };
+            if event.screen_x < overlay.x
+                || event.screen_x >= overlay.x + overlay.width
+                || event.screen_y < overlay.y
+                || event.screen_y >= overlay.y + overlay.lines.len()
+            {
+                continue;
+            }
+            let local = MouseEvent {
+                x: event.screen_x - overlay.x,
+                y: event.screen_y - overlay.y,
+                width: overlay.width,
+                height: overlay.lines.len(),
+                ..*event
+            };
+            let Some(dispatched) = dispatch_mouse_event(&component, &local) else {
+                return None;
+            };
+            let focus_target = if dispatched.result.focus {
+                component.as_focusable().map(|_| component.clone())
+            } else {
+                None
+            };
+            return Some(MouseDispatch {
+                result: dispatched,
+                focus_target,
+            });
+        }
+        None
+    }
+
+    /// Apply the result of a dispatch: focus, capture and repaint.
+    fn apply_mouse_result(&self, event: &MouseEvent, dispatched: &MouseDispatch) -> bool {
+        if dispatched.result.result.focus {
+            if let Some(target) = dispatched.focus_target.clone() {
+                self.focus_component(Some(target));
+            }
+        }
+        if dispatched.result.result.capture {
+            if let Ok(mut state) = self.mouse.lock() {
+                state.capture_target = Some(dispatched.result.target.clone());
+            }
+        }
+        dispatched.result.result.render.unwrap_or(matches!(
+            event.kind,
+            MouseEventKind::Press | MouseEventKind::Click | MouseEventKind::Drag | MouseEventKind::Wheel
+        ))
+    }
+
+    /// Remember the component that took the press.
+    fn remember_mouse_press(&self, event: &MouseEvent, target: &MouseDispatchTarget) {
+        if let Ok(mut state) = self.mouse.lock() {
+            state.press_target = Some(target.clone());
+            state.press_point = Some((event.screen_x, event.screen_y));
+            state.press_moved = false;
+        }
+    }
+
+    /// Consecutive click count for a click on a component.
+    fn next_click_count(&self, event: &MouseEvent, target: &MouseDispatchTarget) -> u32 {
+        let component = Arc::as_ptr(&target.component) as *const () as usize;
+        let now = Instant::now();
+        let count = {
+            let Ok(mut state) = self.mouse.lock() else {
+                return 1;
+            };
+            let count = match state.last_click {
+                Some(previous)
+                    if now.duration_since(previous.at) <= Duration::from_millis(DOUBLE_CLICK_INTERVAL_MS)
+                        && previous.component == component
+                        && previous.x == event.screen_x
+                        && previous.y == event.screen_y =>
+                {
+                    (previous.count % 3) + 1
+                }
+                _ => 1,
+            };
+            state.last_click = Some(MouseClick {
+                at: now,
+                count,
+                x: event.screen_x,
+                y: event.screen_y,
+                component,
+            });
+            count
+        };
+        count
+    }
+
+    /// Forget the current gesture.
+    fn clear_mouse_gesture(&self) {
+        if let Ok(mut state) = self.mouse.lock() {
+            state.press_target = None;
+            state.capture_target = None;
+            state.press_point = None;
+            state.press_moved = false;
+            state.pressed_url = None;
+        }
+    }
+
+    /// Move the keyboard focus to a component.
+    fn focus_component(&self, component: Option<Arc<dyn Component>>) {
+        if let Some(previous) = self.get_focus() {
+            if let Some(focusable) = previous.as_focusable() {
+                focusable.set_focused(false);
+            }
+        }
+        if let Some(component) = &component {
+            if let Some(focusable) = component.as_focusable() {
+                focusable.set_focused(true);
+            }
+        }
+        self.set_focus(component);
+    }
 }
 
 impl Component for TuiAltScreen {
@@ -1161,7 +2070,6 @@ impl TUI for TuiAltScreen {
         Arc::new(ManagedOverlayHandle {
             handle,
             hidden: Mutex::new(false),
-            focused: Mutex::new(true),
         })
     }
 
@@ -1192,6 +2100,10 @@ impl TUI for TuiAltScreen {
         // callbacks are stubs below; kept for the non-pi-tui callers that still
         // rely on `start()`). The asynchronous interactive path uses
         // `start_readerless` instead to avoid a competing stdin reader.
+        if let Ok(terminal) = self.terminal.lock() {
+            terminal.enter_raw_mode();
+        }
+        self.query_terminal_colors();
         if let Ok(terminal) = self.terminal.lock() {
             terminal.start(
                 Box::new(move |event: InputEvent| {
@@ -1322,7 +2234,29 @@ impl TuiAltScreen {
             }
             terminal.flush();
         }
+        self.query_terminal_colors();
         self.do_render(false);
+    }
+
+    /// Ask the terminal for its colors and let the theme follow them.
+    fn query_terminal_colors(&self) {
+        let colors = {
+            let Ok(terminal) = self.terminal.lock() else {
+                return;
+            };
+            if !terminal.is_tty() {
+                return;
+            }
+            request_terminal_colors(
+                terminal.as_ref(),
+                crate::terminal_colors::TERMINAL_COLOR_QUERY_TIMEOUT,
+            )
+        };
+        if colors == crate::terminal_colors::TerminalColors::default() {
+            return;
+        }
+        crate::theme::global_theme_manager().apply_terminal_colors(&colors);
+        self.request_render(false);
     }
 
     /// Render a frame while reusing scroll-view content. This is appropriate
@@ -1347,7 +2281,6 @@ pub fn is_viewport_tui(_tui: &dyn TUI) -> bool {
 struct ManagedOverlayHandle {
     handle: super::overlay::OverlayHandle,
     hidden: Mutex<bool>,
-    focused: Mutex<bool>,
 }
 
 impl OverlayHandle for ManagedOverlayHandle {
@@ -1370,13 +2303,19 @@ impl OverlayHandle for ManagedOverlayHandle {
     }
 
     fn focus(&self) {
-        if let Ok(mut focused) = self.focused.lock() {
-            *focused = true;
-        }
+        self.handle.focus();
+    }
+
+    fn unfocus(&self) {
+        self.handle.unfocus();
     }
 
     fn is_focused(&self) -> bool {
-        self.focused.lock().map(|focused| *focused).unwrap_or(false)
+        self.handle.is_focused()
+    }
+
+    fn get_bounds(&self) -> Option<OverlayBounds> {
+        self.handle.get_bounds()
     }
 }
 
@@ -2128,5 +3067,266 @@ mod tests {
             "200 requests in ~250 ms must coalesce into ~16 ms frames, painted {frames}"
         );
         tui.stop(TuiStopOptions::default());
+    }
+
+    /// A component that records the mouse events it receives.
+    struct MouseRecorder {
+        events: Arc<Mutex<Vec<(MouseEventKind, usize, usize, Option<u32>)>>>,
+        handles: bool,
+        lines: Vec<String>,
+    }
+
+    impl Component for MouseRecorder {
+        fn render(&self, _width: usize) -> Vec<String> {
+            self.lines.clone()
+        }
+
+        fn handle_mouse(&self, event: &MouseEvent) -> Option<crate::component::MouseEventResult> {
+            if !self.handles {
+                return None;
+            }
+            self.events.lock().unwrap().push((
+                event.kind,
+                event.x,
+                event.y,
+                event.click_count,
+            ));
+            Some(crate::component::MouseEventResult::handled())
+        }
+
+        fn invalidate(&self) {}
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    fn mouse_event(
+        kind: crossterm::event::MouseEventKind,
+        column: u16,
+        row: u16,
+    ) -> crossterm::event::MouseEvent {
+        crossterm::event::MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn a_click_reaches_the_component_under_the_pointer() {
+        let terminal = ResizableTerminal::new(40, 8);
+        let tui = TuiAltScreen::new(Box::new(terminal), false, None);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        tui.set_layout_root(Some(Arc::new(MouseRecorder {
+            events: events.clone(),
+            handles: true,
+            lines: vec!["first".to_string()],
+        })));
+        tui.start_readerless();
+
+        let down = mouse_event(
+            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            3,
+            1,
+        );
+        assert!(tui.handle_mouse_event(&down));
+        let up = mouse_event(
+            crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left),
+            3,
+            1,
+        );
+        assert!(tui.handle_mouse_event(&up));
+
+        let events = events.lock().unwrap();
+        assert_eq!(events[0].0, MouseEventKind::Press);
+        assert_eq!((events[0].1, events[0].2), (3, 1));
+        let click = events
+            .iter()
+            .find(|(kind, _, _, _)| *kind == MouseEventKind::Click)
+            .expect("a click event");
+        assert_eq!((click.1, click.2), (3, 1));
+        assert_eq!(click.3, Some(1));
+    }
+
+    #[test]
+    fn a_second_click_on_the_same_spot_counts_as_a_double_click() {
+        let terminal = ResizableTerminal::new(40, 8);
+        let tui = TuiAltScreen::new(Box::new(terminal), false, None);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        tui.set_layout_root(Some(Arc::new(MouseRecorder {
+            events: events.clone(),
+            handles: true,
+            lines: vec!["first".to_string()],
+        })));
+        tui.start_readerless();
+
+        for _ in 0..2 {
+            let down = mouse_event(
+                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                2,
+                0,
+            );
+            let up = mouse_event(
+                crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left),
+                2,
+                0,
+            );
+            assert!(tui.handle_mouse_event(&down));
+            assert!(tui.handle_mouse_event(&up));
+        }
+
+        let events = events.lock().unwrap();
+        let clicks: Vec<Option<u32>> = events
+            .iter()
+            .filter(|(kind, _, _, _)| *kind == MouseEventKind::Click)
+            .map(|(_, _, _, count)| *count)
+            .collect();
+        assert_eq!(clicks, vec![Some(1), Some(2)]);
+    }
+
+    #[test]
+    fn a_drag_is_not_a_click() {
+        let terminal = ResizableTerminal::new(40, 8);
+        let tui = TuiAltScreen::new(Box::new(terminal), false, None);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        tui.set_layout_root(Some(Arc::new(MouseRecorder {
+            events: events.clone(),
+            handles: true,
+            lines: vec!["first".to_string()],
+        })));
+        tui.start_readerless();
+
+        let down = mouse_event(
+            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            2,
+            0,
+        );
+        let drag = mouse_event(
+            crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left),
+            5,
+            0,
+        );
+        let up = mouse_event(
+            crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left),
+            5,
+            0,
+        );
+        assert!(tui.handle_mouse_event(&down));
+        assert!(tui.handle_mouse_event(&drag));
+        assert!(tui.handle_mouse_event(&up));
+
+        let events = events.lock().unwrap();
+        assert!(
+            !events
+                .iter()
+                .any(|(kind, _, _, _)| *kind == MouseEventKind::Click),
+            "a drag must not produce a click: {events:?}"
+        );
+    }
+
+    #[test]
+    fn a_click_on_an_osc8_link_opens_it() {
+        let terminal = ResizableTerminal::new(40, 8);
+        let tui = TuiAltScreen::new(Box::new(terminal), false, None);
+        let opened = Arc::new(Mutex::new(Vec::<String>::new()));
+        let opener = opened.clone();
+        tui.set_url_opener(Arc::new(move |url: &str| {
+            opener.lock().unwrap().push(url.to_string());
+        }));
+        tui.set_layout_root(Some(Arc::new(MouseRecorder {
+            events: Arc::new(Mutex::new(Vec::new())),
+            handles: false,
+            lines: vec!["\x1b]8;;https://example.com\x07link\x1b]8;;\x07".to_string()],
+        })));
+        tui.start_readerless();
+
+        let down = mouse_event(
+            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            1,
+            0,
+        );
+        let up = mouse_event(
+            crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left),
+            1,
+            0,
+        );
+        assert!(!tui.handle_mouse_event(&down));
+        assert!(tui.handle_mouse_event(&up));
+        assert_eq!(
+            opened.lock().unwrap().as_slice(),
+            &["https://example.com".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_drag_over_the_transcript_copies_the_selected_text() {
+        let terminal = ResizableTerminal::new(40, 8);
+        let tui = TuiAltScreen::new(Box::new(terminal), false, None);
+        let copied = Arc::new(Mutex::new(Vec::<String>::new()));
+        let copier = copied.clone();
+        tui.set_copy_selection(Arc::new(move |text: &str| {
+            copier.lock().unwrap().push(text.to_string());
+            true
+        }));
+        tui.set_layout_root(Some(Arc::new(MouseRecorder {
+            events: Arc::new(Mutex::new(Vec::new())),
+            handles: false,
+            lines: vec!["hello world".to_string()],
+        })));
+        tui.start_readerless();
+
+        let down = mouse_event(
+            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            0,
+            0,
+        );
+        let drag = mouse_event(
+            crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left),
+            5,
+            0,
+        );
+        let up = mouse_event(
+            crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left),
+            5,
+            0,
+        );
+        tui.handle_mouse_event(&down);
+        assert!(tui.handle_mouse_event(&drag));
+        assert!(tui.handle_mouse_event(&up));
+        assert_eq!(copied.lock().unwrap().as_slice(), &["hello".to_string()]);
+    }
+
+    #[test]
+    fn a_click_without_a_drag_copies_nothing() {
+        let terminal = ResizableTerminal::new(40, 8);
+        let tui = TuiAltScreen::new(Box::new(terminal), false, None);
+        let copied = Arc::new(Mutex::new(Vec::<String>::new()));
+        let copier = copied.clone();
+        tui.set_copy_selection(Arc::new(move |text: &str| {
+            copier.lock().unwrap().push(text.to_string());
+            true
+        }));
+        tui.set_layout_root(Some(Arc::new(MouseRecorder {
+            events: Arc::new(Mutex::new(Vec::new())),
+            handles: false,
+            lines: vec!["hello world".to_string()],
+        })));
+        tui.start_readerless();
+
+        let down = mouse_event(
+            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            0,
+            0,
+        );
+        let up = mouse_event(
+            crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left),
+            0,
+            0,
+        );
+        tui.handle_mouse_event(&down);
+        tui.handle_mouse_event(&up);
+        assert!(copied.lock().unwrap().is_empty());
     }
 }

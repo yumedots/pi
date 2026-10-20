@@ -43,15 +43,11 @@ pub(super) fn merge_queued_into_draft(queued_text: &str, current: &str) -> Strin
     }
 }
 
-/// Place the caret at the END of `text` after `set_text`. `set_text` resets the
-/// caret to `(0, 0)`, and the last line's **byte** length is the right column:
-/// a char count was wrong for multibyte drafts, and row 0 was wrong for a
-/// multi-line one (upstream's `setTextInternal(text, "end")`).
+/// Place the caret at the END of `text` after `set_text`. `Editor::set_text`
+/// does that itself now (upstream's `setTextInternal(text, "end")`,
+/// `packages/tui/src/components/editor.ts:1325`).
 pub(super) fn set_editor_text_caret_at_end(editor: &Arc<Editor>, text: &str) {
     editor.set_text(text);
-    let last_row = text.split('\n').count().saturating_sub(1);
-    let last_len = text.split('\n').next_back().map(str::len).unwrap_or(0);
-    editor.set_cursor(last_row, last_len);
 }
 
 /// Drain every queued steering/follow-up message out of the lane and restore it
@@ -167,6 +163,19 @@ pub(super) async fn drain_agent_events(
     }
 }
 
+/// Send an event to the JavaScript extensions, when the session loaded any.
+pub(super) fn dispatch_js_event(state: &Arc<TuiState>, event: &str, payload: serde_json::Value) {
+    let Some(extensions) = state.js_extensions.as_ref() else {
+        return;
+    };
+    if let Err(error) = extensions.dispatch(event, payload) {
+        add_error_message(
+            &state.chat_container,
+            &format!("Extension error ({event}): {error}"),
+        );
+    }
+}
+
 /// Apply a single `AgentEvent` to the UI. Mirrors the TS `handleEvent` switch
 /// (`interactive-mode.ts:3068-3396`).
 pub(super) async fn handle_agent_event(
@@ -179,6 +188,9 @@ pub(super) async fn handle_agent_event(
     match event {
         AgentEvent::AgentStart => {
             state.set_status(RunStatus::Working);
+            state
+                .turn_index
+                .store(0, std::sync::atomic::Ordering::SeqCst);
             tui.request_render(false);
         }
 
@@ -233,6 +245,9 @@ pub(super) async fn handle_agent_event(
             // ToolExecutionEnd are handled by the normal path; there is nothing
             // extra to finalize here.
             let _ = tool_results;
+            state
+                .turn_index
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             tui.request_render(false);
         }
 
@@ -331,7 +346,7 @@ pub(super) async fn handle_agent_event(
                 // Uses the shared cache-stats logic (noise floor, idle gap,
                 // model change) and prices the miss when known.
                 let usage = &a.usage;
-                // Footer usage totals + cache hit rate (pi footer.ts).
+                // Footer session cost (pi footer.ts).
                 state.footer.add_usage(
                     usage.input,
                     usage.output,
@@ -339,15 +354,9 @@ pub(super) async fn handle_agent_event(
                     usage.cache_write,
                     usage.cost.total,
                 );
-                let denom = usage.input + usage.cache_read + usage.cache_write;
-                if denom > 0 && (usage.cache_read + usage.cache_write) > 0 {
-                    state
-                        .footer
-                        .set_cache_hit_rate(Some(usage.cache_read as f64 / denom as f64 * 100.0));
-                }
-                // Context-window badge (`?/512k` → `63.2%/512k`): the provider
-                // reports the prompt token count for this request, which is the
-                // context size the footer displays.
+                // Context meter (`?/512,000 tokens` → `63.2% 322,000 tokens`):
+                // the provider reports the prompt token count for this
+                // request, which is the context size the footer displays.
                 record_context_usage(&state.footer, a);
                 let miss = state
                     .cache_tracker
@@ -428,6 +437,7 @@ pub(super) async fn handle_agent_event(
             tool_name,
             result,
             is_error,
+            duration_ms: _,
         } => {
             state.transcript_view().apply(
                 &UiEvent::ToolEnd {

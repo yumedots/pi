@@ -226,7 +226,7 @@ Auth: phase 1 only takes `api_key: Option<String>` per call (`SimpleStreamOption
 
 ### Providers to ship
 
-User said "保持一致" (keep consistent with the TS source) → port the provider list. Realistically tier them:
+User said "keep it consistent" (with the TS source) → port the provider list. Realistically tier them:
 
 - **Tier 0 (v0.1, blocks everything):** `faux` (`providers/faux.ts` — a deterministic scripted provider used by every test, no network). The whole test suite runs against faux.
 - **Tier 1 (v0.1):** `anthropic` (`api/anthropic-messages.ts`). Primary real provider. Covers thinking, tool-use, prompt-cache `cache_control`, image input.

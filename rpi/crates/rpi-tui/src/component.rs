@@ -5,6 +5,93 @@
 use std::any::Any;
 use std::sync::Arc;
 
+/// Mouse event type, mirroring upstream's `TuiMouseEventType`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseEventKind {
+    Press,
+    Release,
+    Move,
+    Drag,
+    Click,
+    Wheel,
+}
+
+/// Mouse button, mirroring upstream's `TuiMouseButton`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseButton {
+    Left,
+    Middle,
+    Right,
+    None,
+}
+
+/// Normalized cell-based mouse event. Coordinates are zero-based.
+#[derive(Debug, Clone, Copy)]
+pub struct MouseEvent {
+    pub kind: MouseEventKind,
+    pub button: MouseButton,
+    /// Coordinates local to the receiving component.
+    pub x: usize,
+    pub y: usize,
+    /// Absolute terminal coordinates.
+    pub screen_x: usize,
+    pub screen_y: usize,
+    /// Current component bounds.
+    pub width: usize,
+    pub height: usize,
+    pub shift: bool,
+    pub alt: bool,
+    pub ctrl: bool,
+    /// Logical lines. Negative values scroll up.
+    pub wheel_delta: Option<i32>,
+    /// Consecutive click count when the kind is `Click`.
+    pub click_count: Option<u32>,
+}
+
+impl MouseEvent {
+    /// Build an event at absolute terminal coordinates.
+    pub fn new(kind: MouseEventKind, button: MouseButton, screen_x: usize, screen_y: usize) -> Self {
+        Self {
+            kind,
+            button,
+            x: screen_x,
+            y: screen_y,
+            screen_x,
+            screen_y,
+            width: 1,
+            height: 1,
+            shift: false,
+            alt: false,
+            ctrl: false,
+            wheel_delta: None,
+            click_count: None,
+        }
+    }
+}
+
+/// Result of a mouse handler.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MouseEventResult {
+    /// Stop propagation and suppress renderer-level fallback behavior.
+    pub handled: bool,
+    /// Route subsequent drag and release events to this component.
+    pub capture: bool,
+    /// Give keyboard focus to this component.
+    pub focus: bool,
+    /// Explicitly request or suppress a render.
+    pub render: Option<bool>,
+}
+
+impl MouseEventResult {
+    /// A handled event that requests a repaint.
+    pub fn handled() -> Self {
+        Self {
+            handled: true,
+            ..Default::default()
+        }
+    }
+}
+
 /// Component interface - all components must implement this.
 ///
 /// Components are the building blocks of the TUI. Each component can render
@@ -34,6 +121,19 @@ pub trait Component: Send + Sync {
     /// Default is false - release events are filtered out.
     fn wants_key_release(&self) -> bool {
         false
+    }
+
+    /// Optional handler for normalized mouse events.
+    ///
+    /// Returning `None` leaves the event unhandled, so it keeps travelling to
+    /// the next component under the pointer.
+    fn handle_mouse(&self, _event: &MouseEvent) -> Option<MouseEventResult> {
+        None
+    }
+
+    /// Focusable view of this component, when it can take keyboard focus.
+    fn as_focusable(&self) -> Option<&dyn Focusable> {
+        None
     }
 
     /// Invalidate any cached rendering state.

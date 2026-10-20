@@ -325,16 +325,17 @@ impl Terminal for ProcessTerminal {
     }
 
     fn set_title(&self, title: &str) {
-        self.write(&format!("\x1b]2;{}\x07", title));
+        self.write(&format!("\x1b]0;{}\x07", title));
     }
 
     fn enable_mouse(&self) {
-        // Enable mouse tracking (SGR mode)
-        self.write("\x1b[?1000h\x1b[?1002h\x1b[?1006h");
+        // Enable mouse tracking (SGR mode) with motion reporting, so a hover
+        // reaches the component under the pointer.
+        self.write("\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h");
     }
 
     fn disable_mouse(&self) {
-        self.write("\x1b[?1006l\x1b[?1002l\x1b[?1000l");
+        self.write("\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l");
     }
 
     fn enter_raw_mode(&self) {
@@ -640,6 +641,18 @@ mod tests {
         terminal.enable_keyboard_protocol(|| panic!("resume must reuse detection"));
         terminal.disable_keyboard_protocol();
         assert_eq!(output.0.lock().unwrap().as_slice(), b"\x1b[>7u\x1b[<u");
+    }
+
+    #[test]
+    fn the_window_title_is_written_with_osc_zero() {
+        let terminal = ProcessTerminal::new();
+        let output = RecordedOutput(Arc::new(Mutex::new(Vec::new())));
+        *terminal.writer.lock().unwrap() = Box::new(output.clone());
+        terminal.set_title("π - session - cwd");
+        assert_eq!(
+            output.0.lock().unwrap().as_slice(),
+            b"\x1b]0;\xcf\x80 - session - cwd\x07"
+        );
     }
 
     #[test]

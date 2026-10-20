@@ -20,7 +20,8 @@
 
 use rpi_ai::model::Model;
 use rpi_ai::provider::{Provider, SimpleStreamOptions};
-use rpi_ai::providers::anthropic::{models::get_model, AnthropicProvider};
+use rpi_ai::providers::anthropic::AnthropicProvider;
+use rpi_ai::providers::catalog::builtin_models_for;
 use rpi_ai::types::{
     AssistantMessageEvent, Content, Context, Message, Schema, StopReason, Tool, UserContent,
     UserMessage,
@@ -70,8 +71,11 @@ async fn anthropic_smoke_tool_use_roundtrip() {
         }
     };
 
-    let model: Model = get_model("claude-haiku-4-5")
-        .or_else(|| get_model("claude-sonnet-4-5"))
+    let catalog = builtin_models_for("anthropic");
+    let model: Model = catalog
+        .iter()
+        .find(|model| model.id == "claude-haiku-4-5")
+        .or_else(|| catalog.iter().find(|model| model.id == "claude-sonnet-4-5"))
         .expect("anthropic catalog has at least one model")
         .clone();
 

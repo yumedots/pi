@@ -21,7 +21,7 @@ pub async fn run(args: &[String]) -> i32 {
                 0
             }
             None => {
-                eprintln!("error: could not resolve the event log path (set RPI_EVENT_LOG_PATH)");
+                eprintln!("Error: could not resolve the event log path (set RPI_EVENT_LOG_PATH)");
                 EXIT_RUNTIME
             }
         },
@@ -30,7 +30,7 @@ pub async fn run(args: &[String]) -> i32 {
             0
         }
         Some(other) => {
-            eprintln!("error: unknown `events` subcommand `{other}`");
+            eprintln!("Error: unknown `events` subcommand `{other}`");
             print_help();
             EXIT_USAGE
         }
@@ -52,7 +52,7 @@ fn print_help() {
 /// tick rather than emitted split.
 async fn tail() -> i32 {
     let Some(path) = rpi_extensions::event_log_path() else {
-        eprintln!("error: could not resolve the event log path (set RPI_EVENT_LOG_PATH)");
+        eprintln!("Error: could not resolve the event log path (set RPI_EVENT_LOG_PATH)");
         return EXIT_RUNTIME;
     };
     eprintln!("tailing {} — Ctrl+C to stop", path.display());

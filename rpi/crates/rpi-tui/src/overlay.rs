@@ -6,7 +6,7 @@ use std::any::Any;
 use std::sync::{Arc, Mutex};
 
 use super::component::Component;
-use super::tui::{OverlayAnchor, OverlayOptions, SizeValue};
+use super::tui::{OverlayAnchor, OverlayBounds, OverlayOptions, SizeValue};
 use crate::ansi::{bold, dim, visible_width};
 
 pub(crate) struct RenderedOverlay {
@@ -14,6 +14,17 @@ pub(crate) struct RenderedOverlay {
     pub width: usize,
     pub x: usize,
     pub y: usize,
+}
+
+impl RenderedOverlay {
+    pub(crate) fn bounds(&self) -> OverlayBounds {
+        OverlayBounds {
+            row: self.y,
+            col: self.x,
+            width: self.width,
+            height: self.lines.len(),
+        }
+    }
 }
 
 /// Resolve geometry before rendering so wrapping uses the actual overlay
@@ -70,7 +81,7 @@ pub(crate) fn render_overlay(
     }
     let free_x = available_width - overlay_width;
     let free_y = available_height - lines.len();
-    let x = margin.left
+    let anchor_x = margin.left
         + match options.anchor {
             OverlayAnchor::TopLeft | OverlayAnchor::LeftCenter | OverlayAnchor::BottomLeft => 0,
             OverlayAnchor::TopRight | OverlayAnchor::RightCenter | OverlayAnchor::BottomRight => {
@@ -78,7 +89,7 @@ pub(crate) fn render_overlay(
             }
             _ => free_x / 2,
         };
-    let y = margin.top
+    let anchor_y = margin.top
         + match options.anchor {
             OverlayAnchor::TopLeft | OverlayAnchor::TopCenter | OverlayAnchor::TopRight => 0,
             OverlayAnchor::BottomLeft
@@ -86,6 +97,20 @@ pub(crate) fn render_overlay(
             | OverlayAnchor::BottomRight => free_y,
             _ => free_y / 2,
         };
+    let x = match options.col {
+        Some(SizeValue::Absolute(value)) => value,
+        Some(SizeValue::Percent(fraction)) => {
+            margin.left + (free_x as f64 * fraction).floor() as usize
+        }
+        None => anchor_x,
+    };
+    let y = match options.row {
+        Some(SizeValue::Absolute(value)) => value,
+        Some(SizeValue::Percent(fraction)) => {
+            margin.top + (free_y as f64 * fraction).floor() as usize
+        }
+        None => anchor_y,
+    };
     Some(RenderedOverlay {
         lines,
         width: overlay_width,
@@ -100,6 +125,8 @@ pub(crate) fn render_overlay(
 pub struct OverlayManager {
     overlays: Arc<Mutex<Vec<OverlayEntry>>>,
     next_id: Arc<Mutex<usize>>,
+    bounds: Arc<Mutex<Vec<(usize, OverlayBounds)>>>,
+    focused: Arc<Mutex<Option<usize>>>,
 }
 
 struct OverlayEntry {
@@ -127,6 +154,8 @@ impl OverlayManager {
         Self {
             overlays: Arc::new(Mutex::new(Vec::new())),
             next_id: Arc::new(Mutex::new(0)),
+            bounds: Arc::new(Mutex::new(Vec::new())),
+            focused: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -153,8 +182,12 @@ impl OverlayManager {
             manager: Arc::new(self.clone_manager()),
         };
 
+        let capturing = !entry.options.non_capturing;
         if let Ok(mut overlays) = self.overlays.lock() {
             overlays.push(entry);
+        }
+        if capturing {
+            self.focus(id);
         }
 
         handle
@@ -165,6 +198,11 @@ impl OverlayManager {
         if let Ok(mut overlays) = self.overlays.lock() {
             overlays.retain(|e| e.z_index != id);
         }
+        self.forget_bounds(id);
+        if self.focused_id() == Some(id) {
+            let next = self.topmost_capturing(Some(id));
+            self.set_focused(next);
+        }
     }
 
     /// Set overlay visibility.
@@ -174,17 +212,82 @@ impl OverlayManager {
                 entry.visible = visible;
             }
         }
+        if !visible {
+            self.forget_bounds(id);
+        }
+    }
+
+    /// Move the keyboard focus to an overlay.
+    pub fn focus(&self, id: usize) {
+        self.set_focused(Some(id));
+    }
+
+    /// Release the focus of an overlay. The next visible capturing overlay
+    /// takes it.
+    pub fn unfocus(&self, id: usize) {
+        if self.focused_id() != Some(id) {
+            return;
+        }
+        let next = self.topmost_capturing(Some(id));
+        self.set_focused(next);
+    }
+
+    /// The overlay that currently holds the focus.
+    pub fn focused_id(&self) -> Option<usize> {
+        self.focused.lock().ok().and_then(|focused| *focused)
+    }
+
+    /// The last rendered bounds of an overlay.
+    pub fn bounds(&self, id: usize) -> Option<OverlayBounds> {
+        self.bounds
+            .lock()
+            .ok()
+            .and_then(|bounds| bounds.iter().find(|(entry, _)| *entry == id).map(|(_, b)| *b))
+    }
+
+    fn set_focused(&self, id: Option<usize>) {
+        if let Ok(mut focused) = self.focused.lock() {
+            *focused = id;
+        }
+    }
+
+    fn forget_bounds(&self, id: usize) {
+        if let Ok(mut bounds) = self.bounds.lock() {
+            bounds.retain(|(entry, _)| *entry != id);
+        }
+    }
+
+    /// The visible capturing overlay with the highest z-index, skipping one id.
+    fn topmost_capturing(&self, skip: Option<usize>) -> Option<usize> {
+        self.overlays
+            .lock()
+            .ok()
+            .and_then(|overlays| {
+                overlays
+                    .iter()
+                    .filter(|entry| entry.visible && !entry.options.non_capturing)
+                    .filter(|entry| Some(entry.z_index) != skip)
+                    .map(|entry| entry.z_index)
+                    .max()
+            })
     }
 
     /// Get visible overlays sorted by z-index.
     pub fn get_visible(&self) -> Vec<(Arc<dyn Component>, OverlayOptions)> {
+        self.visible_entries()
+            .into_iter()
+            .map(|(_, component, options)| (component, options))
+            .collect()
+    }
+
+    fn visible_entries(&self) -> Vec<(usize, Arc<dyn Component>, OverlayOptions)> {
         self.overlays
             .lock()
             .map(|overlays| {
                 overlays
                     .iter()
                     .filter(|e| e.visible)
-                    .map(|e| (e.component.clone(), e.options.clone()))
+                    .map(|e| (e.z_index, e.component.clone(), e.options.clone()))
                     .collect()
             })
             .unwrap_or_default()
@@ -195,7 +298,8 @@ impl OverlayManager {
     pub(crate) fn render_visible(&self, width: usize, height: usize) -> Vec<RenderedOverlay> {
         let mut passive = Vec::<(usize, usize, usize, usize)>::new();
         let mut rendered = Vec::new();
-        for (component, options) in self.get_visible() {
+        let mut bounds = Vec::new();
+        for (id, component, options) in self.visible_entries() {
             let Some(mut overlay) = render_overlay(component.as_ref(), &options, width, height)
             else {
                 continue;
@@ -220,7 +324,11 @@ impl OverlayManager {
                 overlay.y = y;
                 passive.push((overlay.x, overlay.y, overlay.width, overlay.lines.len()));
             }
+            bounds.push((id, overlay.bounds()));
             rendered.push(overlay);
+        }
+        if let Ok(mut current) = self.bounds.lock() {
+            *current = bounds;
         }
         rendered
     }
@@ -234,6 +342,11 @@ impl OverlayManager {
             return false;
         };
         overlays.retain(|entry| entry.z_index != id);
+        self.forget_bounds(id);
+        if self.focused_id() == Some(id) {
+            let next = self.topmost_capturing(Some(id));
+            self.set_focused(next);
+        }
         true
     }
 
@@ -241,6 +354,8 @@ impl OverlayManager {
         Self {
             overlays: Arc::clone(&self.overlays),
             next_id: Arc::clone(&self.next_id),
+            bounds: Arc::clone(&self.bounds),
+            focused: Arc::clone(&self.focused),
         }
     }
 }
@@ -281,6 +396,29 @@ impl OverlayHandle {
             .lock()
             .map(|o| o.iter().any(|e| e.z_index == self.id && e.visible))
             .unwrap_or(false)
+    }
+
+    /// Focus this overlay.
+    pub fn focus(&self) {
+        self.manager.focus(self.id);
+    }
+
+    /// Release the focus; the next visible capturing overlay takes it.
+    pub fn unfocus(&self) {
+        self.manager.unfocus(self.id);
+    }
+
+    /// Check if this overlay holds the focus.
+    pub fn is_focused(&self) -> bool {
+        self.manager.focused_id() == Some(self.id)
+    }
+
+    /// The bounds of the last rendered frame of this overlay.
+    pub fn get_bounds(&self) -> Option<OverlayBounds> {
+        if !self.is_visible() {
+            return None;
+        }
+        self.manager.bounds(self.id)
     }
 }
 
@@ -653,6 +791,95 @@ mod tests {
         let overlay = render_overlay(&content, &options, 20, 10).unwrap();
         assert_eq!((overlay.x, overlay.y), (0, 0));
         assert!(render_overlay(&content, &options, 20, 3).is_none());
+    }
+
+    #[test]
+    fn absolute_and_percentage_placement_position_the_overlay() {
+        let content = crate::Text::new("dialog", 0, 0);
+        let options = OverlayOptions {
+            width: Some(SizeValue::Absolute(10)),
+            row: Some(SizeValue::Absolute(3)),
+            col: Some(SizeValue::Absolute(5)),
+            ..Default::default()
+        };
+        let overlay = render_overlay(&content, &options, 40, 10).unwrap();
+        assert_eq!((overlay.x, overlay.y), (5, 3));
+
+        let options = OverlayOptions {
+            row: Some(SizeValue::Percent(1.0)),
+            col: Some(SizeValue::Percent(0.5)),
+            ..options
+        };
+        let overlay = render_overlay(&content, &options, 40, 10).unwrap();
+        assert_eq!(overlay.x, 15);
+        assert_eq!(overlay.y, 9);
+
+        let options = OverlayOptions {
+            row: Some(SizeValue::Percent(0.0)),
+            col: Some(SizeValue::Percent(0.0)),
+            margin: Some(super::super::tui::OverlayMargin {
+                top: 2,
+                left: 4,
+                ..Default::default()
+            }),
+            ..options
+        };
+        let overlay = render_overlay(&content, &options, 40, 10).unwrap();
+        assert_eq!((overlay.x, overlay.y), (4, 2));
+
+        let options = OverlayOptions {
+            row: Some(SizeValue::Absolute(100)),
+            col: Some(SizeValue::Absolute(100)),
+            ..options
+        };
+        let overlay = render_overlay(&content, &options, 40, 10).unwrap();
+        assert_eq!((overlay.x, overlay.y), (30, 9));
+    }
+
+    #[test]
+    fn handle_reports_the_rendered_bounds() {
+        let manager = OverlayManager::new();
+        let handle = manager.add(
+            Arc::new(crate::Text::new("one\ntwo", 0, 0)),
+            OverlayOptions {
+                width: Some(SizeValue::Absolute(12)),
+                anchor: OverlayAnchor::TopLeft,
+                ..Default::default()
+            },
+        );
+        assert!(handle.get_bounds().is_none(), "no frame rendered yet");
+        manager.render_visible(40, 10);
+        let bounds = handle.get_bounds().unwrap();
+        assert_eq!(bounds.row, 0);
+        assert_eq!(bounds.col, 0);
+        assert_eq!(bounds.width, 12);
+        assert_eq!(bounds.height, 2);
+        handle.set_visible(false);
+        assert!(handle.get_bounds().is_none());
+    }
+
+    #[test]
+    fn unfocus_hands_the_focus_to_the_next_capturing_overlay() {
+        let manager = OverlayManager::new();
+        let first = manager.add(
+            Arc::new(crate::Text::new("first", 0, 0)),
+            OverlayOptions::default(),
+        );
+        let second = manager.add(
+            Arc::new(crate::Text::new("second", 0, 0)),
+            OverlayOptions::default(),
+        );
+        assert!(second.is_focused(), "the newest overlay takes the focus");
+        assert!(!first.is_focused());
+        second.unfocus();
+        assert!(first.is_focused(), "the next capturing overlay takes it");
+        assert!(!second.is_focused());
+        first.unfocus();
+        assert!(!first.is_focused());
+        assert!(
+            second.is_focused(),
+            "the only remaining capturing overlay takes the focus"
+        );
     }
 
     #[test]

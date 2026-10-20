@@ -56,16 +56,16 @@ use rpi_tools::env::{FileContent, FileSystem};
 
 use crate::error::{SessionError, SessionErrorCode, SessionResult};
 use crate::session::jsonl::codec::{
-    encode_header, encode_mutation, metadata_from_header, parse_header, parse_mutation,
+    encode_entry, encode_header, metadata_from_header, parse_entry, parse_header,
 };
 use crate::session::jsonl::errors::{file_result, invalid_file, JsonlDecodeErrorKind};
-use crate::session::jsonl::types::{JsonlSessionMetadata, JsonlV4Header};
+use crate::session::jsonl::types::{JsonlSessionMetadata, SessionFileHeader};
 use crate::session::memory::{stamp_record, Clock};
 use crate::session::state::SessionState;
 use crate::session::types::{
     provisioned_into_entry, BranchBounds, Entry, EntryQuery, ForkOptions, IdGenerator, LanePointer,
-    LaneRecord, LogItem, LogOptions, OperationStartedRecord, ProvisionedEntry, RecordQuery,
-    SessionMetadata, SessionMutation, SessionStats, SessionStorage,
+    LaneRecord, LogItem, LogOptions, OperationStartedRecord, ProvisionedEntry, ProvisionedKind,
+    RecordQuery, SessionMetadata, SessionMutation, SessionStats, SessionStorage,
 };
 
 /// Durable file-backed `SessionStorage`. Mirrors TS `JsonlSessionStorage`.
@@ -113,7 +113,7 @@ impl JsonlSessionStorage {
     pub async fn create(
         fs: Arc<dyn FileSystem>,
         path: &str,
-        header: JsonlV4Header,
+        header: SessionFileHeader,
         clock: Arc<dyn Clock>,
         ids: Arc<dyn IdGenerator>,
     ) -> SessionResult<Self> {
@@ -158,54 +158,30 @@ impl JsonlSessionStorage {
         let metadata = metadata_from_header(&header, path, info.mtime_ms);
         let storage = Self::new(fs.clone(), metadata, clock, ids);
 
-        // Lines kept through the duplicate-seq recovery, so a healed file can
-        // be republished without the dropped duplicates (see after the loop).
-        let mut kept_lines: Vec<&str> = Vec::new();
-        let mut dropped_duplicates = false;
+        // The file's lines are the session's entries, in order.
         for (idx, line) in physical_lines.iter().enumerate().skip(1) {
             let line_no = (idx + 1) as u32;
-            match parse_mutation(line) {
-                Ok(mutation) => {
+            match parse_entry(line) {
+                Ok(mut entry) => {
                     let mut state = storage.state.lock().await;
-                    // Self-heal a duplicated/late append. Two writers on one
-                    // JSONL (e.g. a session resumed while still open in another
-                    // process) diverge their `sequence` counters, so a mutation
-                    // lands with an already-consumed seq. Its content is a
-                    // duplicate of what already applied, so drop it rather than
-                    // refuse the whole session.
-                    if mutation.seq() <= state.sequence() {
-                        dropped_duplicates = true;
-                        drop(state);
-                        continue;
-                    }
-                    // A divergent writer's counter can leave a forward gap (its
-                    // seqs were consumed elsewhere). Accept the gap by moving
-                    // the counter up to it. Raw seqs stay untouched, so future
-                    // appends stay consistent with the file.
-                    if mutation.seq() > state.next_sequence() {
-                        state.resync_sequence(mutation.seq() - 1);
-                    }
+                    // The file does not carry the storage sequence: the loader
+                    // stamps it in file order, so the state's consecutive-seq
+                    // invariant holds.
+                    let seq = state.next_sequence();
+                    entry.base_mut().seq = seq;
+                    let mutation = SessionMutation::Entry {
+                        seq,
+                        timestamp: entry.base().timestamp,
+                        lane: Some("main".to_string()),
+                        entry,
+                    };
                     let mutation = chain_onto_lane_leaf(mutation, &state);
                     if let Err(e) = state.apply_mutation(mutation) {
-                        if e.code == SessionErrorCode::InvalidEntry {
-                            drop(state);
-                            return Err(invalid_file(path, line_no, &e));
-                        }
                         drop(state);
-                        return Err(e);
+                        return Err(invalid_file(path, line_no, &e));
                     }
-                    kept_lines.push(*line);
                 }
                 Err(err) => {
-                    // Assistant frames are transient streaming progress, not
-                    // session history. Native Pi treats an undecodable frame
-                    // as lost progress rather than making the whole session
-                    // unopenable. Keep all other schema errors strict.
-                    if err.kind == JsonlDecodeErrorKind::Schema && is_assistant_frame_append(*line)
-                    {
-                        tracing::warn!(line = line_no, "skipping undecodable assistant frame");
-                        continue;
-                    }
                     let is_last = idx == physical_lines.len() - 1;
                     let is_torn_tail = is_last && err.kind == JsonlDecodeErrorKind::Syntax;
                     if is_torn_tail {
@@ -233,35 +209,6 @@ impl JsonlSessionStorage {
                 }
             }
         }
-        // Persist the duplicate-seq recovery: atomically republish the file
-        // without the dropped duplicates so the log no longer carries them.
-        // Seq values are untouched (no renumbering), so subsequent appends
-        // stay consistent with the file.
-        if dropped_duplicates {
-            let mut repaired = String::with_capacity(content.len());
-            repaired.push_str(physical_lines[0]);
-            repaired.push('\n');
-            for line in &kept_lines {
-                repaired.push_str(line);
-                repaired.push('\n');
-            }
-            let fs = storage.fs.clone();
-            let path_owned = path.to_string();
-            publish_file_atomically(&fs, &path_owned, |fs, temp_path| {
-                let repaired = repaired.clone();
-                let path_owned = path_owned.clone();
-                Box::pin(async move {
-                    file_result(
-                        fs.write_file(temp_path, FileContent::Text(repaired), None)
-                            .await,
-                        &format!("Failed to stage session repair {path_owned}"),
-                    )?;
-                    Ok(())
-                })
-            })
-            .await?;
-            return Ok(storage);
-        }
         // Repair an unterminated tail (no trailing "\n") so future appends are
         // on their own line.
         if !content.ends_with('\n') {
@@ -282,7 +229,7 @@ impl JsonlSessionStorage {
     pub async fn fork(
         &self,
         path: &str,
-        header: JsonlV4Header,
+        header: SessionFileHeader,
         options: &ForkOptions,
         clock: Arc<dyn Clock>,
         ids: Arc<dyn IdGenerator>,
@@ -300,7 +247,10 @@ impl JsonlSessionStorage {
                 let target =
                     JsonlSessionStorage::create(fs.clone(), temp_path, header, clock, ids).await?;
                 for mutation in &mutations {
-                    let line = encode_mutation(mutation);
+                    let Some(entry) = mutation_entry(mutation) else {
+                        continue;
+                    };
+                    let line = encode_entry(entry);
                     file_result(
                         fs.append_file(temp_path, FileContent::Text(line), None)
                             .await,
@@ -336,16 +286,24 @@ impl JsonlSessionStorage {
         op.await
     }
 
-    /// Append a mutation line to the file (no in-memory apply). Mirrors TS
-    /// `appendMutation`.
-    async fn append_mutation_line(&self, mutation: &SessionMutation) -> SessionResult<()> {
-        let line = encode_mutation(mutation);
+    /// Append an entry line to the file (no in-memory apply).
+    async fn append_entry_line(&self, entry: &Entry) -> SessionResult<()> {
+        let line = encode_entry(entry);
         file_result(
             self.fs
                 .append_file(&self.metadata.path, FileContent::Text(line), None)
                 .await,
             &format!("Failed to append session {}", self.metadata.path),
         )
+    }
+}
+
+/// The entry a mutation carries, when it carries one. The session file holds
+/// entries only: the operation log has no counterpart in the original's file.
+fn mutation_entry(mutation: &SessionMutation) -> Option<&Entry> {
+    match mutation {
+        SessionMutation::Entry { entry, .. } => Some(entry),
+        _ => None,
     }
 }
 
@@ -411,7 +369,8 @@ impl SessionStorage for JsonlSessionStorage {
             leaf_id: at,
         };
         drop(state);
-        self.append_mutation_line(&mutation).await?;
+        // A lane pointer has no counterpart in the session file: the entries
+        // carry the chain.
         let mut state = self.state.lock().await;
         state.apply_mutation(mutation)?;
         Ok(())
@@ -431,7 +390,6 @@ impl SessionStorage for JsonlSessionStorage {
             leaf_id: to,
         };
         drop(state);
-        self.append_mutation_line(&mutation).await?;
         let mut state = self.state.lock().await;
         state.apply_mutation(mutation)?;
         Ok(())
@@ -452,7 +410,7 @@ impl SessionStorage for JsonlSessionStorage {
             entry: full.clone(),
         };
         drop(state);
-        self.append_mutation_line(&mutation).await?;
+        self.append_entry_line(&full).await?;
         let mut state = self.state.lock().await;
         state.apply_mutation(mutation)?;
         match state.get_entry(full.id()) {
@@ -484,7 +442,8 @@ impl SessionStorage for JsonlSessionStorage {
             record: stamped.clone(),
         };
         drop(state);
-        self.append_mutation_line(&mutation).await?;
+        // The operation log is runtime progress: it has no counterpart in the
+        // session file, so it stays in memory.
         let mut state = self.state.lock().await;
         state.apply_mutation(mutation)?;
         Ok(stamped)
@@ -535,17 +494,17 @@ impl SessionStorage for JsonlSessionStorage {
     }
 
     async fn set_name(&self, name: Option<&str>) -> SessionResult<()> {
-        let _g = self.tail.lock().await;
-        let state = self.state.lock().await;
-        let seq = state.next_sequence();
-        let mutation = SessionMutation::FactName {
-            seq,
-            name: name.map(|s| s.to_string()),
-        };
-        drop(state);
-        self.append_mutation_line(&mutation).await?;
-        let mut state = self.state.lock().await;
-        state.apply_mutation(mutation)?;
+        let id = self.ids.next();
+        self.append_entry(
+            ProvisionedEntry {
+                id,
+                kind: ProvisionedKind::SessionInfo {
+                    name: name.map(|s| s.to_string()),
+                },
+            },
+            "main",
+        )
+        .await?;
         Ok(())
     }
 
@@ -555,19 +514,22 @@ impl SessionStorage for JsonlSessionStorage {
     }
 
     async fn set_label(&self, id: &str, label: Option<&str>) -> SessionResult<()> {
-        let _g = self.tail.lock().await;
-        let state = self.state.lock().await;
-        state.validate_target(Some(id))?;
-        let seq = state.next_sequence();
-        let mutation = SessionMutation::FactLabel {
-            seq,
-            target_id: id.to_string(),
-            label: label.map(|s| s.to_string()),
-        };
-        drop(state);
-        self.append_mutation_line(&mutation).await?;
-        let mut state = self.state.lock().await;
-        state.apply_mutation(mutation)?;
+        {
+            let state = self.state.lock().await;
+            state.validate_target(Some(id))?;
+        }
+        let entry_id = self.ids.next();
+        self.append_entry(
+            ProvisionedEntry {
+                id: entry_id,
+                kind: ProvisionedKind::Label {
+                    target_id: id.to_string(),
+                    label: label.map(|s| s.to_string()),
+                },
+            },
+            "main",
+        )
+        .await?;
         Ok(())
     }
 
@@ -664,13 +626,28 @@ mod tests {
         rpi_agent::message::AgentMessage::User(rpi_ai::types::UserMessage::new(text, 1))
     }
 
-    fn header() -> JsonlV4Header {
-        JsonlV4Header::new(
+    fn entry_line(id: &str, parent: Option<&str>) -> String {
+        let entry = crate::session::types::Entry::Message(
+            crate::session::types::MessageEntry {
+                base: crate::session::types::EntryBase {
+                    entry_type: "message".into(),
+                    id: id.into(),
+                    seq: 1,
+                    parent_id: parent.map(String::from),
+                    timestamp: 1_700_000_000_000,
+                },
+                message: user_msg("hi"),
+                terminate: None,
+            },
+        );
+        crate::session::jsonl::codec::encode_entry(&entry)
+    }
+
+    fn header() -> SessionFileHeader {
+        SessionFileHeader::new(
             "sess-1".into(),
-            1_700_000_000_000,
+            crate::session::types::iso_timestamp_from_ms(1_700_000_000_000),
             "/cwd".into(),
-            None,
-            None,
             None,
         )
     }
@@ -736,11 +713,7 @@ mod tests {
         // Manually append a valid entry line + a garbage (torn) last line.
         // The first mutation after the header is seq 1 (the header does not
         // consume a sequence number — see `create_append_reload_roundtrips`).
-        let valid = encode_mutation(&SessionMutation::Lane {
-            seq: 1,
-            lane: "main".into(),
-            leaf_id: None,
-        });
+        let valid = entry_line("e1", None);
         fs.append_file("/s.jsonl", FileContent::Text(valid), None)
             .await
             .unwrap();
@@ -780,11 +753,7 @@ mod tests {
             .unwrap();
         fs.append_file(
             "/s.jsonl",
-            FileContent::Text(encode_mutation(&SessionMutation::Lane {
-                seq: 1,
-                lane: "main".into(),
-                leaf_id: None,
-            })),
+            FileContent::Text(entry_line("e1", None)),
             None,
         )
         .await
@@ -798,7 +767,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn undecodable_assistant_frame_does_not_block_load() {
+    async fn unknown_entry_type_is_hard_corruption() {
         let env = rpi_tools::InMemoryExecutionEnv::with_cwd("/".into());
         let fs: Arc<dyn FileSystem> = Arc::new(env);
         let clock: Arc<dyn Clock> = Arc::new(FakeClock::new());
@@ -807,48 +776,23 @@ mod tests {
         JsonlSessionStorage::create(fs.clone(), "/s.jsonl", header(), clock.clone(), ids.clone())
             .await
             .unwrap();
-
-        // The envelope is a valid assistant-frame append, but its nested frame
-        // variant is not. This is recoverable progress loss, not history loss.
         fs.append_file(
             "/s.jsonl",
             FileContent::Text(
-                r#"{"kind":"record","type":"assistant_frame","id":"bad","seq":1,"lane":"main","timestamp":1,"runId":"run","streamIndex":0,"op":"append","frame":{"type":"not_a_real_frame_variant"}}
-"#.into(),
+                r#"{"type":"not_a_real_entry_type","id":"x","parentId":null,"timestamp":"2026-01-01T00:00:00.000Z"}
+"#
+                .into(),
             ),
             None,
         )
         .await
         .unwrap();
-        fs.append_file(
-            "/s.jsonl",
-            FileContent::Text(encode_mutation(&SessionMutation::Lane {
-                seq: 2,
-                lane: "main".into(),
-                leaf_id: None,
-            })),
-            None,
-        )
-        .await
-        .unwrap();
 
-        let reloaded = JsonlSessionStorage::load(fs, "/s.jsonl", clock, ids)
+        let err = JsonlSessionStorage::load(fs, "/s.jsonl", clock, ids)
             .await
-            .expect("an undecodable assistant frame must not block load");
-        assert_eq!(reloaded.get_name().await.unwrap(), None);
-        reloaded
-            .append_entry(
-                ProvisionedEntry {
-                    id: "e1".into(),
-                    kind: ProvisionedKind::Message {
-                        message: user_msg("after recovery"),
-                        terminate: None,
-                    },
-                },
-                "main",
-            )
-            .await
-            .expect("session remains writable after skipping frame");
+            .err()
+            .unwrap();
+        assert_eq!(err.code, SessionErrorCode::InvalidEntry);
     }
 
     #[tokio::test]

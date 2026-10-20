@@ -1889,7 +1889,7 @@
     return guard_exports.ShiftLeft(types, (left, right) => DecodeFromSpan(FromType2(variants, left), right), () => variants);
   }
   function VariantsToLiterals(variants) {
-    return variants.map((variant) => Literal(variant));
+    return variants.map((variant2) => Literal(variant2));
   }
   function DecodeTypesAsUnion(types) {
     const variants = DecodeFromSpan([], types);
@@ -2722,8 +2722,8 @@
   }
 
 
-  function TakeVariant(variant, input) {
-    return IsEqual(input.indexOf(variant), 0) ? [variant, input.slice(variant.length)] : [];
+  function TakeVariant(variant2, input) {
+    return IsEqual(input.indexOf(variant2), 0) ? [variant2, input.slice(variant2.length)] : [];
   }
   function Take(variants, input) {
     for (let i = 0; i < variants.length; i++) {
@@ -4533,8 +4533,8 @@
     const result = IsTemplateLiteral(instantiatedAs) ? EvaluateTemplateLiteral(instantiatedAs.pattern) : instantiatedAs;
     return result;
   }
-  function MappedVariant(context, state2, identifier, variant, as, property) {
-    const variantContext = memory_exports.Assign(context, { [identifier["name"]]: variant });
+  function MappedVariant(context, state2, identifier, variant2, as, property) {
+    const variantContext = memory_exports.Assign(context, { [identifier["name"]]: variant2 });
     const instantiatedAs = InstantiateType(variantContext, state2, as);
     const canonicalAs = CanonicalAs(instantiatedAs);
     const instantiatedProperty = InstantiateType(variantContext, state2, property);
@@ -6248,7 +6248,13 @@
   };
 
 
+  var node_perf_hooks_exports = {};
+  __export(node_perf_hooks_exports, {
+    default: () => node_perf_hooks_default,
+    performance: () => performance
+  });
   var performance = globalThis.performance;
+  var node_perf_hooks_default = { performance };
 
 
   var _kittyProtocolActive = false;
@@ -7095,9 +7101,25 @@
   var KITTY_PRINTABLE_ALLOWED_MODIFIERS = MODIFIERS.shift | LOCK_MASK;
 
 
+  var node_os_exports = {};
+  __export(node_os_exports, {
+    EOL: () => EOL,
+    default: () => node_os_default,
+    homedir: () => homedir,
+    platform: () => platform,
+    tmpdir: () => tmpdir
+  });
+  var homedir = () => process.env.HOME ?? process.env.USERPROFILE ?? "/";
+  var tmpdir = () => process.env.TMPDIR ?? "/tmp";
+  var platform = () => process.platform;
+  var EOL = "\n";
+  var node_os_default = { homedir, tmpdir, platform, EOL };
+
+
   var modules = globalThis.__piNodeModules;
   var path = modules["node:path"];
   var sep = path.sep;
+  var delimiter = path.delimiter;
   var join = path.join;
   var normalize = path.normalize;
   var resolve = path.resolve;
@@ -7106,8 +7128,52 @@
   var extname = path.extname;
   var relative = path.relative;
   var isAbsolute = path.isAbsolute;
+  var parse = path.parse;
+  var format = path.format;
+  var variant = {
+    sep: path.sep,
+    delimiter: path.delimiter,
+    join: path.join,
+    normalize: path.normalize,
+    resolve: path.resolve,
+    dirname: path.dirname,
+    basename: path.basename,
+    extname: path.extname,
+    relative: path.relative,
+    isAbsolute: path.isAbsolute,
+    parse: path.parse,
+    format: path.format
+  };
+  var win32 = variant;
+  var posix = variant;
+  var node_path_default = { ...path, win32, posix };
 
 
+  var node_url_exports = {};
+  __export(node_url_exports, {
+    default: () => node_url_default,
+    fileURLToPath: () => fileURLToPath,
+    pathToFileURL: () => pathToFileURL
+  });
+  var pathToFileURL = (value) => ({
+    href: `file://${value}`,
+    pathname: value,
+    protocol: "file:",
+    toString: () => `file://${value}`
+  });
+  var fileURLToPath = (value) => typeof value === "string" ? value.replace(/^file:\/\//, "") : value.pathname;
+  var node_url_default = { pathToFileURL, fileURLToPath };
+
+
+  var node_child_process_exports = {};
+  __export(node_child_process_exports, {
+    default: () => node_child_process_default,
+    exec: () => exec,
+    execFile: () => execFile,
+    execSync: () => execSync,
+    spawn: () => spawn,
+    spawnSync: () => spawnSync
+  });
   var unavailable = (name) => () => {
     throw new Error(`${name} is not available in the embedded extension host`);
   };
@@ -7116,6 +7182,7 @@
   var execFile = unavailable("execFile");
   var spawn = unavailable("spawn");
   var spawnSync = unavailable("spawnSync");
+  var node_child_process_default = { execSync, exec, execFile, spawn, spawnSync };
 
 
   function dispatchMouseEvent(component, event) {
@@ -9333,17 +9400,17 @@
   function Entries3() {
     return [...formats.entries()];
   }
-  function Set3(format, check) {
-    formats.set(format, check);
+  function Set3(format2, check) {
+    formats.set(format2, check);
   }
-  function Has(format) {
-    return formats.has(format);
+  function Has(format2) {
+    return formats.has(format2);
   }
-  function Get3(format) {
-    return formats.get(format);
+  function Get3(format2) {
+    return formats.get(format2);
   }
-  function Test(format, value) {
-    return formats.get(format)?.(value) ?? true;
+  function Test(format2, value) {
+    return formats.get(format2)?.(value) ?? true;
   }
   function Reset2() {
     Clear();
@@ -10996,9 +11063,9 @@
   function ImportSection(build) {
     const context = build.UseUnevaluated() ? [`import { CheckContext } from "typebox/schema"`] : [];
     const hashing = `import { Hashing } from "typebox/system"`;
-    const format = `import { Format } from "typebox/format"`;
+    const format2 = `import { Format } from "typebox/format"`;
     const guard = `import { Guard } from "typebox/guard"`;
-    return [...context, hashing, format, guard];
+    return [...context, hashing, format2, guard];
   }
   function ExternalSection(build) {
     const { identifier } = build.External();
@@ -11883,18 +11950,18 @@
     for (const schema of type.anyOf) {
       if (!Check2(context, schema, value))
         continue;
-      const variant = FromType23(direction, context, schema, value);
-      return Callback(direction, context, type, variant);
+      const variant2 = FromType23(direction, context, schema, value);
+      return Callback(direction, context, type, variant2);
     }
     return value;
   }
   function Encode9(direction, context, type, value) {
     const exterior = Callback(direction, context, type, value);
     for (const schema of type.anyOf) {
-      const variant = FromType23(direction, context, schema, Clone2(exterior));
-      if (!Check2(context, schema, variant))
+      const variant2 = FromType23(direction, context, schema, Clone2(exterior));
+      if (!Check2(context, schema, variant2))
         continue;
-      return variant;
+      return variant2;
     }
     return exterior;
   }
@@ -12720,22 +12787,100 @@
     if (!themeTokens) {
       try {
         const value = hostCall("theme.get", {});
-        themeTokens = value?.fg ?? {};
+        themeTokens = {
+          fg: value?.fg ?? {},
+          bg: value?.bg ?? {},
+          colors: value?.colors ?? {},
+          colorEnabled: value?.colorEnabled ?? false,
+          name: value?.name,
+          sourcePath: value?.sourcePath,
+          appearance: value?.appearance ?? "dark",
+          colorMode: value?.colorMode ?? "truecolor"
+        };
       } catch {
-        themeTokens = {};
+        themeTokens = {
+          fg: {},
+          bg: {},
+          colors: {},
+          colorEnabled: false,
+          appearance: "dark",
+          colorMode: "truecolor"
+        };
       }
     }
     return themeTokens;
   };
+  var styleText = (text, fgAnsi, bgAnsi, options) => {
+    let prefix = "";
+    let suffix = "";
+    if (fgAnsi) {
+      prefix += fgAnsi;
+      suffix = "\x1B[39m";
+    }
+    if (bgAnsi) {
+      prefix += bgAnsi;
+      suffix = `\x1B[49m${suffix}`;
+    }
+    if (options.bold) prefix += "\x1B[1m";
+    if (options.dim) prefix += "\x1B[2m";
+    if (options.bold || options.dim) suffix = `\x1B[22m${suffix}`;
+    if (options.italic) {
+      prefix += "\x1B[3m";
+      suffix = `\x1B[23m${suffix}`;
+    }
+    if (options.underline) {
+      prefix += "\x1B[4m";
+      suffix = `\x1B[24m${suffix}`;
+    }
+    if (options.inverse) {
+      prefix += "\x1B[7m";
+      suffix = `\x1B[27m${suffix}`;
+    }
+    if (options.strikethrough) {
+      prefix += "\x1B[9m";
+      suffix = `\x1B[29m${suffix}`;
+    }
+    return `${prefix}${text}${suffix}`;
+  };
+  var chalkStyle = (enabled, code, closing, text) => enabled ? `\x1B[${code}m${text}\x1B[${closing}m` : text;
   var theme = {
     fg: (name, text) => {
-      const prefix = themeTokenMap()[name];
-      return prefix ? `${prefix}${text}\x1B[0m` : text;
+      const prefix = themeTokenMap().fg[name];
+      return prefix ? `${prefix}${text}\x1B[39m` : text;
     },
     bg: (name, text) => {
-      const prefix = themeTokenMap()[`bg:${name}`];
-      return prefix ? `${prefix}${text}\x1B[0m` : text;
-    }
+      const prefix = themeTokenMap().bg[name];
+      return prefix ? `${prefix}${text}\x1B[49m` : text;
+    },
+    bgStart: (name) => themeTokenMap().bg[name] ?? "",
+    style: (text, options) => {
+      const tokens = themeTokenMap();
+      const fgAnsi = options.fg === void 0 ? void 0 : tokens.fg[options.fg];
+      const bgAnsi = options.bg === void 0 ? void 0 : tokens.bg[options.bg];
+      return styleText(text, fgAnsi, bgAnsi, options);
+    },
+    bold: (text) => chalkStyle(themeTokenMap().colorEnabled, "1", "22", text),
+    italic: (text) => chalkStyle(themeTokenMap().colorEnabled, "3", "23", text),
+    underline: (text) => chalkStyle(themeTokenMap().colorEnabled, "4", "24", text),
+    inverse: (text) => chalkStyle(themeTokenMap().colorEnabled, "7", "27", text),
+    strikethrough: (text) => chalkStyle(themeTokenMap().colorEnabled, "9", "29", text),
+    get colors() {
+      return themeTokenMap().colors;
+    },
+    get name() {
+      return themeTokenMap().name;
+    },
+    get sourcePath() {
+      return themeTokenMap().sourcePath;
+    },
+    get appearance() {
+      return themeTokenMap().appearance;
+    },
+    getFgAnsi: (name) => themeTokenMap().fg[name] ?? "",
+    getBgAnsi: (name) => themeTokenMap().bg[name] ?? "",
+    getColorMode: () => themeTokenMap().colorMode,
+    getThinkingBorderColor: (level) => (text) => theme.fg(`thinking${level}`, text),
+    getBashModeBorderColor: () => (text) => theme.fg("bashMode", text)
   };
   var hostModeValue;
   var hostMode = () => {
@@ -12779,6 +12924,39 @@
   });
   var componentRegistry = /* @__PURE__ */ new Map();
   var componentCounter = 0;
+  var toolCallCounter = 0;
+  var registerTerminalInput = (state2, handler) => {
+    state2.terminalInputHandlers.push(handler);
+    return () => {
+      const index3 = state2.terminalInputHandlers.indexOf(handler);
+      if (index3 >= 0) state2.terminalInputHandlers.splice(index3, 1);
+    };
+  };
+  var createModelRegistry = () => ({
+    refresh: () => hostCall("models.refresh", {}),
+    getError: () => hostCall("models.getError", {}),
+    getAll: () => hostCall("models.list", {}),
+    getAvailable: () => hostCall("models.listAvailable", {}),
+    find: (provider, modelId) => hostCall("models.find", { provider, modelId }),
+    hasConfiguredAuth: (model) => hostCall("models.hasConfiguredAuth", { model }),
+    getProviderAuthStatus: (provider) => hostCall("models.getProviderAuthStatus", { provider }),
+    getProvider: (provider) => hostCall("models.getProvider", { provider }),
+    getProviderDisplayName: (provider) => hostCall("models.getProviderDisplayName", { provider }),
+    isUsingOAuth: (model) => hostCall("models.isUsingOAuth", { model }),
+    registerProvider: (provider, config) => {
+      hostCall("provider.register", { provider, config });
+    },
+    unregisterProvider: (name) => {
+      hostCall("provider.unregister", { name });
+    },
+    registerVirtualModel: (definition) => {
+      hostCall("model.registerVirtual", { model: definition });
+    },
+    unregisterVirtualModel: (provider, id) => {
+      hostCall("model.unregisterVirtual", { provider, id });
+    },
+    getRegisteredProviderIds: () => hostCall("models.getRegisteredProviderIds", {})
+  });
   var registerComponent = (factory) => {
     const id = `component-${++componentCounter}`;
     componentRegistry.set(id, { factory });
@@ -12818,9 +12996,22 @@
     "@mariozechner/pi-coding-agent": types_exports
   };
   var moduleCache = /* @__PURE__ */ new Map();
+  var NODE_BUILTINS = {
+    "node:child_process": node_child_process_exports,
+    "node:os": node_os_exports,
+    "node:perf_hooks": node_perf_hooks_exports,
+    "node:url": node_url_exports,
+    child_process: node_child_process_exports,
+    os: node_os_exports,
+    perf_hooks: node_perf_hooks_exports,
+    url: node_url_exports
+  };
   var resolveModule = (specifier, referrer) => {
     if (Object.prototype.hasOwnProperty.call(VIRTUAL_MODULES, specifier)) {
       return VIRTUAL_MODULES[specifier];
+    }
+    if (Object.prototype.hasOwnProperty.call(NODE_BUILTINS, specifier)) {
+      return NODE_BUILTINS[specifier];
     }
     const builtins = globals.__piNodeModules;
     if (Object.prototype.hasOwnProperty.call(builtins, specifier)) {
@@ -12831,6 +13022,9 @@
       const absolute = specifier.startsWith("/") ? specifier : paths.resolve(paths.dirname(referrer), specifier);
       const loaded = hostCall("module.load", { path: absolute });
       return loadModule(loaded.path, loaded.code);
+    }
+    if (specifier.startsWith("@earendil-works/") || specifier.startsWith("@mariozechner/")) {
+      return {};
     }
     throw new Error(`cannot resolve "${specifier}" from "${referrer}"`);
   };
@@ -12926,8 +13120,20 @@
       input: (title, placeholder) => hostCall("ui.input", { title, placeholder }),
       editor: (title, prefill) => hostCall("ui.editor", { title, prefill }),
       custom: (factory) => hostCall("ui.custom", { component: registerComponent(factory) }),
-      onTerminalInput: () => () => void 0,
-      addAutocompleteProvider: () => void 0
+      setWorkingIndicator: (options) => hostCall("ui.setWorkingIndicator", { options: options ?? null }),
+      setEditorComponent: (factory) => hostCall("ui.setEditorComponent", {
+        component: factory ? registerComponent(factory) : null
+      }),
+      getEditorComponent: () => hostCall("ui.getEditorComponent", {}),
+      getAllThemes: () => hostCall("ui.getAllThemes", {}),
+      getTheme: (name) => hostCall("ui.getTheme", { name }),
+      setTheme: (theme2) => hostCall("ui.setTheme", { theme: theme2 }),
+      getToolsExpanded: () => hostCall("ui.getToolsExpanded", {}),
+      setToolsExpanded: (expanded) => hostCall("ui.setToolsExpanded", { expanded }),
+      onTerminalInput: (handler) => registerTerminalInput(state2, handler),
+      addAutocompleteProvider: (factory) => {
+        state2.autocompleteProviders.push(factory);
+      }
     },
     get mode() {
       return hostMode();
@@ -12939,10 +13145,23 @@
       return hostCall("process.cwd", {});
     },
     sessionManager: {
+      getCwd: () => hostCall("process.cwd", {}),
+      getSessionDir: () => hostCall("session.getDir", {}),
+      getSessionId: () => hostCall("session.getId", {}),
+      getSessionFile: () => hostCall("session.getFile", {}),
+      getLeafId: () => hostCall("session.getLeafId", {}),
+      getLeafEntry: () => hostCall("session.getLeafEntry", {}),
+      getEntry: (id) => hostCall("session.getEntry", { id }),
+      getLabel: (id) => hostCall("session.getLabel", { id }),
       getBranch: () => hostCall("session.getBranch", {}),
-      getEntries: () => hostCall("session.getEntries", {})
+      buildContextEntries: () => hostCall("session.buildContextEntries", {}),
+      buildSessionProjection: () => hostCall("session.buildSessionProjection", {}),
+      getHeader: () => hostCall("session.getHeader", {}),
+      getEntries: () => hostCall("session.getEntries", {}),
+      getTree: () => hostCall("session.getTree", {}),
+      getSessionName: () => hostCall("session.getSessionName", {})
     },
-    modelRegistry: void 0,
+    modelRegistry: createModelRegistry(),
     get model() {
       return hostCall("model.get", {});
     },
@@ -12960,6 +13179,16 @@
     compact: (options) => hostCall("agent.compact", { options }),
     getSystemPrompt: () => hostCall("agent.getSystemPrompt", {}),
     extensionPath: state2.path
+  });
+  var createToolContext = (state2) => ({
+    ...createContext(state2),
+    tools: {
+      registered: hostCall("tools.getAll", {}),
+      getExposure: (name) => hostCall("tools.getExposure", { name }),
+      getNamespace: (name) => hostCall("tools.getNamespace", { name }),
+      getPromptGuidelines: (name) => hostCall("tools.getPromptGuidelines", { name })
+    },
+    executeTool: (name, args, options) => hostCall("tools.execute", { name, args, options: options ?? null })
   });
   var eventBus = createEventBus();
   var createApi = (state2) => {
@@ -13060,7 +13289,7 @@
       parameters: tool.parameters ?? null
     }))
   );
-  var loadExtension = (path2, code) => {
+  var loadExtension = async (path2, code) => {
     const exports = loadModule(path2, code);
     const factory = exports.default ?? exports;
     if (typeof factory !== "function") {
@@ -13076,9 +13305,11 @@
       messageRenderers: /* @__PURE__ */ new Map(),
       entryRenderers: /* @__PURE__ */ new Map(),
       markdownTransformers: [],
-      toolRenderers: []
+      toolRenderers: [],
+      autocompleteProviders: [],
+      terminalInputHandlers: []
     };
-    factory(createApi(state2));
+    await factory(createApi(state2));
     extensions.push(state2);
     return { path: path2, tools: listTools() };
   };
@@ -13093,11 +13324,11 @@
     }
     if (!found) throw new Error(`unknown tool: ${name}`);
     const result = await found.tool.execute(
-      "tool-call",
+      `tool-call-${++toolCallCounter}`,
       args,
       void 0,
       void 0,
-      createContext(found.state)
+      createToolContext(found.state)
     );
     return result ?? null;
   };

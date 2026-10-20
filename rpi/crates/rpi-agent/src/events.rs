@@ -84,6 +84,9 @@ pub enum AgentEvent {
         tool_name: String,
         result: AgentToolResult,
         is_error: bool,
+        /// Milliseconds `execute` took, measured with a monotonic clock. Absent
+        /// when the tool did not run.
+        duration_ms: Option<u64>,
     },
 }
 

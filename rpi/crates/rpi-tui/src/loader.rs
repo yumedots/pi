@@ -149,29 +149,23 @@ impl Component for Loader {
         let text = self.options.text.clone().unwrap_or_default();
 
         let elapsed = self.elapsed();
-        let seconds = elapsed.as_secs();
-        let minutes = seconds / 60;
-        let secs = seconds % 60;
+        let _ = elapsed;
 
-        let time_str = if minutes > 0 {
-            format!("{}m {}s", minutes, secs)
-        } else {
-            format!("{}s", secs)
-        };
-
+        let colors = crate::theme::theme().colors;
         let line = if text.is_empty() {
-            format!("\x1b[36m{}\x1b[0m \x1b[90m{}\x1b[0m", spinner, time_str)
+            colors.accent.fg(&spinner.to_string())
         } else {
             let text_width = crate::utils::visible_width(&text);
-            let max_text_width = width.saturating_sub(15); // Reserve space for spinner and time
+            let max_text_width = width.saturating_sub(3);
             let display_text = if text_width > max_text_width {
                 crate::utils::truncate_to_width(&text, max_text_width, "...")
             } else {
                 text
             };
             format!(
-                "\x1b[36m{}\x1b[0m \x1b[1m{}\x1b[0m \x1b[90m{}\x1b[0m",
-                spinner, display_text, time_str
+                "{} {}",
+                colors.accent.fg(&spinner.to_string()),
+                colors.muted.fg(&display_text)
             )
         };
 
@@ -262,11 +256,8 @@ impl Component for CancellableLoader {
     fn render(&self, width: usize) -> Vec<String> {
         let mut lines = self.loader.render(width);
 
-        // Add cancel hint
-        if self.is_running() {
-            let hint = "\x1b[90mPress Ctrl+C to cancel\x1b[0m";
-            lines.push(hint.to_string());
-        }
+        // The original's cancellable loader shows no text of its own.
+        let _ = self.is_running();
 
         lines
     }

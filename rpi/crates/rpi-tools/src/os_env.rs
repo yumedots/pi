@@ -24,6 +24,8 @@
 //! `cleanup()` kills tracked child pids best-effort.
 
 use std::collections::{HashMap, HashSet};
+#[cfg(unix)]
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -1087,7 +1089,18 @@ impl Shell for OsExecutionEnv {
         if cancel.map(|t| t.is_cancelled()).unwrap_or(false) {
             return Err(ExecutionError::aborted());
         }
-        let exit_code = status.code().unwrap_or(0);
+        // A command killed by a signal has no exit code; the shell reports
+        // 128 + the signal number, and the original reports the same.
+        let exit_code = status.code().unwrap_or_else(|| {
+            #[cfg(unix)]
+            {
+                status.signal().map(|signal| 128 + signal).unwrap_or(0)
+            }
+            #[cfg(not(unix))]
+            {
+                0
+            }
+        });
         Ok(ShellOutput {
             stdout: stdout_buf,
             stderr: stderr_buf,

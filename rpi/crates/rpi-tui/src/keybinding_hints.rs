@@ -1,30 +1,25 @@
 //! Keybinding hint formatting utilities.
 //!
 //! Port of `packages/coding-agent/src/modes/interactive/components/keybinding-hints.ts`.
-//! Produces human-readable key strings (e.g. `"Ctrl+C"`, `"Shift+Enter"`) from
-//! the global [`Keybindings`] registry, plus themed hint lines like
-//! `"<muted>Ctrl+C</muted> <muted>cancel</muted>"`.
+//! Produces key strings (e.g. `"ctrl+c"`, `"shift+enter"`) from the global
+//! [`Keybindings`] registry, plus themed hint lines like
+//! `"<muted>ctrl+c</muted> <muted>cancel</muted>"`.
 //!
-//! NOTE: the registry only carries `tui.*` IDs — there are no `app.*` bindings.
-//! Callers that need a hint for an action with no registered binding must use
-//! [`raw_key_hint`] with a literal string (e.g. `"Ctrl+T"`), never an
-//! `app.*` ID.
+//! The keys are the original's key ids: lower-case for hints, first-letter
+//! capitalized for the display form. `alt` reads as `option` on macOS, the way
+//! the original renders it.
 
 use crossterm::event::{KeyCode, KeyModifiers};
 
 use crate::keybindings::{get_keybindings, KeyCombo, KeybindingId};
 use crate::theme::{theme, Color};
 
-/// Format a single [`KeyCombo`] as `"Ctrl+C"` / `"Shift+Enter"` / `"Enter"`.
+/// Format a single [`KeyCombo`] as a key id: `"ctrl+c"`, `"shift+enter"`, `"escape"`.
 ///
-/// Modifier order is Ctrl, Alt, Super, Shift. Modifier names are always
-/// first-letter-capitalized ("Ctrl", "Shift", "Alt", "Super") to match the
-/// convention used elsewhere in this codebase (e.g. the footer hints
-/// `"Ctrl+C: Exit"`). `Char('c')` under Control renders as `"C"` (uppercased
-/// for readability). Shift alone on an ASCII letter is implied by the glyph
-/// and dropped (`Shift+Char('A')` → `"A"`).
+/// Modifier order is Ctrl, Alt, Super, Shift. `alt` renders as `option` on
+/// macOS, the way the original renders it. `capitalize` first-letter-capitalizes
+/// every part, the way the original's `keyDisplayText` does.
 pub fn format_combo(combo: KeyCombo, capitalize: bool) -> String {
-    let _ = capitalize; // modifiers are always capitalized; key casing handled below
     let mut parts: Vec<String> = Vec::new();
 
     let m = combo.modifiers;
@@ -33,76 +28,81 @@ pub fn format_combo(combo: KeyCombo, capitalize: bool) -> String {
     let sup = m.contains(KeyModifiers::SUPER);
 
     if ctrl {
-        parts.push(modifier_name("ctrl"));
+        parts.push("ctrl".to_string());
     }
     if alt {
-        parts.push(modifier_name("alt"));
+        parts.push(if cfg!(target_os = "macos") {
+            "option".to_string()
+        } else {
+            "alt".to_string()
+        });
     }
     if sup {
-        parts.push(modifier_name("super"));
+        parts.push("super".to_string());
     }
 
     let key_name = key_code_name(&combo.code);
 
     // Shift on a printable char is implied by the glyph — drop it. For other
-    // keys (Enter, Esc, arrows) keep "Shift+".
+    // keys (Enter, Esc, arrows) keep "shift+".
     let shift_implicit = matches!(combo.code, KeyCode::Char(_)) && !ctrl && !alt;
     if m.contains(KeyModifiers::SHIFT) && !shift_implicit {
-        parts.push(modifier_name("shift"));
+        parts.push("shift".to_string());
     }
 
     parts.push(key_name);
-    parts.join("+")
+    parts
+        .iter()
+        .map(|part| {
+            if capitalize {
+                capitalize_first(part)
+            } else {
+                part.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("+")
 }
 
-/// Always first-letter-capitalize a modifier name.
-fn modifier_name(name: &str) -> String {
-    let mut c = name.chars();
-    match c.next() {
-        Some(first) => first.to_uppercase().chain(c).collect(),
+/// First-letter-capitalize a key id part.
+fn capitalize_first(part: &str) -> String {
+    let mut chars = part.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
         None => String::new(),
     }
 }
 
-/// Render a [`KeyCode`] as a short display name.
+/// Render a [`KeyCode`] as the original's key id.
 pub fn key_code_name(code: &KeyCode) -> String {
     match code {
-        KeyCode::Char(c) => {
-            // For Ctrl+Char the crossterm code is a lowercase letter; render
-            // uppercased for readability ("Ctrl+C" not "Ctrl+c") only when the
-            // char is ASCII-alphabetic.
-            if c.is_ascii_alphabetic() {
-                c.to_ascii_uppercase().to_string()
-            } else {
-                c.to_string()
-            }
-        }
-        KeyCode::Enter => "Enter".to_string(),
-        KeyCode::Tab => "Tab".to_string(),
-        KeyCode::BackTab => "Shift+Tab".to_string(),
-        KeyCode::Esc => "Esc".to_string(),
-        KeyCode::Backspace => "Backspace".to_string(),
-        KeyCode::Delete => "Delete".to_string(),
-        KeyCode::Insert => "Insert".to_string(),
-        KeyCode::Home => "Home".to_string(),
-        KeyCode::End => "End".to_string(),
-        KeyCode::PageUp => "PageUp".to_string(),
-        KeyCode::PageDown => "PageDown".to_string(),
-        KeyCode::Left => "Left".to_string(),
-        KeyCode::Right => "Right".to_string(),
-        KeyCode::Up => "Up".to_string(),
-        KeyCode::Down => "Down".to_string(),
-        KeyCode::CapsLock => "CapsLock".to_string(),
-        KeyCode::ScrollLock => "ScrollLock".to_string(),
-        KeyCode::NumLock => "NumLock".to_string(),
-        KeyCode::PrintScreen => "PrintScreen".to_string(),
-        KeyCode::Pause => "Pause".to_string(),
-        KeyCode::Menu => "Menu".to_string(),
-        KeyCode::F(n) => format!("F{}", n),
+        KeyCode::Char(c) => c.to_string(),
+        KeyCode::Enter => "enter".to_string(),
+        KeyCode::Tab => "tab".to_string(),
+        KeyCode::BackTab => "shift+tab".to_string(),
+        KeyCode::Esc => "escape".to_string(),
+        KeyCode::Backspace => "backspace".to_string(),
+        KeyCode::Delete => "delete".to_string(),
+        KeyCode::Insert => "insert".to_string(),
+        KeyCode::Home => "home".to_string(),
+        KeyCode::End => "end".to_string(),
+        KeyCode::PageUp => "pageUp".to_string(),
+        KeyCode::PageDown => "pageDown".to_string(),
+        KeyCode::Left => "left".to_string(),
+        KeyCode::Right => "right".to_string(),
+        KeyCode::Up => "up".to_string(),
+        KeyCode::Down => "down".to_string(),
+        KeyCode::CapsLock => "capsLock".to_string(),
+        KeyCode::ScrollLock => "scrollLock".to_string(),
+        KeyCode::NumLock => "numLock".to_string(),
+        KeyCode::PrintScreen => "printScreen".to_string(),
+        KeyCode::Pause => "pause".to_string(),
+        KeyCode::Menu => "menu".to_string(),
+        KeyCode::F(n) => format!("f{n}"),
         KeyCode::Null => String::new(),
-        KeyCode::Media(_) => "Media".to_string(),
-        KeyCode::Modifier(_) => "Modifier".to_string(),
-        KeyCode::KeypadBegin => "KeypadBegin".to_string(),
+        KeyCode::Media(_) => "media".to_string(),
+        KeyCode::Modifier(_) => "modifier".to_string(),
+        KeyCode::KeypadBegin => "keypadBegin".to_string(),
     }
 }
 
@@ -163,14 +163,14 @@ mod tests {
     fn test_key_text_submit_contains_enter() {
         // tui.input.submit defaults to Enter (no modifiers).
         let text = key_text("tui.input.submit");
-        assert!(text.contains("Enter"), "got: {text}");
+        assert!(text.contains("enter"), "got: {text}");
     }
 
     #[test]
     fn test_key_text_newline_has_shift_and_ctrl() {
         // tui.input.newLine = Shift+Enter, Ctrl+J.
         let text = key_text("tui.input.newLine");
-        assert!(text.contains("Enter") || text.contains("J"));
+        assert!(text.contains("enter") || text.contains("j"), "got: {text}");
     }
 
     #[test]
@@ -181,21 +181,30 @@ mod tests {
     #[test]
     fn test_format_combo_ctrl_c() {
         let combo = KeyCombo::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-        assert_eq!(format_combo(combo, false), "Ctrl+C");
+        assert_eq!(format_combo(combo, false), "ctrl+c");
         assert_eq!(format_combo(combo, true), "Ctrl+C");
     }
 
     #[test]
     fn test_format_combo_shift_enter() {
         let combo = KeyCombo::new(KeyCode::Enter, KeyModifiers::SHIFT);
-        assert_eq!(format_combo(combo, false), "Shift+Enter");
+        assert_eq!(format_combo(combo, false), "shift+enter");
+        assert_eq!(format_combo(combo, true), "Shift+Enter");
     }
 
     #[test]
     fn test_key_code_name_special() {
-        assert_eq!(key_code_name(&KeyCode::Esc), "Esc");
-        assert_eq!(key_code_name(&KeyCode::F(5)), "F5");
-        assert_eq!(key_code_name(&KeyCode::Char('a')), "A");
+        assert_eq!(key_code_name(&KeyCode::Esc), "escape");
+        assert_eq!(key_code_name(&KeyCode::F(5)), "f5");
+        assert_eq!(key_code_name(&KeyCode::Char('a')), "a");
         assert_eq!(key_code_name(&KeyCode::Char('$')), "$");
+    }
+
+    #[test]
+    fn hints_use_the_originals_lower_case_keys() {
+        assert_eq!(key_text("app.interrupt"), "escape");
+        assert_eq!(key_display_text("app.interrupt"), "Escape");
+        assert_eq!(key_text("app.tools.expand"), "ctrl+o");
+        assert_eq!(key_display_text("app.tools.expand"), "Ctrl+O");
     }
 }

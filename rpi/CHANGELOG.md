@@ -11,6 +11,35 @@ from; the matching [GitHub Release](../../releases) carries the same notes.
 
 ## [Unreleased]
 
+### Changed
+
+- *(tools)* the built-in tools report the original's system-prompt contribution (`promptSnippet`/`promptGuidelines`), and the `read` and `bash` tools expose an output schema with the matching structured content
+- *(tools)* the registered tool set is the original's: `read`, `bash`, `edit`, `write`, `grep`, `find` and `ls`; the port-only `docs` tool is gone, and the system prompt's tool list follows the active tool set instead of a fixed string
+- *(agent)* the tool result carries the original's contract: `isError` (a soft failure keeps its details), `structuredContent`, an output schema and the measured `durationMs` on `tool_execution_end` and on the tool-result message
+- *(agent)* the request-level hooks of the original exist with its names and semantics: `prepareRequest` runs before every provider request and can replace the context, the model and the thinking level, and `finishTurn` returns `{action:"continue"}` to force one more request
+- *(settings)* `settings.json` now uses the original's key names, types and defaults for every setting: `enabledModels`, `httpIdleTimeoutMs`, `terminal.showImages`/`terminal.showTerminalProgress`, `skills`/`prompts`/`extensions` and the rest of the original's schema; the older rpi spellings are still read and rewritten to the original's names, and keybindings come from the original's `keybindings.json`
+- *(settings)* an absent setting falls back to the original's default (`retry.maxRetries` 3, `outputPad` 1, `terminal.showTerminalProgress` off, `quietStartup` off)
+- *(tui)* draw the input as the filled card of the original: the `userMessageBg` background with the `> ` prompt in the left gutter and no horizontal rules
+- *(tui)* render the tool call and the tool result with the per-tool renderers of the original (`read`, `write`, `bash`, `grep`, `find`, `ls`, `edit`); a tool without a renderer keeps the generic name+args panel
+- *(tui)* the fresh-session screen shows the original's startup block: the mark and version, the key hints and the note, and nothing else in that place
+- *(tui)* the first launch asks for a theme in the original's first-time setup dialog instead of printing a welcome banner
+- *(language)* the user-visible strings are the original's: the startup block (the mark, the version and the key hints), the key hints themselves (the original's lower-case key ids, `escape` and `ctrl+o`, with `option` for `alt` on macOS), the transcript search placeholder, the assistant error lines, the tool and bash overflow hints, the skill card (`@name`), the durations, the select-list and settings-list empty texts, the thinking-level descriptions, the slash-command descriptions, the `/help` listing, the `/hotkeys` table and the `/version` block
+- *(language)* the release note is the original's: the "What's New" note and the `/changelog` listing read the original's changelog, show the original's version and link to the original's repository; a fresh install records the version and shows nothing
+- *(language)* the startup prints the original's tmux warning when tmux cannot deliver modified Enter keys
+- *(cli)* `--help` has the original's sections, options, examples, environment variables and built-in tool names; `--version` prints the bare version; the diagnostics are capitalised (`Error: `, `Warning: `)
+- *(cli)* the original's slash commands are registered with its text: `/skills` ("Browse and run a skill"), `/bug` ("Report a bug to the Pi developers") and `/stats` ("Show session info and stats"); `/quit` is the canonical exit command with `/exit` as its alias, and `/resume` is canonical with `/history` and `/sessions` as its aliases
+- *(cli)* the autocomplete row shows the argument hint in front of the description (`<provider/model> — Select model (opens selector UI)`), the way the original does
+
+### Fixed
+
+- *(tools)* a failing bash command is a soft failure again: the result keeps its details, the text ends with "Command exited with code N" (no "tool error: " prefix), the timeout reads "Command timed out after N seconds", and a command killed without an exit code is reported
+- *(tools)* a command killed by a signal reports the shell's `128 + signal` exit code instead of a success
+- *(trust)* project trust fails closed: a project with project-local resources and no decision is not trusted, `defaultProjectTrust` is read, and a decision saved for a parent folder governs the folders below it
+- *(harness)* the retry budget is the original's three attempts, the provider's own retry settings (`retry.provider`) are honoured, and a context-overflow error compacts the session and retries the turn once
+- *(language)* no interface string is in a language other than English; the four documents the `docs` tool serves were translated in place
+- *(harness)* skip the compaction summary when there is no history to summarize
+- *(tui)* the first-launch banner printed every line twice
+
 ## [0.6.3](https://github.com/bigfish1913/pi-rust/compare/v0.6.2...v0.6.3) - 2026-10-20
 
 ### Other

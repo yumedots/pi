@@ -1,10 +1,10 @@
 //! # Layout
 //!
-//! Uses a nested layout: a `~/.rpi/agent/` directory (or one pointed at via
-//! `RPI_CODING_AGENT_DIR`) "just works":
+//! Uses a nested layout: a `~/.pi/agent/` directory (or one pointed at via
+//! `PI_CODING_AGENT_DIR`) "just works":
 //!
 //! ```text
-//! ~/.rpi/                 (RPI_CODING_AGENT_DIR env overrides the agent/ dir)
+//! ~/.pi/                  (PI_CODING_AGENT_DIR env overrides the agent/ dir)
 //! └── agent/
 //!     ├── auth.json       # persisted credentials (mode 0o600 on Unix)
 //!     ├── models.json     # user-defined provider/model catalog (hand-edited)
@@ -13,9 +13,6 @@
 //!     ├── .setup_done     # first-time-setup sentinel (extras.rs)
 //! ```
 //!
-//! Flat-installed `~/.rpi/{auth.json,models.json}` from older rpi releases are
-//! migrated under `agent/` on the next launch by [`migrate_legacy_layout`]
-//! (best-effort, idempotent; only when the env override is unset).
 //!
 //! # Concurrency
 //!
@@ -39,12 +36,14 @@ use std::path::{Path, PathBuf};
 
 use rpi_ai::{Api, InputModality, Model, ModelCost, StreamingProtocolCompat, ThinkingLevelMap};
 
-/// The config directory name under the home dir.
-pub const CONFIG_DIR_NAME: &str = ".rpi";
+/// The config directory name under the home dir. The port shares pi's
+/// directory, so the settings, the credentials, the model catalogue and the
+/// themes are the same files on disk.
+pub const CONFIG_DIR_NAME: &str = ".pi";
 
 /// Env var that overrides the whole config dir. Absolute path; relative
-/// values are rejected.
-pub const CONFIG_DIR_ENV: &str = "RPI_CODING_AGENT_DIR";
+/// values are rejected. The name is pi's, so the same override works for both.
+pub const CONFIG_DIR_ENV: &str = "PI_CODING_AGENT_DIR";
 
 /// The provider id under which `rpi auth login` stores the Anthropic key.
 /// Mirrors upstream's fixed `anthropic` provider id.
@@ -86,7 +85,7 @@ pub enum ConfigError {
 // Path resolution
 // ---------------------------------------------------------------------------
 
-/// The rpi config directory (`~/.rpi/agent` by default, `RPI_CODING_AGENT_DIR`
+/// The rpi config directory (`~/.pi/agent` by default, `PI_CODING_AGENT_DIR`
 /// override). Creates nothing — purely a path computation. The `agent/` layer
 /// is `join(homedir(), CONFIG_DIR_NAME, "agent")`. The env override points at
 /// the agent dir itself.
@@ -107,35 +106,22 @@ pub fn agent_dir() -> Result<PathBuf, ConfigError> {
     Ok(home.join(CONFIG_DIR_NAME).join("agent"))
 }
 
-/// The config dir one level above the agent dir (`~/.rpi`, or the parent of an
-/// env override). Used by [`migrate_legacy_layout`] to locate the old flat
-/// layout. Returns `None` when the env override has no parent (a root path).
-fn config_root_dir() -> Result<PathBuf, ConfigError> {
-    let agent = agent_dir()?;
-    agent
-        .parent()
-        .map(Path::to_path_buf)
-        .ok_or(ConfigError::NoHomeDir {
-            env: CONFIG_DIR_ENV,
-        })
-}
-
-/// `~/.rpi/agent/auth.json`.
+/// `~/.pi/agent/auth.json`.
 pub fn auth_path() -> Result<PathBuf, ConfigError> {
     Ok(agent_dir()?.join("auth.json"))
 }
 
-/// `~/.rpi/agent/models.json`.
+/// `~/.pi/agent/models.json`.
 pub fn models_path() -> Result<PathBuf, ConfigError> {
     Ok(agent_dir()?.join("models.json"))
 }
 
-/// `~/.rpi/agent/settings.json` (saved default provider/model/thinking + theme).
+/// `~/.pi/agent/settings.json` (saved default provider/model/thinking + theme).
 pub fn settings_path() -> Result<PathBuf, ConfigError> {
     Ok(agent_dir()?.join("settings.json"))
 }
 
-/// `~/.rpi/agent/trust.json` (per-cwd project trust decisions).
+/// `~/.pi/agent/trust.json` (per-cwd project trust decisions).
 pub fn trust_path() -> Result<PathBuf, ConfigError> {
     Ok(agent_dir()?.join("trust.json"))
 }
@@ -164,65 +150,6 @@ fn read_text_with_fallback(
             source,
         }),
     }
-}
-
-/// One-time best-effort migration of a pre-nesting flat layout
-/// (`~/.rpi/{auth.json,models.json,.setup_done}`) into the
-/// nested `~/.rpi/agent/` layout. **No-op when `RPI_CODING_AGENT_DIR` is set**
-/// (never touch an explicit override), when the agent dir already exists, or
-/// when no flat files are present. Idempotent: a partial move resumes. Errors
-/// are swallowed (logged via the returned `Result` only so tests can observe);
-/// `app::run` ignores them so a migration hiccup never blocks startup.
-pub fn migrate_legacy_layout() -> Result<usize, ConfigError> {
-    // Only migrate the default home-backed layout — never an env override.
-    if std::env::var_os(CONFIG_DIR_ENV).is_some() {
-        return Ok(0);
-    }
-    let root = match config_root_dir() {
-        Ok(p) => p,
-        Err(_) => return Ok(0),
-    };
-    let agent = agent_dir()?;
-    migrate_legacy_layout_in(&root, &agent)
-}
-
-/// The core migration (no env gate): if `agent/` is absent but flat files exist
-/// under `root`, move `{auth.json,models.json,.setup_done}` into
-/// `agent/`. Idempotent. Factored out so tests can drive it against a temp
-/// root/agent pair without touching the env (the public
-/// [`migrate_legacy_layout`] short-circuits on an env override, which tests
-/// can't unset portably while other tests run).
-fn migrate_legacy_layout_in(root: &Path, agent: &Path) -> Result<usize, ConfigError> {
-    // If the agent dir already exists with any content, assume already migrated.
-    if agent.exists() {
-        return Ok(0);
-    }
-    // Probe for a flat file. If none, nothing to migrate.
-    let flat_auth = root.join("auth.json");
-    let flat_models = root.join("models.json");
-    if !flat_auth.exists() && !flat_models.exists() {
-        return Ok(0);
-    }
-    std::fs::create_dir_all(agent).map_err(|e| ConfigError::Write {
-        path: agent.to_path_buf(),
-        source: e,
-    })?;
-    let mut moved = 0usize;
-    for leaf in ["auth.json", "models.json", ".setup_done"] {
-        let from = root.join(leaf);
-        let to = agent.join(leaf);
-        if from.exists() && !to.exists() {
-            // `rename` across the same filesystem is atomic; fall back to copy
-            // + remove on cross-device (rare for a home dir).
-            if let Err(_e) = std::fs::rename(&from, &to) {
-                if std::fs::copy(&from, &to).is_ok() {
-                    let _ = std::fs::remove_file(&from);
-                }
-            }
-            moved += 1;
-        }
-    }
-    Ok(moved)
 }
 
 // ---------------------------------------------------------------------------
@@ -405,7 +332,7 @@ pub struct ModelDefinition {
     pub compat: Option<serde_json::Value>,
 }
 
-/// Load `~/.rpi/models.json`. Missing file ⇒ empty config (no error).
+/// Load `~/.pi/agent/models.json`. Missing file ⇒ empty config (no error).
 pub fn load_models_config() -> Result<ModelsConfig, ConfigError> {
     let path = models_path()?;
     match read_text_with_fallback(path, None)? {
@@ -416,7 +343,7 @@ pub fn load_models_config() -> Result<ModelsConfig, ConfigError> {
     }
 }
 
-/// Atomically write the whole `~/.rpi/models.json` (used by the interactive
+/// Atomically write the whole `~/.pi/agent/models.json` (used by the interactive
 /// provider form). Note: unlike [`crate::settings::save_settings`], this
 /// serializes the modeled config directly, so hand-written comments and unknown
 /// fields in `models.json` are not preserved on rewrite. A timestamped
@@ -453,7 +380,7 @@ pub fn save_models_config(cfg: &ModelsConfig) -> Result<(), ConfigError> {
 /// project resources behind trust in v1 — there is no trust prompt. Deferred.
 pub type TrustStore = BTreeMap<String, Option<bool>>;
 
-/// Read `~/.rpi/agent/trust.json`. Missing file ⇒ empty store (not an error).
+/// Read `~/.pi/agent/trust.json`. Missing file ⇒ empty store (not an error).
 /// Malformed JSON ⇒ `ConfigError::Json`. `null` decisions deserialize as
 /// `None`; absent entries are simply not present.
 pub fn read_trust() -> Result<TrustStore, ConfigError> {
@@ -497,6 +424,72 @@ pub fn project_trust_decision(cwd: &Path) -> Result<Option<bool>, ConfigError> {
         .to_string_lossy()
         .into_owned();
     Ok(read_trust()?.get(&key).copied().flatten())
+}
+
+/// The nearest stored trust decision, walking up the parent directories.
+/// Mirrors pi's `findNearestTrustEntry`
+/// (`packages/coding-agent/src/core/trust-manager.ts:45-58`): a decision saved
+/// for a parent folder governs every folder below it.
+pub fn nearest_project_trust_decision(cwd: &Path) -> Result<Option<bool>, ConfigError> {
+    let store = read_trust()?;
+    let mut current = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
+    loop {
+        let key = current.to_string_lossy().into_owned();
+        if let Some(decision) = store.get(&key) {
+            if let Some(decision) = decision {
+                return Ok(Some(*decision));
+            }
+        }
+        match current.parent() {
+            Some(parent) if parent != current => current = parent.to_path_buf(),
+            _ => return Ok(None),
+        }
+    }
+}
+
+/// The project resources that require the project to be trusted. Mirrors pi's
+/// `TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES`
+/// (`packages/coding-agent/src/core/trust-manager.ts:24-33`).
+const TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES: &[&str] = &[
+    "settings.json",
+    "mcp.json",
+    "extensions",
+    "skills",
+    "prompts",
+    "themes",
+    "SYSTEM.md",
+    "APPEND_SYSTEM.md",
+];
+
+/// Whether the folder (or a parent of it) holds project resources that need
+/// the project's trust. Mirrors pi's `hasTrustRequiringProjectResources`
+/// (`packages/coding-agent/src/core/trust-manager.ts:186-208`).
+pub fn has_trust_requiring_project_resources(cwd: &Path) -> bool {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"));
+    let user_agents_skills = std::fs::canonicalize(home.join(".agents").join("skills"))
+        .unwrap_or_else(|_| home.join(".agents").join("skills"));
+
+    let mut current = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
+    let config_dir = current.join(CONFIG_DIR_NAME);
+    if TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES
+        .iter()
+        .any(|entry| config_dir.join(entry).exists())
+    {
+        return true;
+    }
+    loop {
+        let agents_skills = current.join(".agents").join("skills");
+        let canonical = std::fs::canonicalize(&agents_skills).unwrap_or_else(|_| agents_skills.clone());
+        if canonical != user_agents_skills && canonical.exists() {
+            return true;
+        }
+        match current.parent() {
+            Some(parent) if parent != current => current = parent.to_path_buf(),
+            _ => return false,
+        }
+    }
 }
 
 /// Parse the models JSON, tolerating `//` line comments (a minimal subset of
@@ -1063,7 +1056,7 @@ impl<T> Pipe for T {}
 #[cfg(test)]
 pub(crate) mod test_support {
     /// A shared workspace lock for tests that touch process-global env vars
-    /// (`RPI_CODING_AGENT_DIR`, `ANTHROPIC_*`). All env-mutating tests across
+    /// (`PI_CODING_AGENT_DIR`, `ANTHROPIC_*`). All env-mutating tests across
     /// the crate (config / provider / auth) share this ONE mutex so they can't
     /// race on the shared environment. Hold the returned guard for the whole
     /// test (store it in a RAII struct).
@@ -1079,7 +1072,7 @@ mod tests {
     use super::*;
     use crate::config::test_support::env_lock;
 
-    /// Point `RPI_CODING_AGENT_DIR` at a fresh temp dir for the duration of the
+    /// Point `PI_CODING_AGENT_DIR` at a fresh temp dir for the duration of the
     /// test (cleaned up on drop). Holds the prior value of the env var to
     /// restore it. Hold the env lock for its whole lifetime.
     struct TempConfig {
@@ -1547,7 +1540,7 @@ mod tests {
 
     #[test]
     fn agent_dir_nests_under_agent_by_default() {
-        // With no env override, agent_dir() must end in `.../.rpi/agent`
+        // With no env override, agent_dir() must end in `.../.pi/agent`
         // (mirrors pi's `getAgentDir`). We can't assertion the home prefix
         // portably, but the leaf two segments are stable.
         let _guard = env_lock().lock().unwrap();
@@ -1560,54 +1553,6 @@ mod tests {
             .parent()
             .map(|p| p.ends_with(CONFIG_DIR_NAME))
             .unwrap_or(false));
-    }
-
-    #[test]
-    fn migrate_legacy_layout_moves_flat_files_into_agent() {
-        // Drive the core migration directly against a temp root/agent so the
-        // result is independent of whatever RPI_CODING_AGENT_DIR the parallel
-        // TempConfig tests happen to set.
-        let tmp = tempfile::TempDir::new().unwrap();
-        let root = tmp.path().to_path_buf();
-        let agent = root.join("agent");
-        std::fs::write(root.join("auth.json"), "{}").unwrap();
-        std::fs::write(root.join("models.json"), "{}").unwrap();
-        std::fs::write(root.join(".setup_done"), "1").unwrap();
-        let moved = migrate_legacy_layout_in(&root, &agent).unwrap();
-        assert_eq!(moved, 3);
-        assert!(agent.join("auth.json").exists());
-        assert!(agent.join("models.json").exists());
-        assert!(agent.join(".setup_done").exists());
-        assert!(!root.join("auth.json").exists());
-    }
-
-    #[test]
-    fn migrate_legacy_layout_noop_when_agent_exists() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let root = tmp.path().to_path_buf();
-        let agent = root.join("agent");
-        std::fs::write(root.join("auth.json"), "{}").unwrap();
-        std::fs::create_dir_all(&agent).unwrap();
-        let moved = migrate_legacy_layout_in(&root, &agent).unwrap();
-        assert_eq!(moved, 0); // agent/ already present — leave flat file alone
-    }
-
-    #[test]
-    fn migrate_legacy_layout_noop_when_no_flat_files() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let root = tmp.path().to_path_buf();
-        let agent = root.join("agent");
-        let moved = migrate_legacy_layout_in(&root, &agent).unwrap();
-        assert_eq!(moved, 0);
-    }
-
-    #[test]
-    fn migrate_legacy_layout_public_skips_env_override() {
-        // When RPI_CODING_AGENT_DIR is set, the public entry point is a no-op
-        // (it must never touch an explicit override). TempConfig sets it.
-        let _cfg = TempConfig::new();
-        let moved = migrate_legacy_layout().unwrap();
-        assert_eq!(moved, 0);
     }
 
     #[test]

@@ -448,17 +448,10 @@ impl Api {
             Api::Other(s) => s.as_str(),
         }
     }
-}
 
-impl Serialize for Api {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(self.as_str())
-    }
-}
-impl<'de> Deserialize<'de> for Api {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(d)?;
-        Ok(match s.as_str() {
+    /// Parse an API id. Unknown ids become [`Api::Other`].
+    pub fn from_id(id: &str) -> Self {
+        match id {
             "openai-completions" => Api::OpenaiCompletions,
             "mistral-conversations" => Api::MistralConversations,
             "openai-responses" => Api::OpenaiResponses,
@@ -471,7 +464,19 @@ impl<'de> Deserialize<'de> for Api {
             "pi-messages" => Api::PiMessages,
             "faux" => Api::Faux,
             other => Api::Other(other.to_string()),
-        })
+        }
+    }
+}
+
+impl Serialize for Api {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+impl<'de> Deserialize<'de> for Api {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Ok(Api::from_id(&s))
     }
 }
 
@@ -629,6 +634,10 @@ pub struct ToolResultMessage {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub added_tool_names: Vec<String>,
     pub is_error: bool,
+    /// Milliseconds the tool's `execute` took, measured with a monotonic clock.
+    /// Absent when the tool did not run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
     pub timestamp: i64,
 }
 

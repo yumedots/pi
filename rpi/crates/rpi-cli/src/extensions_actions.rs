@@ -664,6 +664,150 @@ impl RuntimeActionHost for HarnessActionHost {
         // the "not configured" fallback.
         Err("reload not configured (no /reload callback on this bridge)".to_string())
     }
+
+    async fn get_entries(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        let entries = self
+            .harness()?
+            .find_entries(&EntryQuery {
+                order: Some(EntryOrder::OldestFirst),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+        let entries = entries
+            .iter()
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("serialize session entries: {e}"))?;
+        Ok(serde_json::json!(entries))
+    }
+
+    async fn get_all_tools(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        let tools = self
+            .harness()?
+            .get_tools()
+            .await
+            .map_err(|e| e.to_string())?;
+        let infos = tools
+            .iter()
+            .map(|harness_tool| {
+                let schema = harness_tool.tool.schema();
+                serde_json::json!({
+                    "name": schema.name,
+                    "description": schema.description,
+                    "parameters": schema.parameters.0,
+                    "promptGuidelines": [],
+                    "exposure": "direct",
+                    "sourceInfo": {
+                        "path": "",
+                        "source": "builtin",
+                        "scope": "user",
+                        "origin": "top-level",
+                    },
+                })
+            })
+            .collect::<Vec<_>>();
+        Ok(serde_json::json!(infos))
+    }
+
+    async fn get_context_usage(
+        &self,
+        _args: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let harness = self.harness()?;
+        let stats = harness.get_stats().await.map_err(|e| e.to_string())?;
+        let model = harness.lane("main").get_model().await.ok();
+        let window = model.map(|model| model.context_window).unwrap_or(0);
+        let tokens = stats.total_tokens;
+        let percent = if window == 0 {
+            serde_json::Value::Null
+        } else {
+            serde_json::json!(tokens as f64 * 100.0 / window as f64)
+        };
+        Ok(serde_json::json!({
+            "tokens": tokens,
+            "contextWindow": window,
+            "percent": percent,
+        }))
+    }
+
+    async fn get_model(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        let model = self
+            .harness()?
+            .lane("main")
+            .get_model()
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(model_json(&model))
+    }
+
+    async fn list_models(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        let catalog = self
+            .catalog
+            .read()
+            .map(|catalog| catalog.clone())
+            .unwrap_or_default();
+        Ok(serde_json::json!(
+            catalog.iter().map(model_json).collect::<Vec<_>>()
+        ))
+    }
+
+    async fn abort(&self, _args: serde_json::Value) -> Result<serde_json::Value, String> {
+        let lane = self.harness()?.lane("main");
+        lane.abort().await.map_err(|e| e.to_string())?;
+        Ok(serde_json::Value::Null)
+    }
+
+    async fn exec(&self, args: serde_json::Value) -> Result<serde_json::Value, String> {
+        let command = arg_str(&args, "command")?;
+        let argv = arg_str_array(&args, "args").unwrap_or_default();
+        let cwd = arg_str_opt(&args, "cwd")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.cwd.clone());
+        let output = tokio::task::spawn_blocking(move || {
+            std::process::Command::new(&command)
+                .args(&argv)
+                .current_dir(&cwd)
+                .output()
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+        Ok(serde_json::json!({
+            "stdout": String::from_utf8_lossy(&output.stdout),
+            "stderr": String::from_utf8_lossy(&output.stderr),
+            "code": output.status.code().unwrap_or(-1),
+            "killed": output.status.code().is_none(),
+        }))
+    }
+}
+
+/// The published `Model` object: the shape `ctx.model` and `pi.setModel` use.
+pub(crate) fn model_json(model: &rpi_ai::Model) -> serde_json::Value {
+    serde_json::json!({
+        "id": model.id,
+        "name": model.name,
+        "api": model.api.as_str(),
+        "provider": model.provider,
+        "baseUrl": model.base_url,
+        "reasoning": model.reasoning,
+        "input": model
+            .input
+            .iter()
+            .map(|modality| match modality {
+                rpi_ai::types::InputModality::Text => "text",
+                rpi_ai::types::InputModality::Image => "image",
+            })
+            .collect::<Vec<&str>>(),
+        "cost": {
+            "input": model.cost.rates.input,
+            "output": model.cost.rates.output,
+            "cacheRead": model.cost.rates.cache_read,
+            "cacheWrite": model.cost.rates.cache_write,
+        },
+        "contextWindow": model.context_window,
+        "maxTokens": model.max_tokens,
+    })
 }
 
 #[cfg(test)]

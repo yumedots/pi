@@ -102,7 +102,7 @@ AgentEnd observed; tool ran against OsExecutionEnv.
 ### The CLI
 
 ```bash
-export ANTHROPIC_API_KEY=...          # or OPENAI_API_KEY, or ~/.rpi/agent/models.json
+export ANTHROPIC_API_KEY=...          # or OPENAI_API_KEY, or ~/.pi/agent/models.json
 rpi                                   # interactive TUI
 rpi -p "summarize the README"         # one-shot
 rpi --mode json -p "list the crates"  # machine-readable event stream
@@ -110,7 +110,7 @@ rpi --mode json -p "list the crates"  # machine-readable event stream
 
 Sessions persist as JSONL and survive a crash mid-run; `rpi` resumes from the
 last committed frame rather than replaying the turn. Custom Anthropic or
-OpenAI-compatible gateways are declared in `~/.rpi/agent/models.json` and
+OpenAI-compatible gateways are declared in `~/.pi/agent/models.json` and
 selected with `--model <provider>/<model>`.
 
 ### The SDK
@@ -254,7 +254,7 @@ plus full initialisation, excluding teardown and any LLM work. rpi's `--version`
 (17.5 ms) and cold start (17.7 ms) are effectively equal, so startup is process
 creation, not initialisation; Pi is dominated by Node boot.
 
-Isolation caveat: rpi reads `RPI_CODING_AGENT_DIR` / `RPI_OFFLINE`, native Pi reads
+Isolation caveat: rpi reads `PI_CODING_AGENT_DIR` / `RPI_OFFLINE`, native Pi reads
 `PI_CODING_AGENT_DIR` / `PI_OFFLINE`. Set the matching pair for each, or rpi
 silently loads the machine's global plugins.
 
@@ -275,7 +275,7 @@ rpi dev                                 # build + watch + live reload
 ```
 
 The host loads project `.rpi/extensions`, then global
-`~/.rpi/agent/extensions`, then any `--extensions-dir`.
+`~/.pi/agent/extensions`, then any `--extensions-dir`.
 
 Ready-to-install extensions live in the companion
 [`pi-rust/rpi-package`](https://github.com/pi-rust/rpi-package) repository, with
@@ -370,17 +370,15 @@ through [SECURITY.md](SECURITY.md), not a public issue.
 
 The whole test suite runs offline: `cargo test --workspace --locked`.
 
-## Support / 赞赏支持
+## Support
 
-If rpi helps you, consider buying the author a coffee. Tips and donations support continued development and maintenance. Thank you!
+If rpi helped you, consider buying the author a coffee to support continued development and maintenance. Every contribution is appreciated!
 
-如果 rpi 帮到了你，欢迎请作者喝杯咖啡，赞赏或捐助支持持续开发与维护。感谢每一份支持！
-
-| 微信支付 / WeChat Pay | 支付宝 / Alipay | Binance Pay |
+| WeChat Pay | Alipay | Binance Pay |
 | :---: | :---: | :---: |
-| ![微信支付赞赏码](../images/weixinsk.png) | ![支付宝赞赏码](../images/alipay.jpg) | ![Binance Pay 赞赏码](../images/bian.png) |
+| ![WeChat Pay code](../images/weixinsk.png) | ![Alipay code](../images/alipay.jpg) | ![Binance Pay code](../images/bian.png) |
 
-扫码或点击图片查看原图；手机上可保存图片后，在对应 App 中识别。 / Scan the code or click to view the original. On mobile, save the image and scan it from the matching app’s photo library.
+Scan the code or click to view the original. On mobile, save the image and scan it from the matching app's photo library.
 
 ## Community
 
@@ -390,7 +388,7 @@ Questions, ideas and early builds are welcome in either group:
   <tr>
     <td align="center" width="50%">
       <img src="docs/images/weixin.png" width="230" alt="WeChat group QR code"><br>
-      <sub><b>WeChat</b> — <a href="https://weixin.qq.com/g/AQYAAD8z3FmKPk143hi_HUVOtGvNqlHWMtVZu1VGGB_46JKoNpyhJvS7kDwQwUTr">微信交流群</a></sub>
+      <sub><b>WeChat</b> — <a href="https://weixin.qq.com/g/AQYAAD8z3FmKPk143hi_HUVOtGvNqlHWMtVZu1VGGB_46JKoNpyhJvS7kDwQwUTr">WeChat group</a></sub>
     </td>
     <td align="center" width="50%">
       <img src="docs/images/tg.png" width="230" alt="Telegram group QR code"><br>

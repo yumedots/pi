@@ -112,6 +112,7 @@ fn tool_result_mixed_blocks_raw_roundtrip() {
         usage: None,
         added_tool_names: vec![],
         is_error: false,
+        duration_ms: None,
         timestamp: 123,
     };
     assert_raw_roundtrip(&message);

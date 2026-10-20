@@ -59,7 +59,7 @@ use crate::events::{HarnessEvent, HarnessEventBus, RunEndEvent, RunEndOutcome, R
 use crate::messages::{
     convert_to_llm as harness_convert_to_llm, create_compaction_summary_message,
 };
-use crate::prompt_templates::format_prompt_template_invocation;
+use crate::prompt_templates::{expand_prompt_template, format_prompt_template_invocation};
 use crate::result::{HarnessError, HarnessResult, OperationKind};
 use crate::session::context::{
     build_session_context, ContextEntryTransform, CustomEntryContextMessageProjector,
@@ -74,7 +74,7 @@ use crate::session::types::{
     SessionTree, StepAttemptRecord, StepKind, ToolReplay, ToolStartedRecord, UsageCause,
     UsageRecord, WriteDeferredRecord,
 };
-use crate::skills::format_skill_invocation;
+use crate::skills::{expand_skill_command, format_skill_invocation};
 use crate::system_prompt::compose_system_prompt;
 use crate::types::{
     AgentHarnessOptions, AgentHarnessResources, AgentHarnessStreamOptions, CompactionSettings,
@@ -634,6 +634,8 @@ struct HarnessInner {
     before_tool_call: Option<BeforeToolCall>,
     after_tool_call: Option<AfterToolCall>,
     transform_context: Option<TransformContext>,
+    prepare_request: Option<rpi_agent::PrepareRequest>,
+    finish_turn: Option<rpi_agent::FinishTurn>,
     /// B4: per-call provider hooks fired inside the `StreamFn` closure.
     provider_hooks: Option<Arc<dyn rpi_ai::ProviderHooks>>,
     closed: bool,
@@ -773,6 +775,8 @@ impl AgentHarness {
             before_tool_call: options.before_tool_call,
             after_tool_call: options.after_tool_call,
             transform_context: options.transform_context,
+            prepare_request: options.prepare_request,
+            finish_turn: options.finish_turn,
             provider_hooks: options.provider_hooks,
             closed: false,
             active_run: None,
@@ -2793,6 +2797,7 @@ impl AgentHarness {
                     usage: result.usage.clone(),
                     added_tool_names: result.added_tool_names.clone(),
                     is_error: false,
+                    duration_ms: None,
                     timestamp,
                 }))
             }
@@ -2808,6 +2813,7 @@ impl AgentHarness {
                 usage: None,
                 added_tool_names: Vec::new(),
                 is_error: true,
+                duration_ms: None,
                 timestamp,
             })),
         }
@@ -3086,6 +3092,8 @@ impl AgentHarness {
             before_tool_call: inner.before_tool_call.clone(),
             after_tool_call: inner.after_tool_call.clone(),
             transform_context: inner.transform_context.clone(),
+            prepare_request: inner.prepare_request.clone(),
+            finish_turn: inner.finish_turn.clone(),
             provider_hooks: inner.provider_hooks.clone(),
             steering_queue: Arc::clone(&inner.steering_queue),
             follow_up_queue: Arc::clone(&inner.follow_up_queue),
@@ -3802,7 +3810,7 @@ impl AgentHarness {
         };
 
         // Build the config.
-        let convert = Self::build_convert_to_llm(snap.to_provider_messages);
+        let convert = Self::build_convert_to_llm(snap.to_provider_messages.clone());
         let stream_fn = Self::build_stream_fn(
             snap.models.clone(),
             snap.provider_hooks.clone(),
@@ -3834,6 +3842,8 @@ impl AgentHarness {
 
         let retry_policy = snap.retry.clone();
         let mut retry_attempt = 0u32;
+        // One compact-and-retry attempt per run for a context overflow.
+        let mut overflow_recovery_attempted = false;
         // Commit-on-settle: persist an assistant message carrying tool calls as
         // soon as it is final, so the tools it calls can be recorded before they
         // run (`tool_started` requires the assistant entry to exist).
@@ -3864,6 +3874,8 @@ impl AgentHarness {
             get_api_key: None,
             should_stop_after_turn,
             prepare_next_turn: None,
+            prepare_request: snap.prepare_request.clone(),
+            finish_turn: snap.finish_turn.clone(),
             after_tool_results: {
                 let harness = self.clone();
                 let enabled = snap.compaction.enabled;
@@ -3942,12 +3954,13 @@ impl AgentHarness {
             api_key: None,
             timeout: snap.stream_options.timeout,
             // Pi's `retry.maxRetries` is an assistant-level retry budget. The
-            // provider/SDK retry budget is intentionally independent and
-            // defaults to zero, so transient failures are retried by the
-            // harness exactly once per agent attempt.
-            max_retries: None,
-            max_retry_delay: Some(std::time::Duration::from_millis(
-                snap.retry.max_agent_delay_ms,
+            // provider/SDK retry budget is independent: it comes from
+            // `retry.provider.maxRetries` and defaults to zero, so transient
+            // failures are retried by the harness exactly once per agent
+            // attempt unless the user configured the provider's own retries.
+            max_retries: snap.stream_options.max_retries,
+            max_retry_delay: snap.stream_options.max_retry_delay.or(Some(
+                std::time::Duration::from_millis(snap.retry.max_agent_delay_ms),
             )),
             cache_retention: snap.stream_options.cache_retention.unwrap_or_default(),
             session_id: None,
@@ -4030,6 +4043,61 @@ impl AgentHarness {
                 )
                 .await
             };
+
+            // A context overflow is not a transient failure: the session is
+            // compacted and the turn is retried once (pi's
+            // `_overflowRecoveryAttempted`). It never consumes the transient
+            // retry budget and never waits for the backoff delay.
+            let overflowed = attempt_result
+                .as_ref()
+                .ok()
+                .and_then(|messages| {
+                    messages.iter().rev().find_map(|message| match message {
+                        AgentMessage::Assistant(assistant) => Some(assistant.as_ref()),
+                        _ => None,
+                    })
+                })
+                .filter(|assistant| crate::compaction::is_context_overflow(assistant));
+            // A from-assistant attempt already ran the polled message's tools,
+            // so recovering it would run them a second time. One attempt only.
+            if overflowed.is_some() && !from_assistant {
+                // One recovery attempt only: a second overflow surfaces.
+                if overflow_recovery_attempted {
+                    break attempt_result;
+                }
+                overflow_recovery_attempted = true;
+                // Discard this failed generation's frames, not every stream in
+                // the run.
+                if let Some(stream_index) = attempt_result.as_ref().ok().and_then(|messages| {
+                    messages
+                        .iter()
+                        .enumerate()
+                        .rev()
+                        .find_map(|(index, message)| {
+                            matches!(message, AgentMessage::Assistant(_))
+                                .then(|| settle_state.stream_at(index))
+                                .flatten()
+                        })
+                }) {
+                    if let Err(error) = frame_recorder.clear_stream(stream_index).await {
+                        tracing::warn!(%error, "could not retire the failed overflow generation");
+                    }
+                }
+                match self.compact_after_overflow(&run_id, &snap, &signal).await {
+                    Ok(true) => {}
+                    Ok(false) => break attempt_result,
+                    Err(error) => {
+                        tracing::warn!(%error, "could not compact after a context overflow");
+                        break attempt_result;
+                    }
+                }
+                // The retried turn runs against the compacted context.
+                settle_state.set_attempt(retry_attempt);
+                post_compaction_cut.store(0, Ordering::Release);
+                let path = self.branch_path_oldest_first().await?;
+                agent_context.messages = build_session_context(&path, &build_opts).messages;
+                continue;
+            }
 
             let retry_error = attempt_result
                 .as_ref()
@@ -4278,6 +4346,66 @@ impl AgentHarness {
         Ok(RunResult { run_id, outcome })
     }
 
+    /// Compact the session after a context overflow so the turn can be retried
+    /// against a smaller context. Mirrors pi's `_runAutoCompaction("overflow",
+    /// true)`.
+    ///
+    /// Returns `Ok(true)` when the compaction landed — the caller retries the
+    /// turn — and `Ok(false)` when there was nothing to compact or the
+    /// summarisation failed, in which case the overflow error surfaces.
+    async fn compact_after_overflow(
+        &self,
+        run_id: &str,
+        snap: &ConfigSnapshot,
+        signal: &CancellationToken,
+    ) -> HarnessResult<bool> {
+        if !snap.compaction.enabled {
+            return Ok(false);
+        }
+        let path = self.branch_path_oldest_first().await?;
+        let Ok(Some(prep)) = prepare_compaction(&path, snap.compaction) else {
+            return Ok(false);
+        };
+        let provider = match Self::resolve_provider(&snap.models, &snap.model) {
+            Ok(provider) => provider,
+            Err(_) => match snap.models.first() {
+                Some(provider) => Arc::clone(provider),
+                None => return Ok(false),
+            },
+        };
+        let llm_opts = CompactionLlmOptions {
+            provider,
+            model: snap.model.clone(),
+            api_key: None,
+            signal: signal.clone(),
+            thinking_level: Some(snap.thinking_level),
+            retry: if snap.retry.enabled {
+                Some(snap.retry.clone())
+            } else {
+                None
+            },
+            custom_instructions: None,
+        };
+        let result = {
+            let _progress =
+                crate::events::CompactionProgressGuard::new(&self.bus, &self.lane, false);
+            compact(&prep, &llm_opts).await
+        };
+        match result {
+            Ok(result) => {
+                // The compaction was provoked by a provider overflow error, not
+                // by the context crossing the configured threshold.
+                self.persist_compaction_entry(run_id, &result, CompactionReason::Overflow)
+                    .await?;
+                Ok(true)
+            }
+            Err(error) => {
+                tracing::warn!(%error, "overflow recovery compaction failed");
+                Ok(false)
+            }
+        }
+    }
+
     /// Explicit compaction. Drives `prepare_compaction` + `compact` and
     /// persists the result entry.
     async fn compact_core(
@@ -4466,6 +4594,8 @@ struct ConfigSnapshot {
     before_tool_call: Option<BeforeToolCall>,
     after_tool_call: Option<AfterToolCall>,
     transform_context: Option<TransformContext>,
+    prepare_request: Option<rpi_agent::PrepareRequest>,
+    finish_turn: Option<rpi_agent::FinishTurn>,
     provider_hooks: Option<Arc<dyn rpi_ai::ProviderHooks>>,
     steering_queue: SharedMessageQueue,
     follow_up_queue: SharedMessageQueue,
@@ -4528,11 +4658,15 @@ impl AgentLane for AgentHarness {
         text: &str,
         images: Vec<rpi_ai::types::ImageContent>,
     ) -> HarnessResult<RunResult> {
+        let expanded = {
+            let inner = self.inner.lock().unwrap();
+            expand_prompt_input(text, &inner.resources)
+        };
         let content = if images.is_empty() {
-            UserContent::Text(text.to_string())
+            UserContent::Text(expanded)
         } else {
             let mut blocks: Vec<Content> = Vec::with_capacity(images.len() + 1);
-            blocks.push(Content::text(text));
+            blocks.push(Content::text(expanded));
             for img in images {
                 blocks.push(Content::Image(img));
             }
@@ -5574,6 +5708,23 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// Expand a skill command and a prompt template in the submitted text.
+///
+/// Mirrors the original's `AgentSession.prompt`: the skill expansion runs
+/// first (`_expandSkillCommand`), then the prompt-template expansion
+/// (`expandPromptTemplate`). Text that names no skill and no template is
+/// returned unchanged.
+fn expand_prompt_input(text: &str, resources: &AgentHarnessResources) -> String {
+    let expanded = match resources.skills.as_deref() {
+        Some(skills) => expand_skill_command(text, skills),
+        None => text.to_string(),
+    };
+    match resources.prompt_templates.as_deref() {
+        Some(templates) => expand_prompt_template(&expanded, templates),
+        None => expanded,
+    }
+}
+
 #[cfg(test)]
 mod session_switch_tests {
     use super::*;
@@ -5623,6 +5774,8 @@ mod session_switch_tests {
             transform_context: None,
             entry_transforms: Vec::new(),
             provider_hooks: None,
+            prepare_request: None,
+            finish_turn: None,
         }
     }
 

@@ -237,7 +237,7 @@ async fn run_loop<D: SessionDriver>(
                 match handle_submit(driver, status, view, &text).await {
                     Ok(SubmitAction::Continue) => {}
                     Ok(SubmitAction::Quit) => break,
-                    Err(error) => view.add_notice(&format!("error: {error}")),
+                    Err(error) => view.add_notice(&format!("Error: {error}")),
                 }
                 editor.clear();
                 tui.request_render(false);
@@ -246,7 +246,7 @@ async fn run_loop<D: SessionDriver>(
                 if let Some((id, command)) = dialogs.action(action) {
                     match driver.send(command).await {
                         Ok(()) => dialogs.close(&id),
-                        Err(error) => view.add_notice(&format!("error: {error}")),
+                        Err(error) => view.add_notice(&format!("Error: {error}")),
                     }
                 }
             }
@@ -347,9 +347,6 @@ struct ChatChrome {
 impl ChatChrome {
     fn new(addr: &str) -> Self {
         let footer = Arc::new(FooterComponent::new());
-        footer.set_hints(
-            "Enter: Send | Shift+Enter: New line | Ctrl+C: Clear/Exit | Esc: Abort | /help",
-        );
         Self {
             header: Arc::new(Text::new(format!("rpi · {addr} · connecting…"), 1, 0)),
             status: Arc::new(Container::new()),

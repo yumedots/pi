@@ -268,12 +268,12 @@ impl ExtensionStatusMailbox {
                     })
                     .map(|(_, value)| value.as_str())
                     .collect::<Vec<_>>()
-                    .join("  ")
+                    .join(" ")
             })
             .unwrap_or_default()
     }
 
-    /// The status line: non-empty values joined by two spaces, in key order.
+    /// The status line: non-empty values joined by one space, in key order.
     pub fn text(&self) -> String {
         self.entries
             .lock()
@@ -283,7 +283,7 @@ impl ExtensionStatusMailbox {
                     .filter(|value| !value.trim().is_empty())
                     .cloned()
                     .collect::<Vec<_>>()
-                    .join("  ")
+                    .join(" ")
             })
             .unwrap_or_default()
     }

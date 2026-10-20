@@ -39,10 +39,14 @@ pub struct UserMessageComponent {
 }
 
 fn build_box(text: &str, output_pad: usize) -> Box {
-    let bg = theme().colors.surface;
+    let colors = theme().colors;
+    let bg = colors.user_message_bg;
     let content_box = Box::new(output_pad, 1);
     content_box.set_bg_fn(Some(std::sync::Arc::new(move |s: &str| bg.bg(s))));
-    let md = Markdown::new(text.to_string(), 0, 0);
+    let md = Markdown::new(text.to_string(), 0, 0)
+        .with_base_style(colors.user_message_text.to_fg())
+        .with_preserved_ordered_list_markers()
+        .with_preserved_backslash_escapes();
     content_box.add_child(std::sync::Arc::new(md));
     content_box
 }

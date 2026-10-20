@@ -91,12 +91,12 @@ fn pet_lines(state: &PetState, width: usize, height: usize, frame: u64) -> Vec<S
     let colors = current_theme().colors;
     let name = plain(&state.name).chars().take(24).collect::<String>();
     let (eyes, label) = match state.mood.as_str() {
-        "listen" => ("o.o", "认真听你说话"),
-        "think" => ("-.-", "让我想一想"),
-        "speak" => (if frame % 2 == 0 { "o.o" } else { "oOo" }, "正在回答你"),
-        "happy" => ("^.^", "完成啦！"),
-        "error" => (";.;", "遇到一点小问题"),
-        _ => ("-.-", "安静陪着你"),
+        "listen" => ("o.o", "Listening to you"),
+        "think" => ("-.-", "Let me think"),
+        "speak" => (if frame % 2 == 0 { "o.o" } else { "oOo" }, "Answering you"),
+        "happy" => ("^.^", "All done!"),
+        "error" => (";.;", "Hit a small problem"),
+        _ => ("-.-", "Keeping you company"),
     };
     let eyes = if state.mood == "listen" && frame % 25 == 24 {
         "-.-"
@@ -120,9 +120,9 @@ fn pet_lines(state: &PetState, width: usize, height: usize, frame: u64) -> Vec<S
         ]
     };
     let voice = if state.auto {
-        "● 连续对话"
+        "● Continuous conversation"
     } else {
-        "○ 语音暂停"
+        "○ Voice paused"
     };
     let mut lines = vec![
         fit(
@@ -153,7 +153,7 @@ fn pet_lines(state: &PetState, width: usize, height: usize, frame: u64) -> Vec<S
         lines.push(String::new());
     }
     let speaker = if state.speaker == "user" {
-        "你"
+        "You"
     } else {
         &name
     };
@@ -174,9 +174,9 @@ fn pet_lines(state: &PetState, width: usize, height: usize, frame: u64) -> Vec<S
     if height > lines.len() + 1 {
         let hint = if state.hint.is_empty() {
             if state.auto {
-                "说完停一下，我就会回答。"
+                "Finish your sentence and I will answer."
             } else {
-                "/pet auto 恢复语音"
+                "/pet auto resume voice"
             }
         } else {
             &state.hint
@@ -184,7 +184,7 @@ fn pet_lines(state: &PetState, width: usize, height: usize, frame: u64) -> Vec<S
         lines.push(fit(&colors.muted.fg(&plain(hint)), width));
     }
     lines.push(fit(
-        &colors.muted.fg("/pet quiet 安静陪伴 · /pet off 返回聊天"),
+        &colors.muted.fg("/pet quiet keep company · /pet off back to chat"),
         width,
     ));
     lines.truncate(height);
@@ -238,7 +238,7 @@ impl Component for PetDocument {
 mod tests {
     use super::*;
     fn snapshot(mood: &str) -> String {
-        serde_json::json!({"version":1,"name":"小鱼","animal":"cat","mood":mood,"caption":"这是一个很长的中文回复。".repeat(30),"speaker":"pet","hint":"voice: listening","auto":true}).to_string()
+        serde_json::json!({"version":1,"name":"Little Fish","animal":"cat","mood":mood,"caption":"This is a long reply that repeats itself.".repeat(30),"speaker":"pet","hint":"voice: listening","auto":true}).to_string()
     }
     #[test]
     fn pet_switch_preserves_live_transcript_and_falls_back_on_bad_metadata() {
@@ -247,7 +247,7 @@ mod tests {
         let doc = PetDocument::new(transcript, mailbox.clone());
         assert!(doc.render(80).join("\n").contains("original chat"));
         mailbox.set(PET_KEY, &snapshot("listen"));
-        assert!(doc.render(80).join("\n").contains("认真听你说话"));
+        assert!(doc.render(80).join("\n").contains("Listening to you"));
         assert!(!doc.render(80).join("\n").contains("original chat"));
         for bad in ["broken", r#"{"version":2}"#, ""] {
             mailbox.set(PET_KEY, bad);

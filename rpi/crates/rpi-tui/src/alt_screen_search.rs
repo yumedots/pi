@@ -291,8 +291,10 @@ impl AltScreenSearch {
 
         // Build the search bar with styling
         format!(
-            "\x1b[7m{}{}\x1b[0m \x1b[90m{}\x1b[0m",
-            prompt, query_display, match_info
+            "\x1b[7m{}{}\x1b[0m {}",
+            prompt,
+            query_display,
+            crate::theme::theme().colors.dim.fg(&match_info)
         )
     }
 
@@ -338,9 +340,14 @@ impl AltScreenSearch {
 
                 // Add highlighted match
                 let end_idx = byte_idx + query.len();
-                result.push_str("\x1b[43m"); // Yellow background
+                let colors = crate::theme::theme().colors;
+                result.push_str("\x1b[4m");
+                result.push_str(&colors.search_match_bg.to_bg());
+                result.push_str(&colors.search_match_text.to_fg());
                 result.push_str(&line[byte_idx..end_idx.min(line.len())]);
-                result.push_str("\x1b[0m");
+                result.push_str("\x1b[39m");
+                result.push_str("\x1b[49m");
+                result.push_str("\x1b[24m");
 
                 last_end = end_idx;
                 visible_idx += query.len();

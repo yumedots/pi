@@ -47,7 +47,7 @@ const TS_ENV = {
 const RPI_ENV = {
 	timing: "RPI_TIMING",
 	offline: "RPI_OFFLINE",
-	agentDir: "RPI_CODING_AGENT_DIR",
+	agentDir: "PI_CODING_AGENT_DIR",
 	agentDirInRpc: true,
 };
 

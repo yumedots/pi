@@ -13,57 +13,49 @@ use rpi_tools::env::FileSystem;
 use crate::session::memory::Clock;
 use crate::session::types::{IdGenerator, JsonValue, SessionCreateOptions, SessionMetadata};
 
-/// Marker that serializes as the literal string `"header"` (the v4 header's
-/// `kind` discriminator). Decoding is manual in [`super::codec`], so only
-/// `Serialize` is exercised (by `encode_header`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HeaderKind;
-
-impl serde::Serialize for HeaderKind {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str("header")
-    }
+/// The session file's header line, in the original's shape:
+/// `{"type":"session","version":3,"id","timestamp","cwd","parentSession"?}`.
+///
+/// Mirrors TS `SessionHeader`
+/// (`packages/coding-agent/src/core/session-manager.ts:44`). `parentSession`
+/// is the parent session's file path.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SessionFileHeader {
+    #[serde(rename = "type")]
+    pub entry_type: String,
+    pub version: u32,
+    pub id: String,
+    /// ISO-8601 timestamp of the session's creation.
+    pub timestamp: String,
+    pub cwd: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_session: Option<String>,
 }
 
-/// `sourceFormat: 3 | 4`. The v4 codec always writes `4`; `3` is preserved on
-/// read-only legacy metadata for compatibility with the TS repo, which can
-/// surface v3 files. We model it as a tiny enum rather than a `u8` so the
-/// "3 or 4" constraint is expressed in the type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JsonlSourceFormat {
-    V3,
-    V4,
-}
-
-impl JsonlSourceFormat {
-    pub fn as_u8(self) -> u8 {
-        match self {
-            JsonlSourceFormat::V3 => 3,
-            JsonlSourceFormat::V4 => 4,
+impl SessionFileHeader {
+    /// Build a header for a new session.
+    pub fn new(id: String, timestamp: String, cwd: String, parent_session: Option<String>) -> Self {
+        Self {
+            entry_type: "session".to_string(),
+            version: 3,
+            id,
+            timestamp,
+            cwd,
+            parent_session,
         }
     }
 }
 
-/// Mirrors TS `JsonlV4Header`. Serialized camelCase to match the on-disk v4
-/// wire shape exactly (so Rust-written files are interchangeable with the TS
-/// impl). `parentSessionId` / `legacyParentSessionPath` are mutually exclusive
-/// (validated in [`super::codec::parse_header`]).
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JsonlV4Header {
-    pub kind: HeaderKind,
-    pub version: u32,
-    pub id: String,
-    pub created_at: i64,
-    pub cwd: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent_session_id: Option<String>,
-    /// Preserved only when a v3 parent path could not be resolved to a session
-    /// id — mutually exclusive with `parent_session_id`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub legacy_parent_session_path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Map<String, JsonValue>>,
+/// `sourceFormat: 3`. The session file is the original's version 3 format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JsonlSourceFormat {
+    V3,
+}
+
+impl JsonlSourceFormat {
+    pub fn as_u8(self) -> u8 {
+        3
+    }
 }
 
 /// Mirrors TS `JsonlSessionMetadata` (extends `SessionMetadata` with JSONL-
@@ -80,11 +72,8 @@ pub struct JsonlSessionMetadata {
     /// Filesystem modification time as milliseconds since Unix epoch.
     pub modified_at: i64,
     pub source_format: JsonlSourceFormat,
+    /// The parent session's id (the file's `parentSession` carries its path).
     pub parent_session_id: Option<String>,
-    /// Present only when a v3 parent path could not be resolved to a session id.
-    pub legacy_parent_session_path: Option<String>,
-    /// Opaque application-owned metadata.
-    pub metadata: Option<serde_json::Map<String, JsonValue>>,
 }
 
 impl JsonlSessionMetadata {

@@ -30,7 +30,7 @@ use rpi_agent::message::AgentMessage;
 use rpi_harness::error::SessionErrorCode;
 use rpi_harness::session::jsonl::types::{JsonlSessionCreateOptions, JsonlSessionListOptions};
 use rpi_harness::session::jsonl::{
-    encode_mutation, JsonlSessionRepo, JsonlSessionRepoOptions, JsonlSessionStorage, JsonlV4Header,
+    encode_entry, JsonlSessionRepo, JsonlSessionRepoOptions, JsonlSessionStorage, SessionFileHeader,
 };
 use rpi_harness::session::memory::{CounterIdGenerator, FakeClock};
 use rpi_harness::session::types::{
@@ -49,8 +49,8 @@ fn user_msg(text: &str) -> AgentMessage {
     AgentMessage::User(rpi_ai::types::UserMessage::new(text, 1))
 }
 
-fn header(id: &str) -> JsonlV4Header {
-    JsonlV4Header::new(
+fn header(id: &str) -> SessionFileHeader {
+    SessionFileHeader::new(
         id.into(),
         1_700_000_000_000,
         "/proj".into(),
@@ -106,12 +106,24 @@ fn message_provisioned(id: &str, text: &str) -> ProvisionedEntry {
     }
 }
 
-fn lane_mutation(seq: u64, lane: &str, leaf_id: Option<&str>) -> SessionMutation {
-    SessionMutation::Lane {
-        seq,
-        lane: lane.to_string(),
-        leaf_id: leaf_id.map(|s| s.to_string()),
-    }
+fn entry_line(id: &str, parent: Option<&str>) -> String {
+    let entry = rpi_harness::session::types::Entry::Message(
+        rpi_harness::session::types::MessageEntry {
+            base: rpi_harness::session::types::EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                seq: 1,
+                parent_id: parent.map(String::from),
+                timestamp: 1_700_000_000_000,
+            },
+            message: rpi_agent::message::AgentMessage::User(rpi_ai::types::UserMessage::new(
+                "hello",
+                1_700_000_000_000,
+            )),
+            terminate: None,
+        },
+    );
+    rpi_harness::session::jsonl::encode_entry(&entry)
 }
 
 async fn list_ids(r: &JsonlSessionRepo, cwd: &str) -> Vec<String> {
@@ -521,7 +533,7 @@ async fn torn_tail_repair_staging_failure_preserves_original() {
         .unwrap();
     base.append_file(
         path,
-        FileContent::Text(encode_mutation(&lane_mutation(1, "main", None))),
+        FileContent::Text(entry_line("e1", None)),
         None,
     )
     .await
@@ -557,7 +569,7 @@ async fn torn_tail_repair_rename_failure_preserves_original() {
         .unwrap();
     base.append_file(
         path,
-        FileContent::Text(encode_mutation(&lane_mutation(1, "main", None))),
+        FileContent::Text(entry_line("e1", None)),
         None,
     )
     .await

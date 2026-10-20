@@ -32,12 +32,13 @@ pub(super) fn scoped_catalog(
 
 /// Interactive `/settings` menu.
 ///
-/// A [`SettingsList`] of editable settings (upstream's `SettingsSelectorComponent`):
-/// Enter/Space cycles a row's value in place, and the theme/model/thinking/scope
-/// rows open a sub-selector that replaces the active selector (the
-/// `active_selector` slot is single). Value changes apply immediately where the
-/// running TUI can honor them and are always persisted to `settings.json`, so
-/// rows marked "applies on restart" take effect next launch.
+/// A [`SettingsList`] of editable settings (upstream's
+/// `SettingsSelectorComponent`): Enter/Space cycles a row's value in place,
+/// and a submenu row opens a nested list the settings list owns — Esc goes
+/// back to the rows instead of closing the menu. Value changes apply
+/// immediately where the running TUI can honor them and are always persisted
+/// to `settings.json`, so rows that are resolved once at startup take effect
+/// next launch.
 pub(super) fn open_settings_selector(
     state: &Arc<TuiState>,
     editor_container: &Arc<Container>,
@@ -49,55 +50,90 @@ pub(super) fn open_settings_selector(
     chat: &Arc<Container>,
 ) {
     let settings = crate::settings::load_settings().unwrap_or_default();
-    let items = settings_menu_items(&settings, state, lane_model_id);
-    let list = Arc::new(SettingsList::new(items));
+    let hide_thinking = state.hide_thinking();
+    let show_images = state.show_images.lock().map(|guard| *guard).unwrap_or(true);
+    let supports_images = rpi_tui::terminal_image::get_capabilities().protocol
+        != rpi_tui::terminal_image::ImageProtocol::None;
+    let rows = settings_menu_rows(
+        &settings,
+        hide_thinking,
+        show_images,
+        supports_images,
+        lane_model_id,
+        catalog,
+    );
 
     // ---- submenu rows ----
-    // These reuse the existing sub-selectors, which already persist their own
-    // choices. The settings menu is replaced by the sub-selector (single
-    // `active_selector` slot); cancelling the sub-selector returns to the editor.
-    let state_sel = state.clone();
-    let ec_sel = editor_container.clone();
-    let editor_sel = editor.clone();
-    let tui_sel = tui.clone();
-    let lane_sel = lane.clone();
-    let catalog_sel = catalog.to_vec();
-    let lane_model_sel = lane_model_id.to_string();
-    let chat_sel = chat.clone();
-    list.on_select(Arc::new(move |item| match item.key.as_str() {
-        "theme" => {
-            open_settings_theme_selector(&state_sel, &ec_sel, &editor_sel, &tui_sel, &chat_sel)
+    // The settings list owns its submenu, so the submenu is a component the
+    // row builds. Each factory returns the component and its key router; the
+    // list routes the keys while the submenu is open.
+    let state_menu = state.clone();
+    let chat_menu = chat.clone();
+    let tui_menu = tui.clone();
+    let mut items: Vec<SettingItem> = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let mut item = row.to_item();
+        if let Some(spec) = &row.submenu {
+            let spec = spec.clone();
+            let state_menu = state_menu.clone();
+            let chat_menu = chat_menu.clone();
+            let tui_menu = tui_menu.clone();
+            item = item.with_submenu_factory(Arc::new(move |current, done| {
+                    // The closure must be 'static: own the borrowed value.
+                    let current = current.to_string();
+                let spec = match &spec {
+                    SettingsSubmenu::Rows { rows, .. } => SettingsSubmenu::Rows {
+                        rows: rows.clone(),
+                        on_change: Arc::new({
+                            let state = state_menu.clone();
+                            let chat = chat_menu.clone();
+                            let tui = tui_menu.clone();
+                            move |key: &str, value: &str| {
+                                let mut settings = crate::settings::load_settings().unwrap_or_default();
+                                let applied = apply_setting_change(&state, key, value, &mut settings);
+                                let saved = crate::settings::save_settings(&settings);
+                                if let Some(note) = applied {
+                                    let suffix = if saved.is_ok() { "" } else { " (not saved)" };
+                                    add_note_message(&chat, &format!("{note}{suffix}"));
+                                }
+                                tui.request_render(false);
+                            }
+                        }),
+                    },
+                    other => other.clone(),
+                };
+                let on_complete: Option<Arc<dyn Fn(&SubmenuContext) + Send + Sync>> = match &spec {
+                    SettingsSubmenu::Steps { .. } => Some(Arc::new({
+                        let state = state_menu.clone();
+                        let chat = chat_menu.clone();
+                        let tui = tui_menu.clone();
+                        move |context: &SubmenuContext| {
+                            apply_model_thinking_overrides(context, &state, &chat, &tui);
+                        }
+                    })),
+                    _ => None,
+                };
+                let summary: Arc<dyn Fn(&SubmenuContext) -> String + Send + Sync> = match &spec {
+                    SettingsSubmenu::Steps { .. } => Arc::new(|_context: &SubmenuContext| {
+                        let settings = crate::settings::load_settings().unwrap_or_default();
+                        model_thinking_overrides_summary(&settings)
+                    }),
+                    _ => Arc::new(move |_context: &SubmenuContext| current.to_string()),
+                };
+                let view = SettingsSubmenuView::new(spec, done.clone(), on_complete, summary);
+                let view_for_keys = view.clone();
+                rpi_tui::SubmenuView::new(
+                    view.clone() as Arc<dyn Component>,
+                    Arc::new(move |key: KeyEvent| {
+                        let _ = view_for_keys.handle_key(key);
+                    }),
+                )
+            }));
         }
-        "model" => open_settings_model_selector(
-            &state_sel,
-            &ec_sel,
-            &editor_sel,
-            &tui_sel,
-            &lane_sel,
-            &catalog_sel,
-            &lane_model_sel,
-            &chat_sel,
-        ),
-        "thinking" => open_settings_thinking_selector(
-            &state_sel,
-            &ec_sel,
-            &editor_sel,
-            &tui_sel,
-            &lane_sel,
-            &catalog_sel,
-            &lane_model_sel,
-            &chat_sel,
-        ),
-        "scoped-models" => open_scoped_models_selector(
-            &state_sel,
-            &ec_sel,
-            &editor_sel,
-            &tui_sel,
-            &catalog_sel,
-            &chat_sel,
-        ),
-        _ => close_selector(&state_sel, &ec_sel, &editor_sel, &tui_sel),
-    }));
+        items.push(item);
+    }
+
+    let list = Arc::new(SettingsList::new(items).with_search());
 
     // ---- value rows ----
     // Apply live where possible, then persist so the choice survives a restart.
@@ -134,138 +170,38 @@ pub(super) fn open_settings_selector(
     );
 }
 
-/// Build the `/settings` rows from the loaded settings plus the live TUI state.
-///
-/// Descriptions carry "(applies on restart)" for values resolved once at
-/// startup, so the menu never implies an effect the running session cannot
-/// apply.
-pub(super) fn settings_menu_items(
-    settings: &crate::settings::Settings,
+/// Apply the per-model thinking override the stepped submenu chose.
+fn apply_model_thinking_overrides(
+    context: &SubmenuContext,
     state: &Arc<TuiState>,
-    lane_model_id: &str,
-) -> Vec<SettingItem> {
-    let current_theme = settings.theme.clone().unwrap_or_else(|| "dark".to_string());
-    let current_model = settings
-        .default_model
-        .clone()
-        .unwrap_or_else(|| lane_model_id.to_string());
-    let current_thinking = settings
-        .default_thinking_level
-        .clone()
-        .unwrap_or_else(|| "(default)".to_string());
-    let scoped_desc = match &settings.scoped_models {
-        Some(list) if !list.is_empty() => format!("{} model(s)", list.len()),
-        _ => "all models".to_string(),
+    chat: &Arc<Container>,
+    tui: &Arc<TuiAltScreen>,
+) {
+    let Some(model) = context.get("model") else {
+        return;
     };
-    let hide_thinking = state.hide_thinking();
-    let show_images = state.show_images.lock().map(|guard| *guard).unwrap_or(true);
-    let show_cache_miss = settings.show_cache_miss_notices.unwrap_or(false);
-    let http_idle = settings
-        .http_idle_timeout_ms()
-        .map(|ms| {
-            if ms == 0 {
-                "disabled".to_string()
-            } else {
-                format!("{}s", ms / 1000)
-            }
-        })
-        .unwrap_or_else(|| "5m".to_string());
-
-    vec![
-        SettingItem::new("theme", "Theme", &current_theme)
-            .with_description("Color theme for the interface")
-            .with_submenu(),
-        SettingItem::new("model", "Default model", &current_model)
-            .with_description("Saved default model for new sessions")
-            .with_submenu(),
-        SettingItem::new("thinking", "Default thinking", &current_thinking)
-            .with_description("Saved default thinking level")
-            .with_submenu(),
-        SettingItem::new("scoped-models", "Cycle scope", &scoped_desc)
-            .with_description("Models enabled for Ctrl+P cycling")
-            .with_submenu(),
-        SettingItem::new(
-            "hide-thinking",
-            "Hide thinking",
-            bool_setting_value(hide_thinking),
-        )
-        .with_description("Hide thinking blocks in assistant responses")
-        .with_values(&["true", "false"]),
-        SettingItem::new(
-            "show-images",
-            "Show images",
-            bool_setting_value(show_images),
-        )
-        .with_description("Render images inline in the terminal")
-        .with_values(&["true", "false"]),
-        SettingItem::new(
-            "cache-miss-notices",
-            "Cache miss notices",
-            bool_setting_value(show_cache_miss),
-        )
-        .with_description("Transcript notices for prompt-cache costs")
-        .with_values(&["true", "false"]),
-        SettingItem::new(
-            "quiet-startup",
-            "Quiet startup",
-            bool_setting_value(settings.quiet_startup.unwrap_or(false)),
-        )
-        .with_description("Disable the verbose startup listing (applies on restart)")
-        .with_values(&["true", "false"]),
-        SettingItem::new(
-            "collapse-changelog",
-            "Collapse changelog",
-            bool_setting_value(settings.collapse_changelog.unwrap_or(false)),
-        )
-        .with_description("Show a compact upgrade notice (applies on restart)")
-        .with_values(&["true", "false"]),
-        SettingItem::new(
-            "terminal-progress",
-            "Terminal progress",
-            bool_setting_value(settings.show_terminal_progress().unwrap_or(true)),
-        )
-        .with_description("OSC 9;4 progress in the terminal tab bar (applies on restart)")
-        .with_values(&["true", "false"]),
-        SettingItem::new(
-            "fullscreen-copy-on-select",
-            "Fullscreen copy on select",
-            bool_setting_value(settings.fullscreen_copy_on_select.unwrap_or(true)),
-        )
-        .with_description("Copy selected text automatically in fullscreen mode")
-        .with_values(&["true", "false"]),
-        SettingItem::new(
-            "double-escape-action",
-            "Double-escape action",
-            settings
-                .double_escape_action
-                .clone()
-                .unwrap_or_else(|| "tree".to_string())
-                .as_str(),
-        )
-        .with_description("Esc Esc with an empty editor (applies on restart)")
-        .with_values(&["tree", "fork", "none"]),
-        SettingItem::new(
-            "editor-padding",
-            "Editor padding",
-            settings.editor_padding_x.unwrap_or(1).to_string().as_str(),
-        )
-        .with_description("Horizontal editor padding, 0-3 (applies on restart)")
-        .with_values(&["0", "1", "2", "3"]),
-        SettingItem::new(
-            "autocomplete-max-items",
-            "Autocomplete max items",
-            settings
-                .autocomplete_max_visible
-                .unwrap_or(5)
-                .to_string()
-                .as_str(),
-        )
-        .with_description("Max autocomplete rows, 3-20 (applies on restart)")
-        .with_values(&["3", "5", "7", "10", "15", "20"]),
-        SettingItem::new("http-idle-timeout", "HTTP idle timeout", &http_idle)
-            .with_description("Idle gap allowed while awaiting HTTP data (applies on restart)")
-            .with_values(&["30s", "1m", "5m", "disabled"]),
-    ]
+    let Some(level) = context.get("level") else {
+        return;
+    };
+    let mut settings = crate::settings::load_settings().unwrap_or_default();
+    let mut levels = settings.model_thinking_levels.clone().unwrap_or_default();
+    if level == "__clear__" {
+        levels.remove(model);
+    } else {
+        levels.insert(model.clone(), level.clone());
+    }
+    settings.model_thinking_levels = Some(levels);
+    let saved = crate::settings::save_settings(&settings);
+    let suffix = if saved.is_ok() { "" } else { " (not saved)" };
+    if level == "__clear__" {
+        add_note_message(chat, &format!("Thinking level for {model} cleared.{suffix}"));
+    } else {
+        add_note_message(
+            chat,
+            &format!("Thinking level for {model} set to {level}.{suffix}"),
+        );
+    }
+    let _ = (state, tui);
 }
 
 /// `"true"` / `"false"` for a settings row value.
@@ -301,6 +237,8 @@ pub(super) fn apply_setting_change(
         // Live: the image flag is consulted when images would be rendered.
         "show-images" => {
             state.set_show_images(as_bool());
+            let terminal = settings.terminal.get_or_insert_with(Default::default);
+            terminal.show_images = Some(as_bool());
             settings.show_images = Some(as_bool());
             Some(format!(
                 "Inline images {}.",
@@ -326,180 +264,187 @@ pub(super) fn apply_setting_change(
                 if as_bool() { "enabled" } else { "disabled" }
             ))
         }
+        // Live: the theme is applied to the running TUI.
+        "theme" => {
+            let preset = match value {
+                "light" => Some(ThemePreset::Light),
+                "monochrome" => Some(ThemePreset::Monochrome),
+                "dark" => Some(ThemePreset::Dark),
+                _ => None,
+            };
+            let Some(preset) = preset else {
+                return Some(format!("Unknown theme `{value}`."));
+            };
+            apply_theme_preset(preset);
+            state.theme_manager.apply_preset(preset);
+            settings.theme = Some(value.to_string());
+            Some(format!("Theme set to {value}."))
+        }
         // Persisted only: resolved once at startup.
-        "quiet-startup" => {
-            settings.quiet_startup = Some(as_bool());
+        "autocompact" => {
+            let compaction = settings.compaction.get_or_insert_with(Default::default);
+            compaction.enabled = Some(as_bool());
             None
         }
-        "collapse-changelog" => {
-            settings.collapse_changelog = Some(as_bool());
+        "image-width-cells" => {
+            let terminal = settings.terminal.get_or_insert_with(Default::default);
+            terminal.image_width_cells = value.parse().ok();
             None
         }
-        "terminal-progress" => {
-            settings.show_terminal_progress = Some(as_bool());
+        "auto-resize-images" => {
+            let images = settings.images.get_or_insert_with(Default::default);
+            images.auto_resize = Some(as_bool());
             None
         }
-        "double-escape-action" => {
-            settings.double_escape_action = Some(value.to_string());
+        "block-images" => {
+            let images = settings.images.get_or_insert_with(Default::default);
+            images.block_images = Some(as_bool());
+            None
+        }
+        "skill-commands" => {
+            settings.enable_skill_commands = Some(as_bool());
+            None
+        }
+        "show-hardware-cursor" => {
+            settings.show_hardware_cursor = Some(as_bool());
             None
         }
         "editor-padding" => {
             settings.editor_padding_x = value.parse().ok();
             None
         }
-        "autocomplete-max-items" => {
+        "output-padding" => {
+            settings.output_pad = value.parse().ok();
+            None
+        }
+        "nerd-fonts" => {
+            settings.nerd_fonts = Some(as_bool());
+            None
+        }
+        "autocomplete-max-visible" => {
             settings.autocomplete_max_visible = value.parse().ok();
             None
         }
+        "autocomplete-position" => {
+            settings.autocomplete_position = Some(value.to_string());
+            None
+        }
+        "clear-on-shrink" => {
+            let terminal = settings.terminal.get_or_insert_with(Default::default);
+            terminal.clear_on_shrink = Some(as_bool());
+            None
+        }
+        "terminal-progress" => {
+            let terminal = settings.terminal.get_or_insert_with(Default::default);
+            terminal.show_terminal_progress = Some(as_bool());
+            settings.show_terminal_progress = Some(as_bool());
+            None
+        }
+        "three-d-empty-session" => {
+            settings.three_d_empty_session = Some(as_bool());
+            None
+        }
+        "steering-mode" => {
+            settings.steering_mode = match value {
+                "all" => Some(crate::settings::QueueModeSetting::All),
+                _ => Some(crate::settings::QueueModeSetting::OneAtATime),
+            };
+            None
+        }
+        "follow-up-mode" => {
+            settings.follow_up_mode = match value {
+                "all" => Some(crate::settings::QueueModeSetting::All),
+                _ => Some(crate::settings::QueueModeSetting::OneAtATime),
+            };
+            None
+        }
+        "transport" => {
+            settings.transport = Some(value.to_string());
+            None
+        }
+        "share-destination" => {
+            settings.session_share_destination = Some(value.to_string());
+            None
+        }
         "http-idle-timeout" => {
-            settings.http_idle_timeout = Some(match value {
-                "disabled" => serde_json::Value::String("disabled".to_string()),
-                "30s" => serde_json::json!(30_000),
-                "1m" => serde_json::json!(60_000),
-                _ => serde_json::json!(300_000),
+            let timeout = http_idle_timeout_value(value);
+            settings.http_idle_timeout = Some(match timeout {
+                Some(0) => serde_json::Value::String("disabled".to_string()),
+                Some(ms) => serde_json::json!(ms),
+                None => serde_json::json!(300_000),
             });
             None
+        }
+        "cache-warming-mode" => {
+            settings.cache_warming = Some(value.to_string());
+            None
+        }
+        "mermaid-rendering" => {
+            let markdown = settings.markdown.get_or_insert_with(Default::default);
+            markdown.mermaid = Some(value.to_string());
+            None
+        }
+        "collapse-changelog" => {
+            settings.collapse_changelog = Some(as_bool());
+            None
+        }
+        "quiet-startup" => {
+            settings.quiet_startup = Some(value.to_string());
+            None
+        }
+        "default-project-trust" => {
+            settings.default_project_trust = Some(default_project_trust_value(value).to_string());
+            None
+        }
+        "double-escape-action" => {
+            settings.double_escape_action = Some(value.to_string());
+            None
+        }
+        "tree-filter-mode" => {
+            settings.tree_filter_mode = Some(value.to_string());
+            None
+        }
+        "tui-mode" => {
+            settings.tui_mode = Some(value.to_string());
+            None
+        }
+        "fullscreen-exit-output" => {
+            settings.fullscreen_exit_output = Some(value.to_string());
+            None
+        }
+        "fullscreen-scrollbar" => {
+            settings.fullscreen_scrollbar = Some(value.to_string());
+            None
+        }
+        "fullscreen-wheel-scroll-lines" => {
+            settings.fullscreen_wheel_scroll_lines = Some(match value {
+                "auto" => serde_json::Value::String("auto".to_string()),
+                other => serde_json::json!(other.parse::<u32>().unwrap_or(1)),
+            });
+            None
+        }
+        "anthropic-extra-usage" => {
+            let warnings = settings.warnings.get_or_insert_with(Default::default);
+            warnings.anthropic_extra_usage = Some(as_bool());
+            Some(format!(
+                "Anthropic extra usage warning {}.",
+                if as_bool() { "enabled" } else { "disabled" }
+            ))
         }
         _ => None,
     }
 }
 
-/// Apply a theme choice AND persist it to settings.json (`/settings` → Theme).
-pub(super) fn open_settings_theme_selector(
-    state: &Arc<TuiState>,
-    editor_container: &Arc<Container>,
-    editor: &Arc<Editor>,
-    tui: &Arc<TuiAltScreen>,
-    chat: &Arc<Container>,
-) {
-    let items = vec![
-        SelectItem::new("dark", "Dark").with_description("Default dark theme"),
-        SelectItem::new("light", "Light").with_description("Light background"),
-        SelectItem::new("monochrome", "Monochrome").with_description("No color accents"),
-    ];
-    let list = Arc::new(SelectList::new(items, 10));
-
-    let state_sel = state.clone();
-    let ec_sel = editor_container.clone();
-    let editor_sel = editor.clone();
-    let tui_sel = tui.clone();
-    let chat_sel = chat.clone();
-    list.on_select(Arc::new(move |item| {
-        let preset = match item.value.as_str() {
-            "light" => Some(ThemePreset::Light),
-            "monochrome" => Some(ThemePreset::Monochrome),
-            "dark" => Some(ThemePreset::Dark),
-            name => {
-                add_error_message(&chat_sel, &format!("Unknown theme `{name}`."));
-                close_selector(&state_sel, &ec_sel, &editor_sel, &tui_sel);
-                tui_sel.render_now(true);
-                return;
-            }
-        };
-        let Some(preset) = preset else { return };
-        apply_theme_preset(preset);
-        state_sel.theme_manager.apply_preset(preset);
-        let mut settings = crate::settings::load_settings().unwrap_or_default();
-        settings.theme = Some(item.value.clone());
-        let saved = crate::settings::save_settings(&settings);
-        add_note_message(
-            &chat_sel,
-            &format!(
-                "Theme set to {} (saved{})",
-                item.label,
-                if saved.is_ok() { "" } else { ", not saved" },
-            ),
-        );
-        close_selector(&state_sel, &ec_sel, &editor_sel, &tui_sel);
-        tui_sel.render_now(true);
-    }));
-    let state_cancel = state.clone();
-    let ec_cancel = editor_container.clone();
-    let editor_cancel = editor.clone();
-    let tui_cancel = tui.clone();
-    list.on_cancel(Arc::new(move || {
-        close_selector(&state_cancel, &ec_cancel, &editor_cancel, &tui_cancel);
-    }));
-
-    open_selector(
-        state,
-        editor_container,
-        editor,
-        tui,
-        list,
-        SelectorKind::Settings,
-    );
-}
-
-/// Choose the default model AND persist it (`/settings` → Default model):
+//// Choose the default model AND persist it (`/settings` → Default model):
 /// applies live via `lane.set_model` and saves `defaultModel` to settings.json
-/// (which `provider::resolve` honors as pi's `findInitialModel` step 3).
-pub(super) fn open_settings_model_selector(
-    state: &Arc<TuiState>,
-    editor_container: &Arc<Container>,
-    editor: &Arc<Editor>,
-    tui: &Arc<TuiAltScreen>,
-    lane: &Arc<dyn AgentLane>,
-    catalog: &[rpi_ai::Model],
-    lane_model_id: &str,
-    chat: &Arc<Container>,
-) {
-    let items = model_selector_items(catalog, lane_model_id);
-    if items.is_empty() {
-        add_note_message(chat, "No models in the catalog.");
-        tui.request_render(false);
-        return;
-    }
-    let list = Arc::new(SelectList::new(items, 10));
-
-    let catalog_arc = catalog.to_vec();
-    let state_sel = state.clone();
-    let ec_sel = editor_container.clone();
-    let editor_sel = editor.clone();
-    let tui_sel = tui.clone();
-    let chat_sel = chat.clone();
-    let lane_sel = lane.clone();
-    list.on_select(Arc::new(move |item| {
-        let Some(model) = find_model_selector_match(&catalog_arc, &item.value) else {
-            add_note_message(&chat_sel, &format!("Model {} not found.", item.label));
-            close_selector(&state_sel, &ec_sel, &editor_sel, &tui_sel);
-            return;
-        };
-        let lane = lane_sel.clone();
-        let state = state_sel.clone();
-        let tui = tui_sel.clone();
-        tokio::spawn(async move {
-            report_model_selection(&lane, &state, &tui, model, true).await;
-        });
-        close_selector(&state_sel, &ec_sel, &editor_sel, &tui_sel);
-    }));
-    let state_cancel = state.clone();
-    let ec_cancel = editor_container.clone();
-    let editor_cancel = editor.clone();
-    let tui_cancel = tui.clone();
-    list.on_cancel(Arc::new(move || {
-        close_selector(&state_cancel, &ec_cancel, &editor_cancel, &tui_cancel);
-    }));
-
-    open_searchable_selector(
-        state,
-        editor_container,
-        editor,
-        tui,
-        Some("Default model"),
-        Some("Type to filter by name, provider, or id"),
-        list,
-        SelectorKind::Settings,
-    );
-}
-
-/// Convert the authenticated runtime catalog into selector rows. Keep the
+//// Convert the authenticated runtime catalog into selector rows. Keep the
 /// model id as the value so `/model <id>` and the selection callback share one
 /// lookup path, while making the provider visible for OpenAI-compatible
 /// gateways where the same model id may exist at multiple endpoints.
 pub(super) fn model_selector_items(
     catalog: &[rpi_ai::Model],
     lane_model_id: &str,
+    default_model: Option<&str>,
 ) -> Vec<SelectItem> {
     let mut seen = std::collections::HashSet::new();
     catalog
@@ -512,17 +457,24 @@ pub(super) fn model_selector_items(
             ))
         })
         .map(|m| {
-            let label = if m.name.is_empty() {
-                short_model_name(&m.id)
-            } else {
-                m.name.clone()
-            };
             let identity = format!("{}/{}", m.provider, m.id);
+            // The original's row is the model id, marked when it is the
+            // current one (`components/model-selector.ts:187`).
             let marker = if m.id.eq_ignore_ascii_case(lane_model_id) {
-                " (current)"
+                "\u{2713} "
             } else {
-                ""
+                "  "
             };
+            let label = format!("{marker}{}", m.id);
+            // The description is the provider, plus the default marker
+            // (`components/model-selector.ts:188`).
+            let mut description = format!("[{}]", m.provider);
+            if default_model.is_some_and(|default| {
+                default.eq_ignore_ascii_case(&m.id)
+                    || default.eq_ignore_ascii_case(&identity)
+            }) {
+                description.push_str(" \u{b7} default");
+            }
             // upstream ranks provider-prefixed queries first, so the bare id
             // is not the leading token (`getModelSelectorSearchText`).
             let name = if m.name.is_empty() {
@@ -538,7 +490,7 @@ pub(super) fn model_selector_items(
             // that exists at multiple endpoints can never resolve to the wrong
             // provider (`find_model_selector_match` understands both forms).
             SelectItem::new(&identity, &label)
-                .with_description(&format!("{identity}{marker}"))
+                .with_description(&description)
                 .with_search_text(&search_text)
         })
         .collect()
@@ -633,18 +585,18 @@ pub(super) fn provider_selector_items(
             let credential =
                 crate::credentials::resolve(&id, models_cfg.providers.get(&id), &auth, manifest);
             let key_status = match credential.source {
-                crate::credentials::CredentialSource::Anonymous => "无需 key",
+                crate::credentials::CredentialSource::Anonymous => "No key needed",
                 crate::credentials::CredentialSource::Missing => {
                     if execution_catalog.iter().any(|model| {
                         model.provider == id
                             && crate::credentials::has_header_auth(model.headers.as_ref())
                     }) {
-                        "已配置认证头"
+                        "Auth header configured"
                     } else {
-                        "未配置 key"
+                        "No key configured"
                     }
                 }
-                _ => "已配置 key",
+                _ => "Key configured",
             };
             let description =
                 format!("{count} model(s) · {origin} · {protocol} · {key_status}{marker}");
@@ -720,23 +672,23 @@ pub(super) fn login_provider_items_with_oauth(
             let description = if oauth.is_some() {
                 match source {
                     crate::credentials::CredentialSource::Missing => {
-                        "未配置 · OAuth 登录".to_string()
+                        "Not configured · sign in with OAuth".to_string()
                     }
                     crate::credentials::CredentialSource::StoredOauth => {
-                        "已配置 · OAuth".to_string()
+                        "Configured · OAuth".to_string()
                     }
                     crate::credentials::CredentialSource::Environment(name) => {
-                        format!("环境变量 {name} · 可重新登录")
+                        format!("Environment variable {name} · sign in again")
                     }
-                    _ => "已配置 · API key / OAuth".to_string(),
+                    _ => "Configured · API key / OAuth".to_string(),
                 }
             } else {
                 let status = match source {
-                    crate::credentials::CredentialSource::Missing => "未配置".to_string(),
+                    crate::credentials::CredentialSource::Missing => "Not configured".to_string(),
                     crate::credentials::CredentialSource::Environment(name) => {
-                        format!("环境变量 {name} · 可重新登录")
+                        format!("Environment variable {name} · sign in again")
                     }
-                    _ => "已配置".to_string(),
+                    _ => "Configured".to_string(),
                 };
                 match env {
                     Some(env) => format!("{status} · API key / {env}"),
@@ -1060,9 +1012,7 @@ fn begin_provider_oauth_input(
         .and_then(serde_json::Value::as_str)
         .unwrap_or("OAuth authorization");
     let mut details = Vec::new();
-    if let Some(url) = display.get("url").and_then(serde_json::Value::as_str) {
-        details.push(format!("Open: {url}"));
-    }
+    let auth_url = display.get("url").and_then(serde_json::Value::as_str);
     if let Some(instructions) = display
         .get("instructions")
         .and_then(serde_json::Value::as_array)
@@ -1078,7 +1028,12 @@ fn begin_provider_oauth_input(
         details.push("Enter the authorization value returned by the provider.".to_string());
     }
     let body = Arc::new(Container::new());
-    body.add_child(Arc::new(Text::new(details.join("\n"), 0, 0)));
+    if let Some(url) = auth_url {
+        body.add_child(Arc::new(rpi_tui::auth_url::AuthUrlComponent::new(url)));
+    }
+    if !details.is_empty() {
+        body.add_child(Arc::new(Text::new(details.join("\n"), 0, 0)));
+    }
     body.add_child(Arc::new(Spacer::new(1)));
     let input = Arc::new(Input::with_placeholder("Paste OAuth code or response"));
     input.set_focused(true);
@@ -1204,27 +1159,27 @@ fn provider_origin_protocol(
             .and_then(|provider| provider.api.as_deref())
             .or_else(|| manifest.models.first().map(|model| model.api.as_str()));
         let protocol = match api {
-            Some("anthropic-messages") => "Anthropic 兼容",
-            Some("openai-completions" | "openai-responses") => "OpenAI 兼容",
-            _ => "自定义协议",
+            Some("anthropic-messages") => "Anthropic compatible",
+            Some("openai-completions" | "openai-responses") => "OpenAI compatible",
+            _ => "Custom protocol",
         };
         return ("package", protocol);
     }
     match id.to_ascii_lowercase().as_str() {
-        "anthropic" => ("内置", "Anthropic"),
-        "openai" => ("内置", "OpenAI"),
+        "anthropic" => ("Built-in", "Anthropic"),
+        "openai" => ("Built-in", "OpenAI"),
         _ => {
             let protocol = cfg
                 .providers
                 .get(id)
                 .and_then(|p| p.api.as_deref())
                 .map(|api| match api {
-                    "anthropic-messages" => "Anthropic 兼容",
-                    "openai-completions" | "openai-responses" => "OpenAI 兼容",
-                    _ => "自定义协议",
+                    "anthropic-messages" => "Anthropic compatible",
+                    "openai-completions" | "openai-responses" => "OpenAI compatible",
+                    _ => "Custom protocol",
                 })
-                .unwrap_or("自定义协议");
-            ("自定义", protocol)
+                .unwrap_or("Custom protocol");
+            ("Custom", protocol)
         }
     }
 }
@@ -1409,11 +1364,11 @@ fn show_provider_api_selector(
 ) {
     let items = vec![
         SelectItem::new("openai-completions", "OpenAI Completions")
-            .with_description("OpenAI Chat Completions 兼容接口"),
+            .with_description("OpenAI Chat Completions compatible API"),
         SelectItem::new("anthropic-messages", "Anthropic Messages")
-            .with_description("Anthropic Messages 兼容接口"),
+            .with_description("Anthropic Messages compatible API"),
         SelectItem::new("openai-responses", "OpenAI Responses")
-            .with_description("OpenAI Responses 接口"),
+            .with_description("OpenAI Responses API"),
     ];
     let list = Arc::new(SelectList::new(items, 3));
 
@@ -1732,92 +1687,6 @@ pub(super) fn canonicalize_provider_input(
             matches.join(", ")
         )),
     }
-}
-
-/// Choose the default thinking level AND persist it (`/settings` → Default
-/// thinking): applies live via `lane.set_thinking_level` and saves
-/// `defaultThinkingLevel` to settings.json.
-pub(super) fn open_settings_thinking_selector(
-    state: &Arc<TuiState>,
-    editor_container: &Arc<Container>,
-    editor: &Arc<Editor>,
-    tui: &Arc<TuiAltScreen>,
-    lane: &Arc<dyn AgentLane>,
-    catalog: &[rpi_ai::Model],
-    lane_model_id: &str,
-    chat: &Arc<Container>,
-) {
-    let model = catalog
-        .iter()
-        .find(|m| m.id.eq_ignore_ascii_case(lane_model_id));
-    let levels: Vec<rpi_ai::types::ThinkingLevel> = model
-        .map(|m| m.supported_thinking_levels())
-        .unwrap_or_else(|| {
-            use rpi_ai::types::ThinkingLevel::*;
-            vec![Off, Minimal, Low, Medium, High]
-        });
-    let mut items: Vec<SelectItem> = Vec::new();
-    for lvl in &levels {
-        let name = thinking_level_name(*lvl);
-        items.push(SelectItem::new(name, name).with_description(thinking_level_description(*lvl)));
-    }
-    if items.is_empty() {
-        add_note_message(chat, "This model has no supported thinking levels.");
-        tui.request_render(false);
-        return;
-    }
-    let list = Arc::new(SelectList::new(items, 10));
-
-    let state_sel = state.clone();
-    let ec_sel = editor_container.clone();
-    let editor_sel = editor.clone();
-    let tui_sel = tui.clone();
-    let chat_sel = chat.clone();
-    let lane_sel = lane.clone();
-    list.on_select(Arc::new(move |item| {
-        let Some(level) = thinking_level_from_name(&item.value) else {
-            add_note_message(
-                &chat_sel,
-                &format!("Unknown thinking level: {}.", item.label),
-            );
-            close_selector(&state_sel, &ec_sel, &editor_sel, &tui_sel);
-            return;
-        };
-        let lane = lane_sel.clone();
-        let footer_sel = state_sel.footer.clone();
-        tokio::spawn(async move {
-            let _ = lane.set_thinking_level(level).await;
-        });
-        footer_sel.set_thinking_level(Some(thinking_level_name(level)));
-        let mut settings = crate::settings::load_settings().unwrap_or_default();
-        settings.default_thinking_level = Some(item.value.clone());
-        let saved = crate::settings::save_settings(&settings);
-        add_note_message(
-            &chat_sel,
-            &format!(
-                "Default thinking set to {} (saved{}",
-                item.label,
-                if saved.is_ok() { ")" } else { ", not saved)" },
-            ),
-        );
-        close_selector(&state_sel, &ec_sel, &editor_sel, &tui_sel);
-    }));
-    let state_cancel = state.clone();
-    let ec_cancel = editor_container.clone();
-    let editor_cancel = editor.clone();
-    let tui_cancel = tui.clone();
-    list.on_cancel(Arc::new(move || {
-        close_selector(&state_cancel, &ec_cancel, &editor_cancel, &tui_cancel);
-    }));
-
-    open_selector(
-        state,
-        editor_container,
-        editor,
-        tui,
-        list,
-        SelectorKind::Settings,
-    );
 }
 
 /// `/scoped-models`: a multi-toggle selector over the catalog. Selecting an

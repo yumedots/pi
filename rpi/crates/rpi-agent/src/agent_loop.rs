@@ -202,12 +202,14 @@ pub async fn run_agent_loop_from_assistant(
 // Main loop — mirrors TS runLoop
 // ----------------------------------------------------------------------------
 
-/// A finalized tool call: the raw call, the merged result, and the error flag.
+/// A finalized tool call: the raw call, the merged result, the error flag and
+/// the measured execution time.
 #[derive(Clone)]
 struct FinalizedToolCall {
     tool_call: ToolCall,
     result: AgentToolResult,
     is_error: bool,
+    duration_ms: Option<u64>,
 }
 
 /// A batch of executed tool calls: the per-call `ToolResultMessage`s (in source
@@ -234,6 +236,13 @@ async fn run_loop(
     let mut first_turn = true;
     // Check for steering messages at start (user may have typed while waiting).
     let mut pending_messages = drain_steering(config).await;
+    // The model and thinking level the next provider request uses. `prepare_request`
+    // may replace them (virtual-model routing, thinking-level changes).
+    let mut request_model = config.model.clone();
+    let mut request_thinking = config.thinking_level;
+    // `finish_turn` asked for one more provider request even though the model
+    // asked for no tools.
+    let mut explicit_continuation = false;
 
     // Outer loop: continues when queued follow-up messages arrive after the
     // agent would otherwise stop.
@@ -275,8 +284,32 @@ async fn run_loop(
             let message = match pending_assistant.take() {
                 Some(message) => message,
                 None => {
-                    let message =
-                        stream_assistant_response(current_context, config, emit, stream_fn).await?;
+                    // `prepare_request` runs immediately before every provider
+                    // request and may replace the context, the model and the
+                    // thinking level.
+                    if let Some(update) =
+                        prepare_request(config, current_context, &request_model, request_thinking)
+                            .await
+                    {
+                        if let Some(ctx) = update.context {
+                            *current_context = ctx;
+                        }
+                        if let Some(model) = update.model {
+                            request_model = model;
+                        }
+                        if let Some(level) = update.thinking_level {
+                            request_thinking = level;
+                        }
+                    }
+                    let message = stream_assistant_response(
+                        current_context,
+                        config,
+                        emit,
+                        stream_fn,
+                        &request_model,
+                        request_thinking,
+                    )
+                    .await?;
                     new_messages.push(AgentMessage::Assistant(Box::new(message.clone())));
                     message
                 }
@@ -347,6 +380,17 @@ async fn run_loop(
                 }
             }
 
+            // `finish_turn` runs after the turn's assistant message and all of
+            // its tool-result messages, but before `turn_end`.
+            let turn_decision = finish_turn(
+                config,
+                &message,
+                &tool_results,
+                current_context,
+                new_messages,
+            )
+            .await;
+
             let am = AgentMessage::Assistant(Box::new(message.clone()));
             emit_event(
                 emit,
@@ -356,6 +400,17 @@ async fn run_loop(
                 },
             )
             .await;
+
+            if turn_decision == Some(crate::types::AgentTurnDecision::End) {
+                emit_event(
+                    emit,
+                    AgentEvent::AgentEnd {
+                        messages: new_messages.clone(),
+                    },
+                )
+                .await;
+                return Ok(LoopOutcome::Completed);
+            }
 
             // prepareNextTurn: replace context if provided. (Model/thinking swaps
             // are owned by Agent; run_loop borrows config immutably for hook
@@ -410,12 +465,28 @@ async fn run_loop(
                 .await;
                 return Ok(LoopOutcome::Aborted);
             }
+
+            // A tool-result batch, steering messages or follow-up messages
+            // satisfy a `continue` decision without an extra provider request.
+            explicit_continuation =
+                turn_decision == Some(crate::types::AgentTurnDecision::Continue);
+            if has_more_tool_calls || !pending_messages.is_empty() {
+                explicit_continuation = false;
+            }
         }
 
         // Agent would stop here. Check for follow-up messages.
         let follow_ups = drain_follow_up(config).await;
         if !follow_ups.is_empty() {
+            explicit_continuation = false;
             pending_messages = follow_ups;
+            continue;
+        }
+
+        // No natural request was selected, so fulfil the continuation decision
+        // with one context-only turn.
+        if explicit_continuation {
+            explicit_continuation = false;
             continue;
         }
         break;
@@ -443,6 +514,8 @@ async fn stream_assistant_response(
     config: &AgentLoopConfig,
     emit: &Arc<dyn AgentEmitter>,
     stream_fn: &StreamFn,
+    model: &rpi_ai::model::Model,
+    thinking_level: rpi_ai::types::ThinkingLevel,
 ) -> Result<AssistantMessage, AgentError> {
     // Apply optional transform_context (AgentMessage[] → AgentMessage[]).
     let messages = if let Some(transform) = &config.transform_context {
@@ -474,7 +547,19 @@ async fn stream_assistant_response(
     };
 
     let opts = config.to_stream_options(resolved_api_key);
-    let mut response = stream_fn(&config.model, &llm_context, &opts);
+    let opts = match thinking_level {
+        rpi_ai::types::ThinkingLevel::Off => {
+            let mut opts = opts;
+            opts.reasoning = None;
+            opts
+        }
+        other => {
+            let mut opts = opts;
+            opts.reasoning = Some(other);
+            opts
+        }
+    };
+    let mut response = stream_fn(model, &llm_context, &opts);
 
     let mut added_partial = false;
 
@@ -601,10 +686,11 @@ async fn fail_tool_calls_from_truncated_message(
                 tool_name: tool_call.name.clone(),
                 result: result.clone(),
                 is_error: true,
+                duration_ms: None,
             },
         )
         .await;
-        let trm = create_tool_result_message(tool_call, &result, true);
+        let trm = create_tool_result_message(tool_call, &result, true, None);
         emit_tool_result_message(emit, &trm).await;
         messages.push(trm);
     }
@@ -670,8 +756,12 @@ async fn execute_tool_calls_sequential(
             run_one_tool_call(current_context, assistant_message, tool_call, config, emit).await?;
 
         emit_tool_execution_end(emit, &finalized).await;
-        let trm =
-            create_tool_result_message(&finalized.tool_call, &finalized.result, finalized.is_error);
+        let trm = create_tool_result_message(
+            &finalized.tool_call,
+            &finalized.result,
+            finalized.is_error,
+            finalized.duration_ms,
+        );
         emit_tool_result_message(emit, &trm).await;
         finalized_calls.push(finalized);
         messages.push(trm);
@@ -729,6 +819,7 @@ async fn execute_tool_calls_parallel(
                     tool_call: tool_call.clone(),
                     result,
                     is_error,
+                    duration_ms: None,
                 };
                 emit_tool_execution_end(emit, &finalized).await;
                 entries.push(Entry::Done(finalized));
@@ -776,6 +867,7 @@ async fn execute_tool_calls_parallel(
                 tool_call: panicked_tool_call(),
                 result: create_error_tool_result("tool task panicked"),
                 is_error: true,
+                duration_ms: None,
             });
             emit_tool_execution_end(emit, &finalized).await;
             finalized_by_index[i] = Some(finalized);
@@ -795,6 +887,7 @@ async fn execute_tool_calls_parallel(
                     tool_call: panicked_tool_call(),
                     result: create_error_tool_result("tool task panicked"),
                     is_error: true,
+                    duration_ms: None,
                 });
                 resolved = Some((i, finalized));
             } else {
@@ -822,8 +915,12 @@ async fn execute_tool_calls_parallel(
     let mut finalized_calls: Vec<FinalizedToolCall> = Vec::new();
     for slot in finalized_by_index.into_iter() {
         let finalized = slot.expect("every tool call finalized");
-        let trm =
-            create_tool_result_message(&finalized.tool_call, &finalized.result, finalized.is_error);
+        let trm = create_tool_result_message(
+            &finalized.tool_call,
+            &finalized.result,
+            finalized.is_error,
+            finalized.duration_ms,
+        );
         emit_tool_result_message(emit, &trm).await;
         messages.push(trm);
         finalized_calls.push(finalized);
@@ -862,6 +959,7 @@ async fn race_one_and_collect(
                 tool_call: panicked_tool_call(),
                 result: create_error_tool_result("tool task panicked"),
                 is_error: true,
+                duration_ms: None,
             });
             (i, f)
         }));
@@ -890,6 +988,7 @@ async fn run_one_tool_call(
             tool_call: tool_call.clone(),
             result,
             is_error,
+            duration_ms: None,
         }),
         Prepared::Ready { tool, args } => {
             let executed = execute_prepared_tool_call(tool_call, &tool, &args, config, emit).await;
@@ -1060,25 +1159,32 @@ async fn execute_prepared_tool_call(
     };
 
     let child_token = config.signal.child_token();
-    match tool
+    let started_at = std::time::Instant::now();
+    let outcome = match tool
         .execute(&tool_call.id, args.clone(), child_token, on_update)
         .await
     {
         Ok(result) => {
-            accepting_updates.store(false, Ordering::SeqCst);
+            let is_error = result.is_error;
             ExecutedToolCallOutcome {
                 result,
-                is_error: false,
+                is_error,
+                duration_ms: Some(elapsed_ms(started_at)),
             }
         }
-        Err(e) => {
-            accepting_updates.store(false, Ordering::SeqCst);
-            ExecutedToolCallOutcome {
-                result: create_error_tool_result(&e.to_string()),
-                is_error: true,
-            }
-        }
-    }
+        Err(e) => ExecutedToolCallOutcome {
+            result: create_error_tool_result(&e.to_string()),
+            is_error: true,
+            duration_ms: Some(elapsed_ms(started_at)),
+        },
+    };
+    accepting_updates.store(false, Ordering::SeqCst);
+    outcome
+}
+
+/// Milliseconds since `started_at`, rounded like TS `Math.round(performance.now() - startedAt)`.
+fn elapsed_ms(started_at: std::time::Instant) -> u64 {
+    started_at.elapsed().as_millis() as u64
 }
 
 /// Result of `execute` before `after_tool_call` overrides. Mirrors TS
@@ -1086,6 +1192,8 @@ async fn execute_prepared_tool_call(
 struct ExecutedToolCallOutcome {
     result: AgentToolResult,
     is_error: bool,
+    /// Milliseconds `execute` took, measured with a monotonic clock.
+    duration_ms: Option<u64>,
 }
 
 /// Apply `after_tool_call` overrides. Mirrors TS `finalizeExecutedToolCall`.
@@ -1111,6 +1219,7 @@ async fn finalize_executed_tool_call(
         };
         match after(ctx, config.signal.clone()).await {
             Some(after_result) => {
+                let content_replaced = after_result.content.is_some();
                 if let Some(c) = after_result.content {
                     result.content = c;
                 }
@@ -1126,15 +1235,26 @@ async fn finalize_executed_tool_call(
                 if let Some(ie) = after_result.is_error {
                     is_error = ie;
                 }
+                match after_result.structured_content {
+                    Some(Some(value)) => result.structured_content = Some(value),
+                    Some(None) => result.structured_content = None,
+                    None => {
+                        if content_replaced {
+                            result.structured_content = None;
+                        }
+                    }
+                }
             }
             None => {}
         }
     }
+    result.is_error = is_error;
 
     FinalizedToolCall {
         tool_call: tool_call.clone(),
         result,
         is_error,
+        duration_ms: executed.duration_ms,
     }
 }
 
@@ -1161,6 +1281,7 @@ fn create_tool_result_message(
     tool_call: &ToolCall,
     result: &AgentToolResult,
     is_error: bool,
+    duration_ms: Option<u64>,
 ) -> ToolResultMessage {
     ToolResultMessage {
         role: ToolResultRole,
@@ -1171,6 +1292,7 @@ fn create_tool_result_message(
         usage: result.usage.clone(),
         added_tool_names: result.added_tool_names.clone(),
         is_error,
+        duration_ms,
         timestamp: crate::clock::now_ms(),
     }
 }
@@ -1184,6 +1306,7 @@ async fn emit_tool_execution_end(emit: &Arc<dyn AgentEmitter>, finalized: &Final
             tool_name: finalized.tool_call.name.clone(),
             result: finalized.result.clone(),
             is_error: finalized.is_error,
+            duration_ms: finalized.duration_ms,
         },
     )
     .await;
@@ -1257,6 +1380,43 @@ async fn after_tool_results(
         new_messages,
     };
     hook(ctx).await
+}
+
+/// Call `prepare_request` if configured. Mirrors TS `prepareRequest`: it runs
+/// immediately before every provider request and may replace the context, the
+/// model and the thinking level.
+async fn prepare_request(
+    config: &AgentLoopConfig,
+    context: &AgentContext,
+    model: &rpi_ai::model::Model,
+    thinking_level: rpi_ai::types::ThinkingLevel,
+) -> Option<crate::types::AgentRequestUpdate> {
+    let hook = config.prepare_request.as_ref()?;
+    let ctx = crate::types::PrepareRequestContext {
+        context,
+        model,
+        thinking_level,
+    };
+    hook(ctx, config.signal.clone()).await
+}
+
+/// Call `finish_turn` if configured. Mirrors TS `finishTurn`: it runs after the
+/// turn's assistant message and all of its tool-result messages.
+async fn finish_turn(
+    config: &AgentLoopConfig,
+    message: &AssistantMessage,
+    tool_results: &[ToolResultMessage],
+    context: &AgentContext,
+    new_messages: &[AgentMessage],
+) -> Option<crate::types::AgentTurnDecision> {
+    let hook = config.finish_turn.as_ref()?;
+    let ctx = crate::types::AgentTurnContext {
+        message,
+        tool_results,
+        context,
+        new_messages,
+    };
+    hook(ctx, config.signal.clone()).await
 }
 
 /// Call `should_stop_after_turn` if configured.

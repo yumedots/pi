@@ -82,8 +82,8 @@ rpi @README.md "Give suggestions for improving this project"
 When multiple sources exist at the same time, the precedence is:
 
 1. `--api-key`
-2. `~/.rpi/auth.json` (written by `rpi auth login`)
-3. The provider's `apiKey` in `~/.rpi/agent/models.json`
+2. `~/.pi/auth.json` (written by `rpi auth login`)
+3. The provider's `apiKey` in `~/.pi/agent/models.json`
 4. Environment variables
 
 Anthropic uses `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`; OpenAI-compatible providers use `OPENAI_API_KEY`. Checking credentials never makes a network request:
@@ -99,7 +99,7 @@ Never write keys into a Git repository, project documentation, or a package mani
 
 ### Custom Providers
 
-The configuration file is `~/.rpi/agent/models.json` by default; the agent configuration directory can also be specified with `RPI_CODING_AGENT_DIR`:
+The configuration file is `~/.pi/agent/models.json` by default; the agent configuration directory can also be specified with `PI_CODING_AGENT_DIR`:
 
 ```jsonc
 {
@@ -280,20 +280,20 @@ project/
 └── themes/
 ```
 
-The project's `.rpi` takes precedence over the project's `.pi`. Global resources live in `~/.rpi/agent/` by default, including `settings.json`, `models.json`, `skills/`, `prompts/`, `themes/`, `extensions/` and `packages/`. When resources with the same name conflict, project resources take precedence over global resources, and `.rpi` takes precedence over `.pi`.
+The project's `.rpi` takes precedence over the project's `.pi`. Global resources live in `~/.pi/agent/` by default, including `settings.json`, `models.json`, `skills/`, `prompts/`, `themes/`, `extensions/` and `packages/`. When resources with the same name conflict, project resources take precedence over global resources, and `.rpi` takes precedence over `.pi`.
 
 Project-level `.rpi/settings.json` can add extra resource directories:
 
 ```json
 {
-  "skillDirs": ["./team-skills"],
-  "promptDirs": ["./prompts/shared"],
-  "extensionDirs": ["./target/debug"],
+  "skills": ["./team-skills"],
+  "prompts": ["./prompts/shared"],
+  "extensions": ["./target/debug"],
   "packages": ["./packages/review-tools"]
 }
 ```
 
-Paths are relative to the project root; `skills`, `prompts` and `extensions` are shorthands for the corresponding `*Dirs` fields. Custom directories are loaded together with `.rpi`, `.pi` and the conventional global directories, with `.rpi` taking precedence. The global `~/.rpi/agent/settings.json` supports these fields as well, with relative paths resolved against the agent directory.
+Paths are relative to the project root; `skills`, `prompts` and `extensions` are shorthands for the corresponding `*Dirs` fields. Custom directories are loaded together with `.rpi`, `.pi` and the conventional global directories, with `.rpi` taking precedence. The global `~/.pi/agent/settings.json` supports these fields as well, with relative paths resolved against the agent directory.
 
 To load only the current project's packages/resources and exclude global resources, use either of the equivalent options:
 
@@ -307,7 +307,7 @@ Both load the current project's skills, prompts, themes, extensions and packages
 The configuration directory can be relocated:
 
 ```bash
-RPI_CODING_AGENT_DIR=/work/rpi-agent rpi
+PI_CODING_AGENT_DIR=/work/rpi-agent rpi
 ```
 
 Sessions are saved by default under the sessions directory of the agent configuration directory; `--no-session` uses a temporary session.
@@ -368,7 +368,7 @@ rpi dev
 
 `rpi dev` automatically recognizes Cargo `cdylib` crates, performs the first build and loads the versioned artifact from `.rpi/extensions/.dev`. Source changes trigger a rebuild and a hot reload; manually running `/reload` also rebuilds first. If the build fails, the currently loaded version is kept. See the online extension authoring guide for the complete template and boundary rules: <https://rpi.laofu.online/extension-authoring.md>, and see the `debugging` topic of `docs` for debugging tips.
 
-After installation, the dynamic library is placed in `~/.rpi/agent/extensions` (or the directory specified by `RPI_CODING_AGENT_DIR`) and is loaded the next time rpi starts. Plugins register tools, providers, event handlers and resource handlers through a stable ABI; do not depend directly on private modules of `rpi-cli`.
+After installation, the dynamic library is placed in `~/.pi/agent/extensions` (or the directory specified by `PI_CODING_AGENT_DIR`) and is loaded the next time rpi starts. Plugins register tools, providers, event handlers and resource handlers through a stable ABI; do not depend directly on private modules of `rpi-cli`.
 
 ### Web search and fetching
 
@@ -448,13 +448,13 @@ rpi            # Log all extension event handler invocations
 rpi events tail   # Follow the log; check whether result is Continue or Error/Abort/Panic/Timeout
 ```
 
-The log lives at `~/.rpi/logs/events.jsonl` by default (override it with `RPI_EVENT_LOG_PATH`). If
+The log lives at `~/.pi/logs/events.jsonl` by default (override it with `RPI_EVENT_LOG_PATH`). If
 an extension returns a veto (`EVENT_HANDLER_ABORT`) during the `BeforeTuiStart` phase, the CLI aborts startup with exit code `3`
 and prints the reason.
 
 ### Resources do not appear on the welcome page
 
-Make sure the files are in `.rpi` (or the compatible `.pi`) or in the global `~/.rpi/agent`. Use `rpi --debug-system-prompt` to see the final system prompt, skills and resource counts; for resources with the same name, check first whether `.rpi` overrides `.pi`.
+Make sure the files are in `.rpi` (or the compatible `.pi`) or in the global `~/.pi/agent`. Use `rpi --debug-system-prompt` to see the final system prompt, skills and resource counts; for resources with the same name, check first whether `.rpi` overrides `.pi`.
 
 ### Remote mode cannot connect
 

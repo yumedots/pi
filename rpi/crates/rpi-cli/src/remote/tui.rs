@@ -13,14 +13,14 @@ pub async fn run(addr: &str, token: Option<&str>) -> i32 {
     let driver = match RemoteDriver::connect(addr, token).await {
         Ok(driver) => driver,
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             return EXIT_RUNTIME;
         }
     };
     let code = match run_driver_tui(&driver, addr).await {
         Ok(()) => 0,
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("Error: {error}");
             EXIT_RUNTIME
         }
     };

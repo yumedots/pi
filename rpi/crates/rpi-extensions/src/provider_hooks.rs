@@ -158,6 +158,16 @@ impl ProviderHooks for ExtensionProviderHooks {
                     EventTag::BeforeAgentStart,
                     &event.to_string(),
                 );
+                crate::event_sink::emit_event(
+                    "before_agent_start",
+                    &serde_json::json!({
+                        "type": "before_agent_start",
+                        "messageType": event.get("messageType").cloned().unwrap_or(serde_json::json!("user")),
+                        "prompt": event.get("prompt").cloned().unwrap_or(serde_json::Value::Null),
+                        "systemPrompt": event.get("systemPrompt").cloned().unwrap_or(serde_json::Value::Null),
+                        "systemPromptOptions": event.get("systemPromptOptions").cloned().unwrap_or(serde_json::json!({})),
+                    }),
+                );
             }
         }
 
@@ -184,11 +194,25 @@ impl ProviderHooks for ExtensionProviderHooks {
             EventTag::BeforeProviderRequest,
             &request.to_string(),
         );
+        crate::event_sink::emit_event(
+            "before_provider_request",
+            &serde_json::json!({
+                "type": "before_provider_request",
+                "payload": request,
+            }),
+        );
         let headers = serde_json::json!({ "headers": opts.headers });
         dispatch_data_event(
             &self.snapshot,
             EventTag::BeforeProviderHeaders,
             &headers.to_string(),
+        );
+        crate::event_sink::emit_event(
+            "before_provider_headers",
+            &serde_json::json!({
+                "type": "before_provider_headers",
+                "headers": opts.headers,
+            }),
         );
         None
     }
@@ -201,6 +225,14 @@ impl ProviderHooks for ExtensionProviderHooks {
             &self.snapshot,
             EventTag::AfterProviderResponse,
             &json.to_string(),
+        );
+        crate::event_sink::emit_event(
+            "after_provider_response",
+            &serde_json::json!({
+                "type": "after_provider_response",
+                "status": 200,
+                "headers": {},
+            }),
         );
     }
 }

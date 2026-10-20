@@ -2,171 +2,270 @@
 //!
 //! Provides color schemes and styling options.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+
+use crate::terminal_colors::{RgbColor, TerminalColors};
 
 /// Theme colors.
 ///
-/// Mirrors the pi `ThemeJson.colors` tokens (see
-/// `.reference/pi/.../theme/dark.json`). The semantic core (`muted`, `accent`,
-/// `error`, `success`, `warning`, `border`, `surface`) drives most components;
-/// the `md_*` / `tool_*` / `thinking_*` fields correspond 1:1 to the pi md* /
-/// toolDiff* / thinking-level tokens and let the markdown renderer and tool
-/// blocks match pi's palette instead of hardcoded `Ansi256`/`fg_256` literals.
+/// Every field mirrors one pi theme token (see
+/// `packages/coding-agent/src/modes/interactive/theme/theme-tokens.ts`); the
+/// values are pi's own palette, resolved from `dark.json` / `light.json` with
+/// pi's `parseColor` (`packages/tui/src/colors.ts`).
 #[derive(Debug, Clone)]
 pub struct ThemeColors {
-    /// Primary text color.
-    pub text: Color,
-    /// Muted/dimmed text color (pi `muted`).
-    pub muted: Color,
-    /// Dimmer-than-muted color (pi `dim`).
-    pub dim: Color,
-    /// Accent/highlight color (pi `accent`, e.g. teal-ish).
+    /// Primary accent color (logo, selected items, cursor).
     pub accent: Color,
-    /// Error color.
-    pub error: Color,
-    /// Success color.
-    pub success: Color,
-    /// Warning color.
-    pub warning: Color,
-    /// Info color.
-    pub info: Color,
-    /// Background color.
-    pub background: Color,
-    /// Primary surface color (pi `userMessageBg`).
-    pub surface: Color,
-    /// Border color (pi `border`).
+    /// Normal borders.
     pub border: Color,
-    /// Accent border color (pi `borderAccent`).
+    /// Highlighted borders.
     pub border_accent: Color,
-    /// Muted border color (pi `borderMuted`).
+    /// Subtle borders.
     pub border_muted: Color,
-    /// Selection background color.
-    pub selection: Color,
-    /// Cursor color.
-    pub cursor: Color,
-    /// Text color for thinking/reasoning blocks (pi `thinkingText`).
+    /// Success states.
+    pub success: Color,
+    /// Error states.
+    pub error: Color,
+    /// Warning states.
+    pub warning: Color,
+    /// Secondary/dimmed text.
+    pub muted: Color,
+    /// Very dimmed text (more subtle than muted).
+    pub dim: Color,
+    /// Default text color.
+    pub text: Color,
+    /// Thinking block text color.
     pub thinking_text: Color,
-
-    // -- Markdown syntax tokens (pi md*) --
-    /// Heading color (pi `mdHeading`, gold on dark).
-    pub md_heading: Color,
-    /// Inline link color (pi `mdLink`).
-    pub md_link: Color,
-    /// Link URL color (pi `mdLinkUrl`).
-    pub md_link_url: Color,
-    /// Inline `code` color (pi `mdCode`).
-    pub md_code: Color,
-    /// Subtle inline-code background. This Rust extension keeps code readable
-    /// without applying a card background to the whole assistant message.
-    pub md_code_bg: Color,
-    /// Code-block body color (pi `mdCodeBlock`).
-    pub md_code_block: Color,
-    /// Low-contrast code-block surface (One Dark inspired).
-    pub md_code_block_bg: Color,
-    /// Code-block fence/border color (pi `mdCodeBlockBorder`).
-    pub md_code_block_border: Color,
-    /// Blockquote body color (pi `mdQuote`).
-    pub md_quote: Color,
-    /// Blockquote border color (pi `mdQuoteBorder`).
-    pub md_quote_border: Color,
-    /// Horizontal rule color (pi `mdHr`).
-    pub md_hr: Color,
-    /// List bullet color (pi `mdListBullet`).
-    pub md_list_bullet: Color,
-
-    // -- Tool execution backgrounds (pi tool*Bg / toolTitle / toolOutput) --
-    /// Pending-tool background.
-    pub tool_pending_bg: Color,
-    /// Successful-tool background.
-    pub tool_success_bg: Color,
-    /// Failed-tool background.
-    pub tool_error_bg: Color,
-    /// Tool title text color.
-    pub tool_title: Color,
-    /// Tool output text color.
-    pub tool_output: Color,
-    /// Bash mode accent color (pi `bashMode`).
-    pub bash_mode: Color,
-
-    // -- Custom messages / skill invocation (pi customMessage*) --
-    /// Skill-invocation / custom-message background (pi `customMessageBg`).
-    pub custom_message_bg: Color,
-    /// Skill-invocation `[skill]` label color (pi `customMessageLabel`).
-    pub custom_message_label: Color,
-    /// Skill-invocation body text color (pi `customMessageText`).
+    /// Fullscreen scrollbar track foreground.
+    pub scrollbar_track: Color,
+    /// Fullscreen scrollbar thumb foreground.
+    pub scrollbar_thumb: Color,
+    /// Transcript search match text.
+    pub search_match_text: Color,
+    /// User message text color.
+    pub user_message_text: Color,
+    /// Custom message text color.
     pub custom_message_text: Color,
-
-    // -- Tool diffs (pi toolDiff*) --
-    /// Added-line color.
+    /// Custom message type label color.
+    pub custom_message_label: Color,
+    /// Tool execution box title color.
+    pub tool_title: Color,
+    /// Tool execution box output text color.
+    pub tool_output: Color,
+    /// Markdown heading text.
+    pub md_heading: Color,
+    /// Markdown link text.
+    pub md_link: Color,
+    /// Markdown link URL.
+    pub md_link_url: Color,
+    /// Markdown inline code.
+    pub md_code: Color,
+    /// Markdown code block content.
+    pub md_code_block: Color,
+    /// Markdown code block fences.
+    pub md_code_block_border: Color,
+    /// Markdown blockquote text.
+    pub md_quote: Color,
+    /// Markdown blockquote border.
+    pub md_quote_border: Color,
+    /// Markdown horizontal rule.
+    pub md_hr: Color,
+    /// Markdown list bullets/numbers.
+    pub md_list_bullet: Color,
+    /// Added lines in tool diffs.
     pub tool_diff_added: Color,
-    /// Removed-line color.
+    /// Removed lines in tool diffs.
     pub tool_diff_removed: Color,
-    /// Context-line color.
+    /// Context lines in tool diffs.
     pub tool_diff_context: Color,
+    /// Syntax highlighting: comments.
+    pub syntax_comment: Color,
+    /// Syntax highlighting: keywords.
+    pub syntax_keyword: Color,
+    /// Syntax highlighting: function names.
+    pub syntax_function: Color,
+    /// Syntax highlighting: variable names.
+    pub syntax_variable: Color,
+    /// Syntax highlighting: string literals.
+    pub syntax_string: Color,
+    /// Syntax highlighting: number literals.
+    pub syntax_number: Color,
+    /// Syntax highlighting: type names.
+    pub syntax_type: Color,
+    /// Syntax highlighting: operators.
+    pub syntax_operator: Color,
+    /// Syntax highlighting: punctuation.
+    pub syntax_punctuation: Color,
+    /// Thinking level border: off.
+    pub thinking_off: Color,
+    /// Thinking level border: minimal.
+    pub thinking_minimal: Color,
+    /// Thinking level border: low.
+    pub thinking_low: Color,
+    /// Thinking level border: medium.
+    pub thinking_medium: Color,
+    /// Thinking level border: high.
+    pub thinking_high: Color,
+    /// Thinking level border: xhigh.
+    pub thinking_xhigh: Color,
+    /// Thinking level border: max.
+    pub thinking_max: Color,
+    /// Editor border color in bash mode.
+    pub bash_mode: Color,
+    /// Selected item background.
+    pub selected_bg: Color,
+    /// Menu and dialog panel background.
+    pub panel_bg: Color,
+    /// Selected row in menus.
+    pub menu_selected_bg: Color,
+    /// Transcript search match background.
+    pub search_match_bg: Color,
+    /// User message background.
+    pub user_message_bg: Color,
+    /// Custom message background (hook-injected messages).
+    pub custom_message_bg: Color,
+    /// Tool execution box (pending state).
+    pub tool_pending_bg: Color,
+    /// Tool execution box (success state).
+    pub tool_success_bg: Color,
+    /// Tool execution box (error state).
+    pub tool_error_bg: Color,
+}
+
+impl ThemeColors {
+    /// pi's dark palette.
+    pub fn dark() -> Self {
+        Self {
+            accent: Color::Rgb(167, 152, 215),
+            border: Color::Rgb(95, 168, 204),
+            border_accent: Color::Rgb(160, 142, 213),
+            border_muted: Color::Rgb(118, 129, 134),
+            success: Color::Rgb(104, 183, 141),
+            error: Color::Rgb(234, 127, 129),
+            warning: Color::Rgb(205, 154, 34),
+            muted: Color::Rgb(157, 165, 169),
+            dim: Color::Rgb(126, 136, 142),
+            text: Color::Rgb(222, 224, 225),
+            thinking_text: Color::Rgb(150, 160, 164),
+            scrollbar_track: Color::Rgb(72, 78, 82),
+            scrollbar_thumb: Color::Rgb(151, 160, 165),
+            search_match_text: Color::Rgb(157, 165, 169),
+            user_message_text: Color::Rgb(222, 224, 225),
+            custom_message_text: Color::Rgb(157, 165, 169),
+            custom_message_label: Color::Rgb(167, 152, 215),
+            tool_title: Color::Rgb(222, 224, 225),
+            tool_output: Color::Rgb(157, 165, 169),
+            md_heading: Color::Rgb(205, 154, 34),
+            md_link: Color::Rgb(105, 173, 208),
+            md_link_url: Color::Rgb(157, 165, 169),
+            md_code: Color::Rgb(167, 152, 215),
+            md_code_block: Color::Rgb(104, 183, 141),
+            md_code_block_border: Color::Rgb(157, 165, 169),
+            md_quote: Color::Rgb(157, 165, 169),
+            md_quote_border: Color::Rgb(157, 165, 169),
+            md_hr: Color::Rgb(157, 165, 169),
+            md_list_bullet: Color::Rgb(167, 152, 215),
+            tool_diff_added: Color::Rgb(104, 183, 141),
+            tool_diff_removed: Color::Rgb(234, 127, 129),
+            tool_diff_context: Color::Rgb(157, 165, 169),
+            syntax_comment: Color::Rgb(157, 165, 169),
+            syntax_keyword: Color::Rgb(105, 173, 208),
+            syntax_function: Color::Rgb(205, 154, 34),
+            syntax_variable: Color::Rgb(93, 179, 186),
+            syntax_string: Color::Rgb(222, 141, 90),
+            syntax_number: Color::Rgb(104, 183, 141),
+            syntax_type: Color::Rgb(167, 152, 215),
+            syntax_operator: Color::Rgb(157, 165, 169),
+            syntax_punctuation: Color::Rgb(157, 165, 169),
+            thinking_off: Color::Rgb(108, 118, 123),
+            thinking_minimal: Color::Rgb(104, 128, 141),
+            thinking_low: Color::Rgb(84, 137, 164),
+            thinking_medium: Color::Rgb(97, 133, 204),
+            thinking_high: Color::Rgb(151, 118, 229),
+            thinking_xhigh: Color::Rgb(222, 84, 193),
+            thinking_max: Color::Rgb(254, 84, 98),
+            bash_mode: Color::Rgb(94, 178, 134),
+            selected_bg: Color::Rgb(33, 59, 73),
+            panel_bg: Color::Rgb(38, 42, 44),
+            menu_selected_bg: Color::Rgb(66, 71, 73),
+            search_match_bg: Color::Rgb(78, 47, 27),
+            user_message_bg: Color::Rgb(57, 61, 63),
+            custom_message_bg: Color::Rgb(57, 61, 63),
+            tool_pending_bg: Color::Rgb(52, 56, 58),
+            tool_success_bg: Color::Rgb(37, 65, 49),
+            tool_error_bg: Color::Rgb(91, 40, 42),
+        }
+    }
+
+    /// pi's light palette.
+    pub fn light() -> Self {
+        Self {
+            accent: Color::Rgb(116, 89, 180),
+            border: Color::Rgb(61, 142, 179),
+            border_accent: Color::Rgb(138, 114, 203),
+            border_muted: Color::Rgb(154, 162, 167),
+            success: Color::Rgb(51, 126, 88),
+            error: Color::Rgb(200, 37, 61),
+            warning: Color::Rgb(143, 104, 2),
+            muted: Color::Rgb(103, 113, 118),
+            dim: Color::Rgb(135, 144, 149),
+            text: Color::Rgb(59, 63, 65),
+            thinking_text: Color::Rgb(124, 134, 140),
+            scrollbar_track: Color::Rgb(225, 227, 228),
+            scrollbar_thumb: Color::Rgb(150, 160, 164),
+            search_match_text: Color::Rgb(103, 113, 118),
+            user_message_text: Color::Rgb(59, 63, 65),
+            custom_message_text: Color::Rgb(103, 113, 118),
+            custom_message_label: Color::Rgb(116, 89, 180),
+            tool_title: Color::Rgb(59, 63, 65),
+            tool_output: Color::Rgb(103, 113, 118),
+            md_heading: Color::Rgb(143, 104, 2),
+            md_link: Color::Rgb(47, 120, 153),
+            md_link_url: Color::Rgb(103, 113, 118),
+            md_code: Color::Rgb(116, 89, 180),
+            md_code_block: Color::Rgb(51, 126, 88),
+            md_code_block_border: Color::Rgb(103, 113, 118),
+            md_quote: Color::Rgb(103, 113, 118),
+            md_quote_border: Color::Rgb(103, 113, 118),
+            md_hr: Color::Rgb(103, 113, 118),
+            md_list_bullet: Color::Rgb(116, 89, 180),
+            tool_diff_added: Color::Rgb(51, 126, 88),
+            tool_diff_removed: Color::Rgb(200, 37, 61),
+            tool_diff_context: Color::Rgb(103, 113, 118),
+            syntax_comment: Color::Rgb(103, 113, 118),
+            syntax_keyword: Color::Rgb(47, 120, 153),
+            syntax_function: Color::Rgb(143, 104, 2),
+            syntax_variable: Color::Rgb(40, 122, 129),
+            syntax_string: Color::Rgb(164, 84, 23),
+            syntax_number: Color::Rgb(51, 126, 88),
+            syntax_type: Color::Rgb(116, 89, 180),
+            syntax_operator: Color::Rgb(103, 113, 118),
+            syntax_punctuation: Color::Rgb(103, 113, 118),
+            thinking_off: Color::Rgb(194, 200, 202),
+            thinking_minimal: Color::Rgb(181, 196, 203),
+            thinking_low: Color::Rgb(159, 194, 213),
+            thinking_medium: Color::Rgb(162, 183, 224),
+            thinking_high: Color::Rgb(181, 165, 232),
+            thinking_xhigh: Color::Rgb(229, 133, 205),
+            thinking_max: Color::Rgb(254, 116, 121),
+            bash_mode: Color::Rgb(64, 151, 108),
+            selected_bg: Color::Rgb(223, 231, 236),
+            panel_bg: Color::Rgb(242, 244, 244),
+            menu_selected_bg: Color::Rgb(218, 222, 223),
+            search_match_bg: Color::Rgb(237, 227, 221),
+            user_message_bg: Color::Rgb(222, 224, 225),
+            custom_message_bg: Color::Rgb(222, 224, 225),
+            tool_pending_bg: Color::Rgb(228, 229, 230),
+            tool_success_bg: Color::Rgb(222, 233, 225),
+            tool_error_bg: Color::Rgb(238, 226, 225),
+        }
+    }
 }
 
 impl Default for ThemeColors {
     fn default() -> Self {
-        // Defaults mirror the pi `dark.json` palette (`accent` teal, the
-        // `#f0c674` gold heading, `#b5bd68` green code blocks, and the
-        // `#282832`/`#283228`/`#3c2828` tool backgrounds). Exact pi hexes are
-        // approximated by their nearest ANSI-256 index so 8/256-color
-        // terminals reproduce the same relationships; truecolor rendering is
-        // handled per-`Color` variant at emit time.
-        Self {
-            text: Color::Default,
-            muted: Color::Ansi256(244),   // gray (#808080-ish)
-            dim: Color::Ansi256(242),     // dimGray (#666666-ish)
-            accent: Color::Ansi256(108),  // accent teal (#8abeb7) ≈ 108
-            error: Color::Ansi256(131),   // red (#cc6666) ≈ 131
-            success: Color::Ansi256(107), // green (#b5bd68) ≈ 107
-            warning: Color::Ansi256(226), // yellow
-            info: Color::Ansi256(81),     // cyan
-            background: Color::Default,
-            surface: Color::Ansi256(236), // userMessageBg (#343541) ≈ 236
-            border: Color::Ansi256(67),   // border blue (#5f87ff) ≈ 67
-            border_accent: Color::Ansi256(45), // borderAccent cyan (#00d7ff) ≈ 45
-            border_muted: Color::Ansi256(239), // borderMuted darkGray (#505050) ≈ 239
-            selection: Color::Ansi256(60), // selectedBg (#3a3a4a) ≈ 60
-            cursor: Color::Ansi256(81),
-            thinking_text: Color::Ansi256(244), // thinkingText gray
-
-            // Markdown
-            md_heading: Color::Ansi256(179),  // gold (#f0c674) ≈ 179
-            md_link: Color::Ansi256(110),     // blue (#81a2be) ≈ 110
-            md_link_url: Color::Ansi256(242), // dimGray
-            md_code: Color::Rgb(138, 190, 183), // upstream accent #8abeb7
-            md_code_bg: Color::Rgb(48, 52, 59), // subtle inline chip
-            md_code_block: Color::Rgb(212, 212, 212), // neutral code text
-            md_code_block_bg: Color::Rgb(40, 44, 52), // One Dark #282c34
-            md_code_block_border: Color::Ansi256(244), // gray
-            md_quote: Color::Ansi256(244),    // gray
-            md_quote_border: Color::Ansi256(244),
-            md_hr: Color::Ansi256(244),
-            md_list_bullet: Color::Ansi256(108), // accent
-
-            // Tool blocks
-            // Keep status backgrounds close to the terminal surface. Status is
-            // communicated by the icon/foreground; a full saturated green
-            // panel makes successful tools dominate the transcript.
-            tool_pending_bg: Color::Rgb(40, 44, 52),
-            tool_success_bg: Color::Rgb(38, 48, 52), // subtle blue/teal tint
-            tool_error_bg: Color::Rgb(55, 40, 45),   // subtle red tint
-            tool_title: Color::Default,
-            tool_output: Color::Ansi256(244),
-            bash_mode: Color::Ansi256(107), // green
-
-            // Custom messages / skill invocation (pi dark.json):
-            // customMsgBg #2d2838, customMessageLabel #9575cd, text #d4d4d4.
-            custom_message_bg: Color::Rgb(45, 40, 56),
-            custom_message_label: Color::Rgb(149, 117, 205),
-            custom_message_text: Color::Default,
-
-            // Tool diffs
-            tool_diff_added: Color::Ansi256(107),   // green
-            tool_diff_removed: Color::Ansi256(131), // red
-            tool_diff_context: Color::Ansi256(244), // gray
-        }
+        Self::dark()
     }
 }
 
@@ -190,7 +289,7 @@ impl Color {
             Color::Default => "\x1b[39m".to_string(),
             Color::Ansi16(c) => format!("\x1b[{}m", c),
             Color::Ansi256(c) => format!("\x1b[38;5;{}m", c),
-            Color::Rgb(r, g, b) => format!("\x1b[38;2;{};{};{}m", r, g, b),
+            Color::Rgb(r, g, b) => crate::ansi::foreground_rgb(*r, *g, *b),
         }
     }
 
@@ -200,7 +299,7 @@ impl Color {
             Color::Default => "\x1b[49m".to_string(),
             Color::Ansi16(c) => format!("\x1b[{}m", c + 10),
             Color::Ansi256(c) => format!("\x1b[48;5;{}m", c),
-            Color::Rgb(r, g, b) => format!("\x1b[48;2;{};{};{}m", r, g, b),
+            Color::Rgb(r, g, b) => crate::ansi::background_rgb(*r, *g, *b),
         }
     }
 
@@ -343,6 +442,8 @@ pub enum CornerStyle {
 /// Global theme manager.
 pub struct ThemeManager {
     current: Mutex<Theme>,
+    terminal_colors: Mutex<Option<TerminalColors>>,
+    follows_terminal: AtomicBool,
 }
 
 /// Monotonic revision bumped on every theme mutation.
@@ -363,6 +464,8 @@ impl ThemeManager {
     pub fn new() -> Self {
         Self {
             current: Mutex::new(Theme::default()),
+            terminal_colors: Mutex::new(None),
+            follows_terminal: AtomicBool::new(true),
         }
     }
 
@@ -380,9 +483,133 @@ impl ThemeManager {
     }
 
     /// Apply a preset theme to this manager.
+    ///
+    /// An explicit preset wins over the terminal's appearance.
     pub fn apply_preset(&self, preset: ThemePreset) {
+        self.follows_terminal.store(false, Ordering::Release);
         self.set(theme_for_preset(preset));
     }
+
+    /// The colors the terminal reported.
+    pub fn terminal_colors(&self) -> Option<TerminalColors> {
+        self.terminal_colors
+            .lock()
+            .ok()
+            .and_then(|colors| colors.clone())
+    }
+
+    /// Follow the terminal's light or dark appearance again, undoing an
+    /// explicit preset. Returns whether the theme changed.
+    pub fn follow_terminal(&self) -> bool {
+        self.follows_terminal.store(true, Ordering::Release);
+        let colors = match self.terminal_colors.lock() {
+            Ok(colors) => colors.clone(),
+            Err(_) => return false,
+        };
+        match colors {
+            Some(colors) => self.apply_terminal_colors(&colors),
+            None => false,
+        }
+    }
+
+    /// Apply the colors the terminal reported.
+    ///
+    /// The theme follows the terminal's light or dark appearance while the user
+    /// did not pick a theme of their own. Returns whether the theme changed.
+    pub fn apply_terminal_colors(&self, colors: &TerminalColors) -> bool {
+        let changed = match self.terminal_colors.lock() {
+            Ok(mut current) => {
+                if current.as_ref() == Some(colors) {
+                    false
+                } else {
+                    *current = Some(colors.clone());
+                    true
+                }
+            }
+            Err(_) => false,
+        };
+        if changed && self.follows_terminal.load(Ordering::Acquire) {
+            let preset = match terminal_appearance(colors) {
+                Some(TerminalAppearance::Dark) => ThemePreset::Dark,
+                Some(TerminalAppearance::Light) => ThemePreset::Light,
+                None => return changed,
+            };
+            self.set(theme_for_preset(preset));
+        }
+        changed
+    }
+}
+
+/// Whether a terminal renders on a dark or a light background.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalAppearance {
+    Dark,
+    Light,
+}
+
+/// Decide whether the terminal is dark or light, like pi's `detectTerminalTheme`.
+///
+/// The terminal's background decides. Without a reported background: the
+/// `COLORFGBG` fallback, then dark.
+pub fn terminal_appearance(colors: &TerminalColors) -> Option<TerminalAppearance> {
+    if let Some(background) = colors.background {
+        return Some(if terminal_is_dark(&background, colors.foreground) {
+            TerminalAppearance::Dark
+        } else {
+            TerminalAppearance::Light
+        });
+    }
+    color_fgbg_appearance().or(Some(TerminalAppearance::Dark))
+}
+
+/// Dark or light from the `COLORFGBG` environment variable some terminals set.
+///
+/// The index refers to the terminal's own palette, whose colors are unknown
+/// here, so it is classified by index like Vim does.
+pub fn color_fgbg_appearance() -> Option<TerminalAppearance> {
+    let value = std::env::var("COLORFGBG").ok()?;
+    let background = value.split(';').next_back()?.trim();
+    if background.is_empty() || !background.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let index: u32 = background.parse().ok()?;
+    if index > 15 {
+        return None;
+    }
+    Some(if index <= 6 || index == 8 {
+        TerminalAppearance::Dark
+    } else {
+        TerminalAppearance::Light
+    })
+}
+
+/// Whether a terminal is dark or light, from its reported colors.
+///
+/// The direction of its own foreground decides when text can be readable that
+/// way, otherwise dark when white text has more contrast on the background
+/// than black text.
+fn terminal_is_dark(background: &RgbColor, foreground: Option<RgbColor>) -> bool {
+    const TEXT_MINIMUM_WCAG_CONTRAST: f64 = 4.5;
+    let white = RgbColor::new(255, 255, 255);
+    let black = RgbColor::new(0, 0, 0);
+    let white_contrast = white.wcag_contrast(background);
+    let black_contrast = black.wcag_contrast(background);
+    if let Some(foreground) = foreground {
+        let foreground_lightness = foreground.oklab_lightness();
+        let background_lightness = background.oklab_lightness();
+        if (foreground_lightness - background_lightness).abs() > 0.05 {
+            let dark = foreground_lightness > background_lightness;
+            let best = if dark {
+                white_contrast
+            } else {
+                black_contrast
+            };
+            if best >= TEXT_MINIMUM_WCAG_CONTRAST {
+                return dark;
+            }
+        }
+    }
+    white_contrast >= black_contrast
 }
 
 /// Build a complete theme for a preset.
@@ -390,104 +617,74 @@ impl ThemeManager {
 /// Kept separate from [`ThemeManager::apply_preset`] so the process-wide theme
 /// used by components can be updated without maintaining a second palette.
 fn theme_for_preset(preset: ThemePreset) -> Theme {
-    match preset {
-        ThemePreset::Dark => Theme::default(),
-        ThemePreset::Light => {
-            let mut colors = ThemeColors::default();
-            colors.text = Color::Default;
-            colors.muted = Color::Ansi256(241); // mediumGray (#6c6c6c)
-            colors.dim = Color::Ansi256(243); // dimGray (#767676)
-            colors.accent = Color::Ansi256(66); // teal (#5a8080)
-            colors.error = Color::Ansi256(131); // red (#aa5555)
-            colors.success = Color::Ansi256(65); // green (#588458)
-            colors.warning = Color::Ansi256(136); // yellow (#9a7326)
-            colors.info = Color::Ansi256(67); // blue
-            colors.background = Color::Default;
-            colors.surface = Color::Ansi256(254); // userMsgBg (#e8e8e8)
-            colors.border = Color::Ansi256(67); // blue (#547da7)
-            colors.border_accent = Color::Ansi256(66); // teal
-            colors.border_muted = Color::Ansi256(249); // lightGray (#b0b0b0)
-            colors.selection = Color::Ansi256(189); // selectedBg (#d0d0e0)
-            colors.cursor = Color::Ansi256(67);
-            colors.thinking_text = Color::Ansi256(241);
-            colors.md_heading = Color::Ansi256(136); // yellow
-            colors.md_link = Color::Ansi256(67); // blue
-            colors.md_link_url = Color::Ansi256(243);
-            colors.md_code = Color::Rgb(90, 128, 128); // native light teal
-            colors.md_code_bg = Color::Rgb(232, 234, 237);
-            colors.md_code_block = Color::Rgb(31, 35, 40);
-            colors.md_code_block_bg = Color::Rgb(246, 248, 250); // GitHub light code
-            colors.md_code_block_border = Color::Ansi256(241);
-            colors.md_quote = Color::Ansi256(241);
-            colors.md_quote_border = Color::Ansi256(241);
-            colors.md_hr = Color::Ansi256(241);
-            colors.md_list_bullet = Color::Ansi256(65); // green
-            colors.tool_pending_bg = Color::Ansi256(189);
-            colors.tool_success_bg = Color::Ansi256(151);
-            colors.tool_error_bg = Color::Ansi256(181);
-            colors.tool_title = Color::Default;
-            colors.tool_output = Color::Ansi256(241);
-            colors.bash_mode = Color::Ansi256(65);
-            // Custom messages / skill invocation (pi light.json):
-            // customMsgBg #ede7f6, customMessageLabel #7e57c2, text #1f2328.
-            colors.custom_message_bg = Color::Rgb(237, 231, 246);
-            colors.custom_message_label = Color::Rgb(126, 87, 194);
-            colors.custom_message_text = Color::Ansi256(237);
-            colors.tool_diff_added = Color::Ansi256(65);
-            colors.tool_diff_removed = Color::Ansi256(131);
-            colors.tool_diff_context = Color::Ansi256(241);
-            Theme {
-                colors,
-                ..Default::default()
-            }
-        }
-        ThemePreset::Monochrome => {
-            let mut colors = ThemeColors::default();
-            for f in [
-                &mut colors.accent,
-                &mut colors.border_accent,
-                &mut colors.md_code,
-                &mut colors.md_list_bullet,
-                &mut colors.bash_mode,
-            ] {
-                *f = Color::Ansi256(15);
-            }
-            colors.muted = Color::Ansi256(244);
-            colors.dim = Color::Ansi256(242);
-            colors.error = Color::Ansi256(9);
-            colors.success = Color::Ansi256(15);
-            colors.warning = Color::Ansi256(15);
-            colors.info = Color::Ansi256(15);
-            colors.surface = Color::Ansi256(236);
-            colors.border = Color::Ansi256(244);
-            colors.border_muted = Color::Ansi256(240);
-            colors.selection = Color::Ansi256(244);
-            colors.cursor = Color::Ansi256(15);
-            colors.thinking_text = Color::Ansi256(244);
-            colors.md_heading = Color::Ansi256(15);
-            colors.md_link = Color::Ansi256(15);
-            colors.md_link_url = Color::Ansi256(242);
-            colors.md_code_bg = Color::Ansi256(237);
-            colors.md_code_block = Color::Ansi256(15);
-            colors.md_code_block_bg = Color::Ansi256(235);
-            colors.md_code_block_border = Color::Ansi256(244);
-            colors.md_quote = Color::Ansi256(244);
-            colors.md_quote_border = Color::Ansi256(244);
-            colors.md_hr = Color::Ansi256(244);
-            colors.custom_message_bg = Color::Ansi256(236);
-            colors.custom_message_label = Color::Ansi256(15);
-            colors.custom_message_text = Color::Ansi256(244);
-            colors.tool_title = Color::Default;
-            colors.tool_output = Color::Ansi256(244);
-            colors.tool_diff_added = Color::Ansi256(15);
-            colors.tool_diff_removed = Color::Ansi256(9);
-            colors.tool_diff_context = Color::Ansi256(244);
-            Theme {
-                colors,
-                ..Default::default()
-            }
-        }
+    let colors = match preset {
+        ThemePreset::Dark => ThemeColors::dark(),
+        ThemePreset::Light => ThemeColors::light(),
+        ThemePreset::Monochrome => monochrome_colors(),
+    };
+    Theme {
+        colors,
+        ..Default::default()
     }
+}
+
+/// pi's dark palette without any hue.
+///
+/// Port-only preset: pi has no monochrome theme.
+fn monochrome_colors() -> ThemeColors {
+    let mut colors = ThemeColors::dark();
+    let neutral = colors.text;
+    let muted = colors.muted;
+    for color in [
+        &mut colors.accent,
+        &mut colors.border,
+        &mut colors.border_accent,
+        &mut colors.success,
+        &mut colors.error,
+        &mut colors.warning,
+        &mut colors.custom_message_label,
+        &mut colors.tool_title,
+        &mut colors.md_heading,
+        &mut colors.md_link,
+        &mut colors.md_code,
+        &mut colors.md_code_block,
+        &mut colors.md_list_bullet,
+        &mut colors.tool_diff_added,
+        &mut colors.tool_diff_removed,
+        &mut colors.syntax_comment,
+        &mut colors.syntax_keyword,
+        &mut colors.syntax_function,
+        &mut colors.syntax_variable,
+        &mut colors.syntax_string,
+        &mut colors.syntax_number,
+        &mut colors.syntax_type,
+        &mut colors.syntax_operator,
+        &mut colors.syntax_punctuation,
+        &mut colors.thinking_off,
+        &mut colors.thinking_minimal,
+        &mut colors.thinking_low,
+        &mut colors.thinking_medium,
+        &mut colors.thinking_high,
+        &mut colors.thinking_xhigh,
+        &mut colors.thinking_max,
+        &mut colors.bash_mode,
+    ] {
+        *color = neutral;
+    }
+    colors.dim = muted;
+    colors.thinking_text = muted;
+    colors.tool_output = muted;
+    colors.tool_diff_context = muted;
+    colors.md_link_url = muted;
+    colors.md_code_block_border = muted;
+    colors.md_quote = muted;
+    colors.md_quote_border = muted;
+    colors.md_hr = muted;
+    colors.custom_message_text = muted;
+    colors.search_match_text = muted;
+    colors.scrollbar_thumb = muted;
+    colors.scrollbar_track = colors.border_muted;
+    colors
 }
 
 impl Default for ThemeManager {
@@ -544,10 +741,80 @@ mod tests {
     }
 
     #[test]
-    fn test_theme_manager() {
+    fn the_dark_palette_is_pi_palette() {
+        let colors = ThemeColors::dark();
+        assert_eq!(colors.accent, Color::Rgb(167, 152, 215));
+        assert_eq!(colors.border, Color::Rgb(95, 168, 204));
+        assert_eq!(colors.text, Color::Rgb(222, 224, 225));
+        assert_eq!(colors.user_message_bg, Color::Rgb(57, 61, 63));
+        assert_eq!(colors.tool_success_bg, Color::Rgb(37, 65, 49));
+        assert_eq!(colors.md_link, Color::Rgb(105, 173, 208));
+        assert_eq!(colors.scrollbar_thumb, Color::Rgb(151, 160, 165));
+        assert_eq!(colors.search_match_bg, Color::Rgb(78, 47, 27));
+        assert_eq!(colors.syntax_keyword, Color::Rgb(105, 173, 208));
+        assert_eq!(colors.thinking_max, Color::Rgb(254, 84, 98));
+    }
+
+    #[test]
+    fn the_light_palette_is_pi_palette() {
+        let colors = ThemeColors::light();
+        assert_eq!(colors.accent, Color::Rgb(116, 89, 180));
+        assert_eq!(colors.border, Color::Rgb(61, 142, 179));
+        assert_eq!(colors.text, Color::Rgb(59, 63, 65));
+        assert_eq!(colors.user_message_bg, Color::Rgb(222, 224, 225));
+        assert_eq!(colors.tool_success_bg, Color::Rgb(222, 233, 225));
+        assert_eq!(colors.md_link, Color::Rgb(47, 120, 153));
+        assert_eq!(colors.scrollbar_thumb, Color::Rgb(150, 160, 164));
+        assert_eq!(colors.search_match_bg, Color::Rgb(237, 227, 221));
+        assert_eq!(colors.syntax_keyword, Color::Rgb(47, 120, 153));
+        assert_eq!(colors.thinking_max, Color::Rgb(254, 116, 121));
+    }
+
+    #[test]
+    fn the_theme_follows_the_terminal_appearance_until_a_theme_is_picked() {
+        use crate::terminal_colors::RgbColor;
+
         let manager = ThemeManager::new();
-        manager.apply_preset(ThemePreset::Dark);
-        let theme = manager.get();
-        assert!(matches!(theme.colors.accent, Color::Ansi256(108)));
+        let light = TerminalColors {
+            background: Some(RgbColor::new(255, 255, 255)),
+            ..Default::default()
+        };
+        assert!(manager.apply_terminal_colors(&light));
+        assert_eq!(
+            manager.get().colors.muted,
+            theme_for_preset(ThemePreset::Light).colors.muted
+        );
+        assert_eq!(manager.terminal_colors(), Some(light));
+
+        manager.apply_preset(ThemePreset::Monochrome);
+        let dark = TerminalColors {
+            background: Some(RgbColor::new(0, 0, 0)),
+            ..Default::default()
+        };
+        assert!(manager.apply_terminal_colors(&dark));
+        assert_eq!(
+            manager.get().colors.muted,
+            theme_for_preset(ThemePreset::Monochrome).colors.muted,
+            "an explicit theme wins over the terminal's appearance"
+        );
+    }
+
+    #[test]
+    fn a_mid_grey_terminal_is_light_like_pi() {
+        let colors = TerminalColors {
+            background: Some(RgbColor::new(118, 118, 118)),
+            ..Default::default()
+        };
+        assert_eq!(terminal_appearance(&colors), Some(TerminalAppearance::Light));
+    }
+
+    #[test]
+    fn a_reported_foreground_decides_the_appearance() {
+        let colors = TerminalColors {
+            background: Some(RgbColor::new(118, 118, 118)),
+            foreground: Some(RgbColor::new(200, 200, 200)),
+            ..Default::default()
+        };
+        assert_eq!(terminal_appearance(&colors), Some(TerminalAppearance::Dark));
     }
 }

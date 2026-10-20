@@ -152,6 +152,7 @@ pub fn interrupted_tool_result(outcome: &UnknownToolOutcome, timestamp: i64) -> 
         usage: None,
         added_tool_names: Vec::new(),
         is_error: true,
+        duration_ms: None,
         timestamp,
     }))
 }

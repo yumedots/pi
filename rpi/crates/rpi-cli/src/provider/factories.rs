@@ -47,8 +47,55 @@ impl ProviderFactory for ProtocolFactory {
                     models,
                 ))
             }
-            _ => unreachable!("only supported wire protocols are registered"),
+            _ => Arc::new(UnsupportedProtocolProvider {
+                id: provider_id.to_string(),
+                api: self.0.clone(),
+            }),
         }
+    }
+}
+
+/// A provider whose wire protocol this build does not implement.
+///
+/// The resolver rejects such a selection before a request is made; this
+/// runtime is the last line of defence so an unimplemented protocol answers
+/// with a clear error instead of panicking.
+struct UnsupportedProtocolProvider {
+    id: String,
+    api: rpi_ai::Api,
+}
+
+#[async_trait::async_trait]
+impl Provider for UnsupportedProtocolProvider {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn models(&self) -> &[Model] {
+        &[]
+    }
+    async fn stream_simple(
+        &self,
+        model: &Model,
+        _context: &Context,
+        _options: &SimpleStreamOptions,
+    ) -> AssistantMessageEventStream {
+        let (mut producer, stream) = rpi_ai::event_stream::create_assistant_message_event_stream();
+        producer.push(rpi_ai::AssistantMessageEvent::Error {
+            reason: rpi_ai::types::ErrorReason::Error,
+            error: rpi_ai::types::AssistantMessage::terminal(
+                self.api.clone(),
+                model.provider.clone(),
+                model.id.clone(),
+                rpi_ai::types::StopReason::Error,
+                &format!(
+                    "Provider \"{}\" needs the {} protocol, which this build does not support.",
+                    model.provider,
+                    self.api.as_str()
+                ),
+                0,
+            ),
+        });
+        stream
     }
 }
 
@@ -116,12 +163,31 @@ impl RuntimeFactories {
         factories
     }
 
+    /// Whether a provider's wire protocol can be served by this build.
+    ///
+    /// A registered extension provider can serve any protocol it declares; a
+    /// built-in provider needs a protocol this build implements.
+    pub fn supports(&self, provider_id: &str, api: &rpi_ai::Api) -> bool {
+        self.providers
+            .get(provider_id)
+            .map_or_else(
+                || self.protocols.contains_key(api.as_str()),
+                |_| {
+                    self.provider_apis
+                        .get(provider_id)
+                        .map_or(true, |declared| declared == api.as_str())
+                },
+            )
+    }
+
     pub fn configure(
         &self,
         provider_id: &str,
         api: &rpi_ai::Api,
         models: Vec<Model>,
         auth: RequestAuth,
+        provider_has_auth: bool,
+        model_selected: bool,
         settings: &settings::Settings,
     ) -> Option<(Arc<dyn Provider>, Arc<ExecutionBinding>)> {
         let factory = self
@@ -133,7 +199,13 @@ impl RuntimeFactories {
                     .map_or(true, |declared| declared == api.as_str())
             })
             .or_else(|| self.protocols.get(api.as_str()))?;
-        let binding = Arc::new(ExecutionBinding::new(provider_id, models, auth));
+        let binding = Arc::new(ExecutionBinding::new(
+            provider_id,
+            models,
+            auth,
+            provider_has_auth,
+            model_selected,
+        ));
         let inner = factory.create(provider_id, binding.models().to_vec(), settings);
         let provider = Arc::new(ConfiguredProvider {
             id: provider_id.into(),
@@ -234,6 +306,27 @@ fn unbound_model_error(model: &Model, provider_id: &str) -> AssistantMessageEven
     stream
 }
 
+/// The request cannot authenticate. Answer with the login guidance instead of
+/// the provider's raw "No API key for provider" text.
+fn missing_credential_error(
+    binding: &ExecutionBinding,
+    model: &Model,
+) -> AssistantMessageEventStream {
+    let (mut producer, stream) = rpi_ai::event_stream::create_assistant_message_event_stream();
+    producer.push(rpi_ai::AssistantMessageEvent::Error {
+        reason: rpi_ai::types::ErrorReason::Error,
+        error: rpi_ai::types::AssistantMessage::terminal(
+            model.api.clone(),
+            model.provider.clone(),
+            model.id.clone(),
+            rpi_ai::types::StopReason::Error,
+            &binding.missing_credential_message(&model.provider),
+            0,
+        ),
+    });
+    stream
+}
+
 #[async_trait::async_trait]
 impl Provider for ConfiguredProvider {
     fn id(&self) -> &str {
@@ -251,6 +344,13 @@ impl Provider for ConfiguredProvider {
         let Some((model, options)) = self.binding.prepare(model, options) else {
             return unbound_model_error(model, &self.id);
         };
+        if self.binding.requires_auth()
+            && options.api_key.is_none()
+            && !crate::credentials::has_header_auth(options.headers.as_ref())
+            && !crate::credentials::has_header_auth(model.headers.as_ref())
+        {
+            return missing_credential_error(&self.binding, &model);
+        }
         self.inner.stream_simple(&model, context, &options).await
     }
 }
@@ -339,6 +439,8 @@ mod tests {
                         &api,
                         vec![model],
                         RequestAuth::ApiKey(token.into()),
+                        true,
+                        true,
                         &settings::Settings::default(),
                     )
                     .unwrap()
@@ -439,6 +541,8 @@ mod tests {
                     &api,
                     vec![model],
                     RequestAuth::None,
+                    true,
+                    true,
                     &settings::Settings::default(),
                 )
                 .unwrap();
@@ -495,6 +599,8 @@ mod tests {
                     &raw.api.clone(),
                     vec![raw],
                     RequestAuth::ApiKey("private-credential".into()),
+                    true,
+                    true,
                     &settings::Settings::default(),
                 )
                 .unwrap();
@@ -586,6 +692,8 @@ mod tests {
                     "authorization".into(),
                     "Bearer default".into(),
                 )])),
+                true,
+                true,
                 &settings::Settings::default(),
             )
             .unwrap();

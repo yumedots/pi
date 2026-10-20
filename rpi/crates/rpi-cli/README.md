@@ -19,7 +19,7 @@ cargo install rpi-cli
 Requires Rust 1.78 or newer. Then point it at a provider and start it:
 
 ```bash
-export ANTHROPIC_API_KEY=...     # or OPENAI_API_KEY, or ~/.rpi/agent/models.json
+export ANTHROPIC_API_KEY=...     # or OPENAI_API_KEY, or ~/.pi/agent/models.json
 rpi
 ```
 
@@ -35,17 +35,17 @@ rpi --mode json -p "list the crates"
 Credentials are resolved in priority order:
 
 1. `--api-key` on the command line
-2. `~/.rpi/auth.json`, written by `rpi auth login` (mode `0o600` on Unix)
-3. the `apiKey` field of a provider in `~/.rpi/agent/models.json`
+2. `~/.pi/auth.json`, written by `rpi auth login` (mode `0o600` on Unix)
+3. the `apiKey` field of a provider in `~/.pi/agent/models.json`
 4. provider environment variables: `OPENAI_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
    `ANTHROPIC_API_KEY`
 
-`~/.rpi/` can be relocated with `RPI_CODING_AGENT_DIR`.
+`~/.pi/` can be relocated with `PI_CODING_AGENT_DIR`.
 
 ## Custom providers and gateways
 
 Any Anthropic-Messages or OpenAI-compatible endpoint can be declared in
-`~/.rpi/agent/models.json`:
+`~/.pi/agent/models.json`:
 
 ```jsonc
 {
@@ -74,10 +74,10 @@ endpoint overrides also honour `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`.
 - Sessions are JSONL v4 files under the session directory, with branching and
   context compaction.
 - Project resources are discovered from `.rpi/` (skills, prompts, themes, and
-  `SYSTEM.md`), with `~/.rpi/agent/` as the global layer. When both define the
+  `SYSTEM.md`), with `~/.pi/agent/` as the global layer. When both define the
   same skill or prompt name, the project copy wins.
 - Plugins are loaded from project `.rpi/extensions`, global
-  `~/.rpi/agent/extensions`, and `--extensions-dir`.
+  `~/.pi/agent/extensions`, and `--extensions-dir`.
 
 ## Plugins
 
@@ -90,7 +90,7 @@ rpi install my-extension --path ../my-extension --force   # local
 rpi dev                                        # build + watch a local extension
 ```
 
-`rpi install` defaults to the versioned `rpi-extension.json` prebuilt protocol: it resolves a non-yanked stable package version and repository through crates.io, loads the `<package>-v<version>` Release manifest, and verifies the archive and declared library before transactionally installing it into `~/.rpi/agent/extensions`. Explicit `--github owner/repo` installs use package-specific tags and also support unpublished extensions. Both repository forms consume the same protocol; they never infer library filenames or use repository-wide latest bundles. Missing prebuilt releases fail with an actionable error; `--build` and `--path` explicitly select Cargo compilation. Installed provenance preserves the source for update discovery, reinstalls and uninstall. Actual plugin ABI/API-size validation still happens when loading the library.
+`rpi install` defaults to the versioned `rpi-extension.json` prebuilt protocol: it resolves a non-yanked stable package version and repository through crates.io, loads the `<package>-v<version>` Release manifest, and verifies the archive and declared library before transactionally installing it into `~/.pi/agent/extensions`. Explicit `--github owner/repo` installs use package-specific tags and also support unpublished extensions. Both repository forms consume the same protocol; they never infer library filenames or use repository-wide latest bundles. Missing prebuilt releases fail with an actionable error; `--build` and `--path` explicitly select Cargo compilation. Installed provenance preserves the source for update discovery, reinstalls and uninstall. Actual plugin ABI/API-size validation still happens when loading the library.
 
 `rpi install <name>` installs or upgrades an extension without `--force`. An already installed version is skipped; use `--force` to reinstall the same version or allow a downgrade. These rules also apply to explicit Cargo builds and local installs.
 

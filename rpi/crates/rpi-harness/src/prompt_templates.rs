@@ -269,6 +269,12 @@ async fn load_template_from_file(
             })
         });
 
+    let argument_hint = frontmatter
+        .get("argument-hint")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
     LoadTemplateResult {
         template: Some(PromptTemplate {
             // Mirrors TS `fileName.replace(/\.md$/i, "")` — a single
@@ -282,7 +288,9 @@ async fn load_template_from_file(
                 .unwrap_or(file_name)
                 .to_string(),
             description,
+            argument_hint,
             content: body,
+            file_path: Some(file_path.to_string()),
         }),
         diagnostics,
     }
@@ -336,8 +344,9 @@ async fn resolve_kind(
 /// Parse an argument string using simple shell-style single and double quotes.
 /// Mirrors TS `parseCommandArgs`.
 pub fn parse_command_args(args_string: &str) -> Vec<String> {
-    let mut args = Vec::new();
+    let mut args: Vec<String> = Vec::new();
     let mut current = String::new();
+    let mut has_token = false;
     let mut in_quote: Option<char> = None;
 
     for ch in args_string.chars() {
@@ -349,37 +358,209 @@ pub fn parse_command_args(args_string: &str) -> Vec<String> {
             }
         } else if ch == '"' || ch == '\'' {
             in_quote = Some(ch);
-        } else if ch == ' ' || ch == '\t' {
-            if !current.is_empty() {
+            has_token = true;
+        } else if ch.is_whitespace() {
+            if has_token {
                 args.push(std::mem::take(&mut current));
+                has_token = false;
             }
         } else {
             current.push(ch);
+            has_token = true;
         }
     }
-    if !current.is_empty() {
+    if has_token {
         args.push(current);
     }
     args
 }
 
-/// Substitute prompt-template placeholders (`$1`, `$@`, `$ARGUMENTS`,
-/// `${@:N}`, `${@:N:L}`) with command arguments. Mirrors TS `substituteArgs`.
+/// Substitute prompt-template placeholders with command arguments. Mirrors TS
+/// `substituteArgs`.
 ///
-/// Order of replacement (matches TS exactly so a `$1` inside an expanded
-/// `$ARGUMENTS` is NOT re-expanded): `$N` → `${@:N}`/`${@:N:L}` → `$ARGUMENTS`
-/// → `$@`.
+/// The original scans the template once with
+/// `/\$\{(\d+|ARGUMENTS|@):-([^}]*)\}|\$\{@:(\d+)(?::(\d+))?\}|\$(ARGUMENTS|@|\d+)/g`,
+/// so the first alternative that matches at a position wins and the expanded
+/// value is never re-scanned. The port reproduces that scan exactly:
 ///
-/// - `$N` → `args[N-1]` (empty if out of range).
-/// - `${@:N}` → `args[N-1..].join(" ")` (1-indexed; clamped to 0).
+/// - `${N:-default}` → `args[N-1]`, or `default` when it is missing/empty.
+/// - `${@:-default}` / `${ARGUMENTS:-default}` → all args, or `default` when
+///   they are empty.
+/// - `${@:N}` → `args[N-1..].join(" ")`.
 /// - `${@:N:L}` → `args[N-1..N-1+L].join(" ")`.
+/// - `$N` → `args[N-1]` (empty when out of range).
 /// - `$ARGUMENTS` / `$@` → `args.join(" ")`.
 pub fn substitute_args(content: &str, args: &[String]) -> String {
-    let result = replace_dollar_n(content, args);
-    let result = replace_at_colon(&result, args);
     let all_args = args.join(" ");
-    let result = result.replace("$ARGUMENTS", &all_args);
-    result.replace("$@", &all_args)
+    let chars: Vec<char> = content.chars().collect();
+    let mut out = String::with_capacity(content.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] != '$' {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        if let Some((replacement, next)) = match_default_form(&chars, i, args, &all_args) {
+            out.push_str(&replacement);
+            i = next;
+            continue;
+        }
+        if let Some((replacement, next)) = match_slice_form(&chars, i, args) {
+            out.push_str(&replacement);
+            i = next;
+            continue;
+        }
+        if let Some((replacement, next)) = match_simple_form(&chars, i, args, &all_args) {
+            out.push_str(&replacement);
+            i = next;
+            continue;
+        }
+        out.push('$');
+        i += 1;
+    }
+    out
+}
+
+/// `${<target>:-<default>}` — the first alternative of the original's regex.
+fn match_default_form(
+    chars: &[char],
+    start: usize,
+    args: &[String],
+    all_args: &str,
+) -> Option<(String, usize)> {
+    if chars.get(start + 1) != Some(&'{') {
+        return None;
+    }
+    let mut i = start + 2;
+    let target_start = i;
+    while i < chars.len() && chars[i].is_ascii_digit() {
+        i += 1;
+    }
+    let target: String = if i > target_start {
+        chars[target_start..i].iter().collect()
+    } else if chars[i..].starts_with(&['A', 'R', 'G', 'U', 'M', 'E', 'N', 'T', 'S']) {
+        i += 9;
+        "ARGUMENTS".to_string()
+    } else if chars.get(i) == Some(&'@') {
+        i += 1;
+        "@".to_string()
+    } else {
+        return None;
+    };
+    if chars.get(i) != Some(&':') || chars.get(i + 1) != Some(&'-') {
+        return None;
+    }
+    i += 2;
+    let default_start = i;
+    while i < chars.len() && chars[i] != '}' {
+        i += 1;
+    }
+    if chars.get(i) != Some(&'}') {
+        return None;
+    }
+    let default_value: String = chars[default_start..i].iter().collect();
+    let value = if target == "@" || target == "ARGUMENTS" {
+        Some(all_args.to_string())
+    } else {
+        target
+            .parse::<usize>()
+            .ok()
+            .and_then(|n| n.checked_sub(1))
+            .and_then(|idx| args.get(idx))
+            .cloned()
+    };
+    let replacement = match value {
+        Some(v) if !v.is_empty() => v,
+        _ => default_value,
+    };
+    Some((replacement, i + 1))
+}
+
+/// `${@:N}` / `${@:N:L}` — the second alternative of the original's regex.
+fn match_slice_form(chars: &[char], start: usize, args: &[String]) -> Option<(String, usize)> {
+    if chars.get(start + 1) != Some(&'{') || chars.get(start + 2) != Some(&'@') {
+        return None;
+    }
+    if chars.get(start + 3) != Some(&':') {
+        return None;
+    }
+    let mut i = start + 4;
+    let digits_start = i;
+    while i < chars.len() && chars[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == digits_start {
+        return None;
+    }
+    let first: usize = chars[digits_start..i]
+        .iter()
+        .collect::<String>()
+        .parse()
+        .unwrap_or(0);
+    let mut length: Option<usize> = None;
+    if chars.get(i) == Some(&':') {
+        let length_start = i + 1;
+        let mut j = length_start;
+        while j < chars.len() && chars[j].is_ascii_digit() {
+            j += 1;
+        }
+        if j == length_start {
+            return None;
+        }
+        length = Some(
+            chars[length_start..j]
+                .iter()
+                .collect::<String>()
+                .parse()
+                .unwrap_or(0),
+        );
+        i = j;
+    }
+    if chars.get(i) != Some(&'}') {
+        return None;
+    }
+    let from = first.saturating_sub(1);
+    let slice = match length {
+        Some(len) => {
+            let end = from.saturating_add(len).min(args.len());
+            &args[from.min(args.len())..end]
+        }
+        None => {
+            if from >= args.len() {
+                &args[args.len()..]
+            } else {
+                &args[from..]
+            }
+        }
+    };
+    Some((slice.join(" "), i + 1))
+}
+
+/// `$ARGUMENTS` / `$@` / `$N` — the third alternative of the original's regex.
+fn match_simple_form(
+    chars: &[char],
+    start: usize,
+    args: &[String],
+    all_args: &str,
+) -> Option<(String, usize)> {
+    if chars.get(start + 1) == Some(&'@') {
+        return Some((all_args.to_string(), start + 2));
+    }
+    if chars[start + 1..].starts_with(&['A', 'R', 'G', 'U', 'M', 'E', 'N', 'T', 'S']) {
+        return Some((all_args.to_string(), start + 10));
+    }
+    let mut i = start + 1;
+    while i < chars.len() && chars[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == start + 1 {
+        return None;
+    }
+    let digits: String = chars[start + 1..i].iter().collect();
+    let index = digits.parse::<usize>().ok().and_then(|n| n.checked_sub(1));
+    let value = index.and_then(|idx| args.get(idx)).cloned().unwrap_or_default();
+    Some((value, i))
 }
 
 /// Format a prompt-template invocation with positional arguments. Mirrors TS
@@ -388,97 +569,28 @@ pub fn format_prompt_template_invocation(template: &PromptTemplate, args: &[Stri
     substitute_args(&template.content, args)
 }
 
-// Replace `$(\d+)` with `args[n-1]` (empty if out of range). Mirrors the TS
-// `result.replace(/\$(\d+)/g, …)` regex. Hand-rolled to avoid a regex dep.
-fn replace_dollar_n(content: &str, args: &[String]) -> String {
-    let bytes = content.as_bytes();
-    let mut out = String::with_capacity(content.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1].is_ascii_digit() {
-            // Consume the maximal run of digits.
-            let mut j = i + 1;
-            while j < bytes.len() && bytes[j].is_ascii_digit() {
-                j += 1;
-            }
-            let digits = std::str::from_utf8(&bytes[i + 1..j]).unwrap_or("");
-            let n: usize = digits.parse().unwrap_or(0);
-            if n >= 1 {
-                if let Some(arg) = args.get(n - 1) {
-                    out.push_str(arg);
-                }
-            }
-            // n==0 (digits "0") → TS `args[parseInt("0")-1] ?? ""` = args[-1] →
-            // undefined → "". Matches: push nothing.
-            i = j;
-        } else {
-            out.push(bytes[i] as char);
-            i += 1;
-        }
+/// Expand a prompt template when the text names one. Mirrors TS
+/// `expandPromptTemplate`.
+///
+/// The text must start with `/`; the first whitespace-delimited token is the
+/// template name and the rest are the arguments. When no template matches, the
+/// text is returned unchanged.
+pub fn expand_prompt_template(text: &str, templates: &[PromptTemplate]) -> String {
+    if !text.starts_with('/') {
+        return text.to_string();
     }
-    out
-}
-
-// Replace `${@:N}` and `${@:N:L}`. Mirrors the TS regex
-// `\$\{@:(\d+)(?::(\d+))?\}`.
-fn replace_at_colon(content: &str, args: &[String]) -> String {
-    let bytes = content.as_bytes();
-    let mut out = String::with_capacity(content.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        // Look for `${@:` at this position.
-        if i + 3 < bytes.len()
-            && bytes[i] == b'$'
-            && bytes[i + 1] == b'{'
-            && bytes[i + 2] == b'@'
-            && bytes[i + 3] == b':'
-        {
-            // Consume digits for N.
-            let mut j = i + 4;
-            while j < bytes.len() && bytes[j].is_ascii_digit() {
-                j += 1;
-            }
-            if j > i + 4 {
-                let n_str = std::str::from_utf8(&bytes[i + 4..j]).unwrap_or("");
-                let mut start: usize = n_str.parse::<usize>().unwrap_or(0).saturating_sub(1);
-                // TS: `if (start < 0) start = 0;` — usize clamp mirrors it.
-                if j < bytes.len() && bytes[j] == b':' {
-                    // `${@:N:L}` form.
-                    let mut k = j + 1;
-                    while k < bytes.len() && bytes[k].is_ascii_digit() {
-                        k += 1;
-                    }
-                    if k < bytes.len() && bytes[k] == b'}' && k > j + 1 {
-                        let l_str = std::str::from_utf8(&bytes[j + 1..k]).unwrap_or("");
-                        let length: usize = l_str.parse().unwrap_or(0);
-                        let end = (start + length).min(args.len());
-                        out.push_str(&args[start.min(args.len())..end].join(" "));
-                        i = k + 1;
-                        continue;
-                    }
-                } else if j < bytes.len() && bytes[j] == b'}' {
-                    // `${@:N}` form.
-                    let _ = &mut start;
-                    let slice = if start >= args.len() {
-                        &[][..]
-                    } else {
-                        &args[start..]
-                    };
-                    out.push_str(&slice.join(" "));
-                    i = j + 1;
-                    continue;
-                }
-            }
-            // Not a recognized `${@:…}` form — emit `$` literally and continue
-            // past it (the `{...}` will be copied verbatim by subsequent iters).
-            out.push('$');
-            i += 1;
-        } else {
-            out.push(bytes[i] as char);
-            i += 1;
-        }
+    let rest = &text[1..];
+    let name_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    let name = &rest[..name_end];
+    if name.is_empty() {
+        return text.to_string();
     }
-    out
+    let args_string = rest[name_end..].trim_start();
+    let Some(template) = templates.iter().find(|t| t.name == name) else {
+        return text.to_string();
+    };
+    let args = parse_command_args(args_string);
+    substitute_args(&template.content, &args)
 }
 
 #[cfg(test)]
@@ -540,7 +652,9 @@ mod tests {
         let t = PromptTemplate {
             name: "one".to_string(),
             description: None,
+            argument_hint: None,
             content: "$1 ${@:2} $ARGUMENTS".to_string(),
+            file_path: None,
         };
         let out =
             format_prompt_template_invocation(&t, &["hello world".to_string(), "test".to_string()]);
