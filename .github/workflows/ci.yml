@@ -57,6 +57,10 @@ jobs:
 
   parity:
     runs-on: ubuntu-latest
+    env:
+      # A target dir of its own: a shared one can hold an rlib built from an
+      # older source, and the resulting error looks exactly like a real one.
+      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
