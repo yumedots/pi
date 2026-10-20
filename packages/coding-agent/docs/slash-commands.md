@@ -22,7 +22,7 @@ Extensions, prompt templates, and skills can add commands. The command menu in P
 | Command | Description |
 |---|---|
 | `/new` | Start a new session |
-| `/resume`, `/history` | Switch to another saved session |
+| `/resume`, `/history`, `/sessions` | Switch to another saved session |
 | `/name [name]` | Set the session display name, or show the current name when omitted |
 | `/stats` | Show current session information and statistics |
 | `/tree` | Navigate the session tree |

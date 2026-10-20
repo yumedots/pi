@@ -114,7 +114,7 @@ import {
 	type UsageEntry,
 } from "../../core/session-manager.ts";
 import type { FullscreenExitOutput, TuiMode } from "../../core/settings-manager.ts";
-import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
+import { BUILTIN_SLASH_COMMANDS, resolveBuiltinSlashAlias } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
 import { withBuiltInRenderers } from "../../core/tools/renderers/index.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
@@ -686,7 +686,9 @@ export class InteractiveMode {
 	}
 
 	private getBuiltInCommandConflictDiagnostics(extensionRunner: ExtensionRunner): ResourceDiagnostic[] {
-		const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
+		const builtinNames = new Set(
+			BUILTIN_SLASH_COMMANDS.flatMap((command) => [command.name, ...(command.aliases ?? [])]),
+		);
 		return extensionRunner
 			.getRegisteredCommands()
 			.filter((command) => builtinNames.has(command.name))
@@ -701,12 +703,19 @@ export class InteractiveMode {
 	}
 
 	private createBaseAutocompleteProvider(): AutocompleteProvider {
-		// Define commands for autocomplete
-		const slashCommands: SlashCommand[] = BUILTIN_SLASH_COMMANDS.map((command) => ({
-			name: command.name,
-			description: command.description,
-			...(command.argumentHint && { argumentHint: command.argumentHint }),
-		}));
+		// Define commands for autocomplete. An alias is offered as its own entry, so it
+		// can be found in the picker.
+		const slashCommands: SlashCommand[] = BUILTIN_SLASH_COMMANDS.flatMap((command) => [
+			{
+				name: command.name,
+				description: command.description,
+				...(command.argumentHint && { argumentHint: command.argumentHint }),
+			},
+			...(command.aliases ?? []).map((alias) => ({
+				name: alias,
+				description: `${command.description} (alias for /${command.name})`,
+			})),
+		]);
 
 		const modelCommand = slashCommands.find((command) => command.name === "model");
 		if (modelCommand) {
@@ -2837,6 +2846,9 @@ export class InteractiveMode {
 			text = text.trim();
 			if (!text) return;
 
+			// An alias runs the command it points at, e.g. "/history" runs "/resume".
+			text = resolveBuiltinSlashAlias(text);
+
 			// Handle commands
 			if (text === "/settings") {
 				this.showSettingsSelector();
@@ -2983,7 +2995,7 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
-			if (text === "/resume" || text === "/history") {
+			if (text === "/resume") {
 				this.showSessionSelector();
 				this.editor.setText("");
 				return;

@@ -14,6 +14,8 @@ export interface BuiltinSlashCommand {
 	name: string;
 	description: string;
 	argumentHint?: string;
+	/** Other names the command answers to, e.g. "history" for "/resume". */
+	aliases?: readonly string[];
 }
 
 export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
@@ -40,7 +42,21 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "logout", description: "Remove provider authentication" },
 	{ name: "new", description: "Start a new session" },
 	{ name: "compact", description: "Manually compact the session context" },
-	{ name: "resume", description: "Resume a different session" },
+	{ name: "resume", description: "Resume a different session", aliases: ["history", "sessions"] },
 	{ name: "reload", description: "Reload keybindings, extensions, skills, prompts, themes, and context files" },
 	{ name: "quit", description: `Quit ${APP_NAME}` },
 ];
+
+/**
+ * Map an alias to the command it points at, e.g. "/history" to "/resume".
+ *
+ * Only a bare command name is rewritten, so a message that starts with an alias
+ * and continues with text is left alone.
+ */
+export function resolveBuiltinSlashAlias(text: string): string {
+	const match = /^\/([^\s/]+)$/.exec(text);
+	if (!match) return text;
+	const name = match[1]!;
+	const command = BUILTIN_SLASH_COMMANDS.find((candidate) => candidate.aliases?.includes(name));
+	return command ? `/${command.name}` : text;
+}

@@ -57,7 +57,7 @@ Prompt templates, skills, and extensions can add more commands to the same menu.
 Pi saves sessions automatically unless session persistence is disabled.
 
 - `/new` starts a new session.
-- `/resume` opens another saved session.
+- `/resume` opens another saved session. `/history` and `/sessions` do the same.
 - `/name` gives the current session a recognizable name.
 - `/stats` shows its file, ID, message count, token usage, and cost.
 

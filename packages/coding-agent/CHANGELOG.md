@@ -9,7 +9,8 @@
 
 ### Added
 
-- Added `/skills` to browse the loaded skills and run one from a picker. `/resume` also answers to `/history`
+- Added `/skills` to browse the loaded skills and run one from a picker
+- `/resume` now also answers to `/history` and `/sessions`, and both aliases show up in the command menu
 - Added `/theme` to change the color theme. It previews each theme as you move through the list, and `/theme <name>` applies one directly
 - Added a Models Configuration reference generated from the `models.json` schema, listing all provider, model, model override, and compatibility fields ([#10790](https://github.com/earendil-works/pi/issues/10790))
 - Added the `autocompletePosition` setting, so the slash-command menu can float above the input (default) or sit below it
