@@ -84,7 +84,7 @@ export function anthropicProvider(): Provider<"anthropic-messages"> {
 				load: loadAnthropicOAuth,
 			}),
 		},
-		models: Object.values(ANTHROPIC_MODELS),
+		models: () => Object.values(ANTHROPIC_MODELS),
 		api: anthropicMessagesApi(),
 	});
 }

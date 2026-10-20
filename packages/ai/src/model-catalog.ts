@@ -79,3 +79,27 @@ export function flattenClassifierModelCatalog<const TProvider extends ProviderId
 ): ClassifierModelCatalog<TGroups, TProvider> {
 	return flattenModelCatalog(groups, "classifier") as ClassifierModelCatalog<TGroups, TProvider>;
 }
+
+/**
+ * Defers building a model catalog until something reads it.
+ *
+ * Flattening the generated catalogs is the largest allocation the agent makes at
+ * startup, and a session that never asks a provider for its models should not pay for
+ * it. The proxy materializes the catalog on the first access and then behaves like
+ * the plain object.
+ */
+export function lazyCatalog<TCatalog extends object>(build: () => TCatalog): TCatalog {
+	let catalog: TCatalog | undefined;
+	const materialize = (): TCatalog => (catalog ??= build());
+	return new Proxy({} as TCatalog, {
+		get: (_target, property, receiver) => Reflect.get(materialize(), property, receiver),
+		has: (_target, property) => Reflect.has(materialize(), property),
+		ownKeys: () => Reflect.ownKeys(materialize()),
+		getOwnPropertyDescriptor: (_target, property) => {
+			const descriptor = Reflect.getOwnPropertyDescriptor(materialize(), property);
+			return descriptor ? { ...descriptor, configurable: true } : undefined;
+		},
+		set: (_target, property, value) => Reflect.set(materialize(), property, value),
+		deleteProperty: (_target, property) => Reflect.deleteProperty(materialize(), property),
+	});
+}

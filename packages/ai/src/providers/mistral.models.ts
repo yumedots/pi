@@ -2,13 +2,16 @@
 // Do not edit manually - run 'npm run generate-models' to update
 
 import values from "./data/mistral.json" with { type: "json" };
-import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
+import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, lazyCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
 
-export const MISTRAL_MODELS: ChatModelCatalog<typeof values, "mistral"> =
-	flattenChatModelCatalog("mistral", values);
+export const MISTRAL_MODELS: ChatModelCatalog<typeof values, "mistral"> = lazyCatalog(
+	() => flattenChatModelCatalog("mistral", values),
+);
 
-export const MISTRAL_IMAGE_MODELS: ImageModelCatalog<typeof values, "mistral"> =
-	flattenImageModelCatalog("mistral", values);
+export const MISTRAL_IMAGE_MODELS: ImageModelCatalog<typeof values, "mistral"> = lazyCatalog(
+	() => flattenImageModelCatalog("mistral", values),
+);
 
-export const MISTRAL_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "mistral"> =
-	flattenClassifierModelCatalog("mistral", values);
+export const MISTRAL_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "mistral"> = lazyCatalog(
+	() => flattenClassifierModelCatalog("mistral", values),
+);

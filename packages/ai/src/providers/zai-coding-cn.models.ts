@@ -2,13 +2,16 @@
 // Do not edit manually - run 'npm run generate-models' to update
 
 import values from "./data/zai-coding-cn.json" with { type: "json" };
-import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
+import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, lazyCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
 
-export const ZAI_CODING_CN_MODELS: ChatModelCatalog<typeof values, "zai-coding-cn"> =
-	flattenChatModelCatalog("zai-coding-cn", values);
+export const ZAI_CODING_CN_MODELS: ChatModelCatalog<typeof values, "zai-coding-cn"> = lazyCatalog(
+	() => flattenChatModelCatalog("zai-coding-cn", values),
+);
 
-export const ZAI_CODING_CN_IMAGE_MODELS: ImageModelCatalog<typeof values, "zai-coding-cn"> =
-	flattenImageModelCatalog("zai-coding-cn", values);
+export const ZAI_CODING_CN_IMAGE_MODELS: ImageModelCatalog<typeof values, "zai-coding-cn"> = lazyCatalog(
+	() => flattenImageModelCatalog("zai-coding-cn", values),
+);
 
-export const ZAI_CODING_CN_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "zai-coding-cn"> =
-	flattenClassifierModelCatalog("zai-coding-cn", values);
+export const ZAI_CODING_CN_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "zai-coding-cn"> = lazyCatalog(
+	() => flattenClassifierModelCatalog("zai-coding-cn", values),
+);

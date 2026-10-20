@@ -2,13 +2,16 @@
 // Do not edit manually - run 'npm run generate-models' to update
 
 import values from "./data/nvidia.json" with { type: "json" };
-import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
+import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, lazyCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
 
-export const NVIDIA_MODELS: ChatModelCatalog<typeof values, "nvidia"> =
-	flattenChatModelCatalog("nvidia", values);
+export const NVIDIA_MODELS: ChatModelCatalog<typeof values, "nvidia"> = lazyCatalog(
+	() => flattenChatModelCatalog("nvidia", values),
+);
 
-export const NVIDIA_IMAGE_MODELS: ImageModelCatalog<typeof values, "nvidia"> =
-	flattenImageModelCatalog("nvidia", values);
+export const NVIDIA_IMAGE_MODELS: ImageModelCatalog<typeof values, "nvidia"> = lazyCatalog(
+	() => flattenImageModelCatalog("nvidia", values),
+);
 
-export const NVIDIA_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "nvidia"> =
-	flattenClassifierModelCatalog("nvidia", values);
+export const NVIDIA_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "nvidia"> = lazyCatalog(
+	() => flattenClassifierModelCatalog("nvidia", values),
+);

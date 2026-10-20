@@ -3536,13 +3536,16 @@ async function generateModels() {
 				for (const providerId of sortedProviderIds) {
 					let output = generatedHeader;
 					output += `import values from "./data/${providerId}.json" with { type: "json" };\n`;
-					output += `import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";\n\n`;
-					output += `export const ${catalogConstName(providerId)}: ChatModelCatalog<typeof values, ${JSON.stringify(providerId)}> =\n`;
-					output += `\tflattenChatModelCatalog(${JSON.stringify(providerId)}, values);\n\n`;
-					output += `export const ${imageCatalogConstName(providerId)}: ImageModelCatalog<typeof values, ${JSON.stringify(providerId)}> =\n`;
-					output += `\tflattenImageModelCatalog(${JSON.stringify(providerId)}, values);\n\n`;
-					output += `export const ${classifierCatalogConstName(providerId)}: ClassifierModelCatalog<typeof values, ${JSON.stringify(providerId)}> =\n`;
-					output += `\tflattenClassifierModelCatalog(${JSON.stringify(providerId)}, values);\n`;
+					output += `import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, lazyCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";\n\n`;
+					output += `export const ${catalogConstName(providerId)}: ChatModelCatalog<typeof values, ${JSON.stringify(providerId)}> = lazyCatalog(\n`;
+					output += `\t() => flattenChatModelCatalog(${JSON.stringify(providerId)}, values),\n`;
+					output += `);\n\n`;
+					output += `export const ${imageCatalogConstName(providerId)}: ImageModelCatalog<typeof values, ${JSON.stringify(providerId)}> = lazyCatalog(\n`;
+					output += `\t() => flattenImageModelCatalog(${JSON.stringify(providerId)}, values),\n`;
+					output += `);\n\n`;
+					output += `export const ${classifierCatalogConstName(providerId)}: ClassifierModelCatalog<typeof values, ${JSON.stringify(providerId)}> = lazyCatalog(\n`;
+					output += `\t() => flattenClassifierModelCatalog(${JSON.stringify(providerId)}, values),\n`;
+					output += `);\n`;
 					const filename = `${providerId}.models.ts`;
 					generatedShardFiles.add(filename);
 					writeFileSync(join(providersDir, filename), output);

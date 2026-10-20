@@ -9,7 +9,7 @@ export function mistralProvider(): Provider<"mistral-conversations"> {
 		name: "Mistral",
 		baseUrl: "https://api.mistral.ai",
 		auth: { apiKey: envApiKeyAuth("Mistral API key", ["MISTRAL_API_KEY"]) },
-		models: Object.values(MISTRAL_MODELS),
+		models: () => Object.values(MISTRAL_MODELS),
 		api: mistralConversationsApi(),
 	});
 }

@@ -72,7 +72,7 @@ export function openrouterProvider(): Provider<"anthropic-messages" | "openai-co
 				load: loadOpenRouterOAuth,
 			}),
 		},
-		models: [
+		models: () => [
 			...Object.values(OPENROUTER_MODELS),
 			...Object.values(OPENROUTER_IMAGE_MODELS),
 			...Object.values(OPENROUTER_CLASSIFIER_MODELS),

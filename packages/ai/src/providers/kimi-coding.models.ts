@@ -2,13 +2,16 @@
 // Do not edit manually - run 'npm run generate-models' to update
 
 import values from "./data/kimi-coding.json" with { type: "json" };
-import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
+import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, lazyCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
 
-export const KIMI_CODING_MODELS: ChatModelCatalog<typeof values, "kimi-coding"> =
-	flattenChatModelCatalog("kimi-coding", values);
+export const KIMI_CODING_MODELS: ChatModelCatalog<typeof values, "kimi-coding"> = lazyCatalog(
+	() => flattenChatModelCatalog("kimi-coding", values),
+);
 
-export const KIMI_CODING_IMAGE_MODELS: ImageModelCatalog<typeof values, "kimi-coding"> =
-	flattenImageModelCatalog("kimi-coding", values);
+export const KIMI_CODING_IMAGE_MODELS: ImageModelCatalog<typeof values, "kimi-coding"> = lazyCatalog(
+	() => flattenImageModelCatalog("kimi-coding", values),
+);
 
-export const KIMI_CODING_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "kimi-coding"> =
-	flattenClassifierModelCatalog("kimi-coding", values);
+export const KIMI_CODING_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "kimi-coding"> = lazyCatalog(
+	() => flattenClassifierModelCatalog("kimi-coding", values),
+);

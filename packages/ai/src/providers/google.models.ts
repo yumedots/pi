@@ -2,13 +2,16 @@
 // Do not edit manually - run 'npm run generate-models' to update
 
 import values from "./data/google.json" with { type: "json" };
-import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
+import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, lazyCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
 
-export const GOOGLE_MODELS: ChatModelCatalog<typeof values, "google"> =
-	flattenChatModelCatalog("google", values);
+export const GOOGLE_MODELS: ChatModelCatalog<typeof values, "google"> = lazyCatalog(
+	() => flattenChatModelCatalog("google", values),
+);
 
-export const GOOGLE_IMAGE_MODELS: ImageModelCatalog<typeof values, "google"> =
-	flattenImageModelCatalog("google", values);
+export const GOOGLE_IMAGE_MODELS: ImageModelCatalog<typeof values, "google"> = lazyCatalog(
+	() => flattenImageModelCatalog("google", values),
+);
 
-export const GOOGLE_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "google"> =
-	flattenClassifierModelCatalog("google", values);
+export const GOOGLE_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "google"> = lazyCatalog(
+	() => flattenClassifierModelCatalog("google", values),
+);

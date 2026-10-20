@@ -18,7 +18,7 @@ export function kimiCodingProvider(): Provider<"openai-completions"> {
 				load: loadKimiCodingOAuth,
 			}),
 		},
-		models: Object.values(KIMI_CODING_MODELS),
+		models: () => Object.values(KIMI_CODING_MODELS),
 		api: openAICompletionsApi(),
 	});
 }

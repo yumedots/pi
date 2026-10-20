@@ -9,7 +9,7 @@ export function zaiProvider(): Provider<"openai-completions"> {
 		name: "Z.AI",
 		baseUrl: "https://api.z.ai/api/coding/paas/v4",
 		auth: { apiKey: envApiKeyAuth("Z.AI API key", ["ZAI_API_KEY"]) },
-		models: Object.values(ZAI_MODELS),
+		models: () => Object.values(ZAI_MODELS),
 		api: openAICompletionsApi(),
 	});
 }

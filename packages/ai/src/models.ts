@@ -1010,8 +1010,11 @@ export interface CreateProviderOptions<TApi extends Api = Api> {
 	/**
 	 * Static baseline models of every type (empty for purely dynamic providers).
 	 * Models without `type` are chat models.
+	 *
+	 * A function defers building the list until the models are first read, so a
+	 * provider that is never used does not pay for its catalog.
 	 */
-	models: readonly ProviderModel<TApi>[];
+	models: readonly ProviderModel<TApi>[] | (() => readonly ProviderModel<TApi>[]);
 	/**
 	 * Fetch a dynamic model overlay of every type. createProvider restores and
 	 * publishes it transactionally and drops models of unknown types.
@@ -1059,10 +1062,13 @@ export function createProvider<TApi extends Api = Api>(input: CreateProviderOpti
 		throw new Error(`Provider ${input.id}: at least one of "api", "images", or "classifiers" is required.`);
 	}
 
-	const baselineModels = input.models;
+	const buildModels = input.models;
+	let baselineModels: readonly ProviderModel<TApi>[] | undefined =
+		typeof buildModels === "function" ? undefined : buildModels;
 	let dynamicModels: readonly ProviderModel<TApi>[] = [];
 	const fetchModels = input.fetchModels;
 	const currentModels = (): readonly ProviderModel<TApi>[] => {
+		baselineModels ??= (buildModels as () => readonly ProviderModel<TApi>[])();
 		const merged = [...baselineModels];
 		for (const model of dynamicModels) {
 			const index = merged.findIndex(

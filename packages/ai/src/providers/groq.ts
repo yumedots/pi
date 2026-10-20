@@ -9,7 +9,7 @@ export function groqProvider(): Provider<"openai-completions"> {
 		name: "Groq",
 		baseUrl: "https://api.groq.com/openai/v1",
 		auth: { apiKey: envApiKeyAuth("Groq API key", ["GROQ_API_KEY"]) },
-		models: Object.values(GROQ_MODELS),
+		models: () => Object.values(GROQ_MODELS),
 		api: openAICompletionsApi(),
 	});
 }

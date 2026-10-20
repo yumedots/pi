@@ -94,7 +94,7 @@ export function googleVertexProvider(): Provider<"google-vertex"> {
 		id: "google-vertex",
 		name: "Google Vertex AI",
 		auth: { apiKey: vertexAuth },
-		models: Object.values(GOOGLE_VERTEX_MODELS),
+		models: () => Object.values(GOOGLE_VERTEX_MODELS),
 		api: googleVertexApi(),
 	});
 }

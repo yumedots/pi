@@ -18,7 +18,7 @@ export function metaProvider(): Provider<"openai-responses"> {
 				load: loadMetaOAuth,
 			}),
 		},
-		models: Object.values(META_MODELS),
+		models: () => Object.values(META_MODELS),
 		api: openAIResponsesApi(),
 	});
 }

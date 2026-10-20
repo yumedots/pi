@@ -2,13 +2,16 @@
 // Do not edit manually - run 'npm run generate-models' to update
 
 import values from "./data/groq.json" with { type: "json" };
-import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
+import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, lazyCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
 
-export const GROQ_MODELS: ChatModelCatalog<typeof values, "groq"> =
-	flattenChatModelCatalog("groq", values);
+export const GROQ_MODELS: ChatModelCatalog<typeof values, "groq"> = lazyCatalog(
+	() => flattenChatModelCatalog("groq", values),
+);
 
-export const GROQ_IMAGE_MODELS: ImageModelCatalog<typeof values, "groq"> =
-	flattenImageModelCatalog("groq", values);
+export const GROQ_IMAGE_MODELS: ImageModelCatalog<typeof values, "groq"> = lazyCatalog(
+	() => flattenImageModelCatalog("groq", values),
+);
 
-export const GROQ_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "groq"> =
-	flattenClassifierModelCatalog("groq", values);
+export const GROQ_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "groq"> = lazyCatalog(
+	() => flattenClassifierModelCatalog("groq", values),
+);

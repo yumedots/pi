@@ -13,7 +13,7 @@ export function cloudflareWorkersAIProvider(): Provider<"openai-completions"> {
 		id: "cloudflare-workers-ai",
 		name: "Cloudflare Workers AI",
 		auth: { apiKey: cloudflareWorkersAIAuth() },
-		models: [
+		models: () => [
 			...Object.values(CLOUDFLARE_WORKERS_AI_MODELS),
 			...Object.values(CLOUDFLARE_WORKERS_AI_CLASSIFIER_MODELS),
 		],

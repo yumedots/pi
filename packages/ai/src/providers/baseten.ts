@@ -9,7 +9,7 @@ export function basetenProvider(): Provider<"openai-completions"> {
 		name: "Baseten",
 		baseUrl: "https://inference.baseten.co/v1",
 		auth: { apiKey: envApiKeyAuth("Baseten API key", ["BASETEN_API_KEY"]) },
-		models: Object.values(BASETEN_MODELS),
+		models: () => Object.values(BASETEN_MODELS),
 		api: openAICompletionsApi(),
 	});
 }

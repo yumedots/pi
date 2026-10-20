@@ -2,13 +2,16 @@
 // Do not edit manually - run 'npm run generate-models' to update
 
 import values from "./data/xiaomi-token-plan-cn.json" with { type: "json" };
-import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
+import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, lazyCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
 
-export const XIAOMI_TOKEN_PLAN_CN_MODELS: ChatModelCatalog<typeof values, "xiaomi-token-plan-cn"> =
-	flattenChatModelCatalog("xiaomi-token-plan-cn", values);
+export const XIAOMI_TOKEN_PLAN_CN_MODELS: ChatModelCatalog<typeof values, "xiaomi-token-plan-cn"> = lazyCatalog(
+	() => flattenChatModelCatalog("xiaomi-token-plan-cn", values),
+);
 
-export const XIAOMI_TOKEN_PLAN_CN_IMAGE_MODELS: ImageModelCatalog<typeof values, "xiaomi-token-plan-cn"> =
-	flattenImageModelCatalog("xiaomi-token-plan-cn", values);
+export const XIAOMI_TOKEN_PLAN_CN_IMAGE_MODELS: ImageModelCatalog<typeof values, "xiaomi-token-plan-cn"> = lazyCatalog(
+	() => flattenImageModelCatalog("xiaomi-token-plan-cn", values),
+);
 
-export const XIAOMI_TOKEN_PLAN_CN_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "xiaomi-token-plan-cn"> =
-	flattenClassifierModelCatalog("xiaomi-token-plan-cn", values);
+export const XIAOMI_TOKEN_PLAN_CN_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "xiaomi-token-plan-cn"> = lazyCatalog(
+	() => flattenClassifierModelCatalog("xiaomi-token-plan-cn", values),
+);

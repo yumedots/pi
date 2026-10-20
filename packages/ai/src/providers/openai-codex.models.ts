@@ -2,13 +2,16 @@
 // Do not edit manually - run 'npm run generate-models' to update
 
 import values from "./data/openai-codex.json" with { type: "json" };
-import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
+import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, lazyCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
 
-export const OPENAI_CODEX_MODELS: ChatModelCatalog<typeof values, "openai-codex"> =
-	flattenChatModelCatalog("openai-codex", values);
+export const OPENAI_CODEX_MODELS: ChatModelCatalog<typeof values, "openai-codex"> = lazyCatalog(
+	() => flattenChatModelCatalog("openai-codex", values),
+);
 
-export const OPENAI_CODEX_IMAGE_MODELS: ImageModelCatalog<typeof values, "openai-codex"> =
-	flattenImageModelCatalog("openai-codex", values);
+export const OPENAI_CODEX_IMAGE_MODELS: ImageModelCatalog<typeof values, "openai-codex"> = lazyCatalog(
+	() => flattenImageModelCatalog("openai-codex", values),
+);
 
-export const OPENAI_CODEX_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "openai-codex"> =
-	flattenClassifierModelCatalog("openai-codex", values);
+export const OPENAI_CODEX_CLASSIFIER_MODELS: ClassifierModelCatalog<typeof values, "openai-codex"> = lazyCatalog(
+	() => flattenClassifierModelCatalog("openai-codex", values),
+);

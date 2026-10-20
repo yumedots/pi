@@ -8,6 +8,7 @@
 
 ### Changed
 
+- The generated model catalogs are now built on first use instead of when the provider module loads. `CreateProviderOptions.models` accepts a function that returns the model list, so a provider that is never asked for its models does not pay for flattening its catalog.
 - Tool call arguments are validated without TypeBox's runtime. The validation keeps TypeBox's conversion and check rules, so the coerced arguments and the error messages are unchanged, but importing `@earendil-works/pi-ai` no longer loads TypeBox's compiler and value modules.
 
 ### Fixed

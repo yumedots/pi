@@ -20,7 +20,7 @@ export function openaiProvider(): Provider<"openai-responses"> {
 				load: loadOpenAIChatGPTOAuth,
 			}),
 		},
-		models: [
+		models: () => [
 			...Object.values(OPENAI_MODELS),
 			...Object.values<ClassifierModel<"openai-decisions">>(OPENAI_CLASSIFIER_MODELS),
 		],

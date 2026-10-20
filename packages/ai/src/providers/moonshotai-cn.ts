@@ -9,7 +9,7 @@ export function moonshotaiCnProvider(): Provider<"openai-completions"> {
 		name: "Moonshot AI CN",
 		baseUrl: "https://api.moonshot.cn/v1",
 		auth: { apiKey: envApiKeyAuth("Moonshot AI API key", ["MOONSHOT_API_KEY"]) },
-		models: Object.values(MOONSHOTAI_CN_MODELS),
+		models: () => Object.values(MOONSHOTAI_CN_MODELS),
 		api: openAICompletionsApi(),
 	});
 }

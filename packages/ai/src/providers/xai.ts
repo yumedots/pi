@@ -18,7 +18,7 @@ export function xaiProvider(): Provider<"openai-responses"> {
 				load: loadXaiOAuth,
 			}),
 		},
-		models: Object.values(XAI_MODELS),
+		models: () => Object.values(XAI_MODELS),
 		api: openAIResponsesApi(),
 	});
 }

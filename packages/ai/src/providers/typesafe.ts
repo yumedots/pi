@@ -10,7 +10,7 @@ export function typesafeProvider(): Provider {
 		auth: {
 			apiKey: envApiKeyAuth("TypeSafe API key", ["TYPESAFE_API_KEY"]),
 		},
-		models: Object.values(TYPESAFE_CLASSIFIER_MODELS),
+		models: () => Object.values(TYPESAFE_CLASSIFIER_MODELS),
 		classifiers: {
 			"typesafe-system-one": typesafeSystemOneApi(),
 		},

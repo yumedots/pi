@@ -14,7 +14,7 @@ export function opencodeGoProvider(): Provider<OpenCodeGoApi> {
 		id: "opencode-go",
 		name: "OpenCode Go",
 		auth: { apiKey: envApiKeyAuth("OpenCode API key", ["OPENCODE_API_KEY"]) },
-		models: Object.values(OPENCODE_GO_MODELS),
+		models: () => Object.values(OPENCODE_GO_MODELS),
 		api: {
 			"anthropic-messages": withOpenCodeSessionHeader(anthropicMessagesApi()),
 			"google-generative-ai": withOpenCodeSessionHeader(googleGenerativeAIApi()),

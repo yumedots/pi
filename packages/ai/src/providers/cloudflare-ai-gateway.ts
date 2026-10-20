@@ -17,7 +17,7 @@ export function cloudflareAIGatewayProvider(): Provider<CloudflareAIGatewayApi> 
 		id: "cloudflare-ai-gateway",
 		name: "Cloudflare AI Gateway",
 		auth: { apiKey: cloudflareAIGatewayAuth() },
-		models: Object.values(CLOUDFLARE_AI_GATEWAY_MODELS),
+		models: () => Object.values(CLOUDFLARE_AI_GATEWAY_MODELS),
 		api: {
 			"anthropic-messages": cloudflareStreams(anthropicMessagesApi()),
 			"openai-completions": cloudflareStreams(openAICompletionsApi()),
