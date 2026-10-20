@@ -62,7 +62,7 @@ import { sleep } from "../utils/sleep.ts";
 import { normalizeToolResultImages } from "../utils/tool-result-images.ts";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.ts";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.ts";
-import { generateBugReportSummary } from "./bug-report.ts";
+import { loadBugReport } from "./bug-report.lazy.ts";
 import type { CacheWarmer, CacheWarmingStatus } from "./cache-warmer.ts";
 import {
 	type CompactionPreparation,
@@ -78,8 +78,8 @@ import {
 	shouldCompact,
 } from "./compaction/index.ts";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "./defaults.ts";
-import { exportSessionToHtml, type ToolHtmlRenderer } from "./export-html/index.ts";
-import { createToolHtmlRenderer } from "./export-html/tool-renderer.ts";
+import { loadExportHtml, loadToolHtmlRenderer } from "./export-html/index.lazy.ts";
+import type { ToolHtmlRenderer } from "./export-html/index.ts";
 import {
 	type AgentActivityOutcome,
 	type BoundaryContextPreview,
@@ -4357,6 +4357,10 @@ export class AgentSession {
 		);
 
 		// Create tool renderer if we have an extension runner (for custom tool HTML rendering)
+		const [{ createToolHtmlRenderer }, { exportSessionToHtml }] = await Promise.all([
+			loadToolHtmlRenderer(),
+			loadExportHtml(),
+		]);
 		const toolRenderer: ToolHtmlRenderer = createToolHtmlRenderer({
 			getToolRenderers: (name) =>
 				this._extensionRunner.resolveToolRenderers(name, () => this.getToolDefinition(name)),
@@ -4390,6 +4394,7 @@ export class AgentSession {
 		if (!model) {
 			throw new Error("No model selected");
 		}
+		const { generateBugReportSummary } = await loadBugReport();
 		return generateBugReportSummary({
 			...(await this._getSummarizationRequestAuth(model, options.signal)),
 			messages: this.messages,

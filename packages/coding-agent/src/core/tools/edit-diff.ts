@@ -2,7 +2,8 @@
  * Shared diff computation utilities for the edit and similar tools.
  */
 
-import * as Diff from "diff";
+import { diffLines } from "diff/lib/diff/line.js";
+import { createTwoFilesPatch, FILE_HEADERS_ONLY } from "diff/lib/patch/create.js";
 import { constants } from "fs";
 import { access, readFile } from "fs/promises";
 import { splitBom } from "../../utils/text.ts";
@@ -363,9 +364,9 @@ export function applyEditsToNormalizedContent(
 
 /** Generate a standard unified patch. */
 export function generateUnifiedPatch(path: string, oldContent: string, newContent: string, contextLines = 4): string {
-	return Diff.createTwoFilesPatch(path, path, oldContent, newContent, undefined, undefined, {
+	return createTwoFilesPatch(path, path, oldContent, newContent, undefined, undefined, {
 		context: contextLines,
-		headerOptions: Diff.FILE_HEADERS_ONLY,
+		headerOptions: FILE_HEADERS_ONLY,
 	});
 }
 
@@ -378,7 +379,7 @@ export function generateDiffString(
 	newContent: string,
 	contextLines = 4,
 ): { diff: string; firstChangedLine: number | undefined } {
-	const parts = Diff.diffLines(oldContent, newContent);
+	const parts = diffLines(oldContent, newContent);
 	const output: string[] = [];
 
 	const oldLines = oldContent.split("\n");

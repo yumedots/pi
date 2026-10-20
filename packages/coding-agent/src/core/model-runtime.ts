@@ -99,8 +99,13 @@ interface RegisteredVirtualModel {
 }
 
 interface ModelRuntimeSnapshot {
-	all: readonly Model<Api>[];
-	available: readonly Model<Api>[];
+	/**
+	 * Every model of every provider. Read on demand: a session that never opens the
+	 * model picker should not pay for flattening every provider's catalog.
+	 */
+	readonly all: readonly Model<Api>[];
+	/** The models of the configured providers. Read on demand. */
+	readonly available: readonly Model<Api>[];
 	configuredProviders: ReadonlySet<string>;
 	storedProviders: ReadonlySet<string>;
 	auth: ReadonlyMap<string, AuthCheck | undefined>;
@@ -331,11 +336,40 @@ export class ModelRuntime implements Models {
 	}
 
 	private updateModelSnapshot(): void {
-		const all = [...this.models.getModels()];
-		this.snapshot = {
-			...this.snapshot,
-			all,
-			available: all.filter((model) => this.snapshot.configuredProviders.has(model.provider)),
+		this.snapshot = this.buildSnapshot({
+			configuredProviders: this.snapshot.configuredProviders,
+			storedProviders: this.snapshot.storedProviders,
+			auth: this.snapshot.auth,
+		});
+	}
+
+	/**
+	 * Builds a snapshot whose model lists are read on demand.
+	 *
+	 * Reading every provider's models flattens every catalog, which is the largest
+	 * allocation the agent makes at startup. The lists are computed when something
+	 * asks for them instead.
+	 */
+	private buildSnapshot(input: {
+		all?: () => readonly Model<Api>[];
+		available?: () => readonly Model<Api>[];
+		configuredProviders: ReadonlySet<string>;
+		storedProviders: ReadonlySet<string>;
+		auth: ReadonlyMap<string, AuthCheck | undefined>;
+	}): ModelRuntimeSnapshot {
+		const all = input.all ?? (() => [...this.models.getModels()]);
+		const available =
+			input.available ?? (() => all().filter((model) => input.configuredProviders.has(model.provider)));
+		return {
+			get all() {
+				return all();
+			},
+			get available() {
+				return available();
+			},
+			configuredProviders: input.configuredProviders,
+			storedProviders: input.storedProviders,
+			auth: input.auth,
 		};
 	}
 
@@ -360,13 +394,12 @@ export class ModelRuntime implements Models {
 				.filter((entry): entry is [string, AuthCheck] => entry[1] !== undefined)
 				.map(([providerId]) => providerId),
 		);
-		this.snapshot = {
-			all: [...this.models.getModels()],
-			available: [...available],
+		this.snapshot = this.buildSnapshot({
+			available: () => [...available],
 			configuredProviders,
 			storedProviders: new Set(credentials.map((entry) => entry.providerId)),
 			auth,
-		};
+		});
 		if (errorSeq === this.availabilityErrorSeq) this.availabilityError = undefined;
 	}
 
@@ -411,20 +444,22 @@ export class ModelRuntime implements Models {
 			}
 			if (credential) storedProviders.add(providerId);
 			else storedProviders.delete(providerId);
-			const all = [...this.models.getModels()];
-			const availableById = new Map(
-				[...this.snapshot.available.filter((model) => model.provider !== providerId), ...available].map((model) => [
-					`${model.provider}\0${model.id}`,
-					model,
-				]),
-			);
-			this.snapshot = {
-				all,
-				available: all.flatMap((model) => availableById.get(`${model.provider}\0${model.id}`) ?? []),
+			const previousAvailable = this.snapshot.available;
+			this.snapshot = this.buildSnapshot({
+				available: () => {
+					const all = [...this.models.getModels()];
+					const availableById = new Map(
+						[...previousAvailable.filter((model) => model.provider !== providerId), ...available].map((model) => [
+							`${model.provider}\0${model.id}`,
+							model,
+						]),
+					);
+					return all.flatMap((model) => availableById.get(`${model.provider}\0${model.id}`) ?? []);
+				},
 				configuredProviders,
 				storedProviders,
 				auth: authByProvider,
-			};
+			});
 			if (errorSeq === this.availabilityErrorSeq) this.availabilityError = undefined;
 		} catch (error) {
 			if (
@@ -917,12 +952,12 @@ export class ModelRuntime implements Models {
 		const auth = new Map(this.snapshot.auth);
 		// Never clobber a real check result.
 		if (!auth.get(providerId)) auth.set(providerId, { type, source: "configured provider" });
-		this.snapshot = {
-			...this.snapshot,
+		this.snapshot = this.buildSnapshot({
 			auth,
 			configuredProviders,
-			available: this.snapshot.all.filter((model) => configuredProviders.has(model.provider)),
-		};
+			storedProviders: this.snapshot.storedProviders,
+			available: () => [...this.models.getModels()].filter((model) => configuredProviders.has(model.provider)),
+		});
 	}
 
 	registerProvider(providerId: string, config: ProviderConfigInput): void {
