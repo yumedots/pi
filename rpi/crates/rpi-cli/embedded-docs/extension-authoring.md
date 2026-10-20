@@ -1,26 +1,31 @@
-# rpi Rust 扩展开发最佳实践
+# rpi Rust Extension Development Best Practices
 
-本文是 rpi 创建 Rust `cdylib` 扩展的模型可读规范。扩展是 Rust 原生动态库，
-通过稳定 C ABI（`rpi-plugin-sdk`）注册工具、事件处理器、资源发现、Provider
-与渲染器，宿主（`rpi` CLI）负责加载与生命周期。创建完整 Agent 项目的默认结构见
-`docs` 的 `agent` 主题；本指南聚焦扩展本身的 ABI 与生命周期。
+This document is the model-readable specification for creating Rust `cdylib`
+extensions with rpi. An extension is a native Rust dynamic library that
+registers tools, event handlers, resource discovery, Providers, and renderers
+through a stable C ABI (`rpi-plugin-sdk`); the host (the `rpi` CLI) is
+responsible for loading and lifecycle. See the `agent` topic of `docs` for the
+default structure of a complete Agent project; this guide focuses on the ABI and
+lifecycle of extensions themselves.
 
-## 1. 扩展模型总览
+## 1. Extension Model Overview
 
-| 项目 | Rust 原生扩展 |
+| Item | Native Rust extension |
 | --- | --- |
-| 安装 | `rpi install crate-name`（预编译协议）；`--build` / `--path`（源码） |
-| 入口 | `rpi_plugin_register` C ABI 符号 |
-| 开发反馈 | `rpi dev` watch + 热重载；`rpi dev-local` 隔离调试 |
-| 静态资源 | `resources_discover` 或随项目放入 `.rpi` |
-| 运行环境 | 本机动态库，当前用户权限 |
-| 适用场景 | 本地工具、系统集成、性能敏感或纯 Rust 项目 |
+| Installation | `rpi install crate-name` (prebuilt protocol); `--build` / `--path` (source) |
+| Entry point | The `rpi_plugin_register` C ABI symbol |
+| Development feedback | `rpi dev` watch + hot reload; `rpi dev-local` for isolated debugging |
+| Static resources | `resources_discover` or shipped with the project under `.rpi` |
+| Runtime environment | Native dynamic library, with the current user's permissions |
+| Use cases | Local tools, system integration, performance-sensitive work, or pure Rust projects |
 
-扩展应遵循能力检测：只调用宿主明确提供的 capability，检查 `PluginApi`
-对应注册槽位是否为 `Some`。缺少能力时返回清晰错误并优雅降级，不要 panic、
-空指针或依赖 `undefined` 语义。
+Extensions should follow capability detection: only call capabilities the host
+explicitly provides, and check whether the corresponding registration slot in
+`PluginApi` is `Some`. When a capability is missing, return a clear error and
+degrade gracefully; do not panic, use null pointers, or rely on `undefined`
+semantics.
 
-## 2. 推荐结构
+## 2. Recommended Structure
 
 ```text
 my-rpi-extension/
@@ -52,16 +57,21 @@ rpi-plugin-sdk = "0.1"
 serde_json = "1"
 ```
 
-`cdylib` 是宿主加载的产物；同时保留 `rlib` 便于 Rust 集成测试。扩展边界只依赖
-`rpi-plugin-sdk`，不要依赖 `rpi-cli`、`rpi-extensions` 或 harness 内部模块，
-否则插件会和宿主实现耦合。
+`cdylib` is the artifact the host loads; also keep the `rlib` so that Rust
+integration tests are easy to write. The extension boundary depends only on
+`rpi-plugin-sdk`; do not depend on `rpi-cli`, `rpi-extensions`, or harness
+internal modules, otherwise the plugin becomes coupled to the host
+implementation.
 
-## 3. ABI 入口
+## 3. ABI Entry Point
 
-宿主只加载统一 C ABI 符号 `rpi_plugin_register`。扩展使用 `export_plugin!`，
-通过同一个 `PluginApi` 注册能力并调用 `api.declare` 声明优先级/平台。
-SDK 在注册前检查 `abi_version` 和 `struct_size`；旧宿主缺少的尾部可选槽位补成
-`None`，插件可据此降级。版本不兼容或必需字段不完整时返回非零状态，宿主报告加载失败。
+The host only loads the unified C ABI symbol `rpi_plugin_register`. An
+extension uses `export_plugin!`, registers capabilities through the same
+`PluginApi`, and calls `api.declare` to declare its priority/platform. The SDK
+checks `abi_version` and `struct_size` before registration; optional trailing
+slots missing on older hosts are filled in as `None`, so plugins can degrade
+accordingly. When the version is incompatible or required fields are
+incomplete, a non-zero status is returned and the host reports a load failure.
 
 ```rust
 rpi_plugin_sdk::export_plugin!(|api| {
@@ -76,125 +86,170 @@ rpi_plugin_sdk::export_plugin!(|api| {
     let Some(register_tool) = api.register_tool else {
         return -1;
     };
-    // 构建 StableToolSchema 和 execute/poll/cancel/destroy 函数表，
-    // 然后调用 register_tool。完整实现参考 examples/plugin-stub。
+    // Build the StableToolSchema and the execute/poll/cancel/destroy function
+    // table, then call register_tool. See examples/plugin-stub for a complete
+    // implementation.
     let _ = register_tool;
     0
 });
 ```
 
-`declare` 的 JSON 支持 `priority`（数字，越大越先）和 `platforms`（字符串数组，
-如 `["linux","windows","macos"]`）；宿主在分发事件处理器时跳过不匹配的平台。
+The JSON passed to `declare` supports `priority` (a number; larger runs first)
+and `platforms` (an array of strings such as
+`["linux","windows","macos"]`); the host skips non-matching platforms when
+dispatching event handlers.
 
-### 能力检测
+### Capability Detection
 
-每个注册槽位都是 `Option`。注册前检查 vtable slot 是否为 `Some`，缺失时返回
-清晰错误；不要依赖空指针或 panic 表达不支持。宿主对未知 runtime action ID
-返回结构化错误，不会进入分发。runtime action 使用 SDK 的 `RuntimeActionId`
-定义（含 `GetCliFlag`、`UiDialog`），不要自行假定数字范围。
+Every registration slot is an `Option`. Before registering, check that the
+vtable slot is `Some` and return a clear error when it is missing; do not rely
+on null pointers or panics to express "unsupported". The host returns a
+structured error for unknown runtime action IDs and does not dispatch them.
+Runtime actions use the SDK's `RuntimeActionId` definitions (including
+`GetCliFlag` and `UiDialog`); do not assume numeric ranges on your own.
 
-### 独立子任务
+### Stand-alone Sub-tasks
 
-`GetExecutionContext`（23）返回当前模型身份、thinking、活动工具、cwd 和会话 ID，
-不包含凭据、认证头或 endpoint。`ChildAgent`（24）使用 `op` 分派：
+`GetExecutionContext` (23) returns the current model identity, thinking, active
+tools, cwd, and session ID; it does not include credentials, authentication
+headers, or endpoints. `ChildAgent` (24) dispatches on `op`:
 
-- `start`：`task`（必填，最多 20,000 bytes）、`role`、`maxTurns`（1–32，默认 8）、
-  `timeoutSeconds`（10–1800，默认 300），以及可选的父活动工具子集 `tools`。
-  立即返回 `childId`、独立 `sessionId` 和 `status: running`。
-- `poll`：传入 `childId`，消费 `deltas` 数组并取得 `running/done/failed` 状态。
-  `done` 后还要检查 `result.status`、`result.text` 和 `result.turnLimited`。
-- `cancel`：设置取消信号；`dispose`：取消并释放 handle。所有终态都必须 dispose。
+- `start`: `task` (required, at most 20,000 bytes), `role`, `maxTurns` (1–32,
+  default 8), `timeoutSeconds` (10–1800, default 300), plus an optional subset
+  of the parent's active tools named `tools`. It immediately returns a
+  `childId`, an independent `sessionId`, and `status: running`.
+- `poll`: pass in `childId`, consume the `deltas` array, and obtain the
+  `running/done/failed` status. After `done`, also check `result.status`,
+  `result.text`, and `result.turnLimited`.
+- `cancel`: sets the cancellation signal; `dispose`: cancels and releases the
+  handle. Every terminal state must be disposed.
 
-子任务继承有效 provider 私有绑定、系统提示词/资源、项目 cwd 和权限 hook，
-不重新加载默认配置，也不进入父 transcript。权限审批和用户问题使用父 UI，
-无交互消费者时不会默认允许。`delegate_task` 从子工具注册表中删除。
-插件工具仍属于父宿主，`__rpi.sessionId` 仍是父扩展状态空间，不能当成 child ID。
-handle 按插件 owner 隔离；父结束/取消、会话切换、关闭或插件 reload 会清理。
-每宿主最多保留 16 个任务，文本增量和最终报告共享 4 MiB、最多 8192 个增量。
-这不是 OS 安全沙箱；只读任务应缩小工具范围并使用权限规则。
+Sub-tasks inherit the effective provider's private binding, the system
+prompt/resources, the project cwd, and permission hooks; they do not reload the
+default configuration and do not enter the parent transcript. Permission
+approvals and user questions use the parent UI, and without an interactive
+consumer they are not allowed by default. `delegate_task` is removed from the
+sub-tool registry. Plugin tools still belong to the parent host, and
+`__rpi.sessionId` is still the parent's extension state space, so it must not
+be mistaken for a child ID. Handles are isolated per plugin owner; they are
+cleaned up when the parent ends/is cancelled, on session switch, on shutdown, or
+on plugin reload. Each host keeps at most 16 tasks, and text deltas plus the
+final report share 4 MiB with at most 8192 deltas. This is not an OS-level
+security sandbox; read-only tasks should narrow the tool scope and use
+permission rules.
 
-从工作线程调用同步 runtime action，避免在单线程 Tokio executor 中自锁。
-ChildAgent 还必须绑定本次工具调用的 `__rpi.runtimeHandle` / `runtimeKey`：
-用 opaque handle 作为 action 的 user_data，并在参数中传入 `__rpiRuntimeKey`；
-不得跨调用缓存或输出给模型。仅注册级、失效和 child-originated 调用会被拒绝
-（包括别名工具），不能经根宿主绕过工具子集。正确的父 capability 在取消后仅允许
-poll/cancel/dispose 回收已有任务，不允许 start；排队中的 start 也继承原调用取消。
-同步工具回调由宿主自动绑定。后台工具、provider 和审批 driver 自己保活 DLL 和参数；
-超过两秒前台清理宽限期仍占用活动名额，直到实际退出。
-宿主 runtime binding 弱持有父 harness；候选 reload 回退不会留下可解引用的失效 bridge 指针。
-旧宿主不支持新 action 时明确提示升级，不能静默退回可能换模型的子进程。
-完整协议与真实 DLL 测试见仓库 `docs/extensions/subagents.md`。
+Call synchronous runtime actions from a worker thread to avoid self-deadlock
+in a single-threaded Tokio executor. ChildAgent must also be bound to the
+`__rpi.runtimeHandle` / `runtimeKey` of the current tool call: pass an opaque
+handle as the action's user_data and include `__rpiRuntimeKey` in the
+arguments; do not cache it across calls or output it to the model. Only
+registration-level, invalidated, and child-originated calls are rejected
+(including aliased tools), and the tool subset cannot be bypassed through the
+root host. A correct parent capability after cancellation only permits
+poll/cancel/dispose to reclaim existing tasks and does not permit start; a
+queued start also inherits the original call's cancellation. Synchronous tool
+callbacks are bound automatically by the host. Background tools, providers, and
+approval drivers keep the DLL and its arguments alive themselves; after the
+two-second foreground cleanup grace period they still occupy an active slot
+until they actually exit. The host's runtime binding weakly holds the parent
+harness; a candidate reload rollback never leaves a dereferenceable stale bridge
+pointer. When an old host does not support a new action, it clearly prompts for
+an upgrade and must not silently fall back to a subprocess that might switch
+models. See `docs/extensions/subagents.md` in the repository for the full
+protocol and real DLL tests.
 
-### 运行期间追加上下文
+### Appending Context During a Run
 
-`AppendEntry` 的 `{"customType": "...", "data": {...}}` 形式只保存扩展数据；
-默认不进入模型上下文。`{"message": <AgentMessage>}` 形式追加会话消息，但不
-触发新一轮模型回复。运行期间消息先进入持久化队列，等当前轮的全部工具结果
-提交后再写入历史并展示，下一次模型请求才能读取。
+The `{"customType": "...", "data": {...}}` form of `AppendEntry` only stores
+extension data; by default it does not enter the model context. The
+`{"message": <AgentMessage>}` form appends a session message but does not
+trigger a new model reply. Messages appended during a run first enter a
+persistent queue; they are written to the history and displayed only after all
+tool results of the current turn have been committed, and they become readable
+only on the next model request.
 
-返回的 `entryId` 是稳定的保留 ID；排队期间查询该 entry 可能为空。工具内部
-可以等待 `AppendEntry` 返回，它不会等待工具或整个运行结束。取消和会话恢复
-不会丢弃已经接受的排队消息。
+The returned `entryId` is a stable reserved ID; querying that entry while it is
+queued may return nothing. A tool may wait for `AppendEntry` to return; it does
+not wait for the tool or the whole run to finish. Cancellation and session
+resume do not discard queued messages that have already been accepted.
 
-### SendMessage 的投递选项
+### SendMessage Delivery Options
 
-`SendMessage` 接受原有 `{"message": <AgentMessage>}` / `{"text": "..."}`，
-也接受 Pi 的自定义消息形状：`customType`、`content`、`display`、`details`。
-`content` 可以是字符串或文本/图片块数组；缺失或 null 会归一化为空数组。
+`SendMessage` accepts the existing `{"message": <AgentMessage>}` /
+`{"text": "..."}` forms, and also accepts Pi's custom message shape:
+`customType`, `content`, `display`, `details`. `content` may be a string or an
+array of text/image blocks; a missing or null value is normalized to an empty
+array.
 
-选项可以放在 `options` 对象中，也可以放在参数顶层；两种形式不要混用：
+Options may be placed in an `options` object or at the top level of the
+arguments; do not mix the two forms:
 
 ```json
 {
-  "message": {"customType": "goal-state", "content": "目标状态已更新", "display": true},
+  "message": {"customType": "goal-state", "content": "Goal state updated", "display": true},
   "options": {"triggerTurn": false}
 }
 ```
 
-| 选项 | 行为 |
+| Option | Behaviour |
 | --- | --- |
-| 不传 `triggerTurn` | 空闲时只追加上下文；运行时默认进入 steering 队列 |
-| `triggerTurn: true` | 空闲时发起模型运行；运行时按 `deliverAs` 排队 |
-| `triggerTurn: false` | 只更新上下文，运行时等当前工具批次结束后提交；不主动追加模型回复 |
-| `deliverAs: "steer"` | 默认模式，在当前工具批次结束后注入 |
-| `deliverAs: "followUp"` | 当前任务完成后注入，再继续处理 |
-| `deliverAs: "nextTurn"` | 留到下一次显式发起的运行，在新输入之前加入；优先于 `triggerTurn` |
+| `triggerTurn` omitted | When idle, only append context; while running, it goes to the steering queue by default |
+| `triggerTurn: true` | When idle, start a model run; while running, queue according to `deliverAs` |
+| `triggerTurn: false` | Only update the context; while running, submit after the current tool batch ends; do not proactively append a model reply |
+| `deliverAs: "steer"` | Default mode; inject after the current tool batch ends |
+| `deliverAs: "followUp"` | Inject after the current task completes, then keep processing |
+| `deliverAs: "nextTurn"` | Hold until the next explicitly started run, joining before the new input; takes precedence over `triggerTurn` |
 
-返回值区分 `status: "appended"`、`status: "queued"` 和原有运行结果状态。
-追加和排队返回稳定的 `entryId`；排队消息提交前查询 entry 可能为空。
-排队结果中的 `deliverAs` 表示投递方式；静默上下文更新返回 `queue: "context"`。
-steering/follow-up 不会重入正在执行的工具，`nextTurn` 也不会被自动恢复运行提前消费。
+The return value distinguishes `status: "appended"`, `status: "queued"`, and
+the existing run result statuses. Appending and queueing both return a stable
+`entryId`; querying the entry before a queued message is committed may return
+nothing. The `deliverAs` in a queued result indicates the delivery method; a
+silent context update returns `queue: "context"`. Steering/follow-up do not
+re-enter a tool that is already executing, and `nextTurn` is not consumed early
+by an auto-resumed run.
 
-默认空闲发送现在与 Pi 一致，不再自动请求模型。原来依赖默认发送立即回复的
-调用，应显式传 `triggerTurn: true`。
+The default idle send now matches Pi and no longer automatically requests the
+model. Calls that previously relied on an immediate reply from the default send
+should explicitly pass `triggerTurn: true`.
 
-## 4. 工具生命周期：execute → poll → cancel → destroy
+## 4. Tool Lifecycle: execute → poll → cancel → destroy
 
-工具导出四个 `extern "C"` 函数，宿主按固定协议驱动：
+A tool exports four `extern "C"` functions, driven by the host according to a
+fixed protocol:
 
-- `execute` 解析宿主传入的 JSON（owned `StbString`，用 `free_with` 释放），
-  创建每次调用独立的 handle（`Box::into_raw`）。
-- `poll` 必须非阻塞；未完成返回 `Pending`，完成返回 `Done` 或 `Err`。
-  `partial_cb` 在 poll 内同步调用，宿主在等待终态期间实时转发 partial。
-  宿主对 Pending 短暂退避，取消后等待 driver 结束不空转；迟到的成功不覆盖取消。
-- `cancel` 只设置线程安全取消标记，必须幂等，不能释放 handle。
-- `destroy` 由宿主最终调用一次并释放 handle（空指针 no-op）。
+- `execute` parses the JSON passed in by the host (an owned `StbString`,
+  released with `free_with`), and creates a handle that is independent per
+  invocation (`Box::into_raw`).
+- `poll` must be non-blocking; it returns `Pending` when not finished, and
+  `Done` or `Err` when finished. `partial_cb` is invoked synchronously inside
+  poll, and the host forwards partial results in real time while waiting for a
+  terminal state. The host briefly backs off on Pending, and after cancellation
+  it waits for the driver to end without busy-spinning; a late success does not
+  override a cancellation.
+- `cancel` only sets a thread-safe cancellation flag; it must be idempotent and
+  must not release the handle.
+- `destroy` is called by the host exactly once at the end and releases the
+  handle (a null pointer is a no-op).
 
-所有权协议：
+Ownership protocol:
 
-- 宿主产生的 `StbString`（execute 的 params、事件 payload）由插件通过宿主的
-  `free_string` 释放。
-- 插件产生的 `StbString`（done 结果、partial 进度、resources_discover 的 out）
-  由宿主通过插件注册时提供的 `plugin_free_string` 释放。
-- 每个 `extern "C"` 边界都不能 unwind；插件内部捕获 panic 并转换为错误结果。
+- `StbString`s produced by the host (execute's params, event payloads) are
+  released by the plugin through the host's `free_string`.
+- `StbString`s produced by the plugin (the done result, partial progress, the
+  out of `resources_discover`) are released by the host through the
+  `plugin_free_string` supplied at plugin registration.
+- No `extern "C"` boundary may unwind; the plugin catches panics internally
+  and converts them into error results.
 
-完整、可运行的 ABI 模板位于 `examples/plugin-stub/src/lib.rs`。创建新工具时先
-复制生命周期骨架，再替换参数 schema 和领域逻辑，不要重新设计所有权协议。
+A complete, runnable ABI template lives in `examples/plugin-stub/src/lib.rs`.
+When creating a new tool, first copy the lifecycle skeleton, then replace the
+parameter schema and the domain logic; do not redesign the ownership protocol.
 
-### 注入到工具参数里的宿主上下文
+### Host Context Injected into Tool Arguments
 
-宿主在把参数交给插件**之前**，会往这次调用的 JSON 参数里加一个保留键
-`__rpi`（`rpi_plugin_sdk::HOST_CONTEXT_KEY`）：
+Before handing the arguments to the plugin, the host **adds** a reserved key
+`__rpi` (`rpi_plugin_sdk::HOST_CONTEXT_KEY`) to the JSON arguments of that
+invocation:
 
 ```json
 { "action": "add", "text": "…",
@@ -202,57 +257,73 @@ steering/follow-up 不会重入正在执行的工具，`nextTurn` 也不会被�
              "sessionId": "01adb026-7230-708b-855b-91eab6b056b8" } }
 ```
 
-- **模型看不到、也写不了。** 注入发生在模型参数解析之后、`execute` 之前，不
-  会进 `ToolExecutionStart`/`Update` 事件，也不会进会话日志；模型若碰巧传了同
-  名键，宿主的值覆盖它。
-- **两个字段都可能是缺失的。** 拿不到工作目录时没有 `cwd`；ephemeral 会话以及
-  早于该注入的旧宿主没有 `sessionId`；整个键也可能不存在。
-- **所以 tool 的参数类型必须容忍未知的顶层字段。** 用 `serde_json::Value`
-  取值天然满足；给参数定义 `#[serde(deny_unknown_fields)]` 的结构体会直接失败。
-- 内置工具不走这条路——它们从 harness 直接拿到 `ExecutionToolContext`。
+- **The model cannot see it, and cannot write it.** The injection happens after
+  the model's arguments are parsed and before `execute`; it does not enter
+  `ToolExecutionStart`/`Update` events and does not enter the session log; if
+  the model happens to pass a key of the same name, the host's value wins.
+- **Both fields may be missing.** There is no `cwd` when the working directory
+  is unavailable; ephemeral sessions and old hosts that predate this injection
+  have no `sessionId`; the whole key may be absent as well.
+- **So the tool's argument type must tolerate unknown top-level fields.** Using
+  `serde_json::Value` for the values satisfies this naturally; a struct that
+  declares `#[serde(deny_unknown_fields)]` for its arguments will fail
+  outright.
+- Built-in tools do not go through this path — they receive
+  `ExecutionToolContext` directly from the harness.
 
-需要"每个会话一份状态"的插件就用 `sessionId` 做键（`rpi-todo` 存
-`.rpi/todos/<sessionId>.json`，一条会话一个文件），取不到时退回项目级并**在
-回复里说明**，不要编一个共享的伪会话——那正是它要解决的问题。
+A plugin that needs "one piece of state per session" should key on `sessionId`
+(`rpi-todo` stores `.rpi/todos/<sessionId>.json`, one file per session); when it
+is unavailable, fall back to the project level and **state that in the reply**;
+do not invent a shared pseudo-session — that is precisely the problem it is
+meant to solve.
 
-## 5. 事件处理器、资源发现与 Provider
+## 5. Event Handlers, Resource Discovery, and Providers
 
-### 事件处理器
+### Event Handlers
 
-通过 `api.register_event_handler` 按 `EventTag`（36 类）订阅：
+Subscribe via `api.register_event_handler` by `EventTag` (36 kinds):
 
-- **会话生命周期**：`SessionStart`、`SessionBeforeSwitch`、`SessionBeforeFork`、
-  `SessionBeforeCompact`、`SessionCompact`、`SessionShutdown` 等。
-- **Agent 循环**：`BeforeAgentStart`、`AgentStart`、`AgentEnd`、`AgentSettled`、
-  `TurnStart`、`TurnEnd`、`MessageStart`/`MessageUpdate`/`MessageEnd`、
-  `ToolExecutionStart`/`Update`/`End`、`ToolCall`、`ToolResult`、`UserBash`、`Input`。
-- **rpi 特有 / UI**：`BeforeTuiStart`（TUI 初始化前）、`UiPromptStart`/`UiPromptEnd`。
+- **Session lifecycle**: `SessionStart`, `SessionBeforeSwitch`,
+  `SessionBeforeFork`, `SessionBeforeCompact`, `SessionCompact`,
+  `SessionShutdown`, and so on.
+- **Agent loop**: `BeforeAgentStart`, `AgentStart`, `AgentEnd`, `AgentSettled`,
+  `TurnStart`, `TurnEnd`, `MessageStart`/`MessageUpdate`/`MessageEnd`,
+  `ToolExecutionStart`/`Update`/`End`, `ToolCall`, `ToolResult`, `UserBash`,
+  `Input`.
+- **rpi-specific / UI**: `BeforeTuiStart` (before TUI initialization),
+  `UiPromptStart`/`UiPromptEnd`.
 
-处理器收到 `StablePluginEvent`，不得释放事件里的字符串（宿主 fan-out 后统一释放）。
-返回 `0` 成功；返回 `EVENT_HANDLER_ABORT` 表示 veto。
+A handler receives a `StablePluginEvent` and must not free the strings inside
+the event (the host frees them uniformly after the fan-out). Returning `0`
+means success; returning `EVENT_HANDLER_ABORT` means veto.
 
-### 生命周期 veto
+### Lifecycle Veto
 
-`BeforeTuiStart` 是带 veto 语义的 rpi 专有钩子：第一个返回 `EVENT_HANDLER_ABORT`
-的处理器中止启动，CLI 以退出码 `3` 退出（用于"进入 TUI 前必须先建立外部连接"）。
-`SessionStart`/`SessionShutdown` 的 veto 只是 advisory。分发带超时，慢处理器不会
-无限阻塞主流程。
+`BeforeTuiStart` is an rpi-specific hook with veto semantics: the first
+handler that returns `EVENT_HANDLER_ABORT` aborts startup, and the CLI exits
+with exit code `3` (used for "an external connection must be established before
+entering the TUI"). The vetoes of `SessionStart`/`SessionShutdown` are only
+advisory. Dispatch has a timeout, so a slow handler will not block the main
+flow indefinitely.
 
-### 资源发现
+### Resource Discovery
 
-`api.register_resources_discover` 注册 handler，宿主在 `startup`/`reload` 时
-fan-out 到所有已注册 handler，合并返回的 `{skillPaths, promptPaths, themePaths}`。
-单个 handler 报错不中止 fan-out。`out` 是插件拥有的 `StbString`，宿主通过插件
-注册时给的 `plugin_free_string` 回收。
+`api.register_resources_discover` registers a handler; the host fans out to
+all registered handlers on `startup`/`reload` and merges the returned
+`{skillPaths, promptPaths, themePaths}`. An error from a single handler does
+not abort the fan-out. `out` is a plugin-owned `StbString`, reclaimed by the
+host through the `plugin_free_string` given at plugin registration.
 
-### 运行时改写系统提示词
+### Rewriting the System Prompt at Runtime
 
-`api.register_before_agent_start` 注册系统提示词变换器，对应 pi 的
-`before_agent_start` handler 返回 `systemPrompt`（成为该次运行的
-`forceSystemPrompt`）。这是插件**运行时**改变系统提示词的唯一正规入口：
+`api.register_before_agent_start` registers a system prompt transformer,
+corresponding to pi's `before_agent_start` handler returning `systemPrompt`
+(which becomes the `forceSystemPrompt` of that run). This is the only proper
+entry point for a plugin to change the system prompt **at runtime**:
 
 ```rust
-// event_json 里带 prompt / imageCount / sessionId / host，以及**当前** systemPrompt。
+// event_json carries prompt / imageCount / sessionId / host, as well as the
+// **current** systemPrompt.
 extern "C" fn on_before_agent_start(
     event_json: StbStringRef,
     out: *mut StbString,
@@ -262,43 +333,59 @@ extern "C" fn on_before_agent_start(
         let env: serde_json::Value =
             serde_json::from_str(unsafe { event_json.as_str() }).unwrap_or_default();
         let current = env["systemPrompt"].as_str().unwrap_or("");
-        // 返回值是**替换**而非追加：想追加就读当前值再拼回去（pi 同样要求）。
-        let next = format!("{current}\n\n本仓库优先使用 `just test` 而非 `cargo test`。");
+        // The return value is a **replacement**, not an append: to append, read
+        // the current value and concatenate it back (pi requires the same).
+        let next = format!("{current}\n\nThis repository prefers `just test` over `cargo test`.");
         unsafe { *out = StbString::from_string(json!({ "systemPrompt": next }).to_string()); }
         0
     })
 }
 ```
 
-语义要点（与 pi 对齐）：
+Semantic points (aligned with pi):
 
-- **替换，不是追加。** 返回的文本成为提示词。想追加必须自己读 `eventJson` 里的
-  `systemPrompt` 再拼接——宿主不会帮你保留原文。
-- **按注册顺序串联。** 后一个 handler 收到的是前一个 handler 返回的结果。
-- **单个 handler 失败不致命。** 返回非零或 panic 时，提示词保持前一个 handler 的
-  结果，fan-out 继续（宿主记日志 + 跳过）。
-- **只影响该次运行。** 宿主每轮重新从会话状态推导提示词，插件的结果不会被持久化。
-- **每个用户 prompt 只算一次。** 一次 prompt 可能触发多轮 provider 调用（工具循环），
-  变换器只在第一轮前运行并缓存结果，避免同一运行中途漂移。
-- **返回空对象/空串 = 不变。** 只想观察不想改的插件可以什么都不返回；显式返回空
-  字符串则是“清空提示词”，会被采纳。
+- **Replacement, not append.** The returned text becomes the prompt. To append,
+  you must read the `systemPrompt` from `eventJson` yourself and concatenate —
+  the host does not preserve the original text for you.
+- **Chained in registration order.** Each later handler receives the result
+  returned by the previous handler.
+- **A single handler failing is not fatal.** When a handler returns a non-zero
+  value or panics, the prompt keeps the result of the previous handler and the
+  fan-out continues (the host logs it and skips it).
+- **Only that run is affected.** The host re-derives the prompt from the
+  session state on every turn, and the plugin's result is not persisted.
+- **Counted once per user prompt.** A single prompt may trigger multiple
+  provider calls (the tool loop); the transformer runs only before the first
+  turn and caches the result, avoiding drift in the middle of a run.
+- **Returning an empty object/empty string means no change.** A plugin that
+  only wants to observe may return nothing; explicitly returning an empty
+  string means "clear the prompt", and that is honoured.
 
-`out` 与其他 out-param handler 一样由插件拥有、宿主经 `plugin_free_string` 回收。
-该槽位在结构体末尾新增且可为 `None`：面向旧宿主的插件应检测后再注册（见 §3
-能力检测），宿主则在没有插件注册时完全不进入这条路径。
+`out`, like the out-param of other handlers, is owned by the plugin and
+reclaimed by the host via `plugin_free_string`. This slot was added at the end
+of the struct and may be `None`: a plugin targeting older hosts should detect
+it before registering (see §3 Capability Detection), while the host does not
+enter this path at all when no plugin registers.
 
-### Provider 与渲染器
+### Providers and Renderers
 
-推理 provider 的目录、认证、执行绑定与验收要求见本文末尾的「Provider 接入规范」。
+See the "Provider Integration Specification" at the end of this document for the
+catalogue, authentication, execution binding, and acceptance requirements of
+inference providers.
 
-`api.register_provider` 注入自定义 LLM Provider（`provider_id`/`base_url`/
-`api_style` + `request_fn`）。`register_message_renderer`/`register_markdown_transformer`/
-`register_entry_renderer` 注册消息渲染能力。这些槽位都可能为 `None`，使用前必须检测。
+`api.register_provider` injects a custom LLM Provider (`provider_id`/`base_url`/
+`api_style` plus `request_fn`). `register_message_renderer`/
+`register_markdown_transformer`/`register_entry_renderer` register message
+rendering capabilities. All of these slots may be `None` and must be detected
+before use.
 
-`api.register_streaming_provider` 注入**流式** Provider。注册时同样提供 provider ID、
-端点、API style 和字符串释放回调；流式 request fn 另有逐块回调 `emit`、
-`emit_user_data`、可选控制面 `control` 和当前宿主恒为 `None` 的 `completion`。
-插件在请求还没结束时调用 `emit`，把增量推给宿主：
+`api.register_streaming_provider` injects a **streaming** Provider. At
+registration you likewise provide a provider ID, an endpoint, the API style,
+and a string release callback; the streaming request fn additionally has a
+per-chunk callback `emit`, `emit_user_data`, an optional control plane
+`control`, and a `completion` that is always `None` on the current host. The
+plugin calls `emit` while the request is still running, pushing the deltas to
+the host:
 
 ```json
 {"type":"text_delta","contentIndex":0,"delta":"hello "}
@@ -306,106 +393,144 @@ extern "C" fn on_before_agent_start(
 {"type":"toolcall_delta","contentIndex":2,"delta":"{\"path\""}
 ```
 
-宿主即时把它们映射成 `AssistantMessageEvent`（`TextDelta`/`ThinkingDelta`/
-`ToolCallDelta` 等），所以 TUI 在模型还在生成时就开始渲染，而不是等整段返回。
-可用的 `type`：`start`、`text_start`/`text_delta`/`text_end`、
-`thinking_start`/`thinking_delta`/`thinking_end`、
-`toolcall_start`/`toolcall_delta`/`toolcall_end`、`usage`；未知 `type` 忽略（向前兼容）。
+The host immediately maps them to `AssistantMessageEvent`s (`TextDelta`/
+`ThinkingDelta`/`ToolCallDelta`, and so on), so the TUI starts rendering while
+the model is still generating instead of waiting for the whole message. The
+available `type`s are: `start`, `text_start`/`text_delta`/`text_end`,
+`thinking_start`/`thinking_delta`/`thinking_end`,
+`toolcall_start`/`toolcall_delta`/`toolcall_end`, `usage`; an unknown `type`
+is ignored (forward compatibility).
 
-约定：
+Conventions:
 
-- **`out` 仍是最终消息。** 回调只送增量；插件返回时写入 `out` 的完整
-  `AssistantMessage` 才是终态 `Done`/`Error` 的载荷。宿主会在终态前补一个 `Start`，
-  所以即使插件一个块都没发，事件流也合法。
-- **回调的所有权与工具 partial 一致。** 每个 chunk 都是插件分配的 `StbString`，宿主
-  用插件注册时给的 `plugin_free_string` 回收；`emit`/`emit_user_data` 只在本次请求
-  期间有效，插件不得保存。
+- **`out` is still the final message.** The callback only carries deltas; the
+  complete `AssistantMessage` written to `out` when the plugin returns is the
+  payload of the terminal `Done`/`Error`. The host inserts a `Start` before the
+  terminal state, so the event stream is valid even if the plugin never emits
+  a single chunk.
+- **Callback ownership matches that of tool partials.** Every chunk is a
+  plugin-allocated `StbString`, reclaimed by the host through the
+  `plugin_free_string` given at registration; `emit`/`emit_user_data` are
+  valid only for the duration of this request and the plugin must not keep
+  them.
 
-该槽位同样追加在结构体末尾且可为 `None`：面向旧宿主时应降级到 `register_provider`
-（一次性）而不是拒绝加载。同一 `provider_id` 先一次性、再流式注册时，流式会原地替换
-该记录（流式是一次性的超集）。可从 `examples/plugin-stub/src/lib.rs` 的
-`on_provider_stream_request` 复制完整可运行的骨架。
+This slot is likewise appended at the end of the struct and may be `None`: when
+targeting an older host, degrade to `register_provider` (one-shot) rather than
+refusing to load. When the same `provider_id` is first registered one-shot and
+then registered as streaming, the streaming registration replaces the record in
+place (streaming is a superset of one-shot). A complete, runnable skeleton can
+be copied from `on_provider_stream_request` in
+`examples/plugin-stub/src/lib.rs`.
 
-#### 取消：同一个方法，插件自行决定
+#### Cancellation: One Method, the Plugin Decides
 
-长时间生成需要能被中断。**没有单独的「可取消」注册**：`register_streaming_provider`
-只有一个方法、一个签名，request fn 永远会收到一个 `control` 参数（宿主提供的同步
-控制面）。要不要轮询它，由插件自己决定。
+Long generations need to be interruptible. **There is no separate
+"cancellable" registration**: `register_streaming_provider` has only one method
+with one signature, and the request fn always receives a `control` argument
+(the host-provided synchronous control plane). Whether to poll it is the
+plugin's own decision.
 
 ```rust
-// 每个 SSE frame 之间（真实 provider 通常在这里阻塞在 socket read 上）：
+// Between SSE frames (a real provider usually blocks on a socket read here):
 if (control.is_cancelled)(control.user_data, ProviderChunkKind::Content as u32) != 0 {
-    return 1; // 调用方已经走了，停止生成
+    return 1; // The caller has already gone away; stop generating
 }
 ```
 
-- `is_cancelled(user_data, chunk_kind)`：非阻塞轮询。传 `Content`（0）表示
-  “模型输出”，传 `Structural`（1）表示 `start`/`*_end`/`usage` 这类收尾帧。
-  取消后宿主确认结构帧、拒收内容帧；已发出终态后的收尾帧会被丢弃。
-  取消终态保留已转发的内容、模型标识和用量。插件持有 DLL 引用直到请求返回，
-  后续写入 `out` 的成功结果不会覆盖取消终态。
-- `wait_cancelled_ms(user_data, timeout_ms)`：阻塞版，供无法轮询的循环使用；
-  已取消时会立即返回，不会睡满超时。
+- `is_cancelled(user_data, chunk_kind)`: a non-blocking poll. Pass `Content`
+  (0) for "model output", and `Structural` (1) for closing frames such as
+  `start`/`*_end`/`usage`. After cancellation the host confirms structural
+  frames and rejects content frames; closing frames emitted after the terminal
+  state are discarded. The cancellation terminal state preserves the
+  already-forwarded content, the model identity, and the usage. The plugin
+  holds the DLL reference until the request returns, and a later successful
+  write to `out` does not override the cancellation terminal state.
+- `wait_cancelled_ms(user_data, timeout_ms)`: the blocking variant, for loops
+  that cannot poll; when already cancelled it returns immediately instead of
+  sleeping for the full timeout.
 
-宿主的取消信号来自 `options.signal`（和内置 provider 同一个 `CancellationToken`，
-用户中断时由 agent loop 取消）。取消发生后宿主会：latch 控制面、停止转发内容 delta、
-**立即**发出 `Error { reason: Aborted }` 终态并结束事件流——不再等一次没人要的完整
-生成。`emit` 对内容帧返回非 0 也算同一个信号，插件可据此退出。
+The host's cancellation signal comes from `options.signal` (the same
+`CancellationToken` as for built-in providers, cancelled by the agent loop
+when the user interrupts). After cancellation the host: latches the control
+plane, stops forwarding content deltas, **immediately** emits the terminal
+`Error { reason: Aborted }` and ends the event stream — it does not wait for a
+complete generation that nobody wants. A non-zero return from `emit` for a
+content frame counts as the same signal, and the plugin may exit accordingly.
 
-轮询 `control` 是**可选**的，两种写法都合法：
+Polling `control` is **optional**, and both styles are valid:
 
-- **不轮询**（fire-and-forget）：插件照常把整段产出推完。取消时宿主仍会停止转发内容
-  帧并立刻结束该轮，插件只是多花了它已经产出的那部分 token。
-- **轮询**：插件在最早一个可检查点退出，省掉剩余生成。
+- **Not polling** (fire-and-forget): the plugin pushes the entire output as
+  usual. On cancellation the host still stops forwarding content frames and
+  immediately ends that turn; the plugin merely spends the tokens it has
+  already produced.
+- **Polling**: the plugin exits at the earliest checkable point, saving the
+  remaining generation.
 
-`control` 可能是 `null`（面向不支持控制面的宿主）；此时当作「不可取消」，不要拒绝加载。
+`control` may be `null` (for hosts that do not support a control plane); treat
+that as "not cancellable" and do not refuse to load.
 
-`completion` 参数在**当前宿主上恒为 `None`**：本宿主不允许插件在 request fn 返回后
-继续回调（那会让回调指针比调用活得久）。插件必须在 request fn 内收尾并写 `out`；
-ABI 里保留该参数是为了将来宿主能扩展，而不必再改签名。
+The `completion` parameter is **always `None` on the current host**: this host
+does not allow a plugin to keep calling back after the request fn has returned
+(that would let the callback pointer outlive the call). The plugin must finish
+up inside the request fn and write `out`; the parameter is kept in the ABI so
+that future hosts can extend it without changing the signature.
 
-插件只需按 流式 → 一次性 逐级降级：
+A plugin simply degrades step by step, streaming → one-shot:
 
 ```rust
-if let Some(register) = api.register_streaming_provider { /* 流式，可选轮询 control */ }
-else { /* register_provider，一次性 */ }
+if let Some(register) = api.register_streaming_provider { /* streaming, optionally polling control */ }
+else { /* register_provider, one-shot */ }
 ```
 
-可从 `examples/plugin-stub/src/lib.rs` 的 `on_provider_stream_request`（不轮询）和
-`on_cancellable_provider_stream_request`（轮询）各复制一份骨架。
+You can copy a skeleton from each of `on_provider_stream_request` (no polling)
+and `on_cancellable_provider_stream_request` (polling) in
+`examples/plugin-stub/src/lib.rs`.
 
-## 6. Rust 工具设计最佳实践
+## 6. Rust Tool Design Best Practices
 
-1. 把领域逻辑写成普通 Rust 函数，FFI 函数只负责转换、生命周期和错误映射。
-2. 对普通逻辑写 `rlib` 单元测试；对 ABI 注册、加载和卸载写至少一个宿主 smoke test。
-3. Schema 和实现使用同一字段命名，拒绝未知字段；对路径、URL、命令、数量和输出大小设置上限。
-4. `poll` 不执行长时间阻塞任务。耗时工作放入线程/任务，handle 保存状态；取消标记必须能让任务在有限时间内结束。
-5. 全局可变状态使用明确同步，避免把 session 或 tool call 状态存进无保护的 `static mut`。
-6. runtime action、provider、renderer、event handler 和 resources handler 都是可选能力；注册前检查 vtable slot。
-7. 插件注册失败返回非零；单个工具执行失败返回结构化错误，不要让整个宿主退出。
-8. README 记录工具 schema、权限边界、持久化文件、网络访问、支持平台和卸载方式。
+1. Write the domain logic as ordinary Rust functions; the FFI functions only
+   handle conversion, lifecycle, and error mapping.
+2. Write `rlib` unit tests for the ordinary logic; write at least one host
+   smoke test for ABI registration, loading, and unloading.
+3. Use the same field names in the schema and the implementation, reject
+   unknown fields, and set upper bounds for paths, URLs, commands, counts, and
+   output sizes.
+4. `poll` must not perform long blocking work. Put expensive work into
+   threads/tasks and let the handle hold the state; the cancellation flag must
+   be able to end the task in finite time.
+5. Use explicit synchronization for global mutable state; do not store session
+   or tool-call state in unprotected `static mut`.
+6. Runtime actions, providers, renderers, event handlers, and resources
+   handlers are all optional capabilities; check the vtable slot before
+   registering.
+7. Return non-zero when plugin registration fails; return a structured error
+   when a single tool execution fails, and never bring down the whole host.
+8. The README should document the tool schema, permission boundaries,
+   persisted files, network access, supported platforms, and how to uninstall.
 
-## 7. 使用 rpi dev 开发
+## 7. Developing with rpi dev
 
-在扩展 crate 目录运行：
+Run this in the extension crate directory:
 
 ```bash
 rpi dev
 ```
 
-rpi 会通过 Cargo metadata 识别当前 `cdylib`，首次编译后把版本化副本放在工作区
-`.rpi/extensions/.dev/`，启动正常 TUI，并监控 `src/`、`build.rs`、package/workspace
-`Cargo.toml` 和 `Cargo.lock`。源文件变化后会自动编译并走现有 reload 流程；编译失败
-会保留当前已加载版本。
+rpi identifies the current `cdylib` through Cargo metadata; after the first
+build it places a versioned copy in the workspace `.rpi/extensions/.dev/`,
+starts the normal TUI, and watches `src/`, `build.rs`, the package/workspace
+`Cargo.toml`, and `Cargo.lock`. When the sources change it rebuilds
+automatically and goes through the existing reload flow; if the build fails,
+the currently loaded version is kept.
 
-多扩展 workspace 必须明确选择 package：
+A workspace with multiple extensions must explicitly select the package:
 
 ```bash
 rpi dev --package rpi-todo
 rpi dev -P rpi-webfetch
 ```
 
-其他模式：
+Other modes:
 
 ```bash
 rpi dev --release
@@ -414,19 +539,26 @@ rpi dev-local
 rpi dev --package rpi-todo -- --model gateway/model
 ```
 
-调试单个扩展时使用 `rpi dev-local`（等价于 `rpi dev --local-only`）。它只加载当前
-编译的扩展、当前项目目录的 skill/prompt，以及该扩展发现的 skill/prompt；不会扫描
-全局扩展、已安装 Pi 包或其他项目资源，避免同名命令和无关命令干扰调试。内置命令
-（包括 `/reload`）仍然可用。没有 Cargo cdylib 时优雅降级为 skills-only 模式。
+Use `rpi dev-local` (equivalent to `rpi dev --local-only`) when debugging a
+single extension. It loads only the currently compiled extension, the
+skills/prompts of the current project directory, and the skills/prompts
+discovered by that extension; it does not scan global extensions, installed Pi
+packages, or other projects' resources, so that same-named commands and
+irrelevant commands do not interfere with debugging. Built-in commands
+(including `/reload`) remain available. When there is no Cargo cdylib, it
+degrades gracefully to skills-only mode.
 
-TUI 中执行 `/reload` 会强制重新运行 Cargo build，再加载新阶段产物。Windows 上
-已加载 DLL 无法原地覆盖，因此不要手工把 Cargo target DLL 复制到固定文件名；
-`rpi dev` 的版本化 staging 会安全地完成切换，并在会话退出、loader 释放后清理。
+Running `/reload` in the TUI forces a Cargo build to run again and then loads
+the newly staged artifact. On Windows an already loaded DLL cannot be
+overwritten in place, so do not manually copy the Cargo target DLL to a fixed
+file name; `rpi dev`'s versioned staging performs the switch safely and cleans
+up after the session exits and the loader is released.
 
-## 8. 资源与配置约定
+## 8. Resource and Configuration Conventions
 
-项目级资源放在 `.rpi/`。同名资源优先级是项目内定义优先
-高于 `.pi`，项目高于全局，package 最后：
+Project-level resources live in `.rpi/`. For resources with the same name,
+the priority is: definitions inside the project take precedence over `.pi`,
+the project takes precedence over the global scope, and packages come last:
 
 ```text
 .rpi/
@@ -439,13 +571,16 @@ TUI 中执行 `/reload` 会强制重新运行 Cargo build，再加载新阶段�
 └── extensions/
 ```
 
-动态 `resources_discover` 适合根据运行环境决定路径；固定资源优先使用 manifest 或
-约定目录，便于安装器、欢迎页和 `/context` 在扩展代码运行前发现它们。
+Dynamic `resources_discover` suits deciding paths based on the runtime
+environment; for fixed resources prefer the manifest or the conventional
+directories, so that the installer, the welcome page, and `/context` can
+discover them before the extension code runs.
 
-### 自定义加载路径
+### Custom Load Paths
 
-项目级 `.rpi/settings.json` 可以声明额外资源路径；无需其他兼容
-回退。路径相对于项目根目录，配置路径会排在约定目录前面：
+A project-level `.rpi/settings.json` can declare additional resource paths; no
+other compatibility fallback is needed. The paths are relative to the project
+root, and configured paths come before the conventional directories:
 
 ```json
 {
@@ -456,12 +591,13 @@ TUI 中执行 `/reload` 会强制重新运行 Cargo build，再加载新阶段�
 }
 ```
 
-`skills`、`prompts`、`extensions` 也可分别作为三个路径数组的简写。全局
-`~/.rpi/agent/settings.json` 支持相同的 `skillDirs`、`promptDirs`、`extensionDirs`，
-其中相对路径相对于全局 agent 目录。项目配置优先于全局配置；`.rpi` 资源和设置排在
-`.pi` 之前。
+`skills`, `prompts`, and `extensions` can also each be used as shorthand for
+the three path arrays. The global `~/.rpi/agent/settings.json` supports the
+same `skillDirs`, `promptDirs`, and `extensionDirs`, where relative paths are
+relative to the global agent directory. Project configuration takes precedence
+over global configuration; `.rpi` resources and settings come before `.pi`.
 
-单次运行可以显式追加路径：
+A single run can explicitly add paths:
 
 ```bash
 rpi --skill ./extra-skills
@@ -470,105 +606,160 @@ rpi --extension ./target/debug/my_extension.dll
 rpi --extensions-dir ./target/debug
 ```
 
-`--skill`、`--prompt-template`、`--extension` 和 `--extensions-dir` 都可以重复使用。
-额外的 Rust 扩展目录也可通过 `RPI_EXTENSIONS_DIR` 配置；Windows 使用分号分隔，
-Linux/macOS 使用冒号分隔。命令行和环境变量适合本机开发、CI 与排错；团队共享配置
-使用项目 `.rpi/settings.json`。
+`--skill`, `--prompt-template`, `--extension`, and `--extensions-dir` can all be
+repeated. Additional Rust extension directories can also be configured via
+`RPI_EXTENSIONS_DIR`; use semicolons as the separator on Windows and colons on
+Linux/macOS. The command line and environment variables suit local
+development, CI, and troubleshooting; for team-wide shared configuration use
+the project `.rpi/settings.json`.
 
-## 9. 发布检查清单
+## 9. Release Checklist
 
-- `cargo fmt --check`、`cargo clippy --all-targets`、`cargo test` 通过。
-- `crate-type` 包含 `cdylib`，使用 `export_plugin!` 导出
-  `rpi_plugin_register`。
-- 依赖已发布的 `rpi-plugin-sdk` 兼容版本，不链接宿主私有 crate。
-- `rpi dev --no-watch` 能编译、加载并注册预期工具。
-- `rpi install <crate> --build --force` 的干净安装路径通过。
-- Linux/macOS/Windows 构建由 CI 验证，README 标明支持矩阵。
+- `cargo fmt --check`, `cargo clippy --all-targets`, and `cargo test` pass.
+- `crate-type` includes `cdylib`, and `export_plugin!` is used to export
+  `rpi_plugin_register`.
+- It depends on a compatible published version of `rpi-plugin-sdk` and links
+  no host-private crates.
+- `rpi dev --no-watch` can compile, load, and register the expected tools.
+- The clean install path `rpi install <crate> --build --force` passes.
+- Linux/macOS/Windows builds are verified by CI, and the README states the
+  support matrix.
 
-## 10. 模型执行规则
+## 10. Model Execution Rules
 
-模型收到"创建 rpi Rust 插件、扩展工具"任务时：
+When the model receives a task to "create an rpi Rust plugin, extend the
+tools":
 
-1. 先调用 `docs` 查询 `authoring`（扩展开发）或 `debugging`（调试）。
-2. 阅读当前仓库现有 manifest、SDK 版本和相邻扩展约定，不猜 API。
-3. 优先复制 `examples/plugin-stub` 的最小骨架。
-4. 实现领域逻辑与边界测试，再连接 loader/ABI。
-5. 使用 `rpi dev --no-watch` 与 `rpi install <crate> --build --force` 做真实 smoke test。
-6. 不声称未验证的 Pi capability 已完全兼容；明确记录降级行为。
+1. First call `docs` to look up `authoring` (extension development) or
+   `debugging` (debugging).
+2. Read the existing manifests, SDK version, and neighbouring extension
+   conventions in the current repository; do not guess APIs.
+3. Prefer copying the minimal skeleton from `examples/plugin-stub`.
+4. Implement the domain logic and boundary tests, and only then hook up the
+   loader/ABI.
+5. Use `rpi dev --no-watch` and `rpi install <crate> --build --force` for a
+   real smoke test.
+6. Do not claim that unverified Pi capabilities are fully compatible; clearly
+   document the degraded behaviour.
 
-## Provider 接入规范
+## Provider Integration Specification
 
-统一生产包为 `rpi-providers`，一个安装入口包含 DeepSeek、OpenRouter、llama.cpp 和 Proxy。
-新增供应商优先在包内添加模块；只有根模块导出一次 `export_plugin!`，各模块共用注册桥接。
-provider ID、目录与凭据继续独立。单 provider 教学样例才使用 `export_provider!`。
+The unified production package is `rpi-providers`; a single installation entry
+point covers DeepSeek, OpenRouter, llama.cpp, and Proxy. Prefer adding a module
+inside the package for a new vendor; only the root module exports one
+`export_plugin!`, and the modules share the registration bridge. Provider IDs,
+the catalogue, and credentials stay independent. Only single-provider tutorial
+samples use `export_provider!`.
 
-完整规范：[Provider 接入规范](https://github.com/bigfish1913/pi-rust/blob/feature-stream-porider/docs/extensions/provider-integration.md)。创建推理扩展时优先复制
-正式 provider package 示例见 [rpi-providers](https://github.com/pi-rust/rpi-package/tree/feature-1014/packages/rpi-providers)，通用工具扩展再使用 `plugin-stub`。当前接入约定如下。
+Full specification: [Provider Integration Specification](https://github.com/bigfish1913/pi-rust/blob/feature-stream-porider/docs/extensions/provider-integration.md). When creating an inference extension,
+prefer copying the official provider package example, see
+[rpi-providers](https://github.com/pi-rust/rpi-package/tree/feature-1014/packages/rpi-providers);
+for general-purpose tool extensions use `plugin-stub` instead. The current
+integration conventions are as follows.
 
-### 方式与目录
+### Approach and Catalogue
 
-只改已支持协议的端点、模型和 key 时，优先使用 `models.json`；需要可安装目录、
-认证策略或供应商逻辑时，使用独立 package。新供应商不添加为 CLI 的默认依赖。
-Provider 负责推理，auth 负责凭据和登录流程，两者独立注册。
+When only the endpoint, model, and key of an already supported protocol change,
+prefer `models.json`; when an installable catalogue, an authentication policy,
+or vendor logic is needed, use a standalone package. New vendors are not added
+as default dependencies of the CLI. The Provider handles inference, auth handles
+credentials and the login flow, and the two are registered independently.
 
-通过 `declare` 的 `providers` 数组声明 `id`、完整 `rpi_ai::Model` 数组 `models`、
-可选 `apiKeyEnv` 和默认 `true` 的 `requiresAuth`。用 `Model::new` 构造后序列化，
-不能使用 models.json 的简写对象。provider ID、每个模型的 `provider`、实际注册 ID
-必须一致；model ID 是发送给服务端的名称。匿名服务必须显式设置 `requiresAuth: false`，
-协议客户端也必须允许匿名，不能只修改目录声明。
+Declare the `id`, the complete `rpi_ai::Model` array `models`, the optional
+`apiKeyEnv`, and `requiresAuth` (defaulting to `true`) through the `providers`
+array of `declare`. Construct with `Model::new` and then serialize; the
+shorthand objects of models.json must not be used. The provider ID, each
+model's `provider`, and the actual registration ID must be consistent; the
+model ID is the name sent to the server. Anonymous services must explicitly
+set `requiresAuth: false`, and the protocol client must also allow anonymous
+access — changing only the catalogue declaration is not enough.
 
-目录只在同一插件成功注册对应 provider 后生效，同名冲突时保留第一份实现及其目录。
-注册和目录发现不要求凭据；宿主在选择模型前加载扩展、合并 models.json 覆盖。
-`--list-models` 可无凭据显示目录；`--no-extensions` 同时禁用实现和声明。
+The catalogue only takes effect after the same plugin successfully registers
+the corresponding provider; on a name conflict the first implementation and
+its catalogue are kept. Registration and catalogue discovery do not require
+credentials; the host loads extensions and merges models.json overrides before
+a model is selected. `--list-models` can show the catalogue without
+credentials; `--no-extensions` disables both implementations and declarations.
 
-### Factory 与私有执行绑定
+### Factory and Private Execution Binding
 
-统一包内复用 `crate::registration::register_provider!`；单 provider 教学包可使用
-`rpi_plugin_sdk::export_provider!`，需显式开启 SDK 默认关闭的 `provider` feature。模块提供
-`fn(&Model, &SimpleStreamOptions) -> Arc<dyn Provider>`。OpenAI-compatible 接入可复用
-`rpi_plugin_sdk::provider::completions(model, options, anonymous)`，无需复制 SSE 解析器。
-宿主私有 `ProviderFactory` 统一选择扩展 / 内置协议，不是插件需要实现的接口。
-运行时依赖使用 `rpi-ai` 与开启 `provider` feature 的 `rpi-plugin-sdk`，不依赖 `rpi-cli`；宿主加载器
-可以作为测试依赖。
+Within the unified package, reuse `crate::registration::register_provider!`; a
+single-provider tutorial package may use `rpi_plugin_sdk::export_provider!`,
+which requires explicitly enabling the `provider` feature that the SDK
+disables by default. The module provides
+`fn(&Model, &SimpleStreamOptions) -> Arc<dyn Provider>`. OpenAI-compatible
+integrations can reuse
+`rpi_plugin_sdk::provider::completions(model, options, anonymous)` without
+copying an SSE parser. The host-private `ProviderFactory` uniformly selects
+between an extension and a built-in protocol; it is not an interface that
+plugins need to implement. Runtime dependencies use `rpi-ai` and
+`rpi-plugin-sdk` with the `provider` feature enabled, and do not depend on
+`rpi-cli`; the host loader may serve as a test dependency.
 
-公开目录、当前模型及配置后 `Provider::models()` 返回的描述不携带请求头。
-宿主私有 `ExecutionBinding` 保存实际端点、模型请求头及默认认证，执行前按
-provider / API / model ID 恢复；修改公开描述不能重定向绑定的凭据。
-`base_url` 仍公开用于展示，每次请求显式传入的 options 仍按既有规则生效。
-插件必须使用请求传入的 model / options，不能改用硬编码端点或进程环境变量中的 key。
+The descriptions returned by the public catalogue, the current model, and
+`Provider::models()` after configuration carry no request headers. The
+host-private `ExecutionBinding` holds the actual endpoint, the model request
+headers, and the default authentication, and is restored before execution
+according to provider / API / model ID; modifying the public description
+cannot redirect the bound credentials. `base_url` remains public for display,
+and options explicitly passed per request still take effect under the existing
+rules. A plugin must use the model / options passed with the request and must
+not switch to a hardcoded endpoint or to a key from the process environment.
 
-### 认证与重载
+### Authentication and Reload
 
-默认凭据由宿主按 provider ID 解析：选中 provider 的 `--api-key` → `auth.json`
-有效 key / OAuth → `models.json` → 声明的 `apiKeyEnv` → 显式允许的匿名。
-协议名不决定认证，不继承 `OPENAI_API_KEY`；空白、未解析引用和过期 token 不算可用。
-目录不得含凭据；请求参数、token 与私密请求头不得进入日志、普通事件或错误文本。
-OAuth 供应商流程另外通过 `register_oauth_provider` 接入，宿主负责通用命令与存储。
+The host resolves default credentials by provider ID: the `--api-key` of the
+selected provider → a valid key in `auth.json` / OAuth → `models.json` → the
+declared `apiKeyEnv` → explicitly permitted anonymity. The protocol name does
+not determine authentication and does not inherit `OPENAI_API_KEY`; blank
+values, unresolved references, and expired tokens do not count as usable. The
+catalogue must not contain credentials; request parameters, tokens, and
+private request headers must not enter logs, ordinary events, or error text.
+OAuth vendor flows are integrated separately via `register_oauth_provider`, and
+the host handles the generic commands and storage.
 
-`auth check`、`/provider` 与实际请求使用同一认证解析。`auth check` 只检查本地状态，
-不访问服务端或刷新 token；退出码为就绪 0、缺少凭据 1、配置错误 2。
-`/provider <id>` 与列表选择会即时切换当前会话并保存默认模型；缺少认证或切换失败时
-保留原会话与默认值。`/model` 选择具体模型；`/provider remove` 删除配置，
-卸载 package 使用 `rpi package unlink`。API-key logout 不会清除环境变量或 models.json。
+`auth check`, `/provider`, and actual requests use the same authentication
+resolution. `auth check` only inspects local state; it does not contact the
+server or refresh tokens; the exit codes are 0 for ready, 1 for missing
+credentials, and 2 for a configuration error. `/provider <id>` and the list
+selection switch the current session immediately and save the default model;
+when authentication is missing or the switch fails, the original session and
+defaults are kept. `/model` selects a specific model; `/provider remove`
+deletes the configuration, and uninstalling a package uses
+`rpi package unlink`. Logging out of an API key does not clear environment
+variables or models.json.
 
-涉及 provider package 的 `/reload` 会重新绑定 runtime、凭据、端点与公开目录；
-当前 package 消失或无法重新解析时返回错误并保留旧会话。仅内置 provider 的会话仍使用
-既有资源重载逻辑，不承诺重新解析所有 provider 配置；完整重载尚非原子代次切换。
+A `/reload` that involves a provider package rebinds the runtime, credentials,
+endpoint, and public catalogue; when the current package disappears or cannot
+be resolved again, an error is returned and the old session is kept. Sessions
+that use only built-in providers still use the existing resource reload logic,
+and no promise is made to re-resolve every provider configuration; a full
+reload is not yet an atomic generation switch.
 
-### 流式与验收
+### Streaming and Acceptance
 
-增量必须在生成期间发出，最终 `out` 仍提供完整消息，宿主只产生一个 Done / Error。
-取消要及时停止请求并保留部分输出；同步 request fn 返回后禁止继续调用 `emit`。
-使用桥接库处理 ABI 字符串释放、取消与 runtime 生命周期，手写 ABI 遵守前述协议。
+Deltas must be emitted during generation, the final `out` still provides the
+complete message, and the host produces exactly one Done / Error. Cancellation
+must promptly stop the request and preserve partial output; calling `emit`
+after a synchronous request fn returns is forbidden. Use the bridging library
+to handle ABI string release, cancellation, and the runtime lifecycle;
+hand-written ABI code must follow the protocol described above.
 
-验收必须包含真实动态库加载、本地 SSE 在首个正文增量到达后才继续发送的门控测试、
-UTF-8 跨块、usage、唯一终态、响应未结束时取消与 HTTP 401；认证隔离、端点 / 请求头
-覆盖、公开目录无认证头、命令与重载也要验证。工具和 OAuth 只声明已完成验证的能力。
-真实 API 测试默认 ignored，显式运行时从环境注入 key 并限制超时、重试和用量。
-正式统一包位于独立的 [rpi-package 项目](https://github.com/pi-rust/rpi-package/tree/feature-1014/packages/rpi-providers)，
-保留 `deepseek` ID，声明 `DEEPSEEK_API_KEY`，并通过 `requiresReasoningContent` 支持工具续轮。
+Acceptance must include real dynamic library loading, a gated test where a local
+SSE only continues sending after the first body delta arrives, UTF-8 across
+chunk boundaries, usage, a unique terminal state, cancellation before the
+response ends, and HTTP 401; authentication isolation, endpoint / request
+header overrides, a public catalogue without authentication headers, commands,
+and reload must also be verified. Tools and OAuth may only declare
+capabilities that have already been verified. Real API tests are ignored by
+default; when run explicitly, inject the key from the environment and limit the
+timeout, retries, and usage. The official unified package lives in the separate
+[rpi-package project](https://github.com/pi-rust/rpi-package/tree/feature-1014/packages/rpi-providers);
+it keeps the `deepseek` ID, declares `DEEPSEEK_API_KEY`, and supports
+tool-continuation turns through `requiresReasoningContent`.
 
-在 rpi-package 仓库运行正式 package 的离线验证：
+Run the offline verification of the official package in the rpi-package
+repository:
 
 ```sh
 cd /path/to/rpi-package
@@ -577,11 +768,12 @@ cargo test -p rpi-providers --test streaming
 cargo test -p rpi-providers --test host
 ```
 
-在 pi-rust 仓库运行 CLI 集成测试时设置 `RPI_TEST_PROVIDER_LIBRARY` 和
-`RPI_TEST_PROVIDER_PACKAGE`，再执行：
+When running the CLI integration tests in the pi-rust repository, set
+`RPI_TEST_PROVIDER_LIBRARY` and `RPI_TEST_PROVIDER_PACKAGE`, and then run:
 
 ```sh
 cargo test -p rpi-cli --test provider_packages
 ```
 
-新增 package 还必须构建并测试自身动态库，不能仅凭宿主测试通过就声称接入完成。
+A new package must also build and test its own dynamic library; passing the
+host tests alone is not enough to claim the integration is complete.

@@ -1,17 +1,18 @@
-# rpi Rust 扩展与 Agent 调试指引
+# rpi Rust Extension and Agent Debugging Guide
 
-本文覆盖两条主线：**如何编写 Rust `cdylib` 扩展**（统一 C ABI、工具生命周期、
-事件处理器、资源发现、Provider/渲染器），以及**如何调试 agent 与扩展**（事件日志、
-开发宿主、系统提示词检查、常见失败定位）。创建完整 Agent 项目的默认结构见 `docs` 的 `agent` 主题。
+This guide covers two main threads: **how to write Rust `cdylib` extensions** (unified C ABI, tool lifecycle,
+event handlers, resource discovery, providers/renderers), and **how to debug agents and extensions** (event logs,
+development hosts, system prompt inspection, locating common failures). The default structure of a complete
+agent project is described in the `agent` topic of `docs`.
 
-## 1. Rust 扩展快速开始
+## 1. Rust Extension Quick Start
 
-最小可用扩展是一个 Rust `cdylib` crate，只依赖 `rpi-plugin-sdk`：
+The minimal viable extension is a Rust `cdylib` crate that depends only on `rpi-plugin-sdk`:
 
 ```bash
 cargo new my-rpi-extension
 cd my-rpi-extension
-# 在 Cargo.toml 中把 crate-type 设为 ["cdylib", "rlib"]
+# set crate-type to ["cdylib", "rlib"] in Cargo.toml
 ```
 
 ```toml
@@ -29,18 +30,21 @@ rpi-plugin-sdk = "0.1"
 serde_json = "1"
 ```
 
-**扩展边界规则**：`cdylib` 只依赖 `rpi-plugin-sdk`。绝不链接 `rpi-cli`、
-`rpi-extensions` 或 harness 内部 crate——插件由宿主动态加载，宿主链接插件，
-插件不能反向链接宿主。保留 `rlib` 是为了能在同一 crate 内写 Rust 单元测试。
+**Extension boundary rules**: a `cdylib` depends only on `rpi-plugin-sdk`. Never link `rpi-cli`,
+`rpi-extensions`, or harness-internal crates — the host loads plugins dynamically and the host links the
+plugin; the plugin must not link back to the host. Keeping `rlib` allows you to write Rust unit tests
+inside the same crate.
 
-仓库自带的 `examples/plugin-stub` 是完整可运行的模板，包含 echo 工具、事件
-处理器和资源发现三种能力，是复制骨架的首选来源。
+The `examples/plugin-stub` directory shipped with the repository is a complete, runnable template that
+covers three capabilities: an echo tool, event handlers, and resource discovery. It is the preferred
+source for a starting skeleton.
 
-## 2. 统一 ABI 入口
+## 2. Unified ABI Entry Point
 
-宿主只加载统一 C ABI 符号 `rpi_plugin_register`。扩展使用 `export_plugin!`，
-通过同一个 `PluginApi` 注册能力并调用 `api.declare` 声明优先级/平台。
-SDK 在注册前检查 `abi_version` 和 `struct_size`；不兼容时返回非零状态，宿主报告加载失败。
+The host loads only the unified C ABI symbol `rpi_plugin_register`. Extensions use `export_plugin!`,
+register capabilities through the same `PluginApi`, and call `api.declare` to declare priority/platform.
+The SDK checks `abi_version` and `struct_size` before registration; on incompatibility it returns a
+non-zero status and the host reports a load failure.
 
 ```rust
 rpi_plugin_sdk::export_plugin!(|api| {
@@ -55,43 +59,48 @@ rpi_plugin_sdk::export_plugin!(|api| {
     let Some(register_tool) = api.register_tool else {
         return -1;
     };
-    // 构建 StableToolSchema 和 execute/poll/cancel/destroy 函数表，
-    // 然后调用 register_tool。完整实现参考 examples/plugin-stub。
+    // Build the StableToolSchema and the execute/poll/cancel/destroy function table,
+    // then call register_tool. See examples/plugin-stub for a complete implementation.
     let _ = register_tool;
     0
 });
 ```
 
-`declare` 的 JSON 支持 `priority`（数字，越大越先）和 `platforms`（字符串数组，
-如 `["linux","windows","macos"]`）；宿主在分发事件处理器时跳过不匹配的平台。
+The JSON passed to `declare` supports `priority` (a number, larger runs first) and `platforms` (an array
+of strings such as `["linux","windows","macos"]`); the host skips non-matching platforms when
+dispatching event handlers.
 
-### 能力检测
+### Capability Detection
 
-每个注册槽位都是 `Option`。注册前检查 vtable slot 是否为 `Some`，缺失时返回
-清晰错误并优雅降级，不要 panic、空指针或依赖 `undefined` 语义。宿主对未知
-runtime action ID 返回结构化错误，不会进入分发。
+Every registration slot is an `Option`. Before registering, check that the vtable slot is `Some`; when it
+is missing, return a clear error and degrade gracefully instead of panicking, dereferencing null, or
+relying on `undefined` semantics. The host returns a structured error for unknown runtime action IDs
+and does not enter dispatch.
 
-## 3. 工具生命周期：execute → poll → cancel → destroy
+## 3. Tool Lifecycle: execute → poll → cancel → destroy
 
-每个工具导出四个 `extern "C"` 函数，宿主按固定协议驱动：
+Each tool exports four `extern "C"` functions that the host drives with a fixed protocol:
 
-- `execute(tool_call_id, params, free_params) -> StepHandle`：解析宿主传入的 JSON
-  （owned `StbString`，用 `free_with(free_params)` 释放），创建本次调用独立的
-  handle（通常是 `Box::into_raw(Box::new(State))`）。
-- `poll(handle, partial_cb, user_data) -> StepResult`：**必须非阻塞**。未完成返回
-  `StepResult::pending(progress)`；完成返回 `StepResult::done(result)`；
-  失败返回 `StepResult::err(message)`。`partial_cb` 在 poll 内同步调用。
-- `cancel(handle)`：设置线程安全取消标记。**必须幂等，不能释放 handle**。
-- `destroy(handle)`：宿主最终调用一次，`Box::from_raw` 释放 handle。空指针要 no-op。
+- `execute(tool_call_id, params, free_params) -> StepHandle`: parses the JSON passed in by the host
+  (an owned `StbString`, released with `free_with(free_params)`), and creates a handle dedicated to
+  this call (usually `Box::into_raw(Box::new(State))`).
+- `poll(handle, partial_cb, user_data) -> StepResult`: **must not block**. Return
+  `StepResult::pending(progress)` when not finished, `StepResult::done(result)` when finished, and
+  `StepResult::err(message)` on failure. `partial_cb` is called synchronously inside poll.
+- `cancel(handle)`: sets a thread-safe cancellation flag. **Must be idempotent and must not free the
+  handle.**
+- `destroy(handle)`: called once by the host at the end; `Box::from_raw` frees the handle. A null handle
+  must be a no-op.
 
-所有权协议要点：
+Key points of the ownership protocol:
 
-- 宿主产生的 `StbString`（execute 的 params、事件 payload）由**插件**通过宿主
-  提供的 `free_string` 释放。
-- 插件产生的 `StbString`（done 结果、partial 进度、resources_discover 的 out）
-  由**宿主**通过插件注册时提供的 `plugin_free_string` 释放。
-- 每个 `extern "C"` 边界都不能 unwind：插件内部 `catch_unwind` 并把 panic 转换为
-  结构化错误结果。
+- `StbString`s produced by the host (execute's params, event payloads) are freed by the **plugin** via the
+  host-provided `free_string`.
+- `StbString`s produced by the plugin (done results, partial progress, the `out` of
+  resources_discover) are freed by the **host** via the `plugin_free_string` provided by the plugin at
+  registration time.
+- No `extern "C"` boundary may unwind: the plugin catches panics internally with `catch_unwind` and
+  converts them into structured error results.
 
 ```rust
 extern "C" fn my_execute(
@@ -129,62 +138,65 @@ extern "C" fn my_destroy(handle: StepHandle) {
 }
 ```
 
-完整模板见 `examples/plugin-stub/src/lib.rs`。创建新工具时复制生命周期骨架，
-只替换参数 schema 和领域逻辑，不要重新设计所有权协议。
+See `examples/plugin-stub/src/lib.rs` for the complete template. When creating a new tool, copy the
+lifecycle skeleton and replace only the parameter schema and the domain logic; do not redesign the
+ownership protocol.
 
-## 4. 事件处理器、资源发现与 Provider
+## 4. Event Handlers, Resource Discovery, and Providers
 
-### 事件处理器（36 个事件类别）
+### Event Handlers (36 event categories)
 
-通过 `api.register_event_handler` 按 `EventTag` 订阅。事件分三大类：
+Subscribe via `api.register_event_handler` using an `EventTag`. Events fall into three major groups:
 
-- **会话生命周期**：`SessionStart`、`SessionBeforeSwitch`、`SessionBeforeFork`、
-  `SessionBeforeCompact`、`SessionCompact`、`SessionShutdown` 等。
-- **Agent 循环**：`BeforeAgentStart`、`AgentStart`、`AgentEnd`、`AgentSettled`、
-  `TurnStart`、`TurnEnd`、`MessageStart`/`MessageUpdate`/`MessageEnd`、
-  `ToolExecutionStart`/`Update`/`End`、`ToolCall`、`ToolResult`、`UserBash`、`Input`。
-- **rpi 特有 / UI**：`BeforeTuiStart`（TUI 初始化前）、`UiPromptStart`/`UiPromptEnd`
-  （交互式提示阻塞 agent 时）。
+- **Session lifecycle**: `SessionStart`, `SessionBeforeSwitch`, `SessionBeforeFork`,
+  `SessionBeforeCompact`, `SessionCompact`, `SessionShutdown`, and so on.
+- **Agent loop**: `BeforeAgentStart`, `AgentStart`, `AgentEnd`, `AgentSettled`,
+  `TurnStart`, `TurnEnd`, `MessageStart`/`MessageUpdate`/`MessageEnd`,
+  `ToolExecutionStart`/`Update`/`End`, `ToolCall`, `ToolResult`, `UserBash`, `Input`.
+- **rpi-specific / UI**: `BeforeTuiStart` (before TUI initialization), `UiPromptStart`/`UiPromptEnd`
+  (when an interactive prompt blocks the agent).
 
-处理器收到 `StablePluginEvent`，**不得释放**事件里的字符串（宿主 fan-out 后统一
-释放）。返回 `0` 成功；返回 `EVENT_HANDLER_ABORT` 表示 veto。
+Handlers receive a `StablePluginEvent` and **must not free** the strings inside the event (the host
+frees them uniformly after fan-out). Return `0` for success; return `EVENT_HANDLER_ABORT` to veto.
 
-### 生命周期 veto（P1）
+### Lifecycle Veto (P1)
 
-`BeforeTuiStart` 是一个带 veto 语义的 rpi 专有钩子：第一个返回
-`EVENT_HANDLER_ABORT` 的处理器会**中止启动**，CLI 以退出码 `3` 退出并打印原因
-（用于"进入 TUI 前必须先建立外部连接"这类场景）。`SessionStart` / `SessionShutdown`
-的 veto 只是 advisory：headless 模式打印警告，shutdown 时忽略。事件分发带超时，
-慢处理器不会无限阻塞主流程。
+`BeforeTuiStart` is an rpi-specific hook with veto semantics: the first handler that returns
+`EVENT_HANDLER_ABORT` **aborts startup**, and the CLI exits with exit code `3` while printing the
+reason (useful for scenarios like "an external connection must be established before entering the
+TUI"). The veto of `SessionStart` / `SessionShutdown` is only advisory: headless mode prints a
+warning, and it is ignored during shutdown. Event dispatch has a timeout, so a slow handler never
+blocks the main flow indefinitely.
 
-### 资源发现
+### Resource Discovery
 
-`api.register_resources_discover` 注册一个 handler，宿主在 `startup` / `reload`
-时 fan-out 到所有已注册 handler，合并返回的 `{skillPaths, promptPaths, themePaths}`。
-单个 handler 报错不会中止 fan-out。`out` 是插件拥有的 `StbString`，宿主通过插件
-注册时给的 `plugin_free_string` 回收。
+`api.register_resources_discover` registers a handler. The host fans out to all registered handlers
+on `startup` / `reload` and merges the returned `{skillPaths, promptPaths, themePaths}`. An error in a
+single handler does not abort the fan-out. `out` is a plugin-owned `StbString`, reclaimed by the host
+via the `plugin_free_string` supplied at registration time.
 
-### Provider 与渲染器
+### Providers and Renderers
 
-`api.register_provider` 注入自定义 LLM Provider（`provider_id` / `base_url` /
-`api_style` + `request_fn`）。`register_message_renderer` /
-`register_markdown_transformer` / `register_entry_renderer` 注册消息渲染能力，
-宿主接受 `{text, lines}` 组件信封。这些槽位都可能为 `None`，使用前必须检测。
+`api.register_provider` injects a custom LLM provider (`provider_id` / `base_url` / `api_style` +
+`request_fn`). `register_message_renderer` / `register_markdown_transformer` / `register_entry_renderer`
+register message rendering capabilities; the host accepts `{text, lines}` component envelopes. All of
+these slots may be `None`, so they must be detected before use.
 
-## 5. 用 `rpi dev` 开发
+## 5. Developing with `rpi dev`
 
-在扩展 crate 目录运行：
+Run this inside the extension crate directory:
 
 ```bash
 rpi dev
 ```
 
-rpi 通过 Cargo metadata 识别当前 `cdylib`，首次编译后把版本化副本放到工作区
-`.rpi/extensions/.dev/`，启动正常 TUI，并监控 `src/`、`build.rs`、package/workspace
-`Cargo.toml` 和 `Cargo.lock`。源码变化自动重编译并热重载；编译失败保留当前已加载
-版本。TUI 里 `/reload` 会强制重新构建再加载。
+rpi identifies the current `cdylib` through Cargo metadata, and after the first build places a
+versioned copy in the workspace's `.rpi/extensions/.dev/`, starts the normal TUI, and watches `src/`,
+`build.rs`, the package/workspace `Cargo.toml`, and `Cargo.lock`. Source changes trigger an automatic
+rebuild and hot reload; if the build fails, the currently loaded version is kept. `/reload` inside the
+TUI forces a rebuild and reload.
 
-多扩展 workspace 必须明确选择 package：
+Multi-extension workspaces must explicitly select a package:
 
 ```bash
 rpi dev --package rpi-todo
@@ -194,86 +206,90 @@ rpi dev --no-watch
 rpi dev --package rpi-todo -- --model gateway/model
 ```
 
-调试单个扩展用 `rpi dev-local`（等价于 `rpi dev --local-only`）：只加载当前编译
-的扩展和该扩展发现的 skill/prompt，不扫描全局扩展、已安装 Pi 包或其他项目资源，
-避免同名命令干扰。没有 cdylib 时优雅降级为 skills-only 模式。Windows 上已加载
-DLL 无法原地覆盖，因此不要手工复制 Cargo target DLL；版本化 staging 会安全切换。
+To debug a single extension, use `rpi dev-local` (equivalent to `rpi dev --local-only`): it loads only
+the extension currently being compiled plus the skills/prompts discovered by that extension, and does
+not scan global extensions, installed Pi packages, or resources from other projects, avoiding
+interference from commands with the same name. When there is no `cdylib`, it degrades gracefully into
+skills-only mode. On Windows an already loaded DLL cannot be overwritten in place, so do not manually
+copy the Cargo target DLL; versioned staging switches safely.
 
-## 6. Agent 调试：事件日志
+## 6. Agent Debugging: Event Logs
 
-### 开启事件日志
+### Enabling the Event Log
 
 ```bash
 export RPI_EVENT_LOG=1
-rpi            # 任意运行都会记录扩展事件处理器调用
+rpi            # any run records extension event handler invocations
 ```
 
-日志默认写到 `~/.rpi/logs/events.jsonl`（`RPI_CODING_AGENT_DIR` 存在时写到其
-父目录的 `logs/` 下；`RPI_EVENT_LOG_PATH` 可显式覆盖）。关闭时零磁盘写入、零开销。
+Logs are written by default to `~/.rpi/logs/events.jsonl` (when `RPI_CODING_AGENT_DIR` exists, they
+go to the `logs/` directory under its parent directory; `RPI_EVENT_LOG_PATH` can override the path
+explicitly). When disabled, there is zero disk writes and zero overhead.
 
-查看日志位置和实时跟踪：
+Show the log location and follow it live:
 
 ```bash
-rpi events path        # 打印事件日志路径
-rpi events tail        # 打印已有内容并持续跟踪（Ctrl+C 停止）
+rpi events path        # print the event log path
+rpi events tail        # print existing content and keep following (Ctrl+C to stop)
 ```
 
-每一行 JSON 包含 `ts_ms`（Unix 毫秒）、`event`（如 `BeforeTuiStart` /
-`MessageEnd`）、`plugin`（扩展显示名）、`result`（`Continue` / `Error` / `Abort` /
-`Timeout` / `Panic` / `JoinFailed`）、`duration_ms` 和可选 `detail`。用它回答
-"我的扩展为什么没运行"这类问题。
+Each JSON line contains `ts_ms` (Unix milliseconds), `event` (such as `BeforeTuiStart` /
+`MessageEnd`), `plugin` (the extension display name), `result` (`Continue` / `Error` / `Abort` /
+`Timeout` / `Panic` / `JoinFailed`), `duration_ms`, and an optional `detail`. Use it to answer
+questions like "why isn't my extension running".
 
-### 系统提示词与资源检查
+### System Prompt and Resource Inspection
 
 ```bash
-rpi --debug-system-prompt   # 把最终解析出的系统提示词各段打印到 stderr
-rpi --list-models           # 列出可用模型（可带模糊搜索词）
-rpi --verbose               # 显示启动警告（如被忽略的 flag）
+rpi --debug-system-prompt   # print each section of the final resolved system prompt to stderr
+rpi --list-models           # list available models (a fuzzy search term may be given)
+rpi --verbose               # show startup warnings (such as ignored flags)
 ```
 
-`--debug-system-prompt` 会显示 skills、prompts、package 资源和计数，是排查
-"资源为什么没出现在欢迎页"的直达路径。
+`--debug-system-prompt` shows skills, prompts, package resources, and counts; it is the fastest route
+for diagnosing "why didn't the resource show up on the welcome page".
 
-### 凭据与 Provider 调试
+### Credential and Provider Debugging
 
 ```bash
-rpi auth check                          # 报告任何可用认证源（不联网）
+rpi auth check                          # report any available authentication sources (no network)
 rpi auth check --provider gateway --json
 ```
 
-接口报错时保留 provider 返回的诊断文本，先检查 endpoint、认证头和模型 ID。
+When the interface reports errors, keep the diagnostic text returned by the provider and check the
+endpoint, authentication headers, and model ID first.
 
-### 会话导出
-
-```bash
-rpi --export session.jsonl      # 把 JSONL 会话导出为 HTML 便于审阅
-```
-
-## 7. 远程模式调试
+### Session Export
 
 ```bash
-rpi --server --port 9899        # 无头服务端，启动时打印 token
-rpi --connect 127.0.0.1:9899 --token <token>   # 远程 TUI 客户端
+rpi --export session.jsonl      # export a JSONL session as HTML for review
 ```
 
-客户端是纯输入/显示，没有任何本地 provider、工具、扩展或 session 文件；全部 agent
-工作发生在服务端。调试技巧：
+## 7. Remote Mode Debugging
 
-- 服务端日志（`--verbose`）显示启动警告；事件日志（`RPI_EVENT_LOG=1`）在服务端
-  进程开启，用 `rpi events tail` 在同一台机器跟踪。
-- 客户端可用 `/state`（当前 model/thinking/工具）、`/model <id>`、`/thinking <level>`、
-  `/tools` 检查会话状态。
-- 远程模式下 `/tree`、`/fork`、`/switch`、`/export`、`/name`、`/reload` 不可用
-  （依赖本地 harness），会得到明确的"不支持"提示。
+```bash
+rpi --server --port 9899        # headless server, prints a token at startup
+rpi --connect 127.0.0.1:9899 --token <token>   # remote TUI client
+```
 
-### 按键诊断（手机 / 远程终端）
+The client is pure input/display, with no local provider, tools, extensions, or session files; all
+agent work happens on the server. Debugging tips:
 
-手机客户端、IME、SSH 网关对"回车"的编码各不相同，出问题时先看**到达 TUI 的原始
-按键事件**，不要猜。设置 `RPI_DEBUG_KEYS` 即可把所有按键事件（含 Enter 的判定结果）
-追加到日志：
+- The server log (`--verbose`) shows startup warnings; the event log (`RPI_EVENT_LOG=1`) is enabled in
+  the server process, so use `rpi events tail` to follow it on the same machine.
+- The client can inspect session state with `/state` (current model/thinking/tools), `/model <id>`,
+  `/thinking <level>`, and `/tools`.
+- In remote mode `/tree`, `/fork`, `/switch`, `/export`, `/name`, and `/reload` are unavailable (they
+  depend on the local harness) and produce a clear "not supported" message.
+
+### Key Diagnostics (Mobile / Remote Terminal)
+
+Mobile clients, IMEs, and SSH gateways encode "Enter" differently. When something goes wrong, look at
+the **raw key events that reach the TUI** first instead of guessing. Setting `RPI_DEBUG_KEYS` appends
+all key events (including the decision result for Enter) to the log:
 
 ```powershell
-# Windows：在手机 SSH 进来的那个会话里
+# Windows: in the session you SSHed into from your phone
 $env:RPI_DEBUG_KEYS=1; rpi
 ```
 
@@ -282,8 +298,8 @@ $env:RPI_DEBUG_KEYS=1; rpi
 RPI_DEBUG_KEYS=1 rpi
 ```
 
-默认写到 `<临时目录>/rpi-keys.log`（Windows 为 `%TEMP%\rpi-keys.log`），也可用
-`RPI_DEBUG_KEYS=<路径>` 指定文件。格式：
+By default this writes to `<temp dir>/rpi-keys.log` (`%TEMP%\rpi-keys.log` on Windows); you can also
+specify a file with `RPI_DEBUG_KEYS=<path>`. Format:
 
 ```text
 2026-09-24T12:00:01.234Z --- rpi TUI key trace start pid=4321 TERM=xterm-256color raw_mode=true ---
@@ -292,38 +308,40 @@ RPI_DEBUG_KEYS=1 rpi
 2026-09-24T12:00:01.236Z enter-decision -> newline (paste burst) gap_ms=1 more_queued=false
 ```
 
-按这两条线索判断：
+Judge by these two clues:
 
-| 日志 | 含义 | 处理 |
+| Log | Meaning | Action |
 | --- | --- | --- |
-| `code=Char('j') mods=CONTROL`（或 `Char('\n')`） | 客户端把回车发成了 **LF (0x0A)**。crossterm 在 raw 模式下把 LF 当 Ctrl+J，而 Ctrl+J 绑定的是"插入换行"（对齐 pi 的 `tui.input.newLine`） | **已修复**：`Editor::handle_key` 现在把无修饰键的 `Char('\n')`/`Char('\r')` 当作提交，`Ctrl+J`（`Char('j') + CONTROL`）仍保持插入换行 |
-| `code=Enter mods=NONE` + `enter-decision -> newline (paste burst)` | 收到的是正常 CR，但客户端把"文字 + 回车"合并成一批发送，粘贴启发式（20ms 突发窗口）误判为粘贴 | **已修复**：粘贴启发式仅保留在 Windows（`cfg!(windows)`）。Unix 上括号粘贴用 `Event::Paste` 处理真实粘贴，普通回车直接提交 |
-| `code=Enter mods=NONE` + `enter-decision -> submit` | 输入路径正常，问题不在按键层 | 检查会话/网络层 |
-| 完全没有 `code=` 行 | 按键根本没到 TUI | 客户端没连上、窗口未聚焦，或 `RPI_SKIP_STDIN` 被设了 |
+| `code=Char('j') mods=CONTROL` (or `Char('\n')`) | The client sent Enter as **LF (0x0A)**. In raw mode crossterm treats LF as Ctrl+J, and Ctrl+J is bound to "insert newline" (matching pi's `tui.input.newLine`) | **Fixed**: `Editor::handle_key` now treats unmodified `Char('\n')`/`Char('\r')` as submit, while `Ctrl+J` (`Char('j') + CONTROL`) still inserts a newline |
+| `code=Enter mods=NONE` + `enter-decision -> newline (paste burst)` | A normal CR arrived, but the client sent "text + Enter" as one batch, and the paste heuristic (20 ms burst window) misclassified it as a paste | **Fixed**: the paste heuristic is kept only on Windows (`cfg!(windows)`). On Unix, bracketed paste uses `Event::Paste` to handle real pastes, and a plain Enter submits directly |
+| `code=Enter mods=NONE` + `enter-decision -> submit` | The input path is fine; the problem is not at the key layer | Check the session/network layer |
+| No `code=` lines at all | The keys never reached the TUI | The client isn't connected, the window isn't focused, or `RPI_SKIP_STDIN` is set |
 
-## 8. 常见失败定位
+## 8. Locating Common Failures
 
-| 症状 | 检查项 |
-| --- | --- |
-| 扩展没加载 | `cdylib` crate-type？平台匹配？用 `--extensions-dir` 指向生成目录；`--no-extensions` 未误开 |
-| 工具未注册 | ABI 版本协商失败？vtable slot 是 `None`（宿主未实现）？注册返回非零？ |
-| 事件处理器没触发 | `RPI_EVENT_LOG=1` + `rpi events tail` 看是否有 `Abort`/`Panic`/`Timeout` |
-| 启动被中止 | `BeforeTuiStart` 有扩展返回 `EVENT_HANDLER_ABORT`，退出码 3 |
-| `poll` 卡住 | `poll` 必须非阻塞；耗时工作放线程，handle 保存状态，取消标记限时结束 |
-| Windows 上热重载失败 | 已加载 DLL 无法覆盖；用 `rpi dev` 的版本化 staging，不要手工复制 |
-| 资源没出现在系统提示词 | `--debug-system-prompt` 查看最终组装结果；确认 skill 路径被发现 |
-| 手机/远程终端回车变换行 | `RPI_DEBUG_KEYS=1` 看按键：`Char('j') mods=CONTROL` = 客户端发的是 LF（已被 `Editor` 当提交处理）；`Enter` + `paste burst` = 粘贴启发式误判（已限定 Windows 平台） |
-| 粘贴内容不是系统剪贴板（而是 TUI 自己的文案） | 远程/手机客户端把粘贴映射成 `Ctrl+V` 时，`read_clipboard_text` 会读**服务器**剪贴板——可能被拖选复制（copy-on-select）写入了 TUI 文案（如欢迎语 `Skills (…): …`）。已限定该回退只在 Windows 生效；Unix 上真实粘贴走括号粘贴 `Event::Paste`，`Ctrl+V` 回退为编辑器 kill-ring yank |
-| panic / 段错误跨 ABI | `extern "C"` 边界不能 unwind；`StbString` 所有权遵守宿主/插件两侧规则 |
-| ABI 版本不匹配 | 宿主日志提示 mismatch 并跳过加载；确认 `rpi-plugin-sdk` 版本 |
+| Symptom | What to check |
+| --- | |
+| The extension did not load | `cdylib` crate-type? Platform match? Point `--extensions-dir` at the output directory; make sure `--no-extensions` wasn't enabled by mistake |
+| The tool was not registered | ABI version negotiation failed? Is the vtable slot `None` (not implemented by the host)? Did registration return non-zero? |
+| The event handler never fired | `RPI_EVENT_LOG=1` + `rpi events tail` to see whether there is an `Abort`/`Panic`/`Timeout` |
+| Startup was aborted | An extension's `BeforeTuiStart` returned `EVENT_HANDLER_ABORT`; exit code 3 |
+| `poll` is stuck | `poll` must not block; put long-running work on a thread, keep state in the handle, and end via the cancellation flag with a deadline |
+| Hot reload fails on Windows | A loaded DLL cannot be overwritten; use `rpi dev`'s versioned staging instead of copying manually |
+| Resources don't appear in the system prompt | Use `--debug-system-prompt` to inspect the final assembled result; confirm the skill path was discovered |
+| Enter turns into a newline on mobile/remote terminals | Inspect the keys with `RPI_DEBUG_KEYS=1`: `Char('j') mods=CONTROL` means the client sent LF (already treated as submit by `Editor`); `Enter` + `paste burst` means the paste heuristic misfired (now limited to the Windows platform) |
+| The pasted content isn't the system clipboard (but the TUI's own text) | When a remote/mobile client maps paste to `Ctrl+V`, `read_clipboard_text` reads the **server's** clipboard — which may have been overwritten by copy-on-select dragging into the TUI text (such as the welcome line `Skills (…): …`). This fallback is now limited to Windows; on Unix, real pastes use bracketed paste `Event::Paste`, and the `Ctrl+V` fallback becomes an editor kill-ring yank |
+| panic / segfault across the ABI | `extern "C"` boundaries must not unwind; `StbString` ownership follows the host/plugin rules on both sides |
+| ABI version mismatch | The host log reports a mismatch and skips loading; check the `rpi-plugin-sdk` version |
 
-## 9. 测试与发布
+## 9. Testing and Release
 
-- 领域逻辑写成普通 Rust 函数，FFI 只做转换/生命周期/错误映射；对普通逻辑写
-  `rlib` 单元测试。
-- 至少一个宿主 smoke test 验证 ABI 注册、加载和卸载（参考 `plugin-stub` 的
-  测试模式：宿主读取插件导出的 hit counter 断言行为）。
-- `cargo fmt --check`、`cargo clippy --all-targets`、`cargo test` 通过。
-- `rpi dev --no-watch` 能编译、加载并注册预期工具。
-- `rpi install <crate> --force` 的干净安装路径通过（Linux/macOS/Windows 由 CI 验证）。
-- README 记录工具 schema、权限边界、持久化文件、网络访问、支持平台和卸载方式。
+- Write domain logic as plain Rust functions; the FFI layer only handles conversion, lifecycle, and
+  error mapping; write `rlib` unit tests for the plain logic.
+- At least one host smoke test verifies ABI registration, loading, and unloading (see `plugin-stub`'s
+  test pattern: the host reads the plugin's exported hit counter and asserts on the behavior).
+- `cargo fmt --check`, `cargo clippy --all-targets`, and `cargo test` pass.
+- `rpi dev --no-watch` compiles, loads, and registers the expected tools.
+- The clean install path of `rpi install <crate> --force` passes (Linux/macOS/Windows are verified by
+  CI).
+- The README documents the tool schema, permission boundaries, persisted files, network access,
+  supported platforms, and how to uninstall.

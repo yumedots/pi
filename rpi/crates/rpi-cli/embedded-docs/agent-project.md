@@ -1,63 +1,70 @@
-# rpi Agent 项目结构创建指南
+# rpi Agent project structure guide
 
-本指南是模型可读的默认规范。当任务是用 rpi SDK"创建一个自己的 Agent"、
-"把 Agent 结构搭起来"或"给现有项目加 rpi 入口"时，按本文组织项目。默认推荐单 crate：
-内嵌 Agent 与全局 `rpi` 扩展共用同一套工具（见 §1），其余形态按需裁剪。
+This guide is the model-readable default specification. When a task is to use the rpi SDK
+to "create your own Agent", "scaffold an Agent structure", or "add an rpi entry point to an
+existing project", organize the project as described here. The default recommendation is a
+single crate: the embedded Agent and the global `rpi` extension share the same set of tools
+(see §1); other shapes are trimmed as needed.
 
-不要先写工具再想结构。先确定形态，再落目录，最后接入口。
+Do not write the tools first and think about the structure afterwards. Decide on the shape
+first, lay out the directories second, and wire up the entry point last.
 
-## 1. 先选形态
+## 1. Choose the shape first
 
-| 形态 | 启动入口 | 直接依赖 | 适用场景 |
+| Shape | Entry point | Direct dependencies | When to use it |
 | --- | --- | --- | --- |
-| 库内嵌 Agent | 你的 `[[bin]]` / 服务进程 | `rpi-agent` + `rpi-ai`（需要内置工具再加 `rpi-tools`） | 在自己的进程里跑 loop，完全掌控事件、工具和输出 |
-| CLI 项目 | 全局 `rpi` 宿主 | 无（资源与 cdylib） | 想要现成的 TUI、`-p`/`--mode json`、会话和 skills |
-| Rust 扩展 | 宿主加载 `.rpi/extensions/*.dll` | `rpi-plugin-sdk` | 给全局 `rpi` 加工具/Provider/事件，不改宿主 |
+| Library-embedded Agent | Your `[[bin]]` / service process | `rpi-agent` + `rpi-ai` (add `rpi-tools` if built-in tools are needed) | Run the loop inside your own process with full control over events, tools, and output |
+| CLI project | The global `rpi` host | None (resources and cdylib) | You want the ready-made TUI, `-p`/`--mode json`, sessions, and skills |
+| Rust extension | The host loads `.rpi/extensions/*.dll` | `rpi-plugin-sdk` | Add tools/providers/events to the global `rpi` without modifying the host |
 
-一个项目**可以同时提供"内嵌 Agent"和"cdylib 扩展"两份适配器，共享同一套工具实现**。
-这也是本指南默认推荐的形态：本地用内嵌 Agent 调试，线上/交互用全局 `rpi` 加载
-同一个扩展。只有当需求足够单一时才只做其中一种。
+A single project **can ship both an "embedded Agent" and a "cdylib extension" adapter,
+sharing one implementation of the tools**. This is also the shape this guide recommends by
+default: debug locally with the embedded Agent, and in production/interactively let the global
+`rpi` load the same extension. Only build one of the two when the requirements are simple
+enough.
 
-## 2. 推荐目录结构
+## 2. Recommended directory structure
 
 ```text
 my-agent/
 ├── Cargo.toml
-├── AGENTS.md                  # 项目级兜底指令（裸 rpi 也会读）
+├── AGENTS.md                  # project-level fallback instructions (read even by bare rpi)
 ├── config/
-│   └── agent.json             # 项目 Agent 配置（system prompt / skill dirs / artifacts）
+│   └── agent.json             # project Agent config (system prompt / skill dirs / artifacts)
 ├── prompts/
-│   ├── system.md              # 主系统提示词
-│   └── append-system.md       # 追加系统提示词
+│   ├── system.md              # main system prompt
+│   └── append-system.md       # appended system prompt
 ├── skills/
-│   └── <skill-name>/SKILL.md  # 领域技能，运行时按描述/触发词动态激活
+│   └── <skill-name>/SKILL.md  # domain skills, activated dynamically at runtime by description/trigger
 ├── src/
-│   ├── main.rs                # 内嵌 Agent / 服务入口
-│   ├── lib.rs                 # 模块导出（+ 可选 cdylib ABI 适配）
-│   ├── config.rs              # 运行配置（环境变量 / 文件）
+│   ├── main.rs                # embedded Agent / service entry point
+│   ├── lib.rs                 # module exports (+ optional cdylib ABI adapter)
+│   ├── config.rs              # runtime configuration (environment variables / files)
 │   └── tools/
-│       ├── mod.rs             # 唯一工具登记表（single source of truth）
-│       ├── core.rs            # run_tool 单一入口 + 领域逻辑
-│       └── content.rs         # AgentTool 适配器（内嵌 Agent 用）
+│       ├── mod.rs             # the single tool registry (single source of truth)
+│       ├── core.rs            # single run_tool entry point + domain logic
+│       └── content.rs         # AgentTool adapter (used by the embedded Agent)
 ├── .rpi/
 │   ├── settings.json          # skillDirs / promptDirs / extensionDirs / defaultTools
-│   └── extensions/            # 编译后的 cdylib（生成物，不提交）
+│   └── extensions/            # compiled cdylibs (build output, do not commit)
 └── tests/
     └── behavior.rs
 ```
 
-约定：
+Conventions:
 
-- `.rpi/` 是 rpi 的项目资源目录；**同名资源以项目内定义优先**
-  （项目优先于全局，`.rpi` 优先于 `.pi`，package 最后）。
-- `prompts/`、`skills/`、`config/` 是**可审查的普通源码目录**，不要藏进 `.rpi`
-  或依赖扩展运行期临时生成的路径。
-- `target/`、`.rpi/extensions/`、`artifacts/` 是生成物，写入 `.gitignore`。
-- 系统提示词把生成约束写成固定文本，不要依赖模型在每次会话里重新推断。
+- `.rpi/` is rpi's project resource directory; **resources with the same name are resolved
+  project-first** (project over global, `.rpi` over `.pi`, package last).
+- `prompts/`, `skills/`, `config/` are **plain, reviewable source directories**; do not hide
+  them inside `.rpi` or rely on paths generated temporarily by an extension at runtime.
+- `target/`, `.rpi/extensions/`, and `artifacts/` are build outputs; add them to `.gitignore`.
+- Write generation constraints into the system prompt as fixed text; do not rely on the model
+  re-deriving them in every session.
 
 ## 3. Cargo.toml
 
-内嵌 Agent + cdylib 同源时，一个 package 同时声明 `[[bin]]` 和 `[lib]`：
+When an embedded Agent and a cdylib share one source, a single package declares both
+`[[bin]]` and `[lib]`:
 
 ```toml
 [package]
@@ -72,15 +79,16 @@ path = "src/main.rs"
 [lib]
 name = "my_agent"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]   # cdylib 给宿主；rlib 便于集成测试
+crate-type = ["cdylib", "rlib"]   # cdylib for the host; rlib makes integration tests easier
 
 [dependencies]
-# 下面用 `<rpi>` 代指当前 rpi 发布版本，请替换为实际版本号（如 `0.1.x`），
-# 并保证所有 `rpi-*` 依赖同版本；第三方依赖按需增删。
+# Below, `<rpi>` stands for the current rpi release version; replace it with the actual
+# version number (e.g. `0.1.x`), and make sure all `rpi-*` dependencies use the same
+# version; add or remove third-party dependencies as needed.
 rpi-agent = "<rpi>"
 rpi-ai = { version = "<rpi>", features = ["providers"] }
 rpi-tools = "<rpi>"
-rpi-plugin-sdk = "<rpi>"          # 只有 cdylib 适配需要
+rpi-plugin-sdk = "<rpi>"          # only needed for the cdylib adapter
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
@@ -89,21 +97,24 @@ schemars = "0.8"
 thiserror = "1"
 
 [dev-dependencies]
-# 用 faux provider 做离线测试，不依赖网络或 API key
+# Use a faux provider for offline tests, without depending on the network or an API key
 ```
 
-边界规则：
+Boundary rules:
 
-- **扩展只依赖 `rpi-plugin-sdk`，绝不依赖 `rpi-cli`、`rpi-extensions`、`rpi-harness`
-  内部模块**——宿主链接插件，不是插件链接宿主，否则 ABI 和版本会耦合。
-- 内嵌 Agent 只依赖 `rpi-agent`/`rpi-ai`/`rpi-tools`，与扩展 ABI 解耦。
-- 需要会话、压缩、skills、上下文文件时再加 `rpi-harness`。
+- **Extensions depend only on `rpi-plugin-sdk`, never on internal modules of `rpi-cli`,
+  `rpi-extensions`, or `rpi-harness`** — the host links the plugin, not the other way
+  around; otherwise the ABI and versions become coupled.
+- The embedded Agent depends only on `rpi-agent`/`rpi-ai`/`rpi-tools`, decoupling it from the
+  extension ABI.
+- Add `rpi-harness` when you need sessions, compaction, skills, or context files.
 
-## 4. 工具单一登记点
+## 4. Single registry point for tools
 
-工具只声明一次，两个宿主适配器从同一份声明派生各自的 schema，避免双实现漂移。
+Tools are declared once, and both host adapters derive their own schemas from that single
+declaration, avoiding drift between two implementations.
 
-`src/tools/mod.rs`：
+`src/tools/mod.rs`:
 
 ```rust
 pub struct ToolSpec {
@@ -116,15 +127,15 @@ pub struct ToolSpec {
 pub static TOOLS: std::sync::LazyLock<Vec<ToolSpec>> = std::sync::LazyLock::new(|| {
     vec![ToolSpec {
         name: "lookup",
-        description: "查找项目中的符号定义。",
+        description: "Look up symbol definitions in the project.",
         props: serde_json::json!({
-            "symbol": {"type": "string", "description": "要查找的符号名"}
+            "symbol": {"type": "string", "description": "The name of the symbol to look up"}
         }),
         required: &["symbol"],
     }]
 });
 
-/// 所有宿主共用的唯一执行入口。
+/// The single execution entry point shared by all hosts.
 pub fn run_tool(name: &str, params: &serde_json::Value)
     -> Result<serde_json::Value, ToolError>
 {
@@ -135,14 +146,17 @@ pub fn run_tool(name: &str, params: &serde_json::Value)
 }
 ```
 
-`src/tools/core.rs` 放共享逻辑；`src/tools/content.rs` 只做编排（把 `run_tool`
-包成 `rpi_agent::AgentTool`）；cdylib 侧只做 ABI 编排。三者都不重复实现领域逻辑。
+`src/tools/core.rs` holds the shared logic; `src/tools/content.rs` only orchestrates (wrapping
+`run_tool` into an `rpi_agent::AgentTool`); the cdylib side only does ABI orchestration. None
+of the three reimplements the domain logic.
 
-为每个工具加一个断言 schema 在两个宿主之间一致的单元测试（见 §11）。
+For each tool, add a unit test asserting that the schema is consistent across the two hosts
+(see §11).
 
-## 5. 内嵌 Agent
+## 5. Embedded Agent
 
-最小闭环：构造 provider/model → `AgentBuilder` → 订阅事件 → `prompt`。
+The minimal loop: construct the provider/model → `AgentBuilder` → subscribe to events →
+`prompt`.
 
 ```rust
 use std::sync::Arc;
@@ -153,8 +167,8 @@ let model = provider.default_model().clone();
 let agent = AgentBuilder::new()
     .model(model)
     .system_prompt(compose_system_prompt())     // prompts/system.md + append
-    .tools(create_agent_tools())                // 从 TOOLS 派生
-    .stream_fn(make_stream_fn(provider))        // Provider::stream_simple 的同步封装
+    .tools(create_agent_tools())                // derived from TOOLS
+    .stream_fn(make_stream_fn(provider))        // a synchronous wrapper around Provider::stream_simple
     .build()?;
 
 let mut events = agent.subscribe();
@@ -164,62 +178,73 @@ while let Some(event) = events.recv().await {
     if matches!(event, rpi_agent::AgentEvent::AgentEnd { .. }) {
         break;
     }
-    // 转发 MessageUpdate / ToolExecutionStart / ToolResult 给你的 UI 或日志
+    // Forward MessageUpdate / ToolExecutionStart / ToolResult to your UI or logs
 }
 ```
 
-要点：
+Key points:
 
-- **先 `subscribe` 再 `prompt`**，否则广播缓冲里会漏掉早期事件。
-- 自定义工具实现 `rpi_agent::AgentTool`：`schema()` 返回 `rpi_ai::types::Tool`，
-  `execute(tool_call_id, params, signal, on_update)` 解析 JSON、检查 `signal`、
-  返回 `AgentToolResult`。把参数解析失败映射成结构化错误，不要 panic。
-- 用 faux provider + `InMemoryExecutionEnv` 做离线测试：无需网络、API key 或真实文件系统。
-- 需要 CLI 级别的会话/压缩/skills 时，用 `rpi-harness` 而不是自己重造。
+- **`subscribe` before `prompt`**, otherwise early events are lost in the broadcast buffer.
+- Custom tools implement `rpi_agent::AgentTool`: `schema()` returns `rpi_ai::types::Tool`,
+  and `execute(tool_call_id, params, signal, on_update)` parses the JSON, checks `signal`, and
+  returns `AgentToolResult`. Map parameter parsing failures to structured errors; do not panic.
+- Use a faux provider + `InMemoryExecutionEnv` for offline testing: no network, API key, or real
+  filesystem required.
+- When you need CLI-level sessions/compaction/skills, use `rpi-harness` instead of rebuilding
+  them yourself.
 
-## 6. cdylib ABI 适配（给全局 `rpi` 用）
+## 6. cdylib ABI adapter (for the global `rpi`)
 
-宿主只加载统一 C ABI 符号 `rpi_plugin_register`。扩展使用 `export_plugin!`，
-通过同一个 `PluginApi` 注册能力并调用 `api.declare` 声明优先级/平台。
-SDK 在注册前检查 `abi_version` 和 `struct_size`；不兼容时返回非零状态，宿主报告加载失败。
+The host only loads the unified C ABI symbol `rpi_plugin_register`. The extension uses
+`export_plugin!` to register capabilities through the same `PluginApi` and calls
+`api.declare` to declare priority/platform. The SDK checks `abi_version` and `struct_size`
+before registration; on incompatibility it returns a non-zero status and the host reports a
+load failure.
 
 ```rust
 rpi_plugin_sdk::export_plugin!(|api| {
     let Some(register_tool) = api.register_tool else {
-        return -1;                         // 能力检测：槽位缺失就明确失败
+        return -1;                         // capability detection: fail explicitly if the slot is missing
     };
-    // 从同一份 TOOLS 声明构造 StableToolSchema 与
-    // execute/poll/cancel/destroy 函数表，然后 register_tool(...)。
+    // Build StableToolSchema and the execute/poll/cancel/destroy function table
+    // from the same TOOLS declaration, then register_tool(...).
     let _ = register_tool;
     0
 });
 ```
 
-工具生命周期固定为 `execute → poll → cancel → destroy`：`execute` 分配每次调用的
-handle，`poll` 必须非阻塞并响应取消标记，`cancel` 只置位不释放，`destroy` 由宿主
-调用一次并释放。任何 `extern "C"` 边界都不能 unwind。
+The tool lifecycle is fixed as `execute → poll → cancel → destroy`: `execute` allocates a
+per-call handle, `poll` must be non-blocking and respond to the cancellation flag, `cancel`
+only sets the flag without freeing anything, and `destroy` is called once by the host and
+frees the resources. No `extern "C"` boundary may unwind.
 
-**先复制 `examples/plugin-stub/src/lib.rs` 的骨架**，再替换 schema 和领域逻辑；
-不要重新设计所有权协议。完整的 ABI、能力检测、事件处理、资源发现与发布检查见
-`docs` 的 `authoring` 主题。
+**First copy the skeleton from `examples/plugin-stub/src/lib.rs`**, then replace the schema
+and domain logic; do not redesign the ownership protocol. The complete ABI, capability
+detection, event handling, resource discovery, and publishing checks are described in the
+`authoring` topic of `docs`.
 
-## 7. 项目资源：prompts、skills、AGENTS.md
+## 7. Project resources: prompts, skills, AGENTS.md
 
-- `prompts/system.md`：主系统提示词，放职责、流程、质量门禁（如"每个内容项目先
-  `read` 对应 skill 的 `SKILL.md`"）。运行期通过 `--system-prompt` 或配置注入。
-- `prompts/append-system.md`：追加段，用于环境/项目特定约束。
-- `skills/<name>/SKILL.md`：领域技能。模型从启动时 `<available_skills>` 的
-  `name`/`description`/`triggers` 动态选择，**不要维护硬编码的主题→技能映射**。
-  发现（`loaded`）不等于使用；真正的激活证据是先完整 `read` 该 `SKILL.md`。
-- `AGENTS.md`：项目根兜底指令，裸 `rpi` 也会读取。与 `prompts/system.md` 的
-  核心约束保持一致，改一个就同步另一个。
-- 系统提示词与 skills 在**每次会话启动时**加载快照；改完要重启会话，已有会话不会热替换。
+- `prompts/system.md`: the main system prompt, holding responsibilities, workflow, and quality
+  gates (e.g. "for every content item, first `read` the corresponding skill's `SKILL.md`").
+  It is injected at runtime via `--system-prompt` or configuration.
+- `prompts/append-system.md`: the appended section, for environment/project-specific
+  constraints.
+- `skills/<name>/SKILL.md`: domain skills. The model chooses dynamically from the `name`,
+  `description`, and `triggers` of the `<available_skills>` list available at startup;
+  **do not maintain a hard-coded topic→skill mapping**. Discovery (`loaded`) is not the same as
+  use; the real evidence of activation is a complete `read` of that `SKILL.md` first.
+- `AGENTS.md`: project-root fallback instructions, also read by a bare `rpi`. Keep it
+  consistent with the core constraints of `prompts/system.md`; change one and you must change
+  the other.
+- System prompts and skills are loaded as a snapshot **at the start of every session**; after
+  editing them, restart the session, since existing sessions are not hot-replaced.
 
-## 8. `config/agent.json`（项目约定）
+## 8. `config/agent.json` (project convention)
 
-`.rpi/settings.json` 是 rpi 宿主的原生配置。`config/agent.json` 是**项目自己的**
-约定文件，供内嵌 Agent 启动器或包装脚本读取，让"系统提示词 / 技能目录 / 产物目录 /
-默认 provider"集中在一处：
+`.rpi/settings.json` is rpi host's native configuration. `config/agent.json` is **the project's
+own** convention file, read by the embedded Agent launcher or wrapper script, keeping the
+"system prompt / skill directories / artifacts directory / default provider" in one place:
 
 ```json
 {
@@ -234,9 +259,10 @@ handle，`poll` 必须非阻塞并响应取消标记，`cancel` 只置位不释�
 }
 ```
 
-以上取值按项目实际使用的提供者与目录填写，不要照抄示例；`config/agent.json`
-不是 rpi 原生配置，只是本项目启动器的约定。同时用 `.rpi/settings.json` 让宿主
-原生发现资源：
+Fill in the values above according to the provider and directories your project actually
+uses; do not copy the example verbatim. `config/agent.json` is not native rpi configuration,
+only a convention of this project's launcher. At the same time, use `.rpi/settings.json` so
+the host discovers the resources natively:
 
 ```json
 {
@@ -245,77 +271,88 @@ handle，`poll` 必须非阻塞并响应取消标记，`cancel` 只置位不释�
 }
 ```
 
-`disable_context_files: true` 可避免包装启动器被上级仓库的 `AGENTS.md`/`CLAUDE.md`
-污染；需要时再用 `--no-context-files` 显式关闭。
+`disable_context_files: true` prevents the wrapper launcher from being polluted by an upper
+repository's `AGENTS.md`/`CLAUDE.md`; when needed, disable it explicitly with
+`--no-context-files`.
 
-## 9. 启动与开发循环
+## 9. Startup and the development loop
 
-两套入口，脚本只负责固定 cwd、编译和转发参数。脚本语言按平台选择即可
-（Windows `.ps1`/`.cmd`，Unix `.sh`，或统一用 Taskfile/just/make 等 runner），
-两套入口的职责保持一致：
+Two entry points; the scripts only pin the working directory, build, and forward arguments.
+The script language can be chosen per platform (Windows `.ps1`/`.cmd`, Unix `.sh`, or a
+unified runner such as Taskfile/just/make), and the responsibilities of the two entry points
+stay the same:
 
-- **内嵌 Agent**：一个启动脚本 → `cargo run --bin agent`（本项目进程，直连 SDK）。
-- **全局宿主**：一个构建脚本编译 cdylib 并复制到 `.rpi/extensions`，再由一个启动
-  脚本拉起全局 `rpi`。脚本应：
-  1. 固定工作目录到项目根，避免加载到别的项目的 skills；
-  2. 让宿主从 `.rpi/extensions` **原生扫描**，不要重复传同一个 `--extensions-dir`；
-  3. 把 `prompts/system.md`、`prompts/append-system.md` 显式传给宿主；
-  4. 只在没有更高优先级设置时选默认 provider/model，打印来源但**不打印 API key**；
-  5. fail-closed：检测到 `--no-tools`、`--no-skills`、`--no-extensions` 或
-     `--tools` 白名单缺少 `read` 时先失败——这些会阻止加载内容扩展或读取 skill。
-- Windows 上已加载的 DLL 无法原地覆盖：复制前比较 SHA256，字节未变就跳过；
-  被占用时给出"停止运行中的 rpi 后重试"的可操作错误，而不是静默失败。
+- **Embedded Agent**: one launch script → `cargo run --bin agent` (this project's process,
+  talking directly to the SDK).
+- **Global host**: one build script compiles the cdylib and copies it to `.rpi/extensions`,
+  and then one launch script starts the global `rpi`. The scripts should:
+  1. Pin the working directory to the project root, so that skills from another project are
+     not loaded;
+  2. Let the host scan `.rpi/extensions` **natively**; do not pass the same `--extensions-dir`
+     again;
+  3. Pass `prompts/system.md` and `prompts/append-system.md` to the host explicitly;
+  4. Choose the default provider/model only when no higher-priority setting exists, printing
+     the source but **not the API key**;
+  5. Fail closed: fail first when `--no-tools`, `--no-skills`, `--no-extensions` is detected,
+     or when the `--tools` allowlist lacks `read` — these prevent loading content extensions
+     or reading skills.
+- On Windows, a loaded DLL cannot be overwritten in place: compare the SHA256 before copying
+  and skip the copy when the bytes are unchanged; when the file is locked, report an
+  actionable "stop the running rpi and retry" error instead of failing silently.
 
-编辑循环：改 Rust 扩展用 `rpi dev`（watch + 热重载，版本化 staging 到
-`.rpi/extensions/.dev`）；只调当前扩展用 `rpi dev-local`（隔离模式）。不要手工把
-Cargo target DLL 复制成固定文件名。
+Edit loop: use `rpi dev` for Rust extension changes (watch + hot reload, versioned staging into
+`.rpi/extensions/.dev`); use `rpi dev-local` to tune only the current extension (isolated
+mode). Do not manually copy the Cargo target DLL to a fixed filename.
 
-## 10. 服务化 Agent（可选）
+## 10. Agent as a service (optional)
 
-把 Agent 作为长驻服务时，`main.rs` 用项目已有的 HTTP 框架（如 `axum`、`actix-web`
-等，任选其一）暴露接口，需要时再加消息队列消费者（MQTT/Kafka/NATS 等）：
+When you run the Agent as a long-lived service, `main.rs` exposes an API using the HTTP
+framework already used by the project (such as `axum` or `actix-web`; pick one), adding a
+message queue consumer (MQTT/Kafka/NATS, etc.) when needed:
 
-- `main.rs` 只做编排：初始化 `tracing` → 加载 `Config::from_env()` → 建 `AppState`
-  → 启动 HTTP server 并接优雅停机。
-- 配置全部走环境变量（`.env.example` 记录键名，**不提交真实密钥**）。
-- 任务/运行状态放共享 `Arc<TaskStore>`，API handler 保持薄。
-- 需要容器时提供多阶段 `Dockerfile`；运行阶段只带二进制和 CA 证书，
-  `EXPOSE`/`CMD` 指向 `main.rs` 的入口。
+- `main.rs` only orchestrates: initialize `tracing` → load `Config::from_env()` → build
+  `AppState` → start the HTTP server and handle graceful shutdown.
+- All configuration goes through environment variables (`.env.example` records the key names;
+  **do not commit real secrets**).
+- Task/run state goes into a shared `Arc<TaskStore>`, and the API handlers stay thin.
+- When containers are needed, provide a multi-stage `Dockerfile`; the runtime stage carries
+  only the binary and the CA certificates, and `EXPOSE`/`CMD` point at the entry point in
+  `main.rs`.
 
-## 11. 测试与发布
+## 11. Testing and publishing
 
-- `cargo fmt --check`、`cargo clippy --all-targets`、`cargo test` 全绿。
-- 领域逻辑写 `rlib` 单元测试；ABI 注册/加载写至少一个宿主 smoke test。
-- 断言**两个宿主的 schema 一致**：同一份 `TOOLS` 派生的 Agent schema 与 ABI JSON
-  必须相等，防止漂移。
-- `rpi dev --no-watch` 能编译、加载并注册预期工具；`rpi install <crate> --force`
-  的干净安装路径通过。
-- 提供 `cdylib` 时，`crate-type` 包含 `"cdylib"`，导出
-  `rpi_plugin_register`，依赖已发布的 `rpi-plugin-sdk`。
-- `README` 写明工具 schema、权限边界、持久化文件、网络访问、支持平台和卸载方式；
-  `AGENTS.md`、`config/agent.json`、`prompts/`、`skills/`、`.rpi/settings.json`
-  之间的路径保持一致。
+- `cargo fmt --check`, `cargo clippy --all-targets`, and `cargo test` all pass.
+- Write `rlib` unit tests for the domain logic; write at least one host smoke test for ABI
+  registration/loading.
+- Assert that **the schemas of the two hosts match**: the Agent schema derived from the same
+  `TOOLS` and the ABI JSON must be equal, preventing drift.
+- `rpi dev --no-watch` compiles, loads, and registers the expected tools; the clean install
+  path of `rpi install <crate> --force` passes.
+- When providing a `cdylib`, `crate-type` includes `"cdylib"`, `rpi_plugin_register` is
+  exported, and it depends on the published `rpi-plugin-sdk`.
+- The `README` documents the tool schemas, permission boundaries, persisted files, network
+  access, supported platforms, and uninstall procedure; the paths across `AGENTS.md`,
+  `config/agent.json`, `prompts/`, `skills/`, and `.rpi/settings.json` stay consistent.
 
-## 12. 创建检查清单
+## 12. Creation checklist
 
-1. 选定形态（内嵌 / CLI / cdylib；推荐内嵌 + cdylib 同源）。
-2. 建目录：`src/tools/`、`prompts/`、`skills/`、`config/`、`.rpi/`。
-3. `Cargo.toml` 声明 `[[bin]]` 与（如需 cdylib）`[lib] crate-type`。
-4. 写工具登记表 `TOOLS` + 唯一 `run_tool`，再写两个适配器。
-5. 写 `prompts/system.md` 与 `AGENTS.md`，约束保持一致。
-6. 写 `config/agent.json` 和 `.rpi/settings.json`。
-7. 接内嵌 Agent 入口；需要全局宿主时复制 `examples/plugin-stub` 的 ABI 骨架。
-8. 加脚本：编译扩展、启动内嵌 Agent、启动全局 rpi。
-9. 加 schema 对齐测试和至少一个端到端 smoke test。
-10. 用 `--debug-system-prompt` 确认项目提示词与动态 skill 路由进入最终 composed prompt。
+…
+…
+6. Do not claim that unverified ABI/capabilities are fully compatible; record any degraded
+   behavior honestly.
 
-## 13. 模型执行规则
+## 13. Model execution rules
 
-模型收到"创建 rpi Agent 项目 / 搭 Agent 结构"任务时：
+When the model receives a task to "create an rpi Agent project / scaffold an Agent structure":
 
-1. 先调用 `docs` 查询 `agent`（本指南）；扩展开发查 `authoring`，调试查 `debugging`。
-2. 读当前仓库现有 `Cargo.toml`、SDK 版本与相邻项目约定，不猜 API。
-3. 先落目录和单一工具登记点，再写适配器，最后接入口。
-4. 优先复制仓库内最小骨架（`examples/minimal`、`examples/plugin-stub`）。
-5. 用 faux provider 做离线测试，用 `rpi dev --no-watch` 做真实加载 smoke test。
-6. 不声称未验证的 ABI/capability 已完全兼容；如实记录降级行为。
+1. First call `docs` to look up `agent` (this guide); for extension development look up
+   `authoring`, and for debugging look up `debugging`.
+2. Read the current repository's existing `Cargo.toml`, the SDK version, and the conventions of
+   neighbouring projects; do not guess APIs.
+3. Lay out the directories and the single tool registry point first, then write the adapters,
+   and only then wire up the entry point.
+4. Prefer copying the minimal skeleton inside the repository (`examples/minimal`,
+   `examples/plugin-stub`).
+5. Use a faux provider for offline tests, and `rpi dev --no-watch` for a real load smoke test.
+6. Do not claim that unverified ABI/capabilities are fully compatible; record any degraded
+   behavior honestly.
