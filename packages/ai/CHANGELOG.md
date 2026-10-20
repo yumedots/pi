@@ -8,6 +8,7 @@
 
 ### Changed
 
+- The generated model catalog is now a single `src/providers/data/models.json` file with a per-provider index, instead of one file per provider. Bundles that need only some providers slice the catalog down to the providers they import, so their size does not change.
 - Tool call arguments are validated without TypeBox's runtime. The validation keeps TypeBox's conversion and check rules, so the coerced arguments and the error messages are unchanged, but importing `@earendil-works/pi-ai` no longer loads TypeBox's compiler and value modules.
 
 ### Fixed

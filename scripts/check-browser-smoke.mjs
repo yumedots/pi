@@ -1,7 +1,8 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { build } from "esbuild";
+import { modelCatalogSlicePlugin } from "./model-catalog-plugin.mjs";
 
 const outputPath = join(tmpdir(), "pi-browser-smoke.js");
 const durableOutputPath = join(tmpdir(), "pi-durable-browser-smoke.js");
@@ -19,7 +20,7 @@ const generatedCatalogDataPlugin = {
 			return { path, namespace: "empty-generated-model-catalog" };
 		});
 		build.onLoad({ filter: /.*/, namespace: "empty-generated-model-catalog" }, () => ({
-			contents: "{}",
+			contents: '{ "providers": {} }',
 			loader: "json",
 		}));
 	},
@@ -49,7 +50,7 @@ try {
 		format: "esm",
 		logLevel: "silent",
 		outfile: outputPath,
-		plugins: [generatedCatalogDataPlugin],
+		plugins: [modelCatalogSlicePlugin(generatedCatalogDataDir), generatedCatalogDataPlugin],
 	});
 
 	const durableBuild = await build({
@@ -93,7 +94,7 @@ try {
 		logLevel: "silent",
 		metafile: true,
 		outfile: agentTreeshakeOutputPath,
-		plugins: [generatedCatalogDataPlugin],
+		plugins: [modelCatalogSlicePlugin(generatedCatalogDataDir), generatedCatalogDataPlugin],
 		write: false,
 	});
 	const inputs = agentTreeshakeBuild.metafile.inputs;
@@ -118,9 +119,23 @@ try {
 	const catalogInputs = Array.from(contributingInputs).filter((input) =>
 		normalizePath(input).includes("packages/ai/src/providers/data/"),
 	);
-	if (catalogInputs.length !== 1 || !normalizePath(catalogInputs[0]).endsWith("/anthropic.json")) {
+	if (catalogInputs.length !== 1 || !normalizePath(catalogInputs[0]).endsWith("/models.json")) {
 		throw new Error(
-			`Agent selective-provider bundle catalogs: expected only anthropic.json, found ${catalogInputs.join(", ") || "none"}`,
+			`Agent selective-provider bundle catalogs: expected only models.json, found ${catalogInputs.join(", ") || "none"}`,
+		);
+	}
+	// The bundle only needs one provider, so the catalog must be sliced down to it.
+	const catalogInput = Array.from(contributingInputs).find((input) =>
+		normalizePath(input).endsWith("/providers/data/models.json"),
+	);
+	const catalogOutputBytes = Object.values(agentTreeshakeBuild.metafile.outputs).reduce(
+		(total, output) => total + (output.inputs[catalogInput ?? ""]?.bytesInOutput ?? 0),
+		0,
+	);
+	const catalogFileBytes = statSync(join(generatedCatalogDataDir, "models.json")).size;
+	if (catalogOutputBytes === 0 || catalogOutputBytes >= catalogFileBytes / 2) {
+		throw new Error(
+			`Agent selective-provider bundle carries the whole model catalog (${catalogOutputBytes} of ${catalogFileBytes} bytes)`,
 		);
 	}
 

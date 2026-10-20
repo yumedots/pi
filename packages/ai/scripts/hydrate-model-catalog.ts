@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
 	createModelDataManifest,
 	groupProviderModelData,
+	MODEL_DATA_FILE,
 	MODEL_DATA_MANIFEST_FILE,
 	type ModelCatalogEntry,
 	type ModelDataStructure,
@@ -42,7 +43,7 @@ export function hydrateModelCatalog(
 	const catalog: unknown = JSON.parse(readFileSync(catalogPath, "utf8"));
 	if (!isRecord(catalog)) throw new Error("Model catalog must be an object");
 
-	const files: Record<string, string> = {};
+	const providers: Record<string, unknown> = {};
 	const structure: ModelDataStructure = {};
 	for (const provider of readModelDataProviderIds(packageRoot)) {
 		const models = catalog[provider];
@@ -57,8 +58,12 @@ export function hydrateModelCatalog(
 		}
 		const grouped = groupProviderModelData(provider, entries);
 		structure[provider] = grouped.structure;
-		files[`${provider}.json`] = `${JSON.stringify(grouped.groups)}\n`;
+		providers[provider] = grouped.groups;
 	}
+
+	const files: Record<string, string> = {
+		[MODEL_DATA_FILE]: `${JSON.stringify({ providers })}\n`,
+	};
 
 	// Public catalogs have no generation timestamp. Use a fixed stamp so hydration
 	// produces identical bytes for identical input, regardless of build time.

@@ -33,6 +33,7 @@ import {
 	createModelDataManifest,
 	groupProviderModelData,
 	type ModelDataStructure,
+	MODEL_DATA_FILE,
 	MODEL_DATA_MANIFEST_FILE,
 	readModelDataProviderIds,
 	validateGeneratedModelData,
@@ -3492,12 +3493,13 @@ async function generateModels() {
 		try {
 			mkdirSync(stagedDataDir, { recursive: true });
 			const fileContents: Record<string, string> = {};
+			const catalogProviders: Record<string, unknown> = {};
 			for (const providerId of generatedDataProviderIds) {
-				const filename = `${providerId}.json`;
-				const content = serializeJson(generatedDataProviders[providerId]);
-				fileContents[filename] = content;
-				writeFileSync(join(stagedDataDir, filename), content);
+				catalogProviders[providerId] = generatedDataProviders[providerId];
 			}
+			const catalogContent = serializeJson({ providers: catalogProviders });
+			fileContents[MODEL_DATA_FILE] = catalogContent;
+			writeFileSync(join(stagedDataDir, MODEL_DATA_FILE), catalogContent);
 			writeJson(
 				join(stagedDataDir, MODEL_DATA_MANIFEST_FILE),
 				createModelDataManifest(modelDataStructure, fileContents, generatedAt),
@@ -3535,8 +3537,9 @@ async function generateModels() {
 				const generatedShardFiles = new Set<string>();
 				for (const providerId of sortedProviderIds) {
 					let output = generatedHeader;
-					output += `import values from "./data/${providerId}.json" with { type: "json" };\n`;
+					output += `import catalog from "./data/${MODEL_DATA_FILE}" with { type: "json" };\n`;
 					output += `import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";\n\n`;
+					output += `const values = catalog.providers[${JSON.stringify(providerId)}];\n\n`;
 					output += `export const ${catalogConstName(providerId)}: ChatModelCatalog<typeof values, ${JSON.stringify(providerId)}> =\n`;
 					output += `\tflattenChatModelCatalog(${JSON.stringify(providerId)}, values);\n\n`;
 					output += `export const ${imageCatalogConstName(providerId)}: ImageModelCatalog<typeof values, ${JSON.stringify(providerId)}> =\n`;

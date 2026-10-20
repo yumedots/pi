@@ -59,7 +59,7 @@ describe("strict model generation", () => {
 		const generatedPaths = [
 			"src/models.generated.ts",
 			"src/providers/qwen-token-plan-individual.models.ts",
-			"src/providers/data/qwen-token-plan-individual.json",
+			"src/providers/data/models.json",
 			"src/providers/data/.manifest.json",
 		];
 		const sourceBefore = generatedPaths.map((path) => readFileSync(join(packageRoot, path), "utf8"));
