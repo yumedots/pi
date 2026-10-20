@@ -70,7 +70,7 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = component.render(80).join("\n");
 
-		expect(stripAnsi(rendered)).toContain("+Thought");
+		expect(stripAnsi(rendered)).toContain("+ Thought");
 		expect(rendered).toContain("Response was truncated before completion.");
 	});
 
@@ -88,7 +88,7 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = stripAnsi(component.render(80).join("\n"));
 
-		expect(rendered.match(/\+Thought/g)).toHaveLength(1);
+		expect(rendered.match(/\+ Thought/g)).toHaveLength(1);
 		expect(rendered).toContain("answer");
 	});
 
@@ -115,8 +115,8 @@ describe("AssistantMessageComponent", () => {
 		component.updateContent(message, false);
 		const rendered = stripAnsi(component.render(80).join("\n"));
 
-		expect(rendered).toContain("+Thought");
-		expect(rendered).toMatch(/\+Thought · \d+\.\d+s/);
+		expect(rendered).toContain("+ Thought");
+		expect(rendered).toMatch(/\+ Thought · \d+\.\d+s/);
 		expect(rendered).not.toContain("private reasoning");
 	});
 
@@ -129,8 +129,8 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = stripAnsi(component.render(80).join("\n"));
 
-		expect(rendered).toContain("+Thought");
-		expect(rendered).not.toMatch(/\+Thought · /);
+		expect(rendered).toContain("+ Thought");
+		expect(rendered).not.toMatch(/\+ Thought · /);
 	});
 
 	test("collapses individual thinking runs when clicked", () => {
@@ -164,8 +164,45 @@ describe("AssistantMessageComponent", () => {
 
 		const collapsed = stripAnsi(component.render(width).join("\n"));
 		expect(collapsed).not.toContain("first reasoning");
-		expect(collapsed).toContain("+Thought");
+		expect(collapsed).toContain("+ Thought");
 		expect(collapsed).toContain("second reasoning");
+	});
+
+	test("marks a shown thinking run with a minus sign", () => {
+		initTheme("dark");
+
+		const message = createAssistantMessage([{ type: "thinking", thinking: "private reasoning" }]);
+		const component = new AssistantMessageComponent(message, true);
+		component.updateContent(message, true);
+		component.updateContent(message, false);
+		const collapsed = stripAnsi(component.render(80).join("\n"));
+		expect(collapsed).toContain("+ Thought");
+		expect(collapsed).toMatch(/\+ Thought · \d+\.\d+s/);
+
+		const width = 80;
+		const lines = component.render(width);
+		const summaryRow = lines.findIndex((line) => stripAnsi(line).includes("+ Thought"));
+		expect(summaryRow).toBeGreaterThanOrEqual(0);
+		const event: TuiMouseEvent = {
+			type: "click",
+			button: "left",
+			x: 1,
+			y: summaryRow,
+			screenX: 1,
+			screenY: summaryRow,
+			width,
+			height: lines.length,
+			shift: false,
+			alt: false,
+			ctrl: false,
+			clickCount: 1,
+		};
+		expect(component.handleMouse(event)?.handled).toBe(true);
+
+		const expanded = stripAnsi(component.render(width).join("\n"));
+		expect(expanded).toContain("- Thought");
+		expect(expanded).toMatch(/- Thought · \d+\.\d+s/);
+		expect(expanded).toContain("private reasoning");
 	});
 
 	test("uses configured output padding for text and thinking", () => {

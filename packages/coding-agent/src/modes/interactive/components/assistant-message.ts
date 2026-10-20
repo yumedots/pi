@@ -107,13 +107,38 @@ export class AssistantMessageComponent extends Container {
 		timing.endedAt = Date.now();
 	}
 
-	/** The summary line of a finished thinking run: `+Thought · 3.7s`. */
-	private formatThoughtSummary(runIndex: number): string {
+	/**
+	 * The summary line of a thinking run: `+ Thought · 3.7s` while collapsed, `- Thought · 3.7s`
+	 * while the block is shown.
+	 */
+	private formatThoughtSummary(runIndex: number, expanded: boolean): string {
 		const timing = this.thinkingRunTimings[runIndex];
-		const summary = `${theme.fg("accent", "+")}${theme.fg("thinkingText", "Thought")}`;
+		const summary = `${theme.fg("accent", expanded ? "-" : "+")} ${theme.fg("thinkingText", "Thought")}`;
 		if (!timing?.startedAt) return summary;
 		const duration = (timing.endedAt ?? timing.startedAt) - timing.startedAt;
 		return `${summary}${theme.fg("muted", ` · ${formatToolDuration(duration)}`)}`;
+	}
+
+	/** A shown thinking run: the summary line with a `-` marker, followed by the thinking itself. */
+	private buildExpandedThinking(runIndex: number, thinkingBlocks: string[]): Container {
+		const container = new Container();
+		container.addChild(new Text(this.formatThoughtSummary(runIndex, true), this.outputPad, 0));
+		container.addChild(
+			new Markdown(
+				thinkingBlocks.join("\n\n"),
+				this.outputPad,
+				0,
+				this.markdownTheme,
+				{
+					color: (text: string) => theme.fg("thinkingText", text),
+					italic: true,
+				},
+				{
+					transform: createMarkdownTransform("assistant-thinking", this.isStreaming, this.markdownTransformers),
+				},
+			),
+		);
+		return container;
 	}
 
 	updateContent(message: AssistantMessage, isStreaming = this.isStreaming): void {
@@ -173,24 +198,8 @@ export class AssistantMessageComponent extends Container {
 				const thinkingComponent = hidden
 					? this.isStreaming
 						? new ThinkingIndicator(this.hiddenThinkingLabel, this.outputPad, this.isStreaming)
-						: new Text(this.formatThoughtSummary(runIndex), this.outputPad, 0)
-					: new Markdown(
-							thinkingBlocks.join("\n\n"),
-							this.outputPad,
-							0,
-							this.markdownTheme,
-							{
-								color: (text: string) => theme.fg("thinkingText", text),
-								italic: true,
-							},
-							{
-								transform: createMarkdownTransform(
-									"assistant-thinking",
-									this.isStreaming,
-									this.markdownTransformers,
-								),
-							},
-						);
+						: new Text(this.formatThoughtSummary(runIndex, false), this.outputPad, 0)
+					: this.buildExpandedThinking(runIndex, thinkingBlocks);
 				this.contentContainer.addChild(
 					new MouseRegion(thinkingComponent, (event) => {
 						if (event.type !== "click" || event.button !== "left") return undefined;

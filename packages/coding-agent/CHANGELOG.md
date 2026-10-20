@@ -18,7 +18,7 @@
 ### Changed
 
 - The terminal interface is loaded when the interactive mode runs, so `pi --version` and the headless modes use about 12 MB less memory
-- Thinking blocks now start collapsed. The transcript shows an animated braille sign in front of the `Thinking...` label while the model thinks, and a `+Thought · 3.7s` summary once it is done. Running tool calls show the same spinning sign. Set `hideThinkingBlock` to `false`, or press `Ctrl+T`, to show the thinking again
+- Thinking blocks now start collapsed. The transcript shows an animated braille sign in front of the `Thinking...` label while the model thinks, and a `+ Thought · 3.7s` summary once it is done. A shown block gets a `- Thought · 3.7s` header instead. Running tool calls show the same spinning sign. Set `hideThinkingBlock` to `false`, or press `Ctrl+T`, to show the thinking again
 - A skill invocation and the request typed alongside it now render as one message. The request appears on the same line as the mention
 - Skills can be picked with `@` in the editor. The mention loads the skill, and the transcript shows it as `@name` instead of `[skill] name`
 - An `@name` mention loads the skill wherever it appears in the message, so `extract report.pdf with @pdf-tools` works too. The mention is consumed by the skill and does not repeat in the request
@@ -38,7 +38,7 @@
 - The footer now shows the cwd and the stats on a single line, with the model info right-aligned on the same line
 - Sent messages now share one gray card background, instead of a blue card for regular messages and a purple card for skill invocations
 - The input box is now a card in the same gray as the sent messages, instead of a box framed by horizontal rules
-- The input box is now one text line tall by default, and shows a `>` prompt in front of the text, like a shell prompt
+- The input box shows a `>` prompt in front of the text, like a shell prompt, and grows with the prompt up to 12 text lines. A longer prompt scrolls inside the box, instead of hiding all but the last line behind a `↑ N more` hint
 - Starting a new session with `/new` no longer adds a "New session started" line to the transcript
 
 ### Fixed
