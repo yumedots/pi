@@ -89,6 +89,7 @@ export interface SettingsConfig {
 	showHardwareCursor: boolean;
 	editorPaddingX: number;
 	outputPad: 0 | 1;
+	nerdFonts: boolean;
 	autocompleteMaxVisible: number;
 	autocompletePosition: "above" | "below";
 	quietStartup: QuietStartup;
@@ -129,6 +130,7 @@ export interface SettingsCallbacks {
 	onShowHardwareCursorChange: (enabled: boolean) => void;
 	onEditorPaddingXChange: (padding: number) => void;
 	onOutputPadChange: (padding: 0 | 1) => void;
+	onNerdFontsChange: (enabled: boolean) => void;
 	onAutocompleteMaxVisibleChange: (maxVisible: number) => void;
 	onAutocompletePositionChange: (position: "above" | "below") => void;
 	onQuietStartupChange: (quiet: QuietStartup) => void;
@@ -845,9 +847,19 @@ export class SettingsSelectorComponent extends Container {
 			values: ["0", "1"],
 		});
 
-		// Autocomplete max visible toggle (insert after output-padding)
+		// Nerd Font glyphs toggle (insert after output-padding)
 		const outputPaddingIndex = items.findIndex((item) => item.id === "output-padding");
 		items.splice(outputPaddingIndex + 1, 0, {
+			id: "nerd-fonts",
+			label: "Nerd Font glyphs",
+			description: "Show glyphs in front of the footer groups (needs a patched font)",
+			currentValue: config.nerdFonts ? "true" : "false",
+			values: ["true", "false"],
+		});
+
+		// Autocomplete max visible toggle (insert after nerd-fonts)
+		const nerdFontsIndex = items.findIndex((item) => item.id === "nerd-fonts");
+		items.splice(nerdFontsIndex + 1, 0, {
 			id: "autocomplete-max-visible",
 			label: "Autocomplete max items",
 			description: "Max visible items in autocomplete dropdown (3-20)",
@@ -972,6 +984,9 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					case "output-padding":
 						callbacks.onOutputPadChange(newValue === "0" ? 0 : 1);
+						break;
+					case "nerd-fonts":
+						callbacks.onNerdFontsChange(newValue === "true");
 						break;
 					case "autocomplete-max-visible":
 						callbacks.onAutocompleteMaxVisibleChange(parseInt(newValue, 10));

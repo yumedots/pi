@@ -968,6 +968,10 @@ export class SettingsManager {
 		return this.settings.showCacheMissNotices ?? SETTINGS_DEFAULTS.showCacheMissNotices;
 	}
 
+	getNerdFonts(): boolean {
+		return this.settings.nerdFonts ?? SETTINGS_DEFAULTS.nerdFonts;
+	}
+
 	getExternalEditorCommand(): string {
 		const configuredEditor = this.settings.externalEditor;
 		if (typeof configuredEditor === "string" && configuredEditor.trim() !== "") {
@@ -989,6 +993,12 @@ export class SettingsManager {
 	setShowCacheMissNotices(show: boolean): void {
 		this.globalSettings.showCacheMissNotices = show;
 		this.markModified("showCacheMissNotices");
+		this.save();
+	}
+
+	setNerdFonts(enabled: boolean): void {
+		this.globalSettings.nerdFonts = enabled;
+		this.markModified("nerdFonts");
 		this.save();
 	}
 

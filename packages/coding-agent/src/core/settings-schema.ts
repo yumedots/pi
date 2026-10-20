@@ -359,6 +359,12 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.outputPad,
 			}),
 		),
+		nerdFonts: Type.Optional(
+			Type.Boolean({
+				description: "Show Nerd Font glyphs in front of the footer groups. Needs a patched font.",
+				default: SETTINGS_DEFAULTS.nerdFonts,
+			}),
+		),
 		autocompleteMaxVisible: Type.Optional(
 			Type.Number({
 				description: "Maximum visible items in the autocomplete dropdown.",

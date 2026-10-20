@@ -45,6 +45,7 @@ export const SETTINGS_DEFAULTS = {
 	treeFilterMode: "default",
 	editorPaddingX: 0,
 	outputPad: 1,
+	nerdFonts: false,
 	autocompleteMaxVisible: 5,
 	autocompletePosition: "above",
 	markdown: {

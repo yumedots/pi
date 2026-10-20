@@ -54,6 +54,57 @@ const SESSION_SEPARATOR = " • ";
 const MIN_PADDING = 2;
 
 /**
+ * Nerd Font glyphs for the footer groups. They need a patched font, so they are only used when
+ * the `nerdFonts` setting is on.
+ */
+const NERD_FONT_ICONS = {
+	model: "\uF2DB", // nf-fa-microchip
+	thinking: "\uF0E7", // nf-fa-bolt
+	stats: "\uF201", // nf-fa-line_chart
+	context: "\uF200", // nf-fa-chart_pie
+	path: "\uF07C", // nf-fa-folder_open
+	branch: "\uF126", // nf-fa-code_fork
+} as const;
+
+/** Icons for the footer groups. Empty when Nerd Fonts are off. */
+interface FooterIcons {
+	model?: string;
+	thinking?: string;
+	stats?: string;
+	context?: string;
+	path?: string;
+	branch?: string;
+}
+
+/** One group of the footer line, with an optional icon in front of it. */
+interface FooterGroup {
+	text: string;
+	icon?: string;
+}
+
+/** Separators and icons for one footer line. */
+interface FooterStyle {
+	/** Separator between the groups on the left. */
+	separator: string;
+	/** Separator between the path and the git branch. */
+	pathSeparator: string;
+	icons: FooterIcons;
+}
+
+const PLAIN_STYLE: FooterStyle = { separator: GROUP_SEPARATOR, pathSeparator: PATH_SEPARATOR, icons: {} };
+const NERD_FONT_STYLE: FooterStyle = {
+	separator: " ",
+	pathSeparator: " ",
+	icons: { ...NERD_FONT_ICONS },
+};
+
+/** Prefix a group with its icon. An empty group stays empty. */
+function withIcon(text: string | undefined, icon: string | undefined): string {
+	if (!text) return "";
+	return icon ? `${icon} ${text}` : text;
+}
+
+/**
  * Shorten a path from the left so the tail (the project folder) stays visible.
  * Returns an empty string when the path cannot be shortened to something readable.
  */
@@ -87,10 +138,11 @@ function fitFooterLine(
 	modelCandidates: string[],
 	thinkingGroup: string | undefined,
 	detailParts: string[],
-	tailGroups: string[],
+	tailGroups: FooterGroup[],
 	cwd: string,
 	branch: string | undefined,
 	sessionName: string | undefined,
+	style: FooterStyle,
 	width: number,
 ): FooterFit {
 	let best: FooterFit = { left: "", right: "" };
@@ -103,6 +155,7 @@ function fitFooterLine(
 			cwd,
 			branch,
 			sessionName,
+			style,
 			width,
 		);
 		best = fit;
@@ -116,10 +169,11 @@ function fitFooterLineWithModel(
 	model: string,
 	thinkingGroup: string | undefined,
 	detailParts: string[],
-	tailGroups: string[],
+	tailGroups: FooterGroup[],
 	cwd: string,
 	branch: string | undefined,
 	sessionName: string | undefined,
+	style: FooterStyle,
 	width: number,
 ): FooterFit & { truncated: boolean } {
 	const details = [...detailParts];
@@ -130,14 +184,19 @@ function fitFooterLineWithModel(
 	let pathSession = sessionName;
 
 	const buildLeft = (): string =>
-		[modelGroup, thinking, details.join(" "), ...tailGroups]
+		[
+			withIcon(modelGroup, style.icons.model),
+			withIcon(thinking, style.icons.thinking),
+			withIcon(details.join(" "), style.icons.stats),
+			...tailGroups.map((group) => withIcon(group.text, group.icon)),
+		]
 			.filter((part): part is string => !!part && part.length > 0)
-			.join(GROUP_SEPARATOR);
+			.join(style.separator);
 
 	const buildRight = (): string => {
-		const pathGroup = [path, pathBranch]
+		const pathGroup = [withIcon(path, style.icons.path), withIcon(pathBranch, style.icons.branch)]
 			.filter((part): part is string => !!part && part.length > 0)
-			.join(PATH_SEPARATOR);
+			.join(style.pathSeparator);
 		return [pathGroup, pathSession]
 			.filter((part): part is string => !!part && part.length > 0)
 			.join(SESSION_SEPARATOR);
@@ -165,7 +224,7 @@ function fitFooterLineWithModel(
 	if (!fits(left, right)) {
 		const fixedWidth =
 			visibleWidth(left) +
-			(pathBranch ? PATH_SEPARATOR.length + visibleWidth(pathBranch) : 0) +
+			(pathBranch ? style.pathSeparator.length + visibleWidth(pathBranch) : 0) +
 			(pathSession ? SESSION_SEPARATOR.length + visibleWidth(pathSession) : 0);
 		path = truncateCwd(cwd, width - MIN_PADDING - fixedWidth);
 		right = buildRight();
@@ -189,12 +248,19 @@ function fitFooterLineWithModel(
 	}
 	if (!fits(left, right)) {
 		truncated = true;
-		const rest = [details.join(" "), ...tailGroups]
+		const rest = [details.join(" "), ...tailGroups.map((group) => withIcon(group.text, group.icon))]
 			.filter((part): part is string => !!part && part.length > 0)
-			.join(GROUP_SEPARATOR);
+			.join(style.separator);
 		const restWidth = visibleWidth(rest);
+		// The model icon sits in front of the model name and takes part of the room.
+		const iconWidth = style.icons.model ? visibleWidth(style.icons.model) + 1 : 0;
 		const available =
-			width - visibleWidth(right) - (right ? MIN_PADDING : 0) - restWidth - (restWidth ? GROUP_SEPARATOR.length : 0);
+			width -
+			visibleWidth(right) -
+			(right ? MIN_PADDING : 0) -
+			restWidth -
+			(restWidth ? style.separator.length : 0) -
+			iconWidth;
 		modelGroup = available > 0 ? truncateToWidth(modelGroup, available, "") : "";
 		left = buildLeft();
 	}
@@ -224,6 +290,7 @@ interface SessionStats {
  */
 export class FooterComponent implements Component {
 	private autoCompactEnabled = true;
+	private nerdFonts = false;
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
 	private sessionStats?: SessionStats;
@@ -239,6 +306,11 @@ export class FooterComponent implements Component {
 
 	setAutoCompactEnabled(enabled: boolean): void {
 		this.autoCompactEnabled = enabled;
+	}
+
+	/** Show Nerd Font glyphs in front of the footer groups. */
+	setNerdFonts(enabled: boolean): void {
+		this.nerdFonts = enabled;
 	}
 
 	/**
@@ -365,9 +437,10 @@ export class FooterComponent implements Component {
 			contextPercentStr = contextPercentDisplay;
 		}
 		// The context percentage and the experimental marker close the line.
-		const tailGroups = [contextPercentStr];
+		const style = this.nerdFonts ? NERD_FONT_STYLE : PLAIN_STYLE;
+		const tailGroups: FooterGroup[] = [{ text: contextPercentStr, icon: style.icons.context }];
 		if (areExperimentalFeaturesEnabled()) {
-			tailGroups.push(theme.bold(theme.fg("warning", "xp")));
+			tailGroups.push({ text: theme.bold(theme.fg("warning", "xp")) });
 		}
 
 		// The model name starts the line, followed by the thinking level and the stats.
@@ -399,6 +472,7 @@ export class FooterComponent implements Component {
 			cwd,
 			branch,
 			sessionName,
+			style,
 			width,
 		);
 

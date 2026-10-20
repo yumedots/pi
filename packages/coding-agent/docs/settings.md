@@ -102,6 +102,7 @@ See [Compaction Reference](compaction.md) for trigger, summarization, and valida
 | `fullscreenWheelScrollLines` | `1` | number | `1` | Lines per mouse-wheel event in fullscreen mode, from 1 to 100. The default scrolls one line per event. `"auto"` moves one line per event in local macOS terminals, which already accelerate wheel and trackpad input; elsewhere, and over SSH, it speeds up fast wheel spins to at most 6 lines per event. Alt+wheel moves five times as far. |
 | `editorPaddingX` | number | `0` | Horizontal editor padding from 0 to 3 cells. |
 | `outputPad` | `0 \| 1` | `1` | Horizontal transcript padding for messages, tool output, `!` command output, and summary blocks. |
+| `nerdFonts` | boolean | `false` | Show Nerd Font glyphs in front of the footer groups: a chip for the model, a bolt for the thinking level, a chart for the context usage, a folder for the path, and a branch for the git branch. Needs a patched font; other terminals show empty boxes. |
 | `autocompleteMaxVisible` | number | `5` | Visible autocomplete entries, from 3 to 20. |
 | `autocompletePosition` | `"above" \| "below"` | `"above"` | Where the autocomplete list appears. `"above"` floats it over the content above the input, `"below"` puts it under the input box. |
 | `showHardwareCursor` | boolean | `false` | Use the terminal cursor instead of Pi's drawn cursor. Pi still positions it for input methods. |

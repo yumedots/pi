@@ -667,6 +667,7 @@ export class InteractiveMode {
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
 		this.footer = new FooterComponent(this.session, this.footerDataProvider);
 		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
+		this.footer.setNerdFonts(this.settingsManager.getNerdFonts());
 		this.footerContainer = new Container();
 		this.footerContainer.addChild(this.footer);
 
@@ -1687,6 +1688,7 @@ export class InteractiveMode {
 		}
 		this.footer.setSession(this.session);
 		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
+		this.footer.setNerdFonts(this.settingsManager.getNerdFonts());
 		this.footerDataProvider.setCwd(this.sessionManager.getCwd());
 		this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
 		this.outputPad = this.settingsManager.getOutputPad();
@@ -4697,6 +4699,7 @@ export class InteractiveMode {
 					defaultProjectTrust: this.settingsManager.getDefaultProjectTrust(),
 					editorPaddingX: this.settingsManager.getEditorPaddingX(),
 					outputPad: this.settingsManager.getOutputPad(),
+					nerdFonts: this.settingsManager.getNerdFonts(),
 					autocompleteMaxVisible: this.settingsManager.getAutocompleteMaxVisible(),
 					autocompletePosition: this.settingsManager.getAutocompletePosition(),
 					quietStartup: this.settingsManager.getQuietStartup(),
@@ -4838,6 +4841,11 @@ export class InteractiveMode {
 								}
 							}
 						}
+						this.ui.requestRender();
+					},
+					onNerdFontsChange: (enabled) => {
+						this.settingsManager.setNerdFonts(enabled);
+						this.footer.setNerdFonts(enabled);
 						this.ui.requestRender();
 					},
 					onAutocompleteMaxVisibleChange: (maxVisible) => {

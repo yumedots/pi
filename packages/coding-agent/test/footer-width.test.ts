@@ -188,6 +188,39 @@ describe("FooterComponent width handling", () => {
 		expect(line).toContain("zhipu/glm-5.1 / medium");
 	});
 
+	it("shows Nerd Font glyphs in front of the footer groups", () => {
+		const session = createSession({
+			sessionName: "",
+			modelId: "glm-5.1",
+			reasoning: true,
+			thinkingLevel: "medium",
+		});
+		const footer = new FooterComponent(session, createFooterData(1));
+		footer.setNerdFonts(true);
+
+		const line = stripAnsi(footer.render(120)[0]);
+		expect(line).toContain("\uF2DB test/glm-5.1");
+		expect(line).toContain("\uF0E7 medium");
+		expect(line).toContain("\uF200 12.3%/200k (auto)");
+		expect(line).toContain("\uF07C /tmp/project");
+		expect(line).toContain("\uF126 main");
+		expect(visibleWidth(line)).toBeLessThanOrEqual(120);
+	});
+
+	it("keeps the footer plain without Nerd Font glyphs", () => {
+		const session = createSession({
+			sessionName: "",
+			modelId: "glm-5.1",
+			reasoning: true,
+			thinkingLevel: "medium",
+		});
+		const footer = new FooterComponent(session, createFooterData(1));
+
+		const line = stripAnsi(footer.render(120)[0]);
+		expect(line).not.toContain("\uF2DB");
+		expect(line).toContain("test/glm-5.1 / medium");
+	});
+
 	it("keeps the context percentage and the model on a narrow line", () => {
 		const session = createSession({
 			sessionName: "",

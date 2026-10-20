@@ -14,6 +14,7 @@
 - Added a Models Configuration reference generated from the `models.json` schema, listing all provider, model, model override, and compatibility fields ([#10790](https://github.com/earendil-works/pi/issues/10790))
 - Added the `autocompletePosition` setting, so the slash-command menu can float above the input (default) or sit below it
 - Added the `projectContextMaxChars` setting, which cuts the project context (`AGENTS.md` and friends) in the system prompt. The context is sent with every request, so it is the largest part of the prompt. The cut says how much was left out, and the model can read the file for the rest
+- Added the `nerdFonts` setting, which puts Nerd Font glyphs in front of the footer groups: a chip for the model, a bolt for the thinking level, a chart for the context usage, a folder for the path, and a branch for the git branch. It is off by default, because the glyphs need a patched font
 
 ### Changed
 

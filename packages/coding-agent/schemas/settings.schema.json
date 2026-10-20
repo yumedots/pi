@@ -548,6 +548,11 @@
       "description": "Horizontal padding for transcript content.",
       "default": 1
     },
+    "nerdFonts": {
+      "type": "boolean",
+      "description": "Show Nerd Font glyphs in front of the footer groups. Needs a patched font.",
+      "default": false
+    },
     "autocompleteMaxVisible": {
       "type": "number",
       "description": "Maximum visible items in the autocomplete dropdown.",
