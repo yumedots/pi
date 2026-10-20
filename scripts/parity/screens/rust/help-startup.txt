@@ -1,8 +1,9 @@
 # screen: help-startup
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/help-startup' && HOME='/tmp/pi-screens/home/rust/help-startup' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/help-startup' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/help-startup' && HOME='/tmp/pi-screens/home/rust/help-startup' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/help-startup' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: C-o
 # note: Ctrl+O: the expanded startup help.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more

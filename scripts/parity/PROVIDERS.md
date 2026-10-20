@@ -106,9 +106,19 @@ The provider lead verifies; the porter does not mark its own work verified.
   for the AI Gateway) — `packages/ai/src/providers/cloudflare-auth.ts:34`; port:
   `rpi/crates/rpi-cli/src/credentials.rs` `required_env()`.
 - OpenCode needs the per-conversation routing header. Original:
-  `packages/ai/src/providers/opencode-headers.ts`. Port:
+  `packages/ai/src/providers/opencode-headers.ts` (and the session id it carries:
+  `packages/coding-agent/src/core/agent-session.ts:4285` and `:4405` set
+  `sessionId: this.sessionId`). Port:
   `rpi/crates/rpi-ai/src/model.rs` `opencode_session_header()`, applied in all three
-  providers from the request's session id.
+  providers from the request's session id, and the session id now reaches the
+  request: `rpi/crates/rpi-harness/src/agent_harness.rs` keeps the session's id on
+  the harness and puts it in the stream options for the main request and for the
+  deferred poll. **Without it the OpenCode gateway rejects every request with
+  `400 MissingSessionID`** — that was the user's "we cannot use the opencode-go
+  api" report, not the saved-default bug.
+  Check: `rpi/crates/rpi-ai/src/model.rs` `opencode_header_tests` (the header is
+  present for `opencode`/`opencode-go` and absent for other providers and without
+  a session id).
 - provider failure text: original `packages/ai/src/utils/error-body.ts:128`
   (`formatProviderError`) + `pickBodyText`; port:
   `rpi/crates/rpi-ai/src/error.rs` (`AiError::Http` carries the exact text;

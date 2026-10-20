@@ -1,8 +1,9 @@
 # screen: settings-submenu-theme-automatic
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/settings-submenu-theme-automatic' && HOME='/tmp/pi-screens/home/rust/settings-submenu-theme-automatic' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/settings-submenu-theme-automatic' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/settings-submenu-theme-automatic' && HOME='/tmp/pi-screens/home/rust/settings-submenu-theme-automatic' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/settings-submenu-theme-automatic' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /settings Enter theme Enter Down Enter
 # note: /settings: the Theme submenu, the automatic mode with the light and dark theme submenus.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -13,7 +14,7 @@
 
  Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
  on` to ~/.tmux.conf and restart tmux.
-   ℹ Theme set to light.
+ Theme set to light.
 
 
 

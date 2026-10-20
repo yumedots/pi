@@ -1,22 +1,45 @@
 --- ts/settings-submenu-theme.txt
 +++ rust/settings-submenu-theme.txt
+- ▀▀█  v1.3.0
++
+- █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
++ ▀▀█  v1.3.0
+- Press ctrl+o to show full startup help.
++ █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
+-
++ Press ctrl+o to show full startup help.
+- Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
++
+-
++ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+- Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
++
+- on` to ~/.tmux.conf and restart tmux.
++ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+-
++ on` to ~/.tmux.conf and restart tmux.
 -────────────────────────────────────────────────────────────────────────────────────────────────────
 +
 -Theme
 +
 -Select a theme, or choose automatic to follow terminal appearance.
++
+-
 +Theme
 -→ ✓ system     Follows the terminal's light or dark mode
-+Select a theme, or choose automatic to follow terminal appearance.
--    automatic  Use separate themes for light and dark terminal appearance
 +
+-    automatic  Use separate themes for light and dark terminal appearance
++Select a theme, or choose automatic to follow terminal appearance.
 -    dark
++
+-    light
 +→ ✓ dark
 -
-+    monochrome
++    light
 -  Enter to select · Esc to go back
-+
++    monochrome
 -────────────────────────────────────────────────────────────────────────────────────────────────────
-+  Enter to select · Esc to go back
++
 -mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens        /private/tmp/pi-screens/work/settings-submenu-theme
++  Enter to select · Esc to go back
 +mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens   /private/tmp/pi-screens/work/settings-submenu-theme

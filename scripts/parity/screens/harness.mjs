@@ -11,7 +11,10 @@ export const TMUX_SOCKET = "pi-screens";
 
 export const TS_ROOT = process.env.PI_SCREENS_TS_ROOT ?? "/Users/gabriel/pi";
 export const RUST_ROOT = process.env.PI_SCREENS_RUST_ROOT ?? "/Users/gabriel/pi-native";
-export const RUST_BIN = process.env.PI_SCREENS_RUST_BIN ?? join(RUST_ROOT, "rpi/target/debug/rpi");
+export const RUST_BIN =
+	process.env.PI_PARITY_RUST_BIN ??
+	process.env.PI_SCREENS_RUST_BIN ??
+	join(RUST_ROOT, "rpi/target/debug/rpi");
 export const SCRATCH = process.env.PI_SCREENS_SCRATCH ?? "/tmp/pi-screens";
 
 export function tmux(args, options = {}) {
@@ -94,6 +97,9 @@ export function runScreen({ side, spec, mockBaseUrl }) {
 	const workDir = join(SCRATCH, "work", side, spec.name);
 	rmSync(agentDir, { recursive: true, force: true });
 	rmSync(workDir, { recursive: true, force: true });
+	// The home directory is per screen too: a leftover settings.json in it would
+	// suppress the first-run picker on the second run.
+	rmSync(home, { recursive: true, force: true });
 	mkdirSync(home, { recursive: true });
 	mkdirSync(agentDir, { recursive: true });
 	mkdirSync(workDir, { recursive: true });

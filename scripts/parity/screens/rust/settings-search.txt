@@ -1,8 +1,9 @@
 # screen: settings-search
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/settings-search' && HOME='/tmp/pi-screens/home/rust/settings-search' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/settings-search' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/settings-search' && HOME='/tmp/pi-screens/home/rust/settings-search' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/settings-search' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /settings Enter theme
 # note: /settings: the settings list with a search term.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more

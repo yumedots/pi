@@ -1,23 +1,35 @@
 --- ts/overlay-animation.txt
 +++ rust/overlay-animation.txt
+- ▀▀█  v1.3.0
++
+- █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
++ ▀▀█  v1.3.0
+- Press ctrl+o to show full startup help.
++ █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
+-
++ Press ctrl+o to show full startup help.
+- Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
++
+-
++ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
 -                         ╭────────────────────────────────────────────────╮
 +
 - Warning: tmux extended-k│ Animation Demo (~30 FPS)                       │`set -g extended-keys
-+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
-- on` to ~/.tmux.conf and │                                                │
-+ on` to ~/.tmux.conf and restart tmux.
--                         │ Frame: <n>                                     │
-+   ℹ Extension "/Users/gabriel/pi/packages/coding-agent/examples/extensions/overlay-qa-tests.ts"
--                         │ FPS: 30                                        │
-+ error: the extension runtime did not answer
-- /overlay-animation      │                                                │
 +
+- on` to ~/.tmux.conf and │                                                │
++ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+-                         │ Frame: <n>                                     │
++ on` to ~/.tmux.conf and restart tmux.
+-                         │ FPS: 30                                        │
++ Error: Extension command failed: javascript error: Error: unknown command: /overlay-animation
+- /overlay-animation      │                                                │
++     at runCommand (eval at globalThis.__piRun (unknown source), <anonymous>:14939:11)
 -                         │  ██████████                                    │
-+   ℹ Extension error: the extension runtime is gone
++     at globalThis.__piCall (eval at globalThis.__piRun (unknown source), <anonymous>:265:24)
 -                         │ Spinner: ◓                                     │
 +
 -                         │ Color:                                         │
-+   ✗ Extension error: the extension runtime is gone
++
 -                         │                                                │
 +
 -                         │ This proves overlays can handle                │
@@ -34,5 +46,10 @@
 +
 -⠼ Working
 +
+->
++
+-
++>
 -mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens             /private/tmp/pi-screens/work/overlay-animation
++
 +mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens        /private/tmp/pi-screens/work/overlay-animation

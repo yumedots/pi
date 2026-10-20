@@ -1,25 +1,25 @@
 --- ts/help-startup.txt
 +++ rust/help-startup.txt
 - ctrl+c twice to exit
-+ ▀▀█  v1.3.0
++
 - ctrl+d to exit (empty)
-+ █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
++ ▀▀█  v1.3.0
 - ctrl+z to suspend
-+ Press ctrl+o to show full startup help.
++ █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
 - ctrl+k to delete to end
-+
++ Press ctrl+o to show full startup help.
 - shift+tab to cycle thinking level
-+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
-- ctrl+p/shift+ctrl+p to cycle models
 +
+- ctrl+p/shift+ctrl+p to cycle models
++ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
 - ctrl+l to select model
 +
 - ctrl+o to expand tools
-+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
-- ctrl+t to expand thinking
-+ on` to ~/.tmux.conf and restart tmux.
-- ctrl+g for external editor
 +
+- ctrl+t to expand thinking
++ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+- ctrl+g for external editor
++ on` to ~/.tmux.conf and restart tmux.
 - / for commands
 +
 - ! to run bash
@@ -42,10 +42,5 @@
 +
 - Tool output: expanded
 +
--
-+>
-->
-+
--
-+mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens             /private/tmp/pi-screens/work/help-startup
 -mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                  /private/tmp/pi-screens/work/help-startup
++mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens             /private/tmp/pi-screens/work/help-startup

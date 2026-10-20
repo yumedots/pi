@@ -1,8 +1,9 @@
 # screen: input-empty
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/input-empty' && HOME='/tmp/pi-screens/home/rust/input-empty' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/input-empty' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/input-empty' && HOME='/tmp/pi-screens/home/rust/input-empty' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/input-empty' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: (none)
 # note: The input box, empty.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more

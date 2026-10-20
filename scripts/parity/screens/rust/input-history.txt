@@ -1,8 +1,9 @@
 # screen: input-history
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/input-history' && HOME='/tmp/pi-screens/home/rust/input-history' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/input-history' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/input-history' && HOME='/tmp/pi-screens/home/rust/input-history' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/input-history' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: hello world Enter Up
 # note: The input box with the prompt history open.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -17,8 +18,8 @@
 
  hello world
 
-
  Hello from the parity mock.
+
 
 
 

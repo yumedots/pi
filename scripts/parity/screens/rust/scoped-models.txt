@@ -1,8 +1,9 @@
 # screen: scoped-models
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/scoped-models' && HOME='/tmp/pi-screens/home/rust/scoped-models' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/scoped-models' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/scoped-models' && HOME='/tmp/pi-screens/home/rust/scoped-models' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/scoped-models' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /scoped-models Enter
 # note: /scoped-models: the scoped model selector.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more

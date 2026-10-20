@@ -105,6 +105,27 @@ result (`{messages}`), so an extension cannot change the transcript before a
 call. The port's provider hook has the messages and an empty
 `transform_context` slot — the same place `before_agent_start` would go.
 
+## The node surface
+
+Every shim in `rpi/crates/rpi-js/js/shims/` is published to the extensions,
+not only to the bundle: the extension host imports all of them and puts them
+in the builtins map (`extension-host.ts`: `NODE_BUILTINS`), so `node:net`,
+`node:dgram`, `node:zlib` and the rest resolve for an extension. A builtin
+that does not resolve kills the extension at load time, so the class is
+closed by a test: `every_shim_is_reachable_by_an_extension`
+(`rpi/crates/rpi-js/tests/extension.rs`) walks the shim directory, derives
+the builtin name from each file and loads an extension that imports it.
+
+## The four empty answers
+
+`pi.getSettings()` answers the effective settings (`Settings::effective()`:
+the defaults applied, the project settings over the global ones) — read from
+the file, so it is available as soon as the session exists. `pi.getCommands()`
+answers the session's command list plus the extension's own commands, with
+the `source` and `sourceInfo` the original carries. `ui.getAllThemes()` and
+`ui.getTheme(name)` answer the port's three presets (`dark`, `light`,
+`monochrome`) in the original's `{name, path}` shape.
+
 ## The extension's own tools
 
 A tool an extension registers has to be in the session's tool set, or the

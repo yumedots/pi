@@ -1,6 +1,6 @@
 # screen: first-run
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/first-run' && env PI_EXPERIMENTAL='1' HOME='/tmp/pi-screens/home/rust/first-run'  PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/first-run' && env PI_EXPERIMENTAL='1' HOME='/tmp/pi-screens/home/rust/first-run'  PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: (none)
 # note: First run: the theme picker (PI_EXPERIMENTAL=1, no agent dir override, no settings.json).
 

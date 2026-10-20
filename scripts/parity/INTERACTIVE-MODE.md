@@ -1603,3 +1603,107 @@ binary and the tree has moved:
 The index's panes were captured against `rpi/target/debug/rpi`, which is the
 developer's target directory now; re-running it needs
 `PI_PARITY_RUST_BIN=/Users/gabriel/pi-native/rpi/target-agents/debug/rpi`.
+
+---
+
+## 11. The import check — the last one in my area
+
+The file-level round trip (`scripts/parity/session-compat.mjs`) is the sessions lead's
+check; the interactive mode's check is different, and it is a **pane**: does the
+restored transcript appear on screen? I ran it on both sides, with a session recorded
+by the original and imported by both.
+
+**The session the original recorded** — pi's v3 format, `role`-discriminated, exactly
+as it should be:
+
+```
+{"type":"session","version":3,"id":"01a15bac-…","timestamp":"…","cwd":"/private/tmp/pi-parity/work"}
+{"type":"model_change","id":"b1585acf","provider":"mock","modelId":"mock-1"}
+{"type":"thinking_level_change","id":"975234fd","thinkingLevel":"off"}
+{"type":"message","id":"649999dd","message":{"role":"system","content":"","sections":{…}}}
+{"type":"message","id":"…","message":{"role":"user","content":"hello world"}}
+{"type":"message","id":"…","message":{"role":"assistant","content":"Hello from the parity mock."}}
+```
+
+**The `/import` screen is where the two sides differ.**
+
+```
+pi   /import                                  port /import
+  Import session                                /import
+  Replace current session with                  2026-10-20T23-36-56-047Z_01a15bac-….jsonl
+  <path>?
+  > Search
+  → Yes
+    No
+  ↑↓ navigate  enter select  escape/ctrl+c cancel
+```
+
+The original **asks before replacing the session**, with a `Yes`/`No` menu, a search
+field and a hint line. The port **echoes the path as a note and replaces the session
+without asking** — so a mistyped path, or a path the user did not mean to import,
+costs the user the session they were in, with no confirmation and nothing to cancel
+with.
+
+**And the same on both sides, which is worth reporting too:** after an *import*, **neither
+side shows the restored transcript** — both end on the empty-session screen with the
+greeting and an empty input. (After a *resume* it works on both sides — see §11.1.) So the import's *result* is invisible to the user on the
+original as well, which means the port's "no assistant reply, no thinking block, no tool
+panel" is not yet a port-specific regression, and the pane check cannot yet separate
+"the import failed" from "the import worked and the screen did not update".
+
+### 11.1 The resumed session — the round trip, measured in the pane
+
+The port's `set_streaming(false)` fix landed, so the restored reply renders. Driving
+both sides to resume **the same pi-recorded session** — `/session` in the port,
+`/resume` in the original, the same filter, the same pane — gives:
+
+```
+pi   /resume                                 port /session
+  hello world                                  hello world
+  Hello from the parity mock.                  Hello from the parity mock.
+  Resumed session                              Model changed to mock:mock-1
+                                                Thinking level: "off"
+                                                Switched to session 2026-10-20T23-36-56-047Z_01a15bac-….jsonl.
+```
+
+**The restored conversation is identical on both sides.** The port reads pi's session
+file, restores the user turn and the assistant reply, and shows them. That is the
+interactive mode's half of the `ts -> rust` blocker, and it is **settled**.
+
+**Three differences remain in the restored transcript, and they are the port's:**
+
+1. **Two extra lines.** The port renders the `model_change` and `thinking_level_change`
+   entries as transcript notes — "Model changed to mock:mock-1" and
+   "Thinking level: \"off\"". The original applies both **silently**; they are
+   state, not conversation. (`rpi-cli/src/interactive_tui/sessions.rs`, the
+   `Entry::ModelChange` / `Entry::ThinkingLevel` arms.)
+2. **The confirmation line's wording.** The original says `Resumed session`; the port
+   says `Switched to session 2026-10-20T23-36-56-047Z_01a15bac-….jsonl.` — different
+   wording, and the port's puts the whole file name on screen.
+3. **The footer's context readout** — the original's `0.0% 49 tokens` against the
+   port's `?/128,000 tokens`. That is the known footer difference, and it is the same
+   one the screen index shows on the `hotkeys`, `changelog` and `quit-confirm` rows.
+
+**What this check does and does not settle.**
+
+* It settles that the port's `/import` has **no confirmation step**, where the original
+  has one. That is the port's to fix: the original's menu is the shape — a titled
+  "Import session" / "Replace current session with <path>?" block, a `Yes`/`No` list, and
+  the `↑↓ navigate  enter select  escape/ctrl+c cancel` hint.
+* It does **not** settle whether the restored transcript renders. For that, the pane
+  check has to be run on a session that is *already resumed* rather than imported, so
+  the empty-session screen is not in the way — or the empty-session screen has to give
+  up the pane after an import, on both sides.
+
+**The check to run when the message type lands**, and it is the one I owe:
+
+```
+1. record a session with the original (a user turn + an assistant turn + a tool call)
+2. in the port: /import <that file>, confirm, and capture the pane at 100×30
+3. in the original: /import <the same file>, confirm, and capture the pane
+4. diff the two panes
+```
+
+The file round trip going green is necessary and not sufficient: the pane is what the
+user sees, and the import path (`rpi-cli/src/interactive_tui/sessions.rs`,
+`render_session_history`) is the port's own renderer, not the live one.

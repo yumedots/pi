@@ -1,8 +1,9 @@
 # screen: transcript-error
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/transcript-error' && HOME='/tmp/pi-screens/home/rust/transcript-error' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/transcript-error' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/transcript-error' && HOME='/tmp/pi-screens/home/rust/transcript-error' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/transcript-error' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: hello world Enter
 # note: An error in the transcript (the provider endpoint is not listening).
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -14,11 +15,11 @@
  Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
  on` to ~/.tmux.conf and restart tmux.
 
+
  hello world
 
-
-   ✗ http transport error: error sending request for url (http://127.0.0.1:9/v1/chat/completions)
-
+ Error: http transport error: error sending request for url
+ (http://127.0.0.1:9/v1/chat/completions)
 
 
 

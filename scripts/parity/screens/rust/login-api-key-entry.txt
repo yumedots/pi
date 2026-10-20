@@ -1,6 +1,6 @@
 # screen: login-api-key-entry
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/login-api-key-entry' && HOME='/tmp/pi-screens/home/rust/login-api-key-entry' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/login-api-key-entry' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/login-api-key-entry' && HOME='/tmp/pi-screens/home/rust/login-api-key-entry' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/login-api-key-entry' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /login Enter Down Enter Down Down Enter
 # note: /login: the API key entry field (Anthropic).
 

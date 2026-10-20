@@ -4,6 +4,7 @@
 # keys: (none)
 # note: The input box, empty.
 
+
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
  Press ctrl+o to show full startup help.

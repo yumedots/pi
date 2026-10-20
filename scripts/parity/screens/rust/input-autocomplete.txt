@@ -1,8 +1,9 @@
 # screen: input-autocomplete
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/input-autocomplete' && HOME='/tmp/pi-screens/home/rust/input-autocomplete' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/input-autocomplete' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/input-autocomplete' && HOME='/tmp/pi-screens/home/rust/input-autocomplete' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/input-autocomplete' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /
 # note: The input box with the autocomplete open.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -24,11 +25,11 @@
 
 
 
- → /help Show available commands
-   /clear Clear the conversation
-   /new Clear the conversation
-   /quit Quit pi
-   /version Show version information
+ → help           Show available commands
+   clear          Clear the conversation
+   new            Start a new session
+   quit           Quit pi
+   version        Show version information
 
 > /
 

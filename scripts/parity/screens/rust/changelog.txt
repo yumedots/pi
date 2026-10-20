@@ -1,6 +1,6 @@
 # screen: changelog
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/changelog' && HOME='/tmp/pi-screens/home/rust/changelog' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/changelog' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/changelog' && HOME='/tmp/pi-screens/home/rust/changelog' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/changelog' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /changelog Enter
 # note: /changelog: the changelog entries.
 

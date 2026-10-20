@@ -215,13 +215,15 @@ Ctrl+S save` footer, and the tree selector's `Session Tree` / `Type to search:`
 | `cargo test -p rpi-tui --lib` | **503 passed, 0 failed** — this covers the key-hint ids, the select-list and settings-list empty states, the search placeholder, the assistant message strings, the tool-panel hints, the durations, the skill card and the first-run dialog |
 | CJK sweep over `rpi/crates/` | clean outside `#[cfg(test)]` blocks and doc comments |
 | `cd scripts/parity && node run-all.mjs` (before the header and the tmux warning landed) | `startup` and `panels`: `ts: matches the golden trace`, `rust: matches the golden trace`, `ts and rust: the two traces are identical`. `prompt`, `tool`, `thinking`, `markdown`: the rust pane differed from the golden **in the header block only** (the port's five-row `rpi · 🦀` lockup instead of pi's two mark rows, the missing compact hint line, the missing `Press ctrl+o…` line) plus the two missing tmux-warning rows |
-| `cd scripts/parity && node run-all.mjs` (after the header and the tmux warning landed, **freshly relinked binary**) | `startup` and `panels`: `ts: matches the golden trace`, `rust: matches the golden trace`, `ts and rust: the two traces are identical` ✔. `prompt`, `tool`, `thinking`, `markdown`: the rust pane differs from the golden **only** by (a) one missing blank line **above** the mark — pi's header block starts on a blank row, the port's starts on the mark — and (b) the tmux warning wrapping four columns later: the text is identical, only the break point differs (pi breaks before "on`", the port after it). The header itself now matches pi exactly: `▀▀█  v1.3.0` / `█▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more` / `Press ctrl+o to show full startup help.` / `Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.` |
+| `cd scripts/parity && node run-all.mjs` (after every change in this area landed, on a binary built in the agents' own target directory with `PI_PARITY_RUST_BIN=…/rpi/target-agents/debug/rpi`) | **`startup` 2/2, `panels` 5/5, `prompt` 2/2 and `thinking` 2/2 are byte-identical to pi's golden traces** — `ts: matches the golden trace`, `rust: matches the golden trace`, `ts and rust: the two traces are identical` (in `thinking` the rust side differs from the golden in one step only in a volatile field, the `+ Thought · 0.0s` / `0.1s` timing). `tool` and `markdown` still differ, and both are the TUI library's, not the wording's: `tool` is the collapsed read panel's **empty result row** (pi's read renderer returns `""` when collapsed, so the original keeps the row and prints nothing in it — `packages/coding-agent/src/core/tools/renderers/read.ts:126-128` — while the port drops the row, `rpi/crates/rpi-tui/src/tool_execution.rs`); `markdown` is the markdown body shifted one row (the port's list starts one row earlier). The `tool` golden was also captured against the original at `cb87143e` and needs re-capturing; the fresh TypeScript capture is `scripts/parity/out/ts-tool.json`. The header, the tmux warning, the notices, the user message's spacing, the key hints, the changelog surface, the commands and the autocomplete rows are all in, and the panes that cover them are byte-identical. |
 
-Note when reading the harness rows: the binary that the last run used
-(`rpi/target/debug/rpi`, built 18:25) predates the header change, so the
-"the panes still differ" rows in that run are the **old** header, not the one
-in the source. The binary has to be relinked
-(`cargo build -p rpi-cli --bin rpi`) before the run means anything.
+Note when reading the harness rows: the agents build in their own target
+directory, so the harness must be pointed at it —
+`PI_PARITY_RUST_BIN=/Users/gabriel/pi-native/rpi/target-agents/debug/rpi` —
+and the build must be `scripts/agent-cargo.sh build --workspace`, never bare
+`cargo` (the default `rpi/target` belongs to the developer). A run against a
+stale binary measures old code: the earlier rows in this table were taken
+before the header and the tmux warning landed.
 
 ## 11. What is still different
 

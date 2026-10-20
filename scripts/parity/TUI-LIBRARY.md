@@ -639,6 +639,41 @@ own reply.
 **Check.** Parity: the `tool` scenario — the text must appear once. (The golden for that
 scenario is stale on the TypeScript side and has to be re-captured first.)
 
+**Status.** The panel half is fixed (2026-10-20): the read renderer was already right
+(`rpi/crates/rpi-tui/src/tool_renderers.rs:509-512` returns nothing for a collapsed,
+non-error result, exactly like `packages/coding-agent/src/core/tools/renderers/read.ts:126-128`)
+— the panel was dropping the *empty* result region, and it now keeps the row
+(`rpi/crates/rpi-tui/src/tool_execution.rs`, `render_with_renderer`), with the check
+`a_collapsed_read_panel_keeps_the_empty_result_region`. The rule stays "the renderer
+decides, the panel keeps whatever rows the renderer produced", so bash's collapsed preview
+is untouched.
+
+**Correction.** My first report of this said the port showed the tool result *twice*. That
+was measured against a stale binary: the port's panel was right and the transcript was
+one row *short*. The remaining row is the user message's trailing spacer (the language
+lead's `add_user_message`), reported to them.
+
+## 30. The assistant message has no leading spacer, so the transcript is one row short
+
+**What the user sees.** With a long assistant message the visible window starts one row
+lower than the original's: the first line of the reply is cut off above the viewport.
+
+**Observed.** The `markdown` scenario, with the mock's markdown reply: the golden's rows
+0-24 are the port's rows 1-25 — the port's " - first item" is above the viewport. The
+markdown renderer itself is identical (I rendered the same reply with both
+implementations: the rows match exactly, "- first item" included), so this is the spacing.
+
+| | |
+|---|---|
+| Original | `packages/coding-agent/src/modes/interactive/components/assistant-message.ts:154-156` — a `Spacer(1)` before the content when there is visible content; the host's spacer goes **before** each entry (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:848-849`) → two blank rows between the previous entry and the assistant's text |
+| Port | `rpi/crates/rpi-tui/src/assistant_message.rs:310-313` — the leading spacer is deliberately omitted ("the host adds a Spacer(1) after each transcript entry"), but the host's spacer goes **after** each entry (`rpi/crates/rpi-cli/src/transcript_view.rs:320,340`, `set_trailing_spacing(1)`) → one blank row, and the transcript is one row short per assistant message |
+
+**Check.** Rust: a test that an assistant message with visible content renders a blank
+row before its text. Parity: the `markdown` scenario — the body must start at the
+original's row 0 with " - first item". The component half is the TUI library's
+(`assistant_message.rs:304-313`, where `has_visible` is already computed); the host half
+(`set_trailing_spacing(1)`) is the interactive mode's. The two land together.
+
 ## Verification baseline (2026-10-20, 20:05)
 
 `cargo build --workspace` was green at 19:40, and the port's default is now fullscreen on
@@ -668,7 +703,8 @@ source plainly has, it is a stale artifact, not a source error — `cargo clean 
 | startup | **identical** to the golden |
 | panels | **identical** to the golden |
 | prompt | **identical** to the golden |
-| tool | 2 steps differ by **one blank row**: the port's transcript is one row shorter before the user message (the language lead's `add_user_message`) and one row shorter for the collapsed tool result (the panel must keep the empty result region, the original's renderer returns "" and the panel still renders the row — the TUI library porter's list). The stale golden has been re-captured on the TypeScript side (`scripts/parity/out/ts-tool.json`, the original at b615b0e) and the goldens need refreshing from it |
+| tool | 2 steps differ by **one blank row**: the port's transcript is one row longer between the user message and the tool panel — the user message's trailing spacer (the original has none; the Markdown's own `paddingY: 1` supplies the blank row after the text). The language lead's `add_user_message`. The panel's half is fixed (the empty result region is kept) |
+| thinking | 1 step differs: the `+ Thought · 0.0s` duration against the original's `+ Thought · 0.1s` — the original times the run while it streams (`packages/coding-agent/src/modes/interactive/components/assistant-message.ts:100-119`); the interactive mode's row |
 | thinking | 1 step differs: the `+ Thought · 0.0s` duration (the interactive mode's row) |
 | markdown | 1 step differs (the interactive mode's rows) |
 

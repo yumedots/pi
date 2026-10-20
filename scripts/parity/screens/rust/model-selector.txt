@@ -1,8 +1,9 @@
 # screen: model-selector
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/model-selector' && HOME='/tmp/pi-screens/home/rust/model-selector' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/model-selector' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/model-selector' && HOME='/tmp/pi-screens/home/rust/model-selector' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/model-selector' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /model Enter
 # note: /model: the model selector.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more

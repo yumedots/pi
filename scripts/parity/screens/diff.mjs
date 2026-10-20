@@ -1,11 +1,22 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SCREENS } from "./screens.mjs";
 import { PORT_FILES } from "./port-files.mjs";
+import { RUST_BIN, TS_ROOT } from "./harness.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+/** The exact build the panes came from: the path and when it was linked. */
+function binaryIdentity(path) {
+	try {
+		const stat = statSync(path);
+		return `${path} (mtime ${stat.mtime.toISOString()})`;
+	} catch {
+		return `${path} (missing)`;
+	}
+}
 const DIFFS = join(HERE, "diffs");
 
 /**
@@ -160,10 +171,15 @@ for (const spec of SCREENS) {
 		"- `diffs/<screen>.diff` holds the line diff of the screens that differ.",
 		"- *Port file* names the file in the port that draws the screen, relative to",
 		"  `rpi/crates`.",
-		"- The port's panes were captured against `rpi/target/debug/rpi` rebuilt from",
-		"  the green tree of commit `5dfd73b1f` (2026-10-20 19:19). The tree is being",
-		"  edited, so re-run `node scripts/parity/screens/run.mjs rust` against a fresh",
-		"  binary and then `node scripts/parity/screens/diff.mjs` to refresh this index.",
+		"- The port's panes were captured against the binary below; the original's",
+		"  against the TypeScript tree in `packages/coding-agent/src/cli.ts`.",
+		"",
+		"  - port: `" + binaryIdentity(RUST_BIN) + "`",
+		"  - original: `" + TS_ROOT + "/packages/coding-agent/src/cli.ts` (run with bun)",
+		"",
+		"  The port's tree is edited in place, so re-run",
+		"  `node scripts/parity/screens/run.mjs rust` against a fresh binary and then",
+		"  `node scripts/parity/screens/diff.mjs` to refresh this index.",
 		"",
 		"| Screen | Keys (ts) | Keys (rust) | Match | First differing line | Port file |",
 		"|---|---|---|---|---|---|",

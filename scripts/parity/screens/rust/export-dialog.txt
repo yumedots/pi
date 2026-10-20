@@ -1,8 +1,9 @@
 # screen: export-dialog
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/export-dialog' && HOME='/tmp/pi-screens/home/rust/export-dialog' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/export-dialog' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline  --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/export-dialog' && HOME='/tmp/pi-screens/home/rust/export-dialog' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/export-dialog' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline  --provider mock --model mock/mock-1 --api-key parity-key
 # keys: hello world Enter /export Enter
 # note: /export: the export dialog.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -14,14 +15,14 @@
  Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
  on` to ~/.tmux.conf and restart tmux.
 
+
  hello world
 
 
  Hello from the parity mock.
 
-   ℹ Exported session to
- /private/tmp/pi-screens/work/rust/export-dialog/01a15b8a-b027-71a6-87d9-19c77b1bba15.md
-
+ Exported session to
+ /private/tmp/pi-screens/work/rust/export-dialog/01a15bb1-f50b-72cc-8270-06463818037d.md
 
 
 

@@ -109,12 +109,44 @@ they never reached the provider, so no skill was ever offered. They now join
 the command list, and the provider matches a skill row by its bare name
 (`foo`) with the full-name matches (`/skill:foo`) after it.
 
-## 4. Checks
+## 4. The label column
+
+The original's slash-command list puts the descriptions in a column
+(`packages/tui/src/components/editor.ts:286-288`):
+
+```ts
+const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
+	minPrimaryColumnWidth: 12,
+	maxPrimaryColumnWidth: 32,
+};
+```
+
+and the width is `clamp(max(visibleWidth(label) + 2) over the filtered items,
+12, 32)` with a gap of 2 (`packages/tui/src/components/select-list.ts:6-7,
+288-307`). The port's rule already lived in the tui library
+(`rpi-tui/src/select_list.rs`, `get_primary_column_width`); it is now reachable
+as `SelectListLayoutOptions::column_width(&labels)` so the popup and the
+select lists use **one** implementation. The popup measures the labels of
+every filtered item, not just the visible window — the original reads
+`this.filteredItems`.
+
+## 5. The `enableSkillCommands` setting
+
+The original registers the skills as `skill:<name>` commands
+(`packages/coding-agent/src/core/agent-session.ts:3443-3446`) and the
+`enableSkillCommands` setting decides whether the registration happens
+(`packages/coding-agent/src/core/settings-schema.ts:305`, default `true`). The
+port had the field and the expansion but consulted neither. The setting is now
+read at startup (`TuiStartupSettings::enable_skill_commands`) and the skill
+rows are only added to the command list when it is on.
+
+## 6. Checks
 
 ```
-cd /Users/gabriel/pi-native/rpi
-cargo test -p rpi-tui --lib autocomplete      # 9 passed
-cargo test -p rpi-cli --lib autocomplete      # the accept-path tests
+cd /Users/gabriel/pi-native
+scripts/agent-cargo.sh test -p rpi-tui --lib autocomplete   # 9 passed
+scripts/agent-cargo.sh test -p rpi-tui --lib select_list      # 11 passed
+scripts/agent-cargo.sh test -p rpi-cli --lib autocomplete      # the accept-path tests
 ```
 
 `rpi/crates/rpi-tui/src/autocomplete.rs`:
@@ -124,6 +156,11 @@ cargo test -p rpi-cli --lib autocomplete      # the accept-path tests
 * `the_provider_row_carries_the_argument_hint`
 * `a_skill_is_matched_by_its_bare_name_first`
 * `a_skill_full_name_match_comes_after_the_bare_ones`
+
+`rpi/crates/rpi-tui/src/select_list.rs`:
+
+* `the_column_is_the_widest_label_plus_the_gap`
+* `the_column_clamps_to_the_layouts_bounds`
 
 `rpi/crates/rpi-cli/src/interactive_tui/tests.rs`:
 
@@ -144,16 +181,28 @@ cargo test -p rpi-cli --lib autocomplete      # the accept-path tests
 * `apply_completion_keeps_a_directory_open_for_more_completion`
 * `only_a_command_a_mention_or_a_path_is_an_explicit_completion`
 
-## 5. The model picker
+## 7. An architectural difference worth writing down
 
-The model picker itself is a `SearchableSelectList`
-(`rpi/crates/rpi-tui/src/searchable_select.rs`) whose rows come from a
-`SelectList`; Enter reaches the list through `key_belongs_to_list` and the
-list's own `tui.select.confirm` handling. That path was already correct and
-is unchanged by this work — the Enter bug was in the *editor's* list, which is
-where the model picker is reached from (`/model`).
+The original's editor holds the suggestion list as **state**
+(`autocompleteState`, `autocompleteList`, `autocompletePrefix`), so "the list
+is open" is a fact about the editor. The port's editor has no autocomplete at
+all: the list is **redrawn** from the provider on every keystroke, into a
+container above the editor. "The list is open" is therefore not a state of the
+list — it is a question about the provider and the current text.
 
-## 6. Known gaps in this area (not fixed here)
+Two consequences:
+
+* A key that must only apply while the list is open has to ask the provider
+  (`autocomplete_is_open`), not read a flag. `is_explicit_completion` draws
+  that line, and the ↑/↓ path and the Enter path share it, so the two can
+  never disagree about whether a list is open.
+* A key that **closes** the list cannot just clear the container: the next
+  redraw would bring it back. The dismissal is recorded in the selection
+  (`AUTOCOMPLETE_DISMISSED`) and cleared by the next redraw — which is what
+  `close_autocomplete` does. Anyone changing the dismissal logic should read
+  this paragraph first.
+
+## 8. Known gaps in this area (not fixed here)
 
 * The list renders its own rows (`Text` + `→`), so it has no `(n/m)` counter
   and no wrap-around, while the port's `SelectList` has both. The original's
@@ -164,3 +213,21 @@ where the model picker is reached from (`/model`).
 * No argument completions: typing `/model ` opens no list of models in the
   port, while the original gives `model`, `thinking` and `login` a
   `getArgumentCompletions` (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:734-790`).
+* The port has a `/help` command that the original does not; the language
+  lead is deciding whether it stays. The port's `/` list and its `/help`
+  listing have to agree either way.
+* The path provider's rows carry the **bare** file name, so accepting one
+  replaces the whole path with the name (`/tmp/x/man` → `manual.txt`). The
+  original's rows carry the path, so the directory survives
+  (`packages/tui/src/autocomplete.ts:143-160`). The accept path itself is
+  correct — the text it writes is the provider's text — but the provider's
+  text is short.
+
+## 9. The model picker
+
+The model picker itself is a `SearchableSelectList`
+(`rpi/crates/rpi-tui/src/searchable_select.rs`) whose rows come from a
+`SelectList`; Enter reaches the list through `key_belongs_to_list` and the
+list's own `tui.select.confirm` handling. That path was already correct and
+is unchanged by this work — the Enter bug was in the *editor's* list, which is
+where the model picker is reached from (`/model`).

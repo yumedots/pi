@@ -1,8 +1,9 @@
 # screen: settings-submenu-theme
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/settings-submenu-theme' && HOME='/tmp/pi-screens/home/rust/settings-submenu-theme' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/settings-submenu-theme' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/rust/settings-submenu-theme' && HOME='/tmp/pi-screens/home/rust/settings-submenu-theme' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/settings-submenu-theme' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /settings Enter theme Enter
 # note: /settings: the Theme submenu.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more

@@ -1,7 +1,25 @@
 --- ts/settings-submenu-theme-automatic.txt
 +++ rust/settings-submenu-theme-automatic.txt
+- ▀▀█  v1.3.0
++
+- █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
++ ▀▀█  v1.3.0
+- Press ctrl+o to show full startup help.
++ █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
 -
-+   ℹ Theme set to light.
++ Press ctrl+o to show full startup help.
+- Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
++
+-
++ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+- Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
++
+- on` to ~/.tmux.conf and restart tmux.
++ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+-
++ on` to ~/.tmux.conf and restart tmux.
+-
++ Theme set to light.
 -────────────────────────────────────────────────────────────────────────────────────────────────────
 +
 -Automatic Theme
@@ -13,20 +31,19 @@
 -→ Light theme  system
 +
 -  Dark theme   system
-+> theme
++
 -  Apply        save and go back
-+
++> theme
 -  Change mode  switch to single theme
++
+-
 +→ Theme                             light
--
-+  Default thinking level per model  none
 -  Theme to use in automatic mode when the terminal is light
-+
--
-+  Color theme for the interface
++  Default thinking level per model  none
 -  Enter/Space to change · Esc to cancel
-+
++  Color theme for the interface
 -────────────────────────────────────────────────────────────────────────────────────────────────────
-+  Type to search · Enter/Space to change · Esc to cancel
++
 -mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens     …/tmp/pi-screens/work/settings-submenu-theme-automatic
++  Type to search · Enter/Space to change · Esc to cancel
 +mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens    …/pi-screens/work/settings-submenu-theme-automatic
