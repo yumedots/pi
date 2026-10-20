@@ -6,6 +6,10 @@
 
 - Removed `telemetryContext` from `ProviderRequestOptions` and the option types that inherit it (`StreamOptions`, `SimpleStreamOptions`, `DeferredFetchOptions`, `ClassifierOptions`, `ImagesOptions`). The `@earendil-works/pi-telemetry` package is deleted with it: it defined a vendor-neutral span contract, but no provider ever read the context, so no span was ever recorded.
 
+### Changed
+
+- Tool call arguments are validated without TypeBox's runtime. The validation keeps TypeBox's conversion and check rules, so the coerced arguments and the error messages are unchanged, but importing `@earendil-works/pi-ai` no longer loads TypeBox's compiler and value modules.
+
 ### Fixed
 
 - Fixed whitespace-only tool output (for example a bare `\r\n` from bash) being sent as-is to OpenAI Completions, OpenAI Responses, and Google providers; it now uses the same placeholder as empty output, since some providers reject whitespace-only tool content with a 400 ([#8720](https://github.com/earendil-works/pi/issues/8720))
