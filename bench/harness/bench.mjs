@@ -14,7 +14,7 @@
  *   --runs <n>        Measured runs per scenario (default: 5)
  *   --warmup <n>      Warmup runs per scenario (default: 1)
  *   --only <name>     Run one scenario (repeatable)
- *   --runtime <name>  Run one runtime: node, bun, binary (repeatable)
+ *   --runtime <name>  Run one runtime: node, bun, binary, rpi (repeatable)
  *   --out <path>      Write the results as JSON (default: bench/harness/results.json)
  *   --markdown <path> Write the results as a markdown table
  *   --no-model         Skip the scenarios that need a model
@@ -32,7 +32,38 @@ const PACKAGE_DIR = join(REPO_ROOT, "packages/coding-agent");
 const DIST_CLI = join(PACKAGE_DIR, "dist/cli.js");
 const SRC_CLI = join(PACKAGE_DIR, "src/cli.ts");
 const BINARY = join(PACKAGE_DIR, "dist/pi");
+const RPI_ROOT = resolve(REPO_ROOT, "rpi");
+const RPI_BINARY = join(RPI_ROOT, "target/release/rpi");
 const TIME_BIN = "/usr/bin/time";
+
+const TS_ENV = {
+	timing: "PI_TIMING",
+	offline: "PI_OFFLINE",
+	versionCheck: "PI_SKIP_VERSION_CHECK",
+	agentDir: "PI_CODING_AGENT_DIR",
+	startupBenchmark: "PI_STARTUP_BENCHMARK",
+};
+
+const RPI_ENV = {
+	timing: "RPI_TIMING",
+	offline: "RPI_OFFLINE",
+	agentDir: "RPI_CODING_AGENT_DIR",
+	agentDirInRpc: true,
+};
+
+const TS_RPC = {
+	state: { id: "state", type: "get_state" },
+	isState: (event) => event.type === "response" && event.command === "get_state",
+	prompt: (message) => ({ id: "prompt", type: "prompt", message }),
+	isTurnEnd: (event) => event.type === "agent_settled",
+};
+
+const RPI_RPC = {
+	state: { id: "state", type: "get_state" },
+	isState: (event) => event.type === "response" && event.id === "state" && event.status === "ok",
+	prompt: (message) => ({ id: "prompt", type: "prompt", content: message }),
+	isTurnEnd: (event) => event.type === "response" && event.id === "prompt" && event.status === "ok",
+};
 
 const options = {
 	runs: 5,
@@ -78,6 +109,8 @@ function availableRuntimes() {
 			args: [DIST_CLI],
 			floorArgs: ["-e", ""],
 			available: existsSync(DIST_CLI),
+			env: TS_ENV,
+			rpc: TS_RPC,
 		},
 		{
 			name: "bun",
@@ -85,6 +118,8 @@ function availableRuntimes() {
 			args: [SRC_CLI],
 			floorArgs: ["-e", "0"],
 			available: hasBun(),
+			env: TS_ENV,
+			rpc: TS_RPC,
 		},
 		{
 			name: "bun-smol",
@@ -92,6 +127,8 @@ function availableRuntimes() {
 			args: ["--smol", SRC_CLI],
 			floorArgs: ["--smol", "-e", "0"],
 			available: hasBun(),
+			env: TS_ENV,
+			rpc: TS_RPC,
 		},
 		{
 			name: "binary",
@@ -99,6 +136,18 @@ function availableRuntimes() {
 			args: [],
 			floorArgs: ["--version"],
 			available: existsSync(BINARY),
+			env: TS_ENV,
+			rpc: TS_RPC,
+		},
+		{
+			name: "rpi",
+			command: RPI_BINARY,
+			args: [],
+			floorArgs: ["--version"],
+			available: existsSync(RPI_BINARY),
+			env: RPI_ENV,
+			rpc: RPI_RPC,
+			tuiSelfExit: false,
 		},
 	];
 	return runtimes.filter((runtime) => {
@@ -133,6 +182,33 @@ function floorCandidates() {
 
 function hasBun() {
 	return spawnSync("bun", ["--version"], { encoding: "utf8" }).status === 0;
+}
+
+/**
+ * The environment of a scenario, with the variable names of the runtime.
+ *
+ * The TypeScript agent and the Rust port name their environment variables
+ * differently, so the scenario asks for a name and the runtime resolves it.
+ */
+function runtimeEnv(runtime, entries) {
+	const env = {};
+	for (const [name, value] of entries) {
+		const variable = runtime.env?.[name];
+		if (variable === undefined || value === undefined) continue;
+		env[variable] = value;
+	}
+	return env;
+}
+
+/**
+ * The agent directory of the rpc scenarios, for the runtimes that need one.
+ *
+ * The TypeScript agent reads its catalog from the default agent directory in
+ * the rpc mode, the Rust port needs the directory in its environment.
+ */
+function rpcAgentDir(runtime, agentDir) {
+	if (!agentDir || !runtime.env?.agentDirInRpc) return {};
+	return { [runtime.env.agentDir]: agentDir };
 }
 
 /**
@@ -243,17 +319,17 @@ function runUnderTime(command, args, { env = {}, cwd = REPO_ROOT, onChild, timeo
  * tsc and the coding agent is bundled. The size of the output is part of the
  * measurement, because the build decides what ships.
  */
-async function measureBuild() {
+async function measureBuild(toolchain) {
 	const startedAt = performance.now();
-	const result = await runUnderTime("npm", ["run", "build:offline"], {
-		cwd: REPO_ROOT,
+	const result = await runUnderTime(toolchain.command, toolchain.args, {
+		cwd: toolchain.cwd,
 		timeoutMs: 600_000,
 	});
 	const wallMs = performance.now() - startedAt;
 	return {
 		wallMs,
 		...result.report,
-		distBytes: sizeOf(join(PACKAGE_DIR, "dist")),
+		distBytes: sizeOf(toolchain.artifact),
 		exitCode: result.code,
 	};
 }
@@ -385,13 +461,31 @@ async function measureTui(runtime, env) {
 	]);
 	// The agent exits by itself after the first screen and the shell writes the marker.
 	const deadline = Date.now() + 120_000;
-	while (Date.now() < deadline && !existsSync(donePath)) {
-		await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+	let stopsItself = true;
+	if (runtime.tuiSelfExit === false) {
+		// The Rust port stays up in the interactive mode, so the first screen is the
+		// moment the terminal shows something.
+		stopsItself = false;
+		while (Date.now() < deadline) {
+			const pane = spawnSync("tmux", ["capture-pane", "-p", "-t", session]).stdout;
+			if (pane && pane.toString("utf8").trim().length > 0) break;
+			await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+		}
+	} else {
+		while (Date.now() < deadline && !existsSync(donePath)) {
+			await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+		}
 	}
 	// The agent exits by itself after the first screen, so the memory it holds while
 	// it is up is read from the process before it goes.
 	const wallMs = performance.now() - startedAt;
 	const settledRssBytes = readSessionMemory(session);
+	if (!stopsItself) {
+		// The agent is still up. It is stopped, so the time report around it is
+		// written before the session goes.
+		stopSessionAgent(session);
+		await new Promise((resolvePromise) => setTimeout(resolvePromise, 300));
+	}
 	spawnSync("tmux", ["kill-session", "-t", session]);
 	const stderr = existsSync(stderrPath) ? readFileSync(stderrPath, "utf8") : "";
 	rmSync(stderrPath, { force: true });
@@ -415,6 +509,34 @@ function readSessionMemory(session) {
 	return residentSetSize(children[0] ?? pane);
 }
 
+/**
+ * The pid of the agent in a tmux session.
+ *
+ * The pane runs the shell, the shell runs `/usr/bin/time`, and `/usr/bin/time`
+ * runs the agent, so the agent is the deepest process of the chain.
+ */
+function sessionAgentPid(session) {
+	const pane = spawnSync("tmux", ["list-panes", "-t", session, "-F", "#{pane_pid}"], { encoding: "utf8" }).stdout.trim();
+	if (!pane) return undefined;
+	let pid = pane;
+	for (let depth = 0; depth < 4; depth++) {
+		const children = spawnSync("pgrep", ["-P", String(pid)], { encoding: "utf8" })
+			.stdout.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0);
+		if (children.length === 0) break;
+		pid = children[0];
+	}
+	return pid === pane ? undefined : pid;
+}
+
+/** Stop the agent of a tmux session, so the wrapper around it writes its report. */
+function stopSessionAgent(session) {
+	const pid = sessionAgentPid(session);
+	if (!pid) return;
+	spawnSync("kill", ["-TERM", String(pid)]);
+}
+
 function shellQuote(value) {
 	return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
@@ -425,8 +547,15 @@ function shellQuote(value) {
  * The rpc mode answers `get_state` as soon as the session is up, which is the
  * moment the first screen can be drawn, and streams the events of a turn.
  */
-async function measureRpc(runtime, script) {
-	const childEnv = { PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TIMING: "1" };
+async function measureRpc(runtime, script, env = {}) {
+	const childEnv = {
+		...runtimeEnv(runtime, [
+			["offline", "1"],
+			["versionCheck", "1"],
+			["timing", "1"],
+		]),
+		...env,
+	};
 	const startedAt = performance.now();
 	const result = await runUnderTime(runtime.command, [...runtime.args, "--mode", "rpc", "--no-session"], {
 		env: childEnv,
@@ -447,7 +576,7 @@ async function measureRpc(runtime, script) {
 }
 
 /** The script of the rpc scenario: ask for the state, then send a message. */
-function rpcScript({ prompt, model, agentDir }) {
+function rpcScript({ prompt, rpc }) {
 	const state = { measurements: {}, startedAt: 0 };
 	const lines = [];
 	let buffer = "";
@@ -463,7 +592,7 @@ function rpcScript({ prompt, model, agentDir }) {
 			return;
 		}
 		const now = performance.now();
-		if (event.type === "response" && event.command === "get_state" && state.measurements.firstScreenMs === undefined) {
+		if (rpc.isState(event) && state.measurements.firstScreenMs === undefined) {
 			state.measurements.firstScreenMs = now - state.startedAt;
 			// The memory the agent holds once it is up, without the transient of the startup.
 			state.measurements.settledRssBytes = agentResidentSetSize(childRef?.pid);
@@ -471,7 +600,7 @@ function rpcScript({ prompt, model, agentDir }) {
 				// The session is up. The message goes out now, so the round trip does not
 				// include the startup of the agent.
 				state.promptSentAt = now;
-				childRef?.stdin.write(`${JSON.stringify({ id: "prompt", type: "prompt", message: prompt })}\n`);
+				childRef?.stdin.write(`${JSON.stringify(rpc.prompt(prompt))}\n`);
 			} else {
 				// The rpc mode exits when its input ends.
 				childRef?.stdin.end();
@@ -492,7 +621,7 @@ function rpcScript({ prompt, model, agentDir }) {
 				};
 			}
 		}
-		if (event.type === "agent_settled" && state.measurements.turnMs === undefined) {
+		if (rpc.isTurnEnd(event) && state.measurements.turnMs === undefined) {
 			state.measurements.turnMs = now - state.promptSentAt;
 			childRef?.stdin.end();
 		}
@@ -513,7 +642,7 @@ function rpcScript({ prompt, model, agentDir }) {
 					onLine(line);
 				}
 			});
-			child.stdin.write(`${JSON.stringify({ id: "state", type: "get_state" })}\n`);
+			child.stdin.write(`${JSON.stringify(rpc.state)}\n`);
 		},
 	};
 }
@@ -593,6 +722,7 @@ function diskUsage() {
 		["compiled binary", BINARY],
 		["tui dist", join(REPO_ROOT, "packages/tui/dist")],
 		["ai dist", join(REPO_ROOT, "packages/ai/dist")],
+		["rpi binary", RPI_BINARY],
 	]) {
 		const size = sizeOf(path);
 		if (size !== undefined) usage[name] = size;
@@ -636,31 +766,33 @@ async function main() {
 			name: "tui-first-screen",
 			description: "The interactive mode reaches its first screen.",
 			run: (runtime) =>
-				measureTui(runtime, {
-					PI_TIMING: "1",
-					PI_STARTUP_BENCHMARK: "1",
-					...(agentDir ? { PI_CODING_AGENT_DIR: agentDir } : {}),
-				}),
+				measureTui(
+					runtime,
+					runtimeEnv(runtime, [
+						["timing", "1"],
+						["startupBenchmark", "1"],
+						["agentDir", agentDir],
+					]),
+				),
 		},
 		{
 			name: "tui-idle",
 			description: "The interactive mode stays up, and the memory it holds is read.",
-			run: (runtime) =>
-				measureTuiIdle(runtime, {
-					...(agentDir ? { PI_CODING_AGENT_DIR: agentDir } : {}),
-				}),
+			run: (runtime) => measureTuiIdle(runtime, runtimeEnv(runtime, [["agentDir", agentDir]])),
 		},
 		{
 			name: "rpc-first-screen",
 			description: "The rpc mode answers the first state request.",
-			run: (runtime) => measureRpc(runtime, rpcScript({ prompt: undefined, agentDir })),
+			run: (runtime) =>
+				measureRpc(runtime, rpcScript({ prompt: undefined, rpc: runtime.rpc }), rpcAgentDir(runtime, agentDir)),
 		},
 		...(options.model
 			? [
 					{
 						name: "rpc-turn",
 						description: "A message is sent and the answer comes back.",
-						run: (runtime) => measureRpc(runtime, rpcScript({ prompt, agentDir })),
+						run: (runtime) =>
+							measureRpc(runtime, rpcScript({ prompt, rpc: runtime.rpc }), rpcAgentDir(runtime, agentDir)),
 					},
 				]
 			: []),
@@ -669,7 +801,29 @@ async function main() {
 			description: "The whole workspace is built from source.",
 			// The build belongs to the toolchain, not to a runtime, so it runs once.
 			once: true,
-			run: () => measureBuild(),
+			toolchains: () => {
+				const toolchains = [];
+				const names = runtimes.map((runtime) => runtime.name);
+				if (names.some((name) => name !== "rpi")) {
+					toolchains.push({
+						name: "toolchain",
+						command: "npm",
+						args: ["run", "build:offline"],
+						cwd: REPO_ROOT,
+						artifact: join(PACKAGE_DIR, "dist"),
+					});
+				}
+				if (names.includes("rpi")) {
+					toolchains.push({
+						name: "rpi-toolchain",
+						command: "cargo",
+						args: ["build", "--release", "-p", "rpi-cli"],
+						cwd: RPI_ROOT,
+						artifact: RPI_BINARY,
+					});
+				}
+				return toolchains;
+			},
 		},
 	];
 
@@ -688,29 +842,31 @@ async function main() {
 		// The floor scenario measures the runtimes themselves, not the agent.
 		const scenarioRuntimes = scenario.floors ? floorCandidates() : runtimes;
 		if (scenario.once) {
-			const batteryBefore = batteryCapacity();
-			const run = await scenario.run();
-			const batteryAfter = batteryCapacity();
-			if (batteryBefore !== undefined && batteryAfter !== undefined) {
-				run.batteryDrainPercent = batteryBefore - batteryAfter;
+			for (const toolchain of scenario.toolchains()) {
+				const batteryBefore = batteryCapacity();
+				const run = await measureBuild(toolchain);
+				const batteryAfter = batteryCapacity();
+				if (batteryBefore !== undefined && batteryAfter !== undefined) {
+					run.batteryDrainPercent = batteryBefore - batteryAfter;
+				}
+				results.scenarios[scenario.name].runtimes[toolchain.name] = {
+					summary: summarizeRuns([run]),
+					runs: [
+						{
+							wallMs: run.wallMs,
+							peakRssBytes: run.peakRssBytes,
+							userSeconds: run.userSeconds,
+							sysSeconds: run.sysSeconds,
+							batteryDrainPercent: run.batteryDrainPercent,
+							instructionsRetired: run.instructionsRetired,
+							cyclesElapsed: run.cyclesElapsed,
+							pageFaults: run.pageFaults,
+							distBytes: run.distBytes,
+						},
+					],
+				};
+				process.stdout.write(`${scenario.name} / ${toolchain.name}: done\n`);
 			}
-			results.scenarios[scenario.name].runtimes.toolchain = {
-				summary: summarizeRuns([run]),
-				runs: [
-					{
-						wallMs: run.wallMs,
-						peakRssBytes: run.peakRssBytes,
-						userSeconds: run.userSeconds,
-						sysSeconds: run.sysSeconds,
-						batteryDrainPercent: run.batteryDrainPercent,
-						instructionsRetired: run.instructionsRetired,
-						cyclesElapsed: run.cyclesElapsed,
-						pageFaults: run.pageFaults,
-						distBytes: run.distBytes,
-					},
-				],
-			};
-			process.stdout.write(`${scenario.name} / toolchain: done\n`);
 			continue;
 		}
 		for (const runtime of scenarioRuntimes) {

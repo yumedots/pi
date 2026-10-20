@@ -14,7 +14,8 @@
  *   --runs <n>        Requests with the same prompt (default: 3)
  *   --prompt <text>   The prompt to send (default: "Say hello in three words")
  *   --agent-dir <dir> The agent directory (default: PI_BENCH_AGENT_DIR)
- *   --runtime <name>  node or bun (default: node)
+ *   --runtime <name>  node, bun or rpi (default: rpi when the Rust binary is
+ *                     there, node otherwise)
  *   --json <path>     Write the measurements as JSON
  */
 import { spawn } from "node:child_process";
@@ -28,13 +29,47 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
 const PKG = join(REPO_ROOT, "packages/coding-agent");
+const RPI_BINARY = join(REPO_ROOT, "rpi/target/release/rpi");
 const UPSTREAM = process.env.PI_LLAMA_URL ?? "http://127.0.0.1:8081";
+
+const TS_RPC = {
+	isState: (event) => event.type === "response" && event.command === "get_state",
+	isTurnEnd: (event) => event.type === "agent_settled",
+	prompt: (message) => ({ id: "p", type: "prompt", message }),
+};
+
+const RPI_RPC = {
+	isState: (event) => event.type === "response" && event.id === "s" && event.status === "ok",
+	isTurnEnd: (event) => event.type === "response" && event.id === "p" && event.status === "ok",
+	prompt: (message) => ({ id: "p", type: "prompt", content: message }),
+};
+
+const RUNTIMES = {
+	node: {
+		command: process.execPath,
+		args: [join(PKG, "dist/cli.js"), "--mode", "rpc", "--no-session"],
+		agentDirEnv: "PI_CODING_AGENT_DIR",
+		rpc: TS_RPC,
+	},
+	bun: {
+		command: "bun",
+		args: [join(PKG, "src/cli.ts"), "--mode", "rpc", "--no-session"],
+		agentDirEnv: "PI_CODING_AGENT_DIR",
+		rpc: TS_RPC,
+	},
+	rpi: {
+		command: RPI_BINARY,
+		args: ["--mode", "rpc", "--no-session"],
+		agentDirEnv: "RPI_CODING_AGENT_DIR",
+		rpc: RPI_RPC,
+	},
+};
 
 const options = {
 	runs: 3,
 	prompt: "Say hello in three words",
 	agentDir: process.env.PI_BENCH_AGENT_DIR,
-	runtime: "node",
+	runtime: existsSync(RPI_BINARY) ? "rpi" : "node",
 	json: undefined,
 };
 
@@ -82,6 +117,15 @@ function startCaptureProxy(port) {
 	});
 }
 
+/** True when the request that goes out carries the tool declarations. */
+function carriesTools(body) {
+	try {
+		return (JSON.parse(body).tools?.length ?? 0) > 0;
+	} catch {
+		return false;
+	}
+}
+
 /** Count the tokens of a text with the tokenizer of the model. */
 async function countTokens(text) {
 	const response = await fetch(`${UPSTREAM}/tokenize`, {
@@ -96,13 +140,10 @@ async function countTokens(text) {
 /** Run the agent in rpc mode and collect the usage of one turn. */
 function runTurn(runtime, agentDir, prompt) {
 	return new Promise((resolvePromise, reject) => {
-		const args =
-			runtime === "bun"
-				? [join(PKG, "src/cli.ts"), "--mode", "rpc", "--no-session"]
-				: [join(PKG, "dist/cli.js"), "--mode", "rpc", "--no-session"];
-		const child = spawn(runtime === "bun" ? "bun" : process.execPath, args, {
+		const { command, args, agentDirEnv, rpc } = RUNTIMES[runtime];
+		const child = spawn(command, args, {
 			cwd: REPO_ROOT,
-			env: { ...process.env, PI_CODING_AGENT_DIR: agentDir ?? "" },
+			env: { ...process.env, [agentDirEnv]: agentDir ?? "" },
 			stdio: ["pipe", "pipe", "pipe"],
 		});
 		let buffer = "";
@@ -124,12 +165,12 @@ function runTurn(runtime, agentDir, prompt) {
 				} catch {
 					continue;
 				}
-				if (event.type === "response" && event.command === "get_state" && !ready) {
+				if (rpc.isState(event) && !ready) {
 					// The session is up. The prompt goes out now, so the measurement
 					// does not include the startup of the agent.
 					ready = true;
 					sentAt = performance.now();
-					child.stdin.write(`${JSON.stringify({ id: "p", type: "prompt", message: prompt })}\n`);
+					child.stdin.write(`${JSON.stringify(rpc.prompt(prompt))}\n`);
 					continue;
 				}
 				if (event.type === "message_update" && firstTokenMs === undefined) {
@@ -138,7 +179,7 @@ function runTurn(runtime, agentDir, prompt) {
 				if (event.type === "message_end" && event.message?.usage) {
 					usage.push(event.message.usage);
 				}
-				if (event.type === "agent_settled") {
+				if (rpc.isTurnEnd(event)) {
 					child.stdin.end();
 					resolvePromise({ usage: usage.at(-1), firstTokenMs, sentAt });
 				}
@@ -153,6 +194,7 @@ async function main() {
 	const port = 8099;
 	const { server, captured } = await startCaptureProxy(port);
 	const sourceAgentDir = options.agentDir;
+	const model = { provider: "local", id: "smollm2-1.7b-instruct" };
 	// The agent has to talk to the proxy, so it gets a directory of its own that points
 	// at the proxy. The settings and the credentials of the source directory are copied.
 	const agentDir = mkdtempSync(join(tmpdir(), "pi-token-bench-"));
@@ -170,20 +212,31 @@ async function main() {
 		if (typeof provider.baseUrl === "string") provider.baseUrl = `http://127.0.0.1:${port}/v1`;
 	}
 	writeFileSync(modelsPath, `${JSON.stringify(models, null, "\t")}\n`);
-	const model = { provider: "local", id: "smollm2-1.7b-instruct" };
+	if (options.runtime === "rpi") {
+		// The Rust port picks its model from the settings, so the measured model is
+		// pinned there.
+		writeFileSync(
+			join(agentDir, "settings.json"),
+			`${JSON.stringify({ defaultProvider: model.provider, defaultModel: model.id }, null, "\t")}\n`,
+		);
+	}
 	const runs = [];
 	try {
 		for (let index = 0; index < options.runs; index++) {
 			const capturedBefore = captured.length;
 			const run = await runTurn(options.runtime, agentDir, options.prompt);
-			// The time from the prompt leaving the agent to the request reaching the model.
-			const request = captured[capturedBefore];
+			const requests = captured.slice(capturedBefore);
+			// The time from the prompt leaving the agent to the request reaching the
+			// model. The request that carries the tools is the one of the turn, so it
+			// is the one that is measured.
+			const request = requests.find((entry) => carriesTools(entry.body)) ?? requests[0];
 			if (request && run.sentAt) {
 				run.requestMs = request.at - run.sentAt;
 			}
+			run.requests = requests.length;
 			runs.push(run);
 			process.stdout.write(
-				`run ${index + 1}: input=${run.usage?.input} output=${run.usage?.output} cacheRead=${run.usage?.cacheRead} request=${run.requestMs?.toFixed(0)}ms firstToken=${run.firstTokenMs?.toFixed(0)}ms\n`,
+				`run ${index + 1}: input=${run.usage?.input} output=${run.usage?.output} cacheRead=${run.usage?.cacheRead} requests=${run.requests} request=${run.requestMs?.toFixed(0)}ms firstToken=${run.firstTokenMs?.toFixed(0)}ms\n`,
 			);
 		}
 	} finally {
@@ -216,12 +269,14 @@ async function main() {
 		date: new Date().toISOString(),
 		prompt: options.prompt,
 		model,
+		runtime: options.runtime,
 		runs: runs.map((run) => ({
 			input: run.usage?.input,
 			output: run.usage?.output,
 			cacheRead: run.usage?.cacheRead,
 			cacheWrite: run.usage?.cacheWrite,
 			total: run.usage?.totalTokens,
+			requests: run.requests,
 			requestMs: run.requestMs,
 			firstTokenMs: run.firstTokenMs,
 		})),
