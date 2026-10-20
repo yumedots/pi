@@ -916,21 +916,48 @@ one that asserts Ctrl+C cancels it.
 **Check.** A test that opens the completion list, presses Escape, and asserts the list
 is gone.
 
-#### 28. Transcript notes emitted before the first user message are invisible
+#### 28. `/tree` and `/session` show nothing at all on an empty session
 
-**What the user sees.** On a fresh session, `/session` with no saved sessions prints
-nothing at all.
+**What the user sees.** The user types `/tree` — or `/session` — and **nothing
+happens**. No picker, no message, no error; the screen is unchanged.
 
 | | |
 |---|---|
-| Original | the empty state is rendered **inside** the selector ("No items available", `components/session-menu.ts:211`) |
-| Port | `rpi-cli/src/interactive_tui/selectors.rs:321-327` adds the note "No saved sessions found. Sessions are created automatically in interactive mode." to the chat container — but the 3-D empty-session screen owns the whole layout root (`rpi-cli/src/interactive_tui.rs:1505-1533`) and is only released when the session gains messages (`interactive_tui.rs:3280-3285`) |
+| Original | both pickers render **in the editor slot**, so they are on screen. `/resume` shows `Sessions` / `> Search` / `No items available` and two hint lines (`tab scope: current · re:<pattern> regex · "phrase" exact` / `ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path (off) · ctrl+r rename`) — `components/session-menu.ts:211`, `:309-332`. `/tree` shows a bordered **Session Tree** panel with a help line (`↑/↓ move · ←/→ page · option+←/→ branch · ctrl+x copy · shift+l label · shift+t label time · filters ctrl+d/t/u/l/a · cycle ctrl+o/shift+ctrl+o`) and a `Type to search:` line — `components/tree-selector.ts:1160-1214` |
+| Port | the port's `open_tree_selector` (`rpi-cli/src/interactive_tui/selectors.rs:408`) and `open_session_selector` (`:301`) do render — but **behind** the 3-D empty-session screen, which owns the whole layout root (`rpi-cli/src/interactive_tui.rs:1505-1533`) and is only released when the session gains messages (`interactive_tui.rs:3280-3285`). The port's own note — "No saved sessions found. Sessions are created automatically in interactive mode." (`selectors.rs:321-327`) — lands in the chat container, which is behind the logo |
 
-**Observed.** Live, the captured pane shows the logo and the input and **no note**: the
-note is behind the logo.
+**Observed.** Live, on the fresh binary, the same keys on both sides:
 
-**Check.** A test that renders the empty-session screen with a chat note and asserts
-the note is visible, or that the screen is released when a note is added.
+```
+pi   /resume                  port /session
+  Sessions                      (nothing — the logo and the input, unchanged)
+  > Search
+  No items available
+  tab scope: current · re:<pattern> regex · "phrase" exact
+  ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path (off) ·
+  ctrl+r rename
+
+pi   /tree                    port /tree
+  ──────────────────────       (nothing — the logo and the input, unchanged)
+     Session Tree
+    ↑/↓ move · ←/→ page · option+←/→ branch · ctrl+x copy · shift+l label
+    shift+t label time · filters ctrl+d/t/u/l/a
+    cycle ctrl+o/shift+ctrl+o
+    Type to search:
+  ──────────────────────
+```
+
+**This is the worst finding in the area**: the two pickers the original gives the user
+for navigating a session are, in the port, commands that do nothing visible. The picker
+is drawn — it is just never on screen. **The fix is not in the pickers**: it is in the
+empty-session screen's ownership of the layout root. When a selector is open, the
+screen must give up the root, the way it already does for the first-run dialog
+(`interactive_tui.rs:1525-1530`).
+
+**Check.**
+* Rust: a test that opens a selector while the empty-session screen is active and
+  asserts the selector is in the rendered output.
+* Parity: a scenario that types `/tree` on a fresh session on both sides.
 
 #### 29. Word wrapping, tab handling and visual truncation differ
 
@@ -1211,11 +1238,11 @@ not a fix — the port owns the fix.
 
 | # | Screen | The original's source | What to compare | How |
 |---|---|---|---|---|
-| V1 | The startup header | `interactive-mode.ts:1111-1179` | the mark, ` v<version>`, the compact hint line, the "Press … to show full startup help." line, the onboarding sentence, the tmux warning — and the two blank lines and the warning's wrap width that differ today (finding 11) | the `tool` scenario pane against `scripts/parity/golden/ts-tool.json` |
-| V2 | The window title | `interactive-mode.ts:1230-1237` | `π - <session> - <cwd base name>` | **terminal level, not the pane** — run each side in tmux and read the tab title: `tmux display-message -p '#{window_name}'`. The pane does not contain the title, so a pane diff cannot settle this one. |
-| V3 | The input box | `packages/tui/src/components/editor.ts:602-770` | the filled card, the `> ` gutter, the placeholder, the scroll hints | the `startup` scenario pane |
+| V1 | The startup header | `interactive-mode.ts:1111-1179` | the mark, ` v<version>`, the compact hint line, the "Press … to show full startup help." line, the onboarding sentence, the tmux warning | **CLOSED by the capture** — the header's content is identical; only the leading blank line and the warning's padding differ (D1, D2 in §8) |
+| V2 | The window title | `interactive-mode.ts:1230-1237` | `π - <session> - <cwd base name>` | **CLOSED** — read at the terminal level, `#{pane_title}` gives `π - work` on **both** sides (§8) |
+| V3 | The input box | `packages/tui/src/components/editor.ts:602-770` | the filled card, the `> ` gutter, the placeholder, the scroll hints | **CLOSED by the capture** — the `startup` scenario's "input focused" step is identical |
 | V4 | The layout | `chat-viewport.ts:25-61` | the editor is in the bottom dock, `shrink: 1`, `minSize: 3`; the pendingMessages slot exists; the progress row is at the top | a fullscreen pane with a long draft |
-| V5 | The model list | `components/model-selector.ts:184-244` | `✓ <id>` / `  <id>`, `[<provider>]`, ` · default`, the scope line, the `Model Name:` footer, the hint line, `No matching models` | `/model` on both sides |
+| V5 | The model list | `components/model-selector.ts:184-244` | `✓ <id>` / `  <id>`, `[<provider>]`, ` · default`, the scope line, the `Model Name:` footer, the hint line, `No matching models` | **CLOSED by the capture** — the `panels` scenario's "models" step is byte-identical |
 | V6 | The provider list | `components/oauth-selector.ts:18-118` | the ` [<subscription>]` / ` [<account>]` / ` [<API key>]` label and when it appears, the ` ✓ configured` / ` • not configured` / ` ✓ env: FOO` suffixes, the titles, the empty texts | `/login` and `/logout` on both sides |
 | V7 | The login dialog | `components/login-dialog.ts:40-152`, `components/auth-url.ts:13-41` | `Login to <provider>`, the OSC-8 URL, `[Cmd+click to open] • [Ctrl+X to copy]`, `Copied URL to clipboard`, the device-code lines, `(<cancel> to cancel)`, the **unmasked** API key | a provider login on both sides |
 | V8 | The settings menu | `components/settings-selector.ts:490-901` | all 37 rows, their order and wording, the search field, the value column, the submenu returning to the parent list | `/settings` on both sides |
@@ -1314,3 +1341,119 @@ Deviations, all deliberate:
 * The progress bar is a library component only: **nothing calls it yet**. The original
   puts it in the top row in fullscreen (`interactive-mode.ts:1081`) and above the input
   in regular mode (`:891`), gated by `terminal.showTerminalProgress`.
+
+---
+
+## 8. The capture run against the fresh binary — what the measurement says
+
+Run at 18:50 on the binary relinked at 18:49 (`cargo build -p rpi-cli --bin rpi`),
+with the workspace green for the first time in hours. The port's side of every
+parity scenario, diffed against the golden traces taken from the original
+(`scripts/parity/golden/ts-*.json`).
+
+| scenario | step | result |
+|---|---|---|
+| startup | booted | **identical** |
+| startup | input focused | **identical** |
+| panels | booted | **identical** |
+| panels | help | **identical** |
+| panels | help closed | **identical** |
+| panels | models | **identical** |
+| panels | models closed | **identical** |
+| prompt | booted | **identical** |
+| prompt | answer | differs — 5 rows |
+| tool | booted | **identical** |
+| tool | tool call | differs — 6 rows |
+| tool | answer | differs — 6 rows |
+| thinking | booted | **identical** |
+| thinking | answer | differs — 6 rows |
+| markdown | booted | **identical** |
+| markdown | answer | differs — 1 row |
+
+**The screens the user complained about now match.** The startup screen, the input
+box, the help panel and **the model picker** are byte-identical to the original's —
+the model list's `✓ <id>` row, the `[<provider>]` description, the search field and
+the hint line all land. That closes the model-picker finding (V5) and the
+settings-menu/header wording questions that the capture could settle.
+
+**Four differences remain, and they are small and specific.**
+
+**D1 — the header is one line short: the original's header block starts with a blank
+line and the port's does not.**
+```
+pi   : (blank)   ▀▀█  v1.3.0   █▀ █ escape interrupt · ctrl+c twice to exit …
+port :           ▀▀█  v1.3.0   █▀ █ escape interrupt · ctrl+c twice to exit …
+```
+The original puts a `Spacer(1)` before the header
+(`packages/coding-agent/src/modes/interactive/interactive-mode.ts:1170`); the port's
+`add_welcome_message` (`rpi-cli/src/interactive_tui/rendering.rs:11`) does not. Because
+the whole transcript is one line shorter, the follow-end viewport starts one line
+later — which is why the `markdown` scenario's diff looks like a dropped first list
+item (" - first item" is missing at the top of the pane) when the markdown itself is
+identical. **This one blank line is the whole of the `markdown` difference.**
+
+**D2 — the tmux warning sits outside the header's padding.**
+```
+pi   : (blank)
+        Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+        on` to ~/.tmux.conf and restart tmux.
+        (blank)
+port : Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on`
+        to ~/.tmux.conf and restart tmux.
+```
+The original wraps the warning inside the header's one-column padding (96 columns of
+content, and a blank line above and below); the port renders it across the full
+pane (100 columns) with no blank line above it.
+
+**D3 — the tool result region is five rows shorter in the port.**
+```
+pi   :  read tool-input.txt
+        (blank ×6)
+        The fixture file says hello.
+port :  read tool-input.txt
+        (blank ×1)
+        The fixture file says hello.
+```
+Neither side shows the read's output text, so the difference is the **height of the
+result region** the tool panel reserves between the call row and the next message —
+five rows in the port's favour of nothing. The original's region is
+`components/tool-execution.ts:158-180`; the port's is
+`rpi-tui/src/tool_execution.rs:534-603`.
+
+**D4 — the thinking summary's duration rounds to a different value.**
+```
+pi   :  + Thought · 0.1s
+port :  + Thought · 0.0s
+```
+The original's `formatToolDuration` (`components/assistant-message.ts:114-120`) and
+the port's `thought_summary` (`rpi-tui/src/assistant_message.rs:459`) format the same
+elapsed time, but the port's is one digit shorter here — the run's measured duration
+differs, or the rounding does.
+
+**And the tail of every answer step**: the port's transcript ends with three or four
+blank lines before the input, where the original's ends with one. That is the
+transcript dock's trailing spacing, not the header.
+
+**The window title matches — checked at the terminal level, where it lives.**
+
+The pane does not contain the title, so this one cannot be settled by a pane diff. It
+is read from the terminal, and both sides give the same answer:
+
+```
+tmux -L pi-parity display-message -p -t <session> '#{pane_title}'
+
+pi   : π - work
+port : π - work
+```
+
+(`work` is the basename of the harness's working directory `/tmp/pi-parity/work`;
+`#{window_name}` is the tmux *session* name on both sides and is not the title —
+`#{pane_title}` is the OSC 2 title.) The port's `window_title`
+(`rpi-cli/src/window_title.rs:26`) produces `π - <session> - <cwd base name>`, and
+with no session name it is `π - <cwd base name>` — the original's format
+(`packages/coding-agent/src/modes/interactive/interactive-mode.ts:1230-1237`).
+
+**So V1, V2, V3 and V5 are closed by the captures, and what is left of my findings in
+this area is: D1–D4 above, the provider list and the login dialog, the config
+selector's scope hint, the tree and session pickers, the autocomplete skill entry, and
+the reachability of the four unwired components.**
