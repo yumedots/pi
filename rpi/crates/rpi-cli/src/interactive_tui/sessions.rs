@@ -140,7 +140,7 @@ pub(super) async fn switch_to_session(
             )
             .await;
             state.set_status(RunStatus::Idle);
-            add_note_message(chat, &format!("Switched to session {id}."));
+            add_note_message(chat, "Resumed session");
             true
         }
         Err(e) => {
@@ -475,20 +475,10 @@ pub(super) async fn render_session_history(
                     rendered_any = true;
                 }
             }
-            Entry::ModelChange(change) => {
-                add_note_message(
-                    chat,
-                    &format!("Model changed to {}:{}", change.provider, change.model_id),
-                );
-                rendered_any = true;
-            }
-            Entry::ThinkingLevel(change) => {
-                add_note_message(
-                    chat,
-                    &format!("Thinking level: {:?}", change.thinking_level),
-                );
-                rendered_any = true;
-            }
+            // The model and the thinking level are state, not conversation:
+            // the original applies them silently and the resumed transcript
+            // shows only the user's turn and the assistant's reply.
+            Entry::ModelChange(_) | Entry::ThinkingLevel(_) => {}
             Entry::ActiveTools(change) => {
                 add_note_message(
                     chat,

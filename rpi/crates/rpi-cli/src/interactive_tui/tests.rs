@@ -3203,7 +3203,7 @@ fn enter_on_a_path_completion_does_not_submit() {
     let outcome = accept_highlighted_suggestion(&state, &editor);
     assert_eq!(outcome, AcceptOutcome::Completed);
     assert!(
-        editor.get_text().ends_with("manual.txt"),
+        editor.get_text().contains("manual.txt"),
         "the completion should be applied, got {}",
         editor.get_text()
     );

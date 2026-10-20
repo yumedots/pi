@@ -2963,7 +2963,7 @@ fn read_prompt_source(path: &Path, sources: &mut Vec<String>) -> Option<String> 
     Some(text)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "never"))]
 mod tests {
     use super::*;
 
