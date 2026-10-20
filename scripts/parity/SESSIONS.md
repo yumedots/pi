@@ -1,0 +1,630 @@
+# Sessions, storage, settings, commands, themes, skills, prompt templates
+
+The parity audit for everything that is **written to disk or read back**: the
+session file, the storage layout, the settings file, the slash-command set, the
+themes, the skills and the prompt templates.
+
+Paths are relative to `/Users/gabriel/pi` (TypeScript original, branch
+`perf/lightweight-harness`, commit `06f7bcfc1`) and `/Users/gabriel/pi-native`
+(Rust port, branch `feat/rpi-native`, commit `7e057fccf` plus the live working
+tree).
+
+Verdicts:
+
+- **identical** — same user-visible behaviour and same written artefact.
+- **differs** — both sides have it, but the user (or the file) sees something
+  different.
+- **missing** — the original has it and the port has no counterpart.
+- **inert** — the port has the code but nothing calls it, so the user sees
+  nothing.
+
+How the observations were made: both programs were driven side by side under
+tmux against the parity mock model (`scripts/parity/mock-server.mjs`,
+`mock/mock-1`), one prompt each, and the files they wrote were then read back
+and diffed. The data findings (settings keys, command names, entry types,
+theme tokens) were extracted mechanically from both trees.
+
+---
+
+## 1. The session file is a different format — no interoperability in either direction
+
+**differs — the most consequential finding in the whole audit.**
+
+The two programs write two unrelated file formats for the same concept. A
+session written by one cannot be opened by the other, and anything that reads
+the file (an extension, a script, the original's own share viewer) breaks.
+
+### 1.1 The header line
+
+| | TypeScript | Rust |
+|---|---|---|
+| header shape | `{"type":"session","version":3,"id":…,"timestamp":"2026-10-20T21:34:06.203Z","cwd":…}` | `{"kind":"header","version":4,"id":…,"createdAt":1792532073315,"cwd":…}` |
+| where | `packages/coding-agent/src/core/session-manager.ts:43` (`CURRENT_SESSION_VERSION = 3`), `:1062-1069` | `rpi/crates/rpi-harness/src/session/jsonl/codec.rs:108` (`decode_header`, requires `kind:"header"`), `rpi/crates/rpi-harness/src/session/types.rs:1130` (`JsonlV4Header`) |
+
+**Observed** (one prompt each, same mock model):
+
+```
+TS  line 1: {"type":"session","version":3,"id":"01a15b3c-617b-7522-9405-08b883b6b2bd","timestamp":"2026-10-20T21:34:06.203Z","cwd":"/private/tmp/sessaudit/work"}
+Rust line 1: {"kind":"header","version":4,"id":"01a15b3c-617b-7522-9405-08b883b6b2bd","createdAt":1792532073315,"cwd":"/private/tmp/sessaudit/work"}
+```
+
+**Check**: `rpi/crates/rpi-cli/src/interactive_tui/commands.rs:641` (`/import`),
+then the port reports
+`✗ Could not open session 2026-10-20T21-34-06-203Z_01a15b3c-617b-…: no session matches session 2026-10-20T21-34-06-203Z_01a15b3c-617b-…`.
+The original's importer (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:6557`,
+`runtimeHost.importFromJsonl`) expects a `type:"session"` header and would
+reject the port's file the same way.
+
+### 1.2 The entry types, side by side
+
+The original's session is a **flat list of entries**, each with
+`{type, id, parentId, timestamp}` (`packages/coding-agent/src/core/session-manager.ts:57-62`,
+`SessionEntryBase`) and an ISO-8601 `timestamp`. The port's session is a
+**lane-scoped operation log**: a header plus `kind:"record"` lines (the
+operation log) interleaved with `kind:"entry"` lines (the branch), each with
+`{seq, lane, parentId, timestamp}` and a Unix-millisecond `timestamp`.
+
+**Original — 11 entry types** (`packages/coding-agent/src/core/session-manager.ts`):
+
+| # | `type` | interface | line | extra fields |
+|---|---|---|---|---|
+| 1 | `message` | `SessionMessageEntry` | `:64` | `message` |
+| 2 | `thinking_level_change` | `ThinkingLevelChangeEntry` | `:69` | `thinkingLevel` |
+| 3 | `model_change` | `ModelChangeEntry` | `:74` | `provider`, `modelId` |
+| 4 | `usage` | `UsageEntry` | `:80` | `kind`, `provider`, `model`, `usage`, `note?` |
+| 5 | `compaction` | `CompactionEntry` | `:91` | `summary`, `firstKeptEntryId`, `tokensBefore`, `details?`, `usage?`, `fromHook?`, `systemMessage?` |
+| 6 | `branch_summary` | `BranchSummaryEntry` | `:106` | `fromId`, `summary`, `details?`, `usage?`, `fromHook?` |
+| 7 | `custom` | `CustomEntry` | `:128` | `customType`, `data?` |
+| 8 | `label` | `LabelEntry` | `:135` | `targetId`, `label` |
+| 9 | `session_info` | `SessionInfoEntry` | `:142` | `name?` |
+| 10 | `custom_message` | `CustomMessageEntry` | `:159` | `customType`, `content`, `details?`, `display` |
+| 11 | `context_edit` | `ContextEditEntry` | `:175` | `targetId`, `replacement` |
+
+(the union is `SessionEntry` at `:184-196`)
+
+**Port — 7 entry types** (`rpi/crates/rpi-harness/src/session/types.rs:219`,
+`Entry`; the `type` strings at `:263-273`, `entry_type()`; the whitelists at
+`rpi/crates/rpi-harness/src/session/jsonl/codec.rs:43` `ENTRY_TYPES`):
+
+| # | `type` | struct | line | extra fields |
+|---|---|---|---|---|
+| 1 | `message` | `MessageEntry` | `:141` | `message`, `terminate?` |
+| 2 | `model_change` | `ModelChangeEntry` | `:151` | `provider`, `modelId` |
+| 3 | `thinking_level_change` | `ThinkingLevelEntry` | `:160` | `thinkingLevel` |
+| 4 | `active_tools_change` | `ActiveToolsEntry` | `:168` | `activeToolNames` |
+| 5 | `compaction` | `CompactionEntry` | `:176` | `summary`, `retainedTail`, `tokensBefore`, `details?`, `usage?` |
+| 6 | `branch_summary` | `BranchSummaryEntry` | `:190` | `fromId`, `summary`, `details?`, `usage?` |
+| 7 | `custom` | `CustomEntry` | `:203` | `customType`, `data?` |
+
+### 1.3 The entry types the port does not have
+
+| Original | Port | What the user loses |
+|---|---|---|
+| `usage` (`session-manager.ts:80`) | absent from `Entry`; the port has a `usage` **record** (`types.rs:991` `LaneRecord::Usage`) that is not part of the branch | per-request usage is not part of the branch the export/import/share paths walk; `getUsageCostBreakdown` has nothing to break down |
+| `label` (`:135`) | absent from `Entry`; the port keeps labels in a side-channel fact (`types.rs:1207-1214`, `SessionMutation::FactLabel`) | a label is not a branch entry, so it does not travel with an export/import |
+| `session_info` (`:142`) | absent from `Entry`; the port keeps the session name in storage metadata | the display name is not in the branch; an exported session loses its name |
+| `custom_message` (`:159`) | absent | **extensions cannot inject a message into the LLM context of a session** — the mechanism the original's extension API offers |
+| `context_edit` (`:175`) | absent | append-only edits to an earlier entry's contribution to the model context are impossible |
+
+### 1.4 The entry type the port has that the original does not
+
+| Port | Original | Note |
+|---|---|---|
+| `active_tools_change` (`types.rs:168`) | — | a port extension, not a parity gap in itself, but it means the two `Entry` sets are not equal even after the five above are added |
+
+### 1.5 Field-level differences on the shared entry types
+
+| Type | Original | Port | Difference |
+|---|---|---|---|
+| base | `{type, id, parentId, timestamp}` (ISO string) — `session-manager.ts:57-62` | `{type, id, seq, parentId, timestamp}` (Unix ms) — `types.rs:124-138` | `seq` is extra; `timestamp` is an integer, not an ISO-8601 string |
+| `message` | `message` — `:65` | `message`, `terminate?` — `types.rs:141-147` | `terminate` is extra |
+| `compaction` | `firstKeptEntryId` — `:95` | `retainedTail` (the messages) — `types.rs:180` | different field and different meaning: an id vs a copy of the kept messages |
+| `compaction` | `fromHook?`, `systemMessage?` — `:99-102` | absent | a compaction made by an extension cannot be marked as such, and the prompt/tool state at the compaction boundary is not stored |
+| `branch_summary` | `fromHook?` — `:113` | absent | same |
+| `thinking_level_change` | `thinkingLevel` — `:70` | `thinkingLevel` — `types.rs:162` | identical |
+| `model_change` | `provider`, `modelId` — `:75-76` | `provider`, `modelId` — `types.rs:153-154` | identical |
+| `custom` | `customType`, `data?` — `:129-130` | `customType`, `data?` — `types.rs:205-206` | identical |
+
+### 1.6 The port's extra record types
+
+`rpi/crates/rpi-harness/src/session/types.rs:991` `LaneRecord` — the operation
+log that has no counterpart in the original's file at all:
+
+`operation_started`, `abort_requested`, `operation_finished`, `step_attempt`,
+`tool_started`, `queue_enqueued`, `queue_cancelled`, `write_deferred`,
+`usage`, `assistant_frame`, `retry_pending`
+(`rpi/crates/rpi-harness/src/session/jsonl/codec.rs:52` `RECORD_TYPES`).
+
+**Observed** — the port's file for a single prompt:
+
+```
+{"kind":"header","version":4,…}
+{"kind":"record","type":"operation_started","seq":1,"lane":"main","runId":…,"intent":{"kind":"run","originalPrompt":[…],"initialMessages":[]}}
+{"kind":"entry","lane":"main","type":"message","id":…,"seq":2,"parentId":null,"message":{…}}
+{"kind":"record","type":"assistant_frame","seq":3,…,"frame":{"type":"start",…}}
+{"kind":"record","type":"assistant_frame","seq":4,…,"frame":{"type":"text_start",…}}
+{"kind":"record","type":"assistant_frame","seq":5,…,"frame":{"type":"text_delta","delta":"Hello from the parity "}}
+{"kind":"record","type":"assistant_frame","seq":6,…,"frame":{"type":"text_delta","delta":"mock."}}
+{"kind":"record","type":"assistant_frame","seq":7,…,"frame":{"type":"text_end",…}}
+{"kind":"record","type":"assistant_frame","seq":8,…,"op":"commit_stream",…}
+{"kind":"entry","lane":"main","type":"message","id":…,"seq":9,"parentId":…,"message":{…}}
+{"kind":"record","type":"assistant_frame","seq":10,…,"op":"clear_run"}
+{"kind":"record","type":"operation_finished","seq":11,…,"outcome":"completed"}
+```
+
+The original's file for the same prompt is six lines: the header, a
+`model_change`, a `thinking_level_change` and three `message` entries.
+
+**User terms**: the port's session file is roughly twice the size for one turn
+(the streamed frames are persisted), it cannot be read by pi, pi's files cannot
+be read by the port, and the original's share viewer cannot render a port
+session.
+
+---
+
+## 2. Prompt templates are listed in the autocomplete and then do nothing
+
+**differs.**
+
+The port loads prompt templates, lists them in the slash-command autocomplete,
+and then sends the raw text to the model when one is invoked.
+
+| | TypeScript | Rust |
+|---|---|---|
+| the type | `packages/coding-agent/src/core/prompt-templates.ts:12` — `{name, description, argumentHint?, content, sourceInfo, filePath}` | `rpi/crates/rpi-harness/src/types.rs:72` — `{name, description?, content}` |
+| `argument-hint` frontmatter | `prompt-templates.ts:143` | absent — `grep -rn "argument-hint" rpi/crates` → 0 hits |
+| `$1` / `$@` / `$ARGUMENTS` / `${N:-default}` / `${@:N:L}` substitution | `prompt-templates.ts:72` (`substituteArgs`) | `rpi/crates/rpi-harness/src/prompt_templates.rs:377` (`substitute_args`) — exists |
+| the expansion | `packages/coding-agent/src/core/agent-session.ts:2255` (`expandPromptTemplate`) | `rpi/crates/rpi-harness/src/agent_harness.rs:4573` (`prompt_from_template`) — **no CLI caller** |
+| the autocomplete entry | `packages/tui/src/autocomplete.ts:356` (shows `hint — description`) | `rpi/crates/rpi-cli/src/interactive_tui.rs:1274-1286` |
+
+**Observed**: with `.pi/prompts/hello.md` (and `.rpi/prompts/hello.md`) holding
+
+```
+---
+description: Say hello from the template
+argument-hint: "<name>"
+---
+Hello template body. Args: $1 and $ARGUMENTS
+```
+
+- Original, `/hello World` → the transcript shows
+  `Hello template body. Args: World and World`.
+- Port, `/hello World` → the session entry is the user message
+  `"/hello World"`, verbatim.
+
+**Check**: `grep -rn "prompt_from_template" rpi/crates/rpi-cli` → 0 hits.
+`rpi/crates/rpi-cli/src/interactive_tui.rs:1274` builds the autocomplete entry
+from the template and nothing else uses it.
+
+---
+
+## 3. Skills are advertised but can never be invoked
+
+**differs.**
+
+The port puts the `<available_skills>` listing in the system prompt (that part
+matches), but there is no way to invoke a skill.
+
+| | TypeScript | Rust |
+|---|---|---|
+| `/skill:name args` | `packages/coding-agent/src/core/skills.ts:360` (`parseSkillCommand`), expanded at `core/agent-session.ts:2201-2225` | deliberately passed through — `rpi/crates/rpi-cli/src/interactive_tui.rs:517` says so in a comment; `grep -rn "skill:" rpi/crates/rpi-cli/src` → only that comment |
+| `@name` mention in prose | `core/skills.ts:386` (`findSkillMentions`), `:398` (`removeSkillMentions`), expanded at `core/agent-session.ts:2201` | absent |
+| the invocation block | `core/skills.ts:422` — `<skill name="…" location="…">` + "References are relative to **{baseDir}**" | `rpi/crates/rpi-harness/src/skills.rs:89` (`format_skill_invocation`) — same shape, but "relative to {dirname of the file}" |
+| the harness API | — | `rpi/crates/rpi-harness/src/agent_harness.rs:4553` (`skill()`) — **no CLI caller** |
+| `enableSkillCommands` setting | `core/settings-defaults.ts:33` (default `true`), `core/settings-schema.ts:305` | modelled at `rpi/crates/rpi-cli/src/settings.rs` — `grep -rn "enable_skill_commands" rpi/crates` → only `settings.rs` |
+
+**User terms**: the model is told a skill exists and the user cannot run it.
+
+Two smaller differences in the listing itself:
+
+- `rpi/crates/rpi-harness/src/skills.rs:112` says "Read the full skill file when
+  the task matches its description."; the original says "Use the read tool to
+  load a skill's file when the task matches its description."
+  (`core/skills.ts:434`).
+- The port's `Skill` (`rpi/crates/rpi-harness/src/types.rs:56`) has no
+  `baseDir` and no `sourceInfo`; the original's `Skill`
+  (`core/skills.ts:74`) has both.
+
+---
+
+## 4. Skill validation: the port adds a rule the original does not have
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| name rules | `packages/coding-agent/src/core/skills.ts:92` — length ≤ 64, `[a-z0-9-]`, no leading/trailing hyphen, no `--` | `rpi/crates/rpi-harness/src/skills.rs:520` — the same four **plus** `name "{name}" does not match parent directory "{parent}"` (`:522-526`) |
+| description rules | `core/skills.ts:118` — required, ≤ 1024 | `rpi/crates/rpi-harness/src/skills.rs:552` — same |
+
+**User terms**: a skill whose frontmatter `name` differs from its folder name
+produces a diagnostic in the port that the original never emits.
+
+---
+
+## 5. `/new` does not start a new session
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| command | `packages/coding-agent/src/core/slash-commands.ts:43` — `{name:"new", description:"Start a new session"}` | `rpi/crates/rpi-cli/src/interactive_tui/commands.rs:24` — `/clear` with the visible alias `/new` (`:31`, `:36`) |
+| what it does | `packages/coding-agent/src/modes/interactive/interactive-mode.ts:3068` → `handleClearCommand` (`:6914`) → `runtimeHost.newSession()` → `core/session-manager.ts:1057-1082` writes a **new** `<ts>_<id>.jsonl` | `rpi/crates/rpi-cli/src/interactive_tui.rs:3246` — `chat_container.clear(); add_welcome_message(...)` — the same file keeps growing |
+
+**User terms**: in the port, `/new` is a transcript clear; the old turns stay in
+the file and the session list still shows one session.
+
+---
+
+## 6. The slash-command set differs
+
+**differs.**
+
+`packages/coding-agent/src/core/slash-commands.ts:21-53` (26 built-ins) vs
+`rpi/crates/rpi-cli/src/interactive_tui/commands.rs:792-832`
+(`build_builtin_registry`, 30 built-ins). The mechanical row in
+`scripts/parity/audit.mjs` now compares the *invocable* names (canonical plus
+aliases) on both sides:
+
+```
+## slash commands
+the original: 29, the port: 38
+missing on the port (5): /bug, /history, /sessions, /skills, /stats
+only on the port (14): /?, /clear, /context, /help, /images, /m, /provider, /q, /session, /think, /tools, /usage, /v, /version
+```
+
+| Original command | Port | Difference |
+|---|---|---|
+| `skills` "Browse and run a skill" (`slash-commands.ts:27`) | — | **missing** |
+| `bug` "Report a bug to the Pi developers" (`slash-commands.ts:32`) | — | **missing** |
+| `stats` "Show session info and stats" (`slash-commands.ts:35`) | `/usage` (`commands.rs:746`), `/context` (`:726`) | **differs** — see §7 |
+| `quit` (alias `exit`) (`slash-commands.ts:53`) | `/exit` (aliases `/quit`, `/q`) (`commands.rs:44-49`) | canonical name differs; the port adds `/q` |
+| `resume` (aliases `history`, `sessions`) (`slash-commands.ts:52`) | `/session` (alias `/resume`) (`commands.rs:282-287`) | canonical name differs; **`/history` and `/sessions` do not resolve** |
+| `new` "Start a new session" (`slash-commands.ts:43`) | `/new` = alias of `/clear` (`commands.rs:24-42`) | **differs** — see §5 |
+| `model` with `argumentHint: "<provider/model>"` (`slash-commands.ts:23`) | `/model` (`commands.rs:110`) | the port has no `argumentHint` on the command type; the hint is missing from the autocomplete |
+| `thinking` with `argumentHint: "<level>"` (`slash-commands.ts:25`) | `/thinking` (`commands.rs:191`) | same |
+| `theme` with `argumentHint: "<name>"` (`slash-commands.ts:29`) | `/theme` (`commands.rs:305`) | same |
+| `login` with `argumentHint: "<provider>"` (`slash-commands.ts:51`) | `/login` (`commands.rs:445`) | same |
+| — | `/help` (`commands.rs:7`), `/version` (`:65`), `/provider` (`:161`), `/tools` (`:243`), `/images` (`:263`), `/context` (`:726`), `/usage` (`:746`), `/clear` (`:24`) | port-only |
+
+`argumentHint` is a field of the original's command record
+(`packages/coding-agent/src/core/slash-commands.ts:16`) and the autocomplete
+renders it (`packages/tui/src/autocomplete.ts:356`); the port's `SlashCommand`
+trait has no such field.
+
+Also: the port's `/exit` description is `"Quit pi"`
+(`rpi/crates/rpi-cli/src/interactive_tui/commands.rs:44-47`) where the
+original's is `Quit ${APP_NAME}` (`slash-commands.ts:53`).
+
+---
+
+## 7. `/stats` has no counterpart; `/usage` is a subset
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| command | `/stats` — `packages/coding-agent/src/modes/interactive/interactive-mode.ts:6683-6767` | `/usage` — `rpi/crates/rpi-cli/src/interactive_tui.rs:3345-3375`; `/context` — `interactive_tui/commands.rs:726` |
+| session name, file, session id | yes (`:6699-6701`) | no |
+| message counts (total / user / assistant / tool calls / tool results) | yes (`:6702-6705`) | messages only (`:3354`) |
+| token breakdown (input / cached % / uncached / written / output / total) | yes (`:6707-6717`) | total / cached / uncached (`:3355-3357`) |
+| cache-warming mode + status + miss-penalty and refresh-cost economics | yes (`:6719-6727`) | no |
+| cost total + **per-model breakdown** + "Cache Re-billed" | yes (`:6729-6757`) | cost total only (`:3358`) |
+
+---
+
+## 8. `/export` takes a format in the port and a path in the original; the port's JSONL export is not a session file
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| the argument | a **path** — `packages/coding-agent/src/modes/interactive/interactive-mode.ts:6510-6526` | a **format** — `rpi/crates/rpi-cli/src/interactive_tui/commands.rs:369-394` |
+| `.jsonl` ⇒ JSONL, anything else ⇒ HTML | yes (`:6514`) | no |
+| the default with no argument | **HTML** (`:6518`) | **Markdown** (`:380`) |
+| an unknown argument | a path | `Unknown export format: <arg>. Supported: md, html, jsonl` (`:388`) |
+| the JSONL writer | `packages/coding-agent/src/core/session-export.ts:9-30` — writes a `type:"session"` header and the branch, so the export is importable | `rpi/crates/rpi-cli/src/export.rs:199` — writes **only the entries, no header** |
+| the HTML writer | `packages/coding-agent/src/core/export-html/` — `template.html` + `template.css` (23 KB) + `template.js` (80 KB) + `tool-renderer.ts` + `ansi-to-html.ts`, themed with the session's theme (`core/agent-session.ts:4354-4375`) | `rpi/crates/rpi-cli/src/export.rs:141` — a fixed inline stylesheet, User/Assistant paragraphs only: no theme, no tool calls, no thinking blocks, no syntax highlighting |
+
+**Observed**: the port's `/export jsonl` wrote a file whose first line is
+
+```
+{"type":"message","id":"01a15b43-7a38-…","seq":2,"parentId":null,"timestamp":1792532511288,"message":{…}}
+```
+
+and re-importing it produced
+`✗ Could not open session 01a15b45-bae9-70c2-8aea-872377479ed6: no session matches session 01a15b45-bae9-70c2-8aea-872377479ed6`.
+
+**User terms**: `/export session.jsonl` — the original's spelling — fails in
+the port with "Unknown export format"; bare `/export` gives Markdown in the
+port and HTML in the original; and the port's own `.jsonl` export cannot be
+imported back.
+
+---
+
+## 9. `/share` shares a different artefact and ignores the destination setting
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| what is uploaded | the session as **JSONL**, with a `pi.share` trailing entry carrying the system prompt and the tool schemas — `packages/coding-agent/src/modes/interactive/session-share.ts:25` | a **Markdown** transcript — `rpi/crates/rpi-cli/src/interactive_tui/sessions.rs:8-84` |
+| destinations | Radius artefact, falling back to a private gist — `session-share.ts:57-224` | `gh gist create --filename session.md -`, falling back to the clipboard — `sessions.rs:48-84` |
+| the destination setting | `sessionShareDestination` (`auto\|gist\|radius`) — `core/settings-schema.ts:227` | modelled at `rpi/crates/rpi-cli/src/settings.rs` — `grep -rn "session_share_destination" rpi/crates` → only `settings.rs` |
+| the shared URL | the original's viewer URL plus the gist URL — `session-share.ts:209-210` | the raw gist URL — `sessions.rs:64` |
+
+---
+
+## 10. Sessions live in a different directory, and the port writes one even when you never chat
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| the sessions directory | `<agentDir>/sessions` = `~/.pi/agent/sessions` — `packages/coding-agent/src/config.ts:657` | `<cwd>/.rpi/sessions` — `rpi/crates/rpi-cli/src/session.rs:190` (`default_session_dir`) |
+| the rest of the agent dir | `themes/`, `tools/`, `bin/`, `prompts/`, `sessions/`, `models.json`, `auth.json`, `settings.json` — `config.ts:613-663` | `models.json`, `auth.json`, `settings.json`, `trust.json` — `rpi/crates/rpi-cli/src/config.rs:124-140` |
+| a lock file next to the session | no | yes: `<uuid>.jsonl.lock` |
+| when the file is created | lazily, only once there is a user or assistant message — `core/session-manager.ts:1160-1190` | eagerly, at launch |
+
+**Observed**: the original wrote
+`/tmp/sessaudit/ts-agent/sessions/--private-tmp-sessaudit-work--/<ts>_<uuid>.jsonl`;
+the port wrote
+`/tmp/sessaudit/work/.rpi/sessions/--private-tmp-sessaudit-work--/<ts>_<uuid>.jsonl`
+**plus** `<ts>_<uuid>.jsonl.lock`. Launching the port and quitting without
+typing left both files behind.
+
+**User terms**: the project directory collects session files, and the session
+list can only ever see the current project (see §12).
+
+---
+
+## 11. Project resources: `.pi` versus `.rpi`
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| the project config directory | `.pi` — `packages/coding-agent/src/config.ts:589` (`CONFIG_DIR_NAME`) | `.rpi` — `rpi/crates/rpi-cli/src/resource_dirs.rs:44` |
+| the project resource roots | `<cwd>/.pi/{skills,prompts,themes,extensions}` — `core/resource-loader.ts:998-1001` | `<cwd>/.rpi/{skills,prompts,themes,extensions}` — `resource_dirs.rs:51` ("Only `.rpi` is read") |
+| the global resource roots | `<agentDir>/{skills,prompts,themes,extensions}` — `core/resource-loader.ts:992-995` | `<agentDir>/{skills,prompts,themes,extensions}` — `resource_dirs.rs:59` — the same |
+
+**Observed**: the same `hello.md` template loaded by the original from
+`.pi/prompts/` was invisible to the port; the port needed `.rpi/prompts/`.
+
+**User terms**: a project that ships a `.pi/` folder works in the original and
+is silently ignored by the port.
+
+---
+
+## 12. The session picker is much weaker
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| the picker | `packages/coding-agent/src/modes/interactive/components/session-menu.ts:195` | `rpi/crates/rpi-cli/src/interactive_tui/selectors.rs:301` |
+| the scope (current project / all folders) | yes — `session-menu.ts:23`, `:197`, `:355` | no |
+| the sort modes (threaded / recent / relevance) | yes — `session-menu.ts:198`, `:361` | no |
+| rename | yes — `session-menu.ts:299`, `:379` | no |
+| delete | yes — `session-menu.ts:343`, `:387` | no |
+| the query language (token / phrase / regex) | yes — `components/session-selector-search.ts:39` | a plain fuzzy filter — `rpi/crates/rpi-tui/src/fuzzy.rs` |
+
+---
+
+## 13. `/fork` has no fork-point picker
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| the command | `packages/coding-agent/src/modes/interactive/interactive-mode.ts:3037` → `showUserMessageSelector()` — the user picks the user message to fork from (`components/user-message-selector.ts`) | `rpi/crates/rpi-cli/src/interactive_tui/commands.rs:403` → `TuiMessage::ForkSession` → `interactive_tui/sessions.rs:198` — forks the whole session at the current leaf |
+
+`/clone` is the same code path on both sides
+(`packages/coding-agent/src/modes/interactive/interactive-mode.ts:3042`,
+`rpi/crates/rpi-cli/src/interactive_tui/commands.rs:419`).
+
+---
+
+## 14. Settings: the file schema matches, but more than twenty keys are parsed and then ignored
+
+**differs.**
+
+The mechanical diff of the top-level settings keys is now clean — the original's
+`SettingsSchema` (`packages/coding-agent/src/core/settings-schema.ts:206`, 60
+keys) against the port's `Settings` struct
+(`rpi/crates/rpi-cli/src/settings.rs:259`) plus its serde aliases:
+
+```
+## settings keys
+the original: 60, the port: 60
+identical
+port extensions, not in the original (1): lastRpiChangelogVersion
+```
+
+(The port's struct was rewritten during this audit; an earlier state modelled
+only 40 fields and silently dropped 28 upstream keys. The list below is the
+post-rewrite state.)
+
+**But modelling is not consumption.** `grep -rn "settings\.<field>" rpi/crates
+| grep -v rpi-cli/src/settings.rs` returns **0 hits** for every one of these —
+the port reads the key, parses it, and never looks at it again:
+
+| Setting | Original | Port |
+|---|---|---|
+| `autocompletePosition` | `core/settings-schema.ts:381` | ignored — the autocomplete list is always above the input |
+| `treeFilterMode` | `:335` | ignored — `/tree` has no filters |
+| `sessionShareDestination` | `:227` | ignored — see §9 |
+| `externalEditor` | `:288` | ignored — Ctrl+G reads only `$RPI_EXTERNAL_EDITOR` / `$VISUAL` / `$EDITOR` |
+| `enableSkillCommands` | `:305` | ignored — see §3 |
+| `fullscreenScrollbar` | `:441` | ignored |
+| `fullscreenWheelScrollLines` | `:448` | ignored — the wheel is fixed at 3 lines |
+| `fullscreenExitOutput` | `:434` | ignored |
+| `images.blockImages` / `images.autoResize` | `:106` | ignored |
+| `warnings.anthropicExtraUsage` | `:144` | ignored |
+| `codemode.mode` / `codemode.inlineBudget` | `:154` | ignored — there is no codemode |
+| `cacheWarming` | `:421` | ignored — there is no cache warmer (`grep -rn cache_warmer rpi/crates` → 0) |
+| `projectContextMaxChars` | `:412` | ignored |
+| `modelThinkingLevels` | `:216` | ignored |
+| `defaultProjectTrust` | `:271` | ignored — see §18 |
+| `websocketConnectTimeoutMs` | `:428` | ignored |
+| `npmCommand` | `:279` | ignored |
+| `deviceId` | `:297` | ignored |
+| `transport` | `:222` | ignored by the provider layer |
+| `queueMode` / `websockets` (deprecated) | `:462`, `:470` | ignored |
+
+One key-name asymmetry survives: the original's key is `enabledModels`
+(`core/settings-schema.ts:313`) and the port writes `scopedModels`
+(`rpi/crates/rpi-cli/src/settings.rs`, `alias = "scopedModels"` on the
+`enabledModels` field). The port reads both, but a port-written
+`settings.json` handed to the original loses the scoped-model set.
+
+---
+
+## 15. Project settings are not deep-merged
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| the merge | `packages/coding-agent/src/core/settings-manager.ts:143` (`deepMergeSettings`), applied at `:306` — **every** key merges, project wins | `rpi/crates/rpi-cli/src/settings.rs:419` (`load_effective_model_settings`) — overlays only `defaultProvider`, `defaultModel`, `defaultThinkingLevel`, `theme`; `rpi/crates/rpi-cli/src/resource_dirs.rs:345` additionally reads only `skills`, `prompts`, `extensions` |
+| the project file | `<cwd>/.pi/settings.json` — `settings-manager.ts:194` | `<cwd>/.rpi/settings.json` — `rpi/crates/rpi-cli/src/settings.rs:409` |
+
+**User terms**: a project's `nerdFonts: true`, `outputPad: 0`,
+`treeFilterMode` and everything else in its settings file have no effect.
+
+---
+
+## 16. The settings menu exposes 15 of the original's 37 rows
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| the rows | `packages/coding-agent/src/modes/interactive/components/settings-selector.ts:487-905` — 37 top-level rows | `rpi/crates/rpi-cli/src/interactive_tui/settings.rs:142-269` (`settings_menu_items`) — 15 rows |
+| the submenu framework | generic — `components/settings-submenu.ts:31` (`SelectSubmenu`, `SteppedSubmenu`) | four hard-coded rows — `rpi/crates/rpi-cli/src/interactive_tui/settings.rs:67-100` |
+
+The port's rows: theme, model, thinking, scoped-models, hide-thinking,
+show-images, cache-miss-notices, quiet-startup, collapse-changelog,
+terminal-progress, fullscreen-copy-on-select, double-escape-action,
+editor-padding, autocomplete-max-items, http-idle-timeout.
+
+Missing from the port: auto-compact, image width, auto-resize images, block
+images, skill commands, show hardware cursor, output padding, Nerd Font
+glyphs, autocomplete position, clear on shrink, 3D empty session, steering
+mode, follow-up mode, transport, session share destination, cache warming,
+Mermaid diagrams, default project trust, tree filter mode, warnings
+(submenu), default thinking level per model (submenu), TUI mode, fullscreen
+exit output, fullscreen scrollbar, fullscreen wheel scrolling.
+
+Port-only rows: Default model, Default thinking, Cycle scope.
+
+---
+
+## 17. Themes: three compiled-in palettes, no JSON themes, no user themes, no "system" theme
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| the themes | `packages/coding-agent/src/modes/interactive/theme/dark.json` + `light.json` — okhsl colour **documents** with `vars`, `colors` and `export` blocks | `rpi/crates/rpi-tui/src/theme.rs:698` — `ThemePreset { Dark, Light, Monochrome }` |
+| the tokens | `packages/coding-agent/src/modes/interactive/theme/theme-tokens.ts:24` — 58 | `rpi/crates/rpi-tui/src/theme.rs:17` (`ThemeColors`) — 58 |
+| a JSON loader | yes — `core/resource-loader.ts:1055` (the default theme dirs), `core/config.ts:621` (`<agentDir>/themes`) | none — `grep -rn "ThemeJson\|from_json" rpi/crates/rpi-tui` → 0 hits |
+| a user theme directory | `<agentDir>/themes` and `<cwd>/.pi/themes` — `core/resource-loader.ts:992-1001` | none |
+| the `themes` settings key | `core/settings-schema.ts:303` | modelled at `rpi/crates/rpi-cli/src/settings.rs` — `grep -rn "settings.themes" rpi/crates` → 0 hits |
+| the "system" theme (follows the terminal's light/dark) | `packages/coding-agent/src/modes/interactive/theme/theme.ts:52` (`SYSTEM_THEME_NAME`) | none — the theme manager has a `follows_terminal` flag (`rpi/crates/rpi-tui/src/theme.rs:446`) but no named "system" theme |
+| `/theme <name>` | any registered theme name — `core/slash-commands.ts:29` | only the three — `rpi/crates/rpi-cli/src/interactive_tui/commands.rs:305-341`; anything else is `Unknown theme "x". Valid: dark, light, monochrome.` |
+
+The token **set** now matches exactly (58 against 58, none missing, none
+extra). The token **values** do not: the port's palettes are hard-coded
+ANSI-256 approximations of the original's okhsl hexes
+(`rpi/crates/rpi-tui/src/theme.rs:113` and the light palette at `:459`).
+
+---
+
+## 18. Project trust: the original prompts, the port does not
+
+**differs.**
+
+| | TypeScript | Rust |
+|---|---|---|
+| the gate | `packages/coding-agent/src/core/trust-manager.ts:28-37` — `settings.json`, `mcp.json`, `extensions`, `skills`, `prompts`, `themes`, `SYSTEM.md`, `APPEND_SYSTEM.md` | `rpi/crates/rpi-cli/src/session.rs` gates project resources on `project_trusted` — but never prompts |
+| the prompt | the "Trust project folder?" dialog | none |
+| the store | `<agentDir>/trust.json` — `core/trust-manager.ts:214` | `<agentDir>/trust.json` — `rpi/crates/rpi-cli/src/config.rs:139` — the same |
+
+**Observed**: with `.pi/prompts/hello.md` present, the original opened
+`Trust project folder? /private/tmp/sessaudit/work` and swallowed the typed
+keystrokes into its search field. The port started straight in.
+
+Note: `rpi/crates/rpi-cli/src/resource_dirs.rs:22-27` still carries a stale
+doc comment claiming the opposite ("rpi v1 has **no trust prompt** … so project
+resources are read unconditionally here"). The code does gate them; the comment
+is stale.
+
+---
+
+## 19. The mechanical audit's slash-command row was broken
+
+**fixed.**
+
+`scripts/parity/audit.mjs:325` scanned every quoted string in
+`rpi/crates/rpi-cli/src/interactive_tui/commands.rs`, so it reported export
+formats, booleans and provider ids as commands (`add`, `html`, `jsonl`,
+`monochrome`, `true`, `yes` …) and listed 25 real commands as missing.
+
+The extraction is now anchored on the two trait methods that name a command —
+`fn name(&self) -> &'static str { "/x" }` and
+`fn aliases(&self) -> &'static [&'static str] { &["/y"] }` — and the original's
+side now includes its aliases (`history`, `sessions`, `exit`) so both sides
+compare the names a user can type.
+
+---
+
+## Ranked
+
+1. **The session file formats are unrelated** (§1) — a session cannot cross
+   between the two programs in either direction, and five of the original's
+   entry types (`usage`, `label`, `session_info`, `custom_message`,
+   `context_edit`) have no counterpart in the port's branch.
+2. **Prompt templates are listed and then do nothing** (§2) — the port's
+   harness has the substitution code; the CLI never calls it.
+3. **Skills are advertised and cannot be invoked** (§3) — no `/skill:name`, no
+   `@name`.
+4. **The port's JSONL export cannot be re-imported, and `/export` takes a
+   different argument** (§8) — the original's spelling `/export x.jsonl` errors
+   in the port.
+5. **`/share` uploads a Markdown transcript, not a session** (§9).
+6. **Sessions live in the project directory, not the agent directory** (§10) —
+   and the port writes one even when you never chat.
+7. **More than twenty settings keys parse and are then ignored** (§14).
+8. **`/new` does not start a new session** (§5).
+9. **The session picker has no scope, no sort modes, no rename and no delete**
+   (§12); **`/fork` has no fork-point picker** (§13).
+10. **`/skills`, `/bug` and `/stats` are missing** and the canonical names of
+    `/quit` and `/resume` differ (§6, §7).
+11. **Project resources: `.pi` versus `.rpi`** (§11); **project settings are
+    not deep-merged** (§15).
+12. **The settings menu exposes 15 of 37 rows** (§16).
+13. **Themes: three compiled-in palettes, no JSON themes, no user themes, no
+    "system" theme** (§17) — the token set itself now matches.
+14. **The original prompts for project trust, the port does not** (§18).
+15. **The port's skill validator adds a parent-directory rule the original does
+    not have** (§4).
+
+## Decisions the user has to make
+
+1. **The session format.** The user asked for a 1:1 port with no exceptions, so
+   the port's files should be the original's files: a pi session must open in
+   the port and a port session must open in pi. The options are (a) the port
+   writes version 3 with the original's entry types and drops its lane/operation
+   log — the cheapest path to parity, and it gives up the richer log; (b) the
+   port keeps its own format and also reads and writes the original's — two
+   formats to maintain and to keep in sync; (c) the port keeps its own format
+   only, which is not a 1:1 port. This decision gates §1, §8, §9 and §12.
+2. **Prompt templates and skills.** The harness already implements the
+   expansion (`prompt_from_template`, `skill`). The choice is to wire them into
+   the command path, or to stop advertising them in the autocomplete until they
+   work. Advertising a command that does nothing is worse than not listing it.
+3. **`.pi` versus `.rpi`, and `<cwd>/.rpi/sessions` versus
+   `<agentDir>/sessions`.** Is the rename final, or should the port also read
+   the original's locations for compatibility?
+4. **The modelled-but-ignored settings** (§14): warn at startup, or leave them
+   silent?
