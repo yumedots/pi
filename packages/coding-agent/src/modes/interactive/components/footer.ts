@@ -97,9 +97,10 @@ interface FooterStyle {
 }
 
 const PLAIN_STYLE: FooterStyle = { separator: GROUP_SEPARATOR, pathSeparator: PATH_SEPARATOR, icons: {} };
+/** The icons separate the groups, so the gap between them is wider than in the plain style. */
 const NERD_FONT_STYLE: FooterStyle = {
-	separator: " ",
-	pathSeparator: " ",
+	separator: "  ",
+	pathSeparator: "  ",
 	icons: { ...NERD_FONT_ICONS },
 };
 

@@ -205,6 +205,8 @@ describe("FooterComponent width handling", () => {
 		expect(line).toContain("\uF200 24,600 tokens 12.3%");
 		expect(line).toContain("\uF07C /tmp/project");
 		expect(line).toContain("\uF126 main");
+		// The icons separate the groups, so the gap between them is wider.
+		expect(line).toContain("\uF2DB test/glm-5.1  \uF0E7 medium");
 		expect(visibleWidth(line)).toBeLessThanOrEqual(120);
 	});
 
