@@ -283,6 +283,8 @@ against was 43 minutes stale). The tree was green at that point.
 | 33 | A failing `bash` threw `tool error: …` and lost its details | It returns a result with `is_error: true`, the `details` payload and a `structured_content`, and the text is pi's `appendStatus` shape (`hello\n\n\nCommand exited with code 3`) | `rpi/crates/rpi-tools/src/tools/bash.rs:362-369`; a direct `bash.execute` now returns `Ok(is_error=true, content="hello\n\n\nCommand exited with code 3", details={})` where the original returns `isError:true` with the same text (`packages/coding-agent/src/core/tools/bash.ts:358`, `:401-406`) |
 | 34 | `bash` treated a command with no exit code as a success | It reports `Command terminated without an exit code`, as the original does | `rpi/crates/rpi-tools/src/tools/bash.rs:344-348` against `packages/coding-agent/src/core/tools/bash.ts:386-388` |
 | 35 | The timeout message read `Command timed out after 2s` | `Command timed out after N seconds` — pi's wording | `rpi/crates/rpi-tools/src/tools/bash.rs:330-339` against `packages/coding-agent/src/core/tools/bash.ts:379` |
+| 74 | The port's `AgentMessage` was tagged on a `kind` field, so pi's `role`-discriminated messages could not be parsed and the port wrote a field pi does not have | The tag is gone: `role` is the discriminator, an unknown role falls back to a custom message, and there is a `System` arm carrying `sections` and `toolsAdded`. pi's three message shapes now parse, and the port writes no `kind` | `rpi/crates/rpi-agent/src/message.rs:32-42` (the enum and its doc), `:56-76` (the `role`-tagged deserialiser); runtime: `{"role":"user",…}`, `{"role":"assistant",…}`, `{"role":"toolResult",…}` and `{"role":"system",…}` all parse, and the re-serialised output has **no** `kind` field |
+| 75 | The assistant message had no `durationMs`, `thinkingLevel`, `providerThinkingLevel` or `diagnostics`, and pi's values were silently dropped on read | All four exist, and pi's values survive the round trip | `rpi/crates/rpi-ai/src/types.rs:668`, `:708`, `:712`, `:715`; runtime: pi's assistant message with `"durationMs":1234,"thinkingLevel":"high"` deserialises and re-serialises with **both** fields intact |
 
 **Still open — verified still present in the fresh source:**
 
@@ -298,7 +300,19 @@ against was 43 minutes stale). The tree was green at that point.
 **Not re-checked in this pass** (source-level rows, not binary-level): 9, 12, 13,
 14, 15, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 31, 32, 36, 37, 38, 39, 40, 41,
 42, 43, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
-64, 65, 66, 67, 70. They are source-level findings and are unaffected by a
+64, 65, 66, 67, 70.
+
+**Row 9 has moved.** The port's `Message` union now has a `System` arm carrying
+`sections` and `toolsAdded` (`rpi/crates/rpi-ai/src/types.rs:821-833`,
+`rpi/crates/rpi-agent/src/message.rs:40`), which is the shape the original's
+transcript uses to carry the prompt and the tool declarations
+(`packages/ai/src/types.ts:543-556`). What is still missing is the
+*announcement*: the original's `declareToolChanges` computes the difference
+between the executable tools and the declared ones and writes it into the
+transcript (`packages/agent/src/agent-loop.ts:333-374`), so a tool that appears
+mid-run is declared to the model. The port has the `System` message but
+nothing writes a `toolsAdded` delta yet — row 9 is therefore narrowed, not
+closed. They are source-level findings and are unaffected by a
 rebuild. (Rows 34 and 35 were re-read and closed — see the closed table above.)
 
 **One of them is closed by decision, not by code:** row 22 (the nested-tool-call

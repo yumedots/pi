@@ -1457,3 +1457,72 @@ with no session name it is `π - <cwd base name>` — the original's format
 this area is: D1–D4 above, the provider list and the login dialog, the config
 selector's scope hint, the tree and session pickers, the autocomplete skill entry, and
 the reachability of the four unwired components.**
+
+---
+
+## 9. The re-measurement — 19:13, after the empty-session handover landed
+
+The tree went green at 19:13 (the two errors that were left were stale-`target/`
+artefacts, cleared with `cargo clean -p rpi-ai`; the source was already correct). The
+binary was relinked and every scenario re-captured.
+
+| scenario | step | 18:50 | **19:13** |
+|---|---|---|---|
+| startup | booted / input focused | identical | **identical** |
+| panels | booted / help / help closed / models / models closed | identical | **identical** |
+| prompt | booted | identical | **identical** |
+| prompt | answer | 5 rows | **identical** |
+| tool | booted | identical | **identical** |
+| tool | tool call / answer | 6 rows | **2 rows** |
+| thinking | booted | identical | **identical** |
+| thinking | answer | 6 rows | **1 row** |
+| markdown | booted | identical | **identical** |
+| markdown | answer | 1 row | **1 row** |
+
+**D1 and D2 are closed.** The header's leading blank line and the tmux warning's
+padding are fixed — the `prompt` answer step is now byte-identical, and the warning
+wraps at 96 columns with the blank line above it, as the original does.
+
+**What is left is three small things.**
+
+* **The tool panel's spacing (2 rows).** The call row sits one row later in the port
+  and the result region is the right height now:
+  ```
+  pi   :  read tool-input.txt
+  port :  (blank)
+          read tool-input.txt
+  ```
+  The original's tool panel reserves one row less before the call row.
+* **The thinking summary's duration (1 row).** `+ Thought · 0.1s` against
+  `+ Thought · 0.0s` — the same formatter, a different measured elapsed time.
+* **The markdown pane (1 row).** The port's transcript is one line shorter overall, so
+  the follow-end viewport cuts one line off the top and the first list item is not
+  visible. The markdown itself is identical — it is the trailing spacing of the
+  transcript dock.
+
+**The empty-session handover works — and the two pickers that bail early are the
+remainder of finding 28.** Live on the 19:13 binary:
+
+```
+/model     → the pane is the picker:  "Select model" / "Type to filter by name,
+              provider, or id" / ">" / "→ ✓ mock-1    [mock]"
+              — the logo is gone, so the handover fired. The row is pi's format:
+              "✓ " on the current model and "[provider]" as the description.
+/settings  → the pane is the 35-row settings menu, with the search field and the
+              hint line "Type to search · Enter/Space to change · Esc to cancel".
+/tree      → nothing. The logo is still up.
+/session   → nothing. The logo is still up.
+```
+
+So the handover in `open_selector_with_view`
+(`rpi-cli/src/interactive_tui/selectors.rs:88-93`) fires when a selector **opens**.
+`/tree` and `/session` still show nothing because they **bail out before opening
+one**: `open_session_selector` returns early with "No saved sessions found…"
+(`selectors.rs:321-327`) and `open_tree_selector` returns early on a read error
+(`selectors.rs:417-422`), and both put that note in the **chat container**, which is
+behind the logo. The fix is for those early paths to take the pane the same way the
+opening path does — or to say so in the pane they already own.
+
+**Two corrections to my own file, both from the port and both fair:**
+* the **branch and compaction summary cards are wired** — `rpi-cli/src/interactive_tui/sessions.rs:422` and `:432` — so my "0 call sites" reading of them was a **grep artefact**: I counted `BranchSummaryCard` and `CompactionSummaryCard` by name and missed the `rpi_tui::summary_cards::` path form. The §1.1 table's count for the cards is wrong and the cards are reachable.
+* the **window title is wired** at `rpi-cli/src/interactive_tui.rs:1194`, which is what my `#{pane_title}` reading already showed.
