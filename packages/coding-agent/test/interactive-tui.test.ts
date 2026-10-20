@@ -1,8 +1,7 @@
 import type { Component, Terminal, TUI, WheelScrollLines } from "@earendil-works/pi-tui";
-import { Container, getKeybindings, isViewportTUI, ScrollView, setKeybindings, Text } from "@earendil-works/pi-tui";
+import { Container, isViewportTUI, ScrollView, Text, VStack } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
-import { KeybindingsManager } from "../src/core/keybindings.ts";
 import type { FullscreenExitOutput, TuiMode } from "../src/core/settings-manager.ts";
 import {
 	BranchSummaryStatusIndicator,
@@ -17,7 +16,7 @@ import {
 	createInteractiveTuiReference,
 	InteractiveMode,
 } from "../src/modes/interactive/interactive-mode.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 
 const clipboardMocks = vi.hoisted(() => ({
 	copyToClipboard: vi.fn<(text: string) => Promise<void>>(),
@@ -79,10 +78,8 @@ describe("createInteractiveTui", () => {
 		altTui.stop();
 	});
 
-	it("shows the configured jump-to-bottom shortcut while scrolled up", async () => {
+	it("shows the jump-to-latest label while scrolled up", async () => {
 		initTheme("dark");
-		const previousKeybindings = getKeybindings();
-		setKeybindings(new KeybindingsManager({ "tui.altScreen.bottom": "ctrl+j" }));
 		const terminal = new RecordingTerminal(50, 4);
 		const ui = createInteractiveTui({
 			tuiMode: "fullscreen",
@@ -101,10 +98,51 @@ describe("createInteractiveTui", () => {
 			await terminal.waitForRender();
 			terminal.sendInput("\x1b[<64;1;1M");
 			await terminal.waitForRender();
-			expect(terminal.getViewport()[3]).toContain("↓ Jump to latest message · Ctrl+J");
+			const label = terminal.getViewport()[3] ?? "";
+			expect(label).toContain("↓ Jump to latest message");
+			// The label does not advertise a shortcut.
+			expect(label).not.toContain("Ctrl");
 		} finally {
 			ui.stop();
-			setKeybindings(previousKeybindings);
+		}
+	});
+
+	it("shows the jump-to-latest label in the blank line above the input box", async () => {
+		initTheme("dark");
+		const terminal = new RecordingTerminal(50, 6);
+		const ui = createInteractiveTui({
+			tuiMode: "fullscreen",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal,
+		});
+		ui.setLayoutRoot(
+			new VStack([
+				{
+					component: new ScrollView(
+						new Text(Array.from({ length: 8 }, (_, index) => `line ${index + 1}`).join("\n"), 0, 0),
+						{ follow: "end", primary: true },
+					),
+					basis: 0,
+					grow: 1,
+					minSize: 1,
+				},
+				{ component: new Text("\n> input", 0, 0), basis: "auto", minSize: 1 },
+			]),
+		);
+		ui.start();
+		try {
+			await terminal.waitForRender();
+			terminal.sendInput("\x1b[<64;1;1M");
+			await terminal.waitForRender();
+			const viewport = terminal.getViewport();
+			// The label sits in the blank line above the input box, not on the transcript.
+			expect(viewport[4]).toContain("↓ Jump to latest message");
+			expect(viewport[3]).not.toContain("Jump to latest message");
+			// The label is plain text, without a colored box behind it.
+			expect(viewport[4]).not.toContain(theme.bg("selectedBg", "").slice(0, -4));
+		} finally {
+			ui.stop();
 		}
 	});
 
