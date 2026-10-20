@@ -105,6 +105,24 @@ result (`{messages}`), so an extension cannot change the transcript before a
 call. The port's provider hook has the messages and an empty
 `transform_context` slot — the same place `before_agent_start` would go.
 
+## The extension's own module
+
+An extension's module is evaluated as a script, and `import.meta` is a
+syntax error outside a module — pi's `doom-overlay` example reads it and
+failed to load. The transpiler rewrites `import.meta` into the object the
+evaluator provides (`rpi/crates/rpi-js/src/transpile.rs`:
+`replace_import_meta`, which skips strings and comments), and the evaluator
+passes the module's `url`, `filename` and `dirname` (`extension-host.ts`:
+`loadModule`). The check is `an_extension_reads_import_meta`.
+
+## The file system
+
+The `fs` shim's call to the host did not encode its arguments, so the host
+never saw the path: `writeFileSync` reported success and wrote nothing — a
+silent data loss for any extension that writes a file. The shim now encodes
+the arguments and reads the answer, and the check is
+`an_extension_writes_a_file`.
+
 ## The node surface
 
 Every shim in `rpi/crates/rpi-js/js/shims/` is published to the extensions,

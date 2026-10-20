@@ -674,6 +674,39 @@ original's row 0 with " - first item". The component half is the TUI library's
 (`assistant_message.rs:304-313`, where `has_visible` is already computed); the host half
 (`set_trailing_spacing(1)`) is the interactive mode's. The two land together.
 
+**Status.** Fixed (2026-10-20): the component adds the leading spacer
+(`rpi/crates/rpi-tui/src/assistant_message.rs`, `rebuild_content`, with the test
+`an_assistant_message_starts_with_a_blank_row`) and the interactive mode port dropped the
+host's `set_trailing_spacing(1)` in the live and the restored-session paths. The
+`markdown` scenario is byte-identical to pi's golden trace.
+
+## 31. The thinking duration is measured with the animation clock, so it is always 0.0 s
+
+**What the user sees.** The collapsed thinking summary reads `+ Thought · 0.0s` where the
+original reads the real duration (`+ Thought · 0.1s` in the parity capture).
+
+**Observed.** The `thinking` scenario: the golden's row is `+ Thought · 0.1s`, the port's
+is `+ Thought · 0.0s`.
+
+| | |
+|---|---|
+| Original | `packages/coding-agent/src/modes/interactive/components/assistant-message.ts:100-108` — `trackThinkingRun` times the run with the **wall clock**: `timing.startedAt ??= Date.now(); timing.endedAt = Date.now();`. The harness freezes only `performance.now()` (`scripts/parity/clock-preload.mjs`), so `Date.now()` is real |
+| Port | `rpi/crates/rpi-tui/src/assistant_message.rs:443` — `track_thinking_run` reads `crate::clock::now_ms()`, and `rpi/crates/rpi-tui/src/clock.rs:12-20` returns the **frozen** `PI_PARITY_CLOCK` value when the harness sets it, so every reading in a parity run is the same millisecond and the measured span is 0 |
+
+The port's `track_thinking_run` is otherwise a faithful port of the original's
+`trackThinkingRun` (including the `isStreaming` guard, so a restored message shows no
+duration) — the clock it reads is the difference, and that also explains why the run looks
+like it "arrives in a single update": with the clock frozen, every update lands on the
+same millisecond.
+
+**Check.** Rust: a wall-clock reading next to `now_ms()` in
+`rpi/crates/rpi-tui/src/clock.rs` (ignoring `PI_PARITY_CLOCK`), used only by the thinking
+timing — the logo3d animation and the loader stay on the frozen clock. A test that a run
+tracked across two updates separated by a real delay reports a non-zero duration, also
+with `PI_PARITY_CLOCK` set to a fixed value. The capture's row will then be
+`+ Thought · <a real duration>`; it is not a byte-identical row, because the number is the
+wall-clock time between the mock's chunks.
+
 ## Verification baseline (2026-10-20, 20:05)
 
 `cargo build --workspace` was green at 19:40, and the port's default is now fullscreen on
@@ -703,18 +736,22 @@ source plainly has, it is a stale artifact, not a source error — `cargo clean 
 | startup | **identical** to the golden |
 | panels | **identical** to the golden |
 | prompt | **identical** to the golden |
-| tool | 2 steps differ by **one blank row**: the port's transcript is one row longer between the user message and the tool panel — the user message's trailing spacer (the original has none; the Markdown's own `paddingY: 1` supplies the blank row after the text). The language lead's `add_user_message`. The panel's half is fixed (the empty result region is kept) |
-| thinking | 1 step differs: the `+ Thought · 0.0s` duration against the original's `+ Thought · 0.1s` — the original times the run while it streams (`packages/coding-agent/src/modes/interactive/components/assistant-message.ts:100-119`); the interactive mode's row |
-| thinking | 1 step differs: the `+ Thought · 0.0s` duration (the interactive mode's row) |
-| markdown | 1 step differs (the interactive mode's rows) |
+| markdown | **identical** to the golden |
+| tool | 2 steps differ by **one blank row**: the port's reply sits one row lower — the user message's trailing spacer (the original's echo has none; the Markdown's own `paddingY: 1` supplies the blank row under the text, packages/coding-agent/src/modes/interactive/components/user-message.ts:43-48). The language lead's `add_user_message`. The panel's half is fixed (the empty result region is kept) |
+| thinking | 1 step differs: the `+ Thought · 0.0s` duration against the original's `+ Thought · 0.1s` — the port times the run with the frozen animation clock (finding 31, the TUI library's) |
 
 What closed during this session, in the TUI library: the wrap (the shared one and the
 editor's), the grapheme width, the input box cap and the hidden-line report, the fake
 cursor, the click-to-place-the-caret and the wheel over the input, the settings list
-hover, the `Text` padding, the window title escape (OSC 0) and `set_text`'s caret
-placement. What closed outside it: the header block's leading and trailing Spacer and
-the user message's spacer (the language lead), the TUI mode default (fullscreen on every
-platform).
+hover, the `Text` padding and background, the window title escape (OSC 0), `set_text`'s
+caret placement, the collapsed tool panel keeping the empty result region (finding 29) and
+the assistant message's leading spacer (finding 30). What closed outside it: the header
+block's leading and trailing Spacer (the language lead), the user message's leading
+spacer, the host's trailing spacing (the interactive mode port) and the TUI mode default
+(fullscreen on every platform).
+
+`scripts/agent-cargo.sh test -p rpi-tui --lib` → **527 passed, 0 failed**;
+`scripts/agent-cargo.sh build --workspace` → green.
 
 Any **new** difference in these panes after a TUI library change is a regression.
 

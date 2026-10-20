@@ -710,13 +710,13 @@ fresh `rpi/target/debug/rpi`, in the same tmux harness:
 
 ```
 # the extension API: original vs port
-same: 105   different: 14
+same: 110   different: 9
 
-## different values (14)             the shape differences and the empty answers, listed below
+## different values (9)              the shape differences and the empty answers, listed below
 ```
 
-14 differences in total, down from 65 when this was first measured. The two freezes are fixed
-and the three load-time registrations now work. The event side is still the
+9 differences in total, down from 65 when this was first measured. The two freezes are fixed and
+the three load-time registrations now work. The event side is still the
 bigger gap: **the original fires 23 of the 41 categories in one prompt run, the port fires 13**
 (the table in section B.0 is the reference). The ten that do not fire are
 `after_provider_response`, `agent_before_settle`, `agent_settled`, `before_agent_start`,
@@ -736,13 +736,35 @@ answers some operations by waiting for the thread that is blocked in the extensi
 | `pi.registerProvider` / `pi.registerMcpServer` / `pi.registerVirtualModel` **in the extension's factory** | the original queues them and applies them when the runner binds (`types.ts:1806-1817`, `loader.ts:230-236`) — it is explicitly supported at load time | the load never returns | the extension's factory calls the host, the host answers by spawning the call on the **session's runtime** and waiting for the reply — and the extension is being loaded **on that runtime**. The report is never written, the TUI stops drawing and stops reading keys. A/B: with the three calls the probe writes nothing; without them it writes all 123 rows |
 | `ctx.ui.select` / `confirm` / `input` / `editor` / `custom` from an extension handler | the original returns a promise; the TUI keeps running and the overlay is presented | the call never returns | the same deadlock: the dialog is presented by the TUI, and the TUI is the thread blocked in the extension's dispatch. A/B: with the dialogs the report stops at the dialog probe and the pane is frozen; without them the report is complete. The native plugin path does not have this problem — its `UiDialog` is open/poll/cancel, so the plugin's call returns at once |
 
-The other 29 differences are shape or value, and they are listed in
+**Why the extension's own tool never reaches the model — two defects, one proved.**
+`rpi/crates/rpi-cli/src/interactive_tui.rs:1450` dispatches `session_start` **synchronously on
+the main thread**, and the tool wiring (`:1456-1502`) and the command publication (`:1562`) are
+**after** it. The proof, from two runs of the same probe:
+
+| the probe's `session_start` handler | `pi.getCommands()` | `pi.getActiveTools()` |
+| --- | --- | --- |
+| opens a dialog | `[]` — **empty** | no `probe_tool` |
+| does not open a dialog | the extension's command is there | no `probe_tool` |
+
+`pi.getCommands()` is filled at `:1562`, after the dispatch; it is empty in the first run and
+filled in the second. So the dispatch blocks the main thread for as long as the handler runs,
+and everything after it never happens. `dispatch_js_event`
+(`interactive_tui/events.rs:178`) already spawns a blocking task; the `session_start` dispatch
+needs the same, and the tool wiring belongs **before** it.
+
+The second defect is independent: in the run where the wiring *did* run, the tool is in neither
+`pi.getActiveTools()` nor `pi.getAllTools()`, so `extensions.tools()`
+(`js_extensions.rs:312`, the pull over `JsRequest::Tools` → `runtime.tools()` →
+`__piExtensionHost.listTools`) returns an empty list. The push direction works — the MCP server
+the extension registers comes back — so it is the pull that is broken.
+
+The other differences are shape or value, and they are listed in
 `/tmp/pi-ext-audit/result-api.txt`. The ones worth naming:
 
 | row | the original | the port |
 | --- | --- | --- |
 | `ctx.getSystemPrompt()` | the prompt, a string | `"[object Object]"` — the port returns an object where the original returns a string |
-| `pi.getActiveTools()` | `["read","bash","edit","write","probe_tool"]` — the extension's own tool is in the active set, so the model can call it | `["read","bash","edit","write","grep","find","ls"]` — an array now, but **without the extension's own tool**: a tool an extension registers is still not declared to the model |
+| `pi.getActiveTools()` | `["read","bash","edit","write","probe_tool"]` — the extension's own tool is in the active set, so the model can call it | `["read","bash","edit","write","grep","find","ls"]` — **without the extension's own tool**: a tool an extension registers is still not declared to the model. Two defects, one proved, below |
 | `pi.getThinkingLevel()` | `"off"` | `{"level":"medium"}` — an object, and a different value |
 | `ctx.thinkingLevel` | a string | an object |
 | `pi.getSettings()` | the merged settings | `{}` |
@@ -753,7 +775,7 @@ The other 29 differences are shape or value, and they are listed in
 | `ui.custom()` | a promise (the overlay with keyboard focus) | `null` — the other four dialogs return a promise now, this one does not |
 | `pi.getMcpServers()` | the server with its `extensionPath` | the server with an **empty** `extensionPath` |
 | `pi.getSessionName()` | `undefined` | `null` |
-| the twelve `void` operations (`ui.notify`, `ui.setStatus`, `ui.setTitle`, `ui.setWorkingMessage`, `ui.setWorkingVisible`, `ui.setWorkingIndicator`, `ui.setHiddenThinkingLabel`, `ui.setEditorText`, `ui.pasteToEditor`, `ui.setEditorComponent`, `ui.setToolsExpanded`, `ui.getEditorComponent`) | `undefined` | `null` — the port's host operation answers `null` where the original answers `undefined` |
+| `ui.setWorkingIndicator()` | `undefined` | `null` — the port's host operation answers `null` where the original answers `undefined` |
 
 ### A note on the probe's history (why the first baseline had 19 rows in it)
 
