@@ -90,6 +90,14 @@ jobs:
       - name: Build the TypeScript original
         run: bun run build
 
+      # The Rust binary embeds the extension host bundle, which is built from
+      # TypeScript. If the bundle is stale the binary runs the old host, so
+      # the bundle is rebuilt here and the build fails when it changed.
+      - name: Check the extension host bundle is current
+        run: |
+          node scripts/build-extension-host-bundle.mjs
+          git diff --exit-code rpi/crates/rpi-js/js/extension-host.bundle.js
+
       - name: Build the Rust port
         run: |
           rustc --version
