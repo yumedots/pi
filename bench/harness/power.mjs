@@ -17,7 +17,7 @@
  *   --json <path>     Write the measurements as JSON
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -41,7 +41,10 @@ for (let index = 2; index < process.argv.length; index++) {
 	else if (arg === "--workload") options.workload = value;
 	else if (arg === "--runtime") options.runtimes.push(value);
 	else if (arg === "--json") options.json = resolve(value);
-	else throw new Error(`Unknown option: ${arg}`);
+	else if (arg === "--help" || arg === "-h") {
+		process.stdout.write(`${readFileSync(fileURLToPath(import.meta.url), "utf8").split("*/")[0]}\n`);
+		process.exit(0);
+	} else throw new Error(`Unknown option: ${arg}`);
 }
 
 /**
