@@ -44,24 +44,24 @@ row is in section 3.
 
 | # | Original (`packages/coding-agent/src/modes/interactive/components/`) | Port (`rpi/crates/`) | Verdict |
 |---|---|---|---|
-| 1 | `armin.ts:9` | — | **missing** |
+| 1 | `armin.ts:9` | `rpi-tui/src/armin.rs:247` `ArminComponent` | differs — **present, not wired** (0 call sites) |
 | 2 | `assistant-message.ts:16` | `rpi-tui/src/assistant_message.rs:169` | differs |
-| 3 | `auth-url.ts:13` | — | **missing** |
+| 3 | `auth-url.ts:13` | `rpi-tui/src/auth_url.rs:39` `AuthUrlComponent` | differs — **present, not wired** (0 call sites) |
 | 4 | `bash-execution.ts:21` | `rpi-tui/src/bash_execution.rs:66` | differs |
 | 5 | `bordered-loader.ts:7` | `rpi-tui/src/bordered_loader.rs:29` | differs — no CLI caller |
-| 6 | `branch-summary-message.ts:10` | — (plain note, `rpi-cli/src/interactive_tui/sessions.rs:409`) | **missing** (card) |
+| 6 | `branch-summary-message.ts:10` | `rpi-tui/src/summary_cards.rs:206` `BranchSummaryCard` | differs — **present, not wired**; the port still prints a plain note |
 | 7 | `centered.ts:8` | `rpi-tui/src/empty_session.rs:17` | close |
-| 8 | `compaction-summary-message.ts:10` | — (plain note, `rpi-cli/src/interactive_tui/sessions.rs:399`) | **missing** (card) |
-| 9 | `config-selector.ts:23` | — | **missing** |
+| 8 | `compaction-summary-message.ts:10` | `rpi-tui/src/summary_cards.rs:132` `CompactionSummaryCard` | differs — **present, not wired**; the port still prints a plain note |
+| 9 | `config-selector.ts:23` | `rpi-cli/src/interactive_tui/config_selector.rs:854` `ConfigSelector` | differs — just landed, **wired** (15 call sites), unverified |
 | 10 | `countdown-timer.ts:7` | `rpi-tui/src/countdown_timer.rs:18` | differs — no callbacks, one consumer |
 | 11 | `custom-editor.ts:16` | folded into `rpi-tui/src/editor.rs:1494` (`render_card`) | differs |
 | 12 | `custom-entry.ts:11` | `rpi-cli/src/interactive_tui/sessions.rs:428` | differs |
 | 13 | `custom-message.ts:12` | `rpi-cli/src/interactive_tui/events.rs:299` | differs |
 | 14 | `diff.ts:79` | `rpi-tui/src/diff.rs:35` | differs — format |
 | 15 | `dynamic-border.ts:11` | `rpi-tui/src/dynamic_border.rs:17` | differs — dimmer |
-| 16 | `earendil-announcement.ts:27` | — | **missing** |
-| 17 | `easter-egg-3d.ts:871` | `rpi-tui/src/logo3d.rs:773` (`Logo3d`) | differs — the **logo frames are fully ported**; the fullscreen easter egg around it is not |
-| 18 | `easter-egg-3d.lazy.ts:10` | — | **missing** |
+| 16 | `earendil-announcement.ts:27` | `rpi-tui/src/announcement.rs:53` | differs — **present, not wired** (0 call sites) |
+| 17 | `easter-egg-3d.ts:871` | `rpi-tui/src/logo3d.rs:773` (`Logo3d`) + `rpi-tui/src/easter_egg_3d.rs:226` `EasterEgg3dComponent` | differs — the logo frames are fully ported; the fullscreen egg is **present, not wired** (0 call sites) |
+| 18 | `easter-egg-3d.lazy.ts:10` | `rpi-tui/src/easter_egg_3d.rs` (no lazy loader) | differs — the original loads it lazily |
 | 19 | `empty-session-screen.ts:10` | `rpi-tui/src/empty_session.rs:61` | differs — no overlay row, no mouse |
 | 20 | `extension-editor.ts:26` | `rpi-cli/src/interactive_tui/extensions.rs:518` | differs — native plugins only |
 | 21 | `extension-input.ts:23` | `rpi-cli/src/interactive_tui/extensions.rs:308` | differs — native plugins only |
@@ -77,13 +77,13 @@ row is in section 3.
 | 31 | `model-selector.ts:31` | `rpi-cli/src/interactive_tui/selectors.rs:121` | differs |
 | 32 | `oauth-selector.ts:49` | `rpi-cli/src/interactive_tui/selectors.rs:626` | differs |
 | 33 | `pi-logo.ts:19` | `rpi-cli/src/brand.rs:93` | differs — rebrand |
-| 34 | `progress-bar.ts:31` | `rpi-tui/src/progress.rs:45` | **missing in the interactive mode** (no caller) |
-| 35 | `radius-login-selector.ts:105` | — | **missing** |
+| 34 | `progress-bar.ts:31` | `rpi-tui/src/progress.rs:45` + `rpi-tui/src/agent_progress.rs:50` `AgentProgressBar` | differs — the hairline bar is **present, not wired** (0 call sites) |
+| 35 | `radius-login-selector.ts:105` | `rpi-cli/src/interactive_tui/radius_login.rs:80` `RadiusLoginMenu` | differs — just landed, **wired** (5 call sites), unverified |
 | 36 | `scoped-models-selector.ts:97` | `rpi-cli/src/interactive_tui/settings.rs:1827` | differs |
 | 37 | `session-menu.ts:195` | `rpi-cli/src/interactive_tui/selectors.rs:301` | differs |
-| 38 | `session-selector-search.ts:39` | — | **missing** |
-| 39 | `settings-selector.ts:472` | `rpi-cli/src/interactive_tui/settings.rs:41` | differs — 15 of 37 rows, no search |
-| 40 | `settings-submenu.ts:31` | `rpi-cli/src/interactive_tui/settings.rs` (4 hard-coded submenus) | differs |
+| 38 | `session-selector-search.ts:39` | `rpi-cli/src/interactive_tui/session_search.rs:174` `parse_search_query` | differs — just landed, **wired** (16 call sites), unverified |
+| 39 | `settings-selector.ts:472` | `rpi-cli/src/interactive_tui/settings_menu.rs:663` `settings_menu_rows` | close — pi's 37 rows, pi's order, pi's wording (just landed) |
+| 40 | `settings-submenu.ts:31` | `rpi-cli/src/interactive_tui/settings_menu.rs` (`SettingsSubmenu::Options` / `::Steps` / `::Rows`) | close — the stepped framework has just landed, **wired**, unverified |
 | 41 | `show-images-selector.ts:13` | `rpi-cli/src/interactive_tui/selectors.rs:1017` | differs — wording, no preselect |
 | 42 | `skill-invocation-message.ts` | folded into `rpi-tui/src/tool_execution.rs:811` (`render_skill`) | differs |
 | 43 | `spinner-sign.ts:22` | — | **missing** |
@@ -99,7 +99,90 @@ row is in section 3.
 | 53 | `user-message.ts:13` | `rpi-tui/src/user_message.rs:26` | differs |
 | 54 | `visual-truncate.ts:30` | `rpi-tui/src/visual_truncate.rs:29` | differs |
 
-**13 components have no counterpart;** the other 41 exist but behave differently.
+**Seven components have no counterpart** — the announcement banner, the Armin, the
+branch-summary card, the compaction-summary card, the spinner sign, the trust picker
+and the fork-from-message picker. The other 47 exist but behave differently; of those,
+four are **present but not reachable** (the announcement, the Armin, the two cards), so
+the number a user can actually see is smaller still.
+
+> **Verification state.** A batch of components landed in the port while this document
+> was being written: `armin.rs`, `auth_url.rs`, `announcement.rs`, `agent_progress.rs`,
+> `easter_egg_3d.rs`, and — in `rpi-cli/src/interactive_tui/` — `config_selector.rs`,
+> `radius_login.rs`, `session_search.rs` and `settings_menu.rs`. They are listed above
+> as **"just landed, unverified"**: they compile, but nobody has compared their
+> rendering against the original's yet, and I have not — the build was red while they
+> landed, so the parity captures could not run. They need the verification pass below
+> before any of them can be called a match.
+
+### 1.1 The wiring sweep — five of the nine new components are not reachable
+
+A call-site count over `rpi-cli/src/` decides whether a component can appear at all:
+
+| Component | Call sites in `rpi-cli` | Verdict |
+|---|---|---|
+| `ConfigSelector` (`config_selector.rs:854`) | 15 | **wired** |
+| `parse_search_query` (`session_search.rs:174`) | 16 | **wired** |
+| `RadiusLoginMenu` (`radius_login.rs:80`) | 5 | **wired** |
+| `SettingsSubmenuView` (`settings_menu.rs:195`) | 4 | **wired** |
+| `AgentProgressBar` (`agent_progress.rs:50`) | 4 | **wired** — the bar sits at the top of the layout root, as in `chat-viewport.ts:48-52` |
+| `AuthUrlComponent` (`auth_url.rs:39`) | 1 | **wired** — the OAuth flow uses it |
+| `window_title` (`window_title.rs:26`) | 6 | **wired** — set once before the first render |
+| `AnnouncementComponent` (`announcement.rs:53`) | **0** | **present, not wired** |
+| `ArminComponent` (`armin.rs:247`) | **0** | **present, not wired** — and there is no `/arminsayshi` |
+| `EasterEgg3dComponent` (`easter_egg_3d.rs:226`) | **0** | **present, not wired** — and the header logo is not clickable, so nothing can trigger it |
+| `BranchSummaryCard` (`summary_cards.rs:206`) | **0** | **present, not wired** — the port still prints the plain note |
+| `CompactionSummaryCard` (`summary_cards.rs:132`) | **0** | **present, not wired** — the port still prints the plain note |
+
+So five components are faithful ports that **no screen in the interactive mode can
+show**: the progress hairline, the announcement banner, the Armin, the fullscreen
+easter egg and the auth-URL dialog. For the two whose code I read in full, the port's
+implementation is a faithful copy of the original and the only thing missing is the
+call site:
+
+* **`AgentProgressBar`** (`rpi-tui/src/agent_progress.rs:241-254` `render`) is
+  line-for-line the original's `render` (`components/progress-bar.ts:84-93`) — the same
+  guard, the same clamp, the same `[""]` when nothing is filled, the same
+  `theme.fg("accent", "\u2594".repeat(filled))`. The constants match too
+  (`DEFAULT_ESTIMATE_MS` 15 000, `ESTIMATE_SAMPLES` 5, `RUNNING_MAX_FRACTION` 0.95,
+  `DONE_HOLD_MS` 800, `TICK_MS` 100, `MAX_CELLS_PER_TICK` 1 — `agent_progress.rs:17-30`
+  against `progress-bar.ts:5-22`). It needs a slot at the top of the layout root
+  (`chat-viewport.ts:48-52`) and a driver that starts it with the run.
+* **`AuthUrlComponent`** (`rpi-tui/src/auth_url.rs`) is the original's
+  `AuthUrlComponent` (`components/auth-url.ts:13-41`): the URL in `accent` inside an
+  OSC-8 hyperlink, the hint `Cmd+click to open` on darwin and `Ctrl+click to open`
+  elsewhere, the `•` separator, and the suffix being replaceable with
+  "Copied URL to clipboard" in the success colour. One difference: the default suffix
+  paints the copy key in `muted` where the original's `keyHint` paints it in `dim`
+  (finding 24). The login flow (`rpi-cli/src/interactive_tui/settings.rs` `begin_provider_oauth_input`)
+  still prints a plain `Open: {url}` line instead of using it.
+* **`AnnouncementComponent`** (`rpi-tui/src/announcement.rs:29-49`) matches the
+  original's text exactly — the accent border, `pi has joined Earendil` in bold+accent,
+  `Read the blog post:`, the blog URL in `md_link` — with one gap the file's own
+  comment states: the original embeds a bundled PNG (`clankolas.png`, 56 cells wide,
+  `components/earendil-announcement.ts:38-48`) and the port has no bundled asset, so
+  it leaves that slot empty.
+
+**One of the wired ones already differs in its text: the config selector's header.**
+
+| | |
+|---|---|
+| Original | `components/config-selector.ts:204-222` — **one** line: the bold title (`"Project Local Resources"` / `"Global Resources"`), padded to the width, then `keyHint("tui.input.tab", "switch mode")` + ` · ` (**only when the project scope is available**), then `rawKeyHint("space", "cycle inherit/+/-")` or `rawKeyHint("space", "toggle")`, then ` · ` + `rawKeyHint("esc", "close")`. The **second** line is the scope hint in `muted`: `<dir>/settings.json · inherited global resources are dimmed` (project) or `~/<dir>/agent/settings.json` (global) — `CONFIG_DIR_NAME` is `".pi"` (`packages/coding-agent/src/config.ts:589`). |
+| Port | `rpi-cli/src/interactive_tui/config_selector.rs:570-595` — the title alone on the first line (bold **and** in the accent colour, where the original is bold with no colour), the action hint alone on the second, and **no scope hint line at all**. The "switch mode" hint and the "esc to close" hint are both missing. |
+
+So the port's config selector does not tell the user **which settings file it is
+about to edit**, which is the one thing that header is for.
+
+**The session search is a faithful port of the query language.**
+`rpi-cli/src/interactive_tui/session_search.rs:174` `parse_search_query` reproduces
+`components/session-selector-search.ts:37-100` `parseSearchQuery` exactly: the empty
+query, the `re:` prefix (with the same `"Empty regex"` error text), the quoted-phrase
+tokens, and the fall back to plain whitespace tokenisation when a quote is unclosed.
+The port compiles the pattern with its own engine (`session_search.rs:809` `Regex`)
+rather than JS's `RegExp`, and it matches case-insensitively as the original's `"i"`
+flag does — but the engine is a documented **subset**, so a pattern the original
+accepts (lookaround, backreferences) is rejected by the port and then matches nothing.
+The engine's own test names the limit: `regex_rejects_unsupported_patterns`
+(`session_search.rs:1125`).
 
 Host-side counterparts outside the component directory, referenced below:
 `rpi-cli/src/interactive_tui/{selectors,settings,commands,extensions,events,rendering,sessions,state}.rs`
@@ -130,6 +213,7 @@ rows are now wrong and must be corrected in place.
 | "User message panel (background + OSC 133 zone)" | differs | **Partly fixed.** The background now uses `colors.user_message_bg` (`rpi-tui/src/user_message.rs:43`), matching the original's token; the transformer chain and the `userMessageText` colour are still missing (finding 16). |
 | "Select list — empty text" | differs — "No matching commands" | **Fixed.** `rpi-tui/src/select_list.rs:659` now prints `"  No matching commands"`, matching `packages/tui/src/components/select-list.ts:101`. |
 | "TUI mode" (reported by the TUI library lead) | — | **Fixed.** The port now defaults to fullscreen on every platform (`rpi-cli/src/args.rs:90-94` `impl Default for TuiMode` → `TuiMode::Fullscreen`); the macOS regular-mode default is gone. |
+| "Settings menu — 15 of ~35 rows" | differs | **Fixed.** `rpi-cli/src/interactive_tui/settings_menu.rs:663` `settings_menu_rows` now carries pi's **37** rows in pi's order with pi's wording, and the test `settings_menu.rs:1176` `PI_ROWS` pins the 37 keys and labels. The port-only rows (`Default model`, `Default thinking`, `Cycle scope`) are **gone from the menu** — they stay as `/model`, `/thinking` and `/scoped-models`. `quietStartup` is pi's tri-state (`true`/`header`/`false`), `tuiMode` is read at startup, and `tuiMode` defaults to fullscreen on every platform. The submenu framework is ported (`SettingsSubmenu::Options` / `::Steps` / `::Rows`) and the settings list owns its submenu and returns to the rows on Esc. |
 | "Settings menu — no search field" | differs | **Fixed.** The library has `SettingsList::with_search()` (`rpi-tui/src/settings_list.rs:286-295`), `SettingsState::set_filter` exists, the filter matches the row **label** not the key (`refilter` → `fuzzy_filter(…, |item| item.label.as_str())`, pinned by `the_filter_matches_the_label_not_the_key`), and `open_settings_selector` (`rpi-cli/src/interactive_tui/settings.rs:56`) now builds the list with `.with_search()`. |
 | "Context-usage block bar", "Exact token count", "Nerd Font footer icons", "Session cost (sub) suffix" | missing | **Fixed.** `rpi-tui/src/footer.rs` — 10-cell bar `:39`/`:107`, exact count `:91`, nerd icons `:157-176`, `(sub)` `:734-745`. Remaining footer gaps: the `xp` marker, the routed-model suffix and a too-broad `(sub)` rule (finding 26b). |
 | "3D easter egg" | differs — "the Pi logo's 3D animation is ported … the Armin bitmap and the fullscreen easter egg are missing" | **Still accurate, and stronger.** The logo frames are byte-identical (`scripts/parity/3dicon.mjs` checks them at t = 0, 2, 5 s; `rpi-tui/src/logo3d.rs:636` `pi_logo_model`, `:684` `logo_pose`, `:733` `prepare_stars`, `:773` `Logo3d`; wired at `rpi-cli/src/interactive_tui.rs:1593`). Still missing: the fullscreen dissolve/puzzle around it (`easter-egg-3d.ts:846`), the clickable header logo (`interactive-mode.ts:1168`) and the Armin (`armin.ts:9`) plus `/arminsayshi`. |
@@ -971,8 +1055,10 @@ Copy these strings verbatim. They are the contract; a description of them is not
 
 | | |
 |---|---|
-| Original | `interactive-mode.ts:1230-1237` — `path.basename(cwd)` and the session name: `` `${APP_TITLE} - ${sessionName} - ${cwdBasename}` ``, or `` `${APP_TITLE} - ${cwdBasename}` `` when the session has no name. `APP_TITLE` is `piConfigName ? APP_NAME : "π"` (`packages/coding-agent/src/config.ts:588`, with `APP_NAME` at `:587`) — so with pi's own config directory the title is the literal **`π`**. |
-| Port | `rpi-cli/src/brand.rs:76` `window_title` → `"▃ ▅ ▂ rpi · 🦀"` plus a run-state glyph (`"⟳"` working, `"↻"` retrying). No session name, no cwd. |
+| Original | `interactive-mode.ts:1230-1237` — `path.basename(cwd)` and the session name: `` `${APP_TITLE} - ${sessionName} - ${cwdBasename}` ``, or `` `${APP_TITLE} - ${cwdBasename}` `` when the session has no name. `APP_TITLE` is `piConfigName ? APP_NAME : "π"` (`packages/coding-agent/src/config.ts:588`, with `APP_NAME` at `:587`) — so with pi's own config directory the title is the literal **`π`**. Set once, before the first render (`:1232-1236`); pi has no activity glyph in the title. |
+| Port | `rpi-cli/src/window_title.rs:26` `window_title(session_name: Option<&str>, cwd: &Path) -> String` — `APP_TITLE` is the literal `"π"` (`:19`) and the format is pi's, with three tests. **But the function has no call site**: `grep -rn "window_title(" rpi-cli/src` finds only its own definition, and the only `set_title` in `interactive_tui.rs` is the extension hook (`:1373`). The old `rpi-cli/src/brand.rs` (the `"▃ ▅ ▂ rpi · 🦀"` title and the dead startup lockup) is **deleted**. So the title is correct in code and still **not set at startup**. |
+
+The port also used to rewrite the title on every status change — that is where the `⟳`/`↻` glyphs came from — and those writes are gone, which matches pi.
 
 ### 4.2 The menu framework — the shared chrome of every picker
 
@@ -1117,14 +1203,44 @@ pendingMessages slot**, so the queued-message rows have nowhere to live in the d
 (finding 26b); and the port has no `widgetsAbove` / `warning` / `widgetsBelow` slots
 and no progress row at the top of the root.
 
-## 5. Decisions needed
+## 5. The verification pass — what to check once the build is green
 
-1. **The window title is the last piece of chrome that still differs.** The startup
-   header is now the original's (finding 11), but the terminal title is still
-   `"▃ ▅ ▂ rpi · 🦀"` plus a run-state glyph (`rpi-cli/src/brand.rs:76`
-   `window_title`, `:93` `render_lockup`) where the original sets
-   `"Pi - <session> - <cwd>"` (`interactive-mode.ts:1230-1237`). Is the intent
-   "rpi's own chrome, not pi's", or "the same information, rpi-branded"?
+I am the lead for the interactive mode; the port owns the code. These are the checks
+I will run, screen by screen, against the original's text in §4. Each is a comparison,
+not a fix — the port owns the fix.
+
+| # | Screen | The original's source | What to compare | How |
+|---|---|---|---|---|
+| V1 | The startup header | `interactive-mode.ts:1111-1179` | the mark, ` v<version>`, the compact hint line, the "Press … to show full startup help." line, the onboarding sentence, the tmux warning — and the two blank lines and the warning's wrap width that differ today (finding 11) | the `tool` scenario pane against `scripts/parity/golden/ts-tool.json` |
+| V2 | The window title | `interactive-mode.ts:1230-1237` | `π - <session> - <cwd base name>` | **terminal level, not the pane** — run each side in tmux and read the tab title: `tmux display-message -p '#{window_name}'`. The pane does not contain the title, so a pane diff cannot settle this one. |
+| V3 | The input box | `packages/tui/src/components/editor.ts:602-770` | the filled card, the `> ` gutter, the placeholder, the scroll hints | the `startup` scenario pane |
+| V4 | The layout | `chat-viewport.ts:25-61` | the editor is in the bottom dock, `shrink: 1`, `minSize: 3`; the pendingMessages slot exists; the progress row is at the top | a fullscreen pane with a long draft |
+| V5 | The model list | `components/model-selector.ts:184-244` | `✓ <id>` / `  <id>`, `[<provider>]`, ` · default`, the scope line, the `Model Name:` footer, the hint line, `No matching models` | `/model` on both sides |
+| V6 | The provider list | `components/oauth-selector.ts:18-118` | the ` [<subscription>]` / ` [<account>]` / ` [<API key>]` label and when it appears, the ` ✓ configured` / ` • not configured` / ` ✓ env: FOO` suffixes, the titles, the empty texts | `/login` and `/logout` on both sides |
+| V7 | The login dialog | `components/login-dialog.ts:40-152`, `components/auth-url.ts:13-41` | `Login to <provider>`, the OSC-8 URL, `[Cmd+click to open] • [Ctrl+X to copy]`, `Copied URL to clipboard`, the device-code lines, `(<cancel> to cancel)`, the **unmasked** API key | a provider login on both sides |
+| V8 | The settings menu | `components/settings-selector.ts:490-901` | all 37 rows, their order and wording, the search field, the value column, the submenu returning to the parent list | `/settings` on both sides |
+| V9 | The session list | `components/session-menu.ts:195-471`, `components/session-selector-search.ts:37-180` | the scope switch, the sort modes, the rename and delete, `re:` and `"phrase"`, the message-content corpus, the threaded tree, the two-line hint | `/resume` (TS) and `/session` (port) over the same session directory |
+| V10 | The tree | `components/tree-selector.ts` (1429 lines) | the tree shape, the five filter modes, folding, the labels, the per-entry formatting, the help line | `/tree` on a branched session |
+| V11 | The autocomplete | `packages/tui/src/autocomplete.ts:340-395` | the `skill:<name>` entries, the `<hint> — <description>` row format, the bare-name match stripping `skill:` | type `/` then `foo` on both sides |
+| V12 | The transcript | `components/assistant-message.ts`, `components/tool-execution.ts` | the OSC 133 zones, the `+ Thought · 3.7s` summary, the stop-reason notice inside the message, the spinner sign in the tool row, the per-tool renderers | the `tool` and `thinking` scenarios |
+| V13 | The cards | `components/compaction-summary-message.ts`, `components/branch-summary-message.ts`, `components/custom-message.ts` | the `[compaction]` / `[branch]` / `[<type>]` labels, the card frame, the collapsed/expanded states | a session with a compaction and a branch summary |
+| V14 | The footer | `components/footer.ts:410` | the `xp` marker, the routed-model suffix, the `(sub)` rule | the bottom line of any pane |
+| V15 | The 3-D empty session | `components/easter-egg-3d.ts:871` | the frames (already checked by `scripts/parity/3dicon.mjs`) and the fullscreen animation | `3dicon.mjs`, plus a manual run |
+| V16 | The announcement, the armin, the progress line, the radius row | `components/earendil-announcement.ts`, `components/armin.ts`, `components/progress-bar.ts`, `components/radius-login-selector.ts` | the newly landed components against the original's text | a manual run of each |
+| V17 | **The config selector's scope hint** | `components/config-selector.ts:204-222` | the title **and the hints on one line**, padded: `Global Resources` … `<tab> switch mode · <space> toggle · <esc> close`; and the **second** line in `muted`: `~/.pi/agent/settings.json`, or in the project scope `.pi/settings.json · inherited global resources are dimmed`. The port has the title alone, the action hint alone, no "switch mode", no "esc to close" and **no scope hint line** (`config_selector.rs:570-595`) — and since the port and pi now read the *same* settings file, the user has to be told which one is being edited | `/config` on both sides |
+| V18 | **Reachability of the five unwired components** | — | not "does the component exist" but "can a user reach it": the progress hairline, the announcement banner, the Armin, the fullscreen easter egg and the auth-URL dialog all have **0 call sites** in `rpi-cli` (§1.1), so no screen can show them. Each must be reachable **and** its screen must match the original's | a manual run of each; the auth-URL dialog is part of the login flow (V7) |
+
+## 6. Decisions needed
+
+1. **The window title needs one call.** The format is now pi's —
+   `rpi-cli/src/window_title.rs:26` `window_title(session_name, cwd)` returns
+   `π - <session> - <cwd base name>` with `APP_TITLE` the literal `π` — and the old
+   `brand.rs` is deleted. But the function **has no call site**, so the title is never
+   set; the original sets it once before the first render
+   (`interactive-mode.ts:1232-1236`). That one call belongs in
+   `rpi-cli/src/interactive_tui.rs` (the interactive mode port's file), with the
+   session's name and the working directory. **No decision needed — the format is
+   settled; it needs wiring and a capture (V2).**
 2. **The JS extension API gap (finding 1).** Is the native-plugin `{"kind": …}`
    envelope meant to *replace* the original's `ctx.ui` promise API, or coexist with
    it? If it replaces it, JS extensions are limited to
@@ -1155,7 +1271,16 @@ and no progress row at the top of the root.
 
 ---
 
-## 5. The five components the table above called "missing" are ported (2026-10-20)
+---
+
+## 7. The components that were "missing" and are now ported — what the port claims, and the deviations
+
+> **Provenance.** This section was written by the interactive mode port, not by the
+> auditor, and it records the port's own claims. Nothing in it has been checked
+> against a running binary — the build was red throughout (the session area's JSONL
+> rename), so `rpi-cli` was never type-checked while these landed. Treat it as the
+> port's evidence, not as a verification. The audit's own view of the same components
+> is in §1.1 (the wiring sweep) and §5 (the verification checklist).
 
 The component inventory at the top of this file listed `armin.ts`, `auth-url.ts`,
 `earendil-announcement.ts`, `branch-summary-message.ts`,
@@ -1189,4 +1314,3 @@ Deviations, all deliberate:
 * The progress bar is a library component only: **nothing calls it yet**. The original
   puts it in the top row in fullscreen (`interactive-mode.ts:1081`) and above the input
   in regular mode (`:891`), gated by `terminal.showTerminalProgress`.
-

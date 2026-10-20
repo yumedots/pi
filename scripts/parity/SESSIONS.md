@@ -24,6 +24,35 @@ tmux against the parity mock model (`scripts/parity/mock-server.mjs`,
 and diffed. The data findings (settings keys, command names, entry types,
 theme tokens) were extracted mechanically from both trees.
 
+**The check for §1** is `scripts/parity/session-compat.mjs`: it drives each
+side once against the mock model, then has each side import the other's
+session file and prints the round trip. Run it with
+`node scripts/parity/session-compat.mjs` from `/Users/gabriel/pi-native`.
+
+## Status
+
+| # | Finding | State |
+|---|---|---|
+| 1 | the session file format | **decided**: the port writes pi's version 3 format exactly (`{"type":"session","version":3,…}` + the flat entry list with the original's entry types), and reads it. The port's lane/operation log leaves the disk. In flight with the session port. |
+| 2 | prompt templates not expanded | in flight with the session port |
+| 3 | skills not invocable | in flight with the session port |
+| 4 | the port's skill validator adds a rule the original does not have | in flight with the session port |
+| 5 | `/new` does not start a new session | open |
+| 6 | the slash-command set | **mostly landed** — `/skills`, `/bug`, `/stats` and the `/history` + `/sessions` aliases are in the port now; the canonical names of `/quit` and `/resume` still differ, and `/new` still clears instead of starting a session |
+| 7 | `/stats` has no counterpart | open |
+| 8 | `/export` argument and format | open |
+| 9 | `/share` | open |
+| 10 | the session directory | open — the agent directory is shared with pi now, the session directory is not |
+| 11 | the project directory is `.rpi` | open |
+| 12 | the session picker | open |
+| 13 | `/fork` has no fork-point picker | open |
+| 14 | modelled-but-ignored settings | open |
+| 15 | project settings are not deep-merged | open |
+| 16 | the settings menu exposes 15 of 37 rows | open |
+| 17 | themes: three compiled-in palettes | open — the token set now matches (58 against 58) |
+| 18 | the project trust prompt | open |
+| 19 | the mechanical audit's slash-command row | **fixed** in `scripts/parity/audit.mjs` |
+
 ---
 
 ## 1. The session file is a different format — no interoperability in either direction
@@ -267,18 +296,24 @@ aliases) on both sides:
 
 ```
 ## slash commands
-the original: 29, the port: 38
-missing on the port (5): /bug, /history, /sessions, /skills, /stats
+the original: 29, the port: 43
+missing on the port (0): —
 only on the port (14): /?, /clear, /context, /help, /images, /m, /provider, /q, /session, /think, /tools, /usage, /v, /version
 ```
 
+The five commands that were missing (`/skills`, `/bug`, `/stats`, and the
+`/history` + `/sessions` aliases of `/resume`) have since landed in the port
+(`rpi/crates/rpi-cli/src/interactive_tui/commands.rs:96`, `:109`, `:125`,
+`:335`). What is left is the canonical-name difference and the port's own
+extra commands.
+
 | Original command | Port | Difference |
 |---|---|---|
-| `skills` "Browse and run a skill" (`slash-commands.ts:27`) | — | **missing** |
-| `bug` "Report a bug to the Pi developers" (`slash-commands.ts:32`) | — | **missing** |
-| `stats` "Show session info and stats" (`slash-commands.ts:35`) | `/usage` (`commands.rs:746`), `/context` (`:726`) | **differs** — see §7 |
+| `skills` "Browse and run a skill" (`slash-commands.ts:27`) | `/skills` (`commands.rs:96`) | **landed** — the wording of the behaviour still differs, see §3 |
+| `bug` "Report a bug to the Pi developers" (`slash-commands.ts:32`) | `/bug` (`commands.rs:109`) | **landed** |
+| `stats` "Show session info and stats" (`slash-commands.ts:35`) | `/stats` (`commands.rs:125`) | **landed** |
 | `quit` (alias `exit`) (`slash-commands.ts:53`) | `/exit` (aliases `/quit`, `/q`) (`commands.rs:44-49`) | canonical name differs; the port adds `/q` |
-| `resume` (aliases `history`, `sessions`) (`slash-commands.ts:52`) | `/session` (alias `/resume`) (`commands.rs:282-287`) | canonical name differs; **`/history` and `/sessions` do not resolve** |
+| `resume` (aliases `history`, `sessions`) (`slash-commands.ts:52`) | `/session` (aliases `/history`, `/sessions`, `/session`) (`commands.rs:335`) | canonical name differs |
 | `new` "Start a new session" (`slash-commands.ts:43`) | `/new` = alias of `/clear` (`commands.rs:24-42`) | **differs** — see §5 |
 | `model` with `argumentHint: "<provider/model>"` (`slash-commands.ts:23`) | `/model` (`commands.rs:110`) | the port has no `argumentHint` on the command type; the hint is missing from the autocomplete |
 | `thinking` with `argumentHint: "<level>"` (`slash-commands.ts:25`) | `/thinking` (`commands.rs:191`) | same |
@@ -354,14 +389,22 @@ imported back.
 
 ---
 
-## 10. Sessions live in a different directory, and the port writes one even when you never chat
+## 10. The session directory is still the port's own; the agent directory is now shared
 
 **differs.**
 
+The port now reads **pi's** config directory — `rpi/crates/rpi-cli/src/config.rs:45`
+(`CONFIG_DIR_NAME = ".pi"`), `:49` (`CONFIG_DIR_ENV = "PI_CODING_AGENT_DIR"`),
+`:95` (`agent_dir()` → `~/.pi/agent`). The settings, the credentials and the
+model catalogue are therefore the same files pi uses. The **session** directory
+and the **project** directory are not.
+
 | | TypeScript | Rust |
 |---|---|---|
-| the sessions directory | `<agentDir>/sessions` = `~/.pi/agent/sessions` — `packages/coding-agent/src/config.ts:657` | `<cwd>/.rpi/sessions` — `rpi/crates/rpi-cli/src/session.rs:190` (`default_session_dir`) |
-| the rest of the agent dir | `themes/`, `tools/`, `bin/`, `prompts/`, `sessions/`, `models.json`, `auth.json`, `settings.json` — `config.ts:613-663` | `models.json`, `auth.json`, `settings.json`, `trust.json` — `rpi/crates/rpi-cli/src/config.rs:124-140` |
+| the agent directory | `~/.pi/agent` — `packages/coding-agent/src/config.ts:613` | `~/.pi/agent` — `rpi/crates/rpi-cli/src/config.rs:95` — **identical** |
+| the agent dir override | `PI_CODING_AGENT_DIR` — `config.ts:589-616` | `PI_CODING_AGENT_DIR` — `rpi/crates/rpi-cli/src/config.rs:49` — **identical** |
+| the sessions directory | `<agentDir>/sessions` = `~/.pi/agent/sessions` — `packages/coding-agent/src/config.ts:657` | `<cwd>/.rpi/sessions` — `rpi/crates/rpi-cli/src/session.rs:190` (`default_session_dir`) — **differs** |
+| the rest of the agent dir | `themes/`, `tools/`, `bin/`, `prompts/`, `sessions/`, `models.json`, `auth.json`, `settings.json` — `config.ts:621-663` | `models.json`, `auth.json`, `settings.json`, `trust.json` — `rpi/crates/rpi-cli/src/config.rs:124-140` |
 | a lock file next to the session | no | yes: `<uuid>.jsonl.lock` |
 | when the file is created | lazily, only once there is a user or assistant message — `core/session-manager.ts:1160-1190` | eagerly, at launch |
 
@@ -372,12 +415,13 @@ the port wrote
 **plus** `<ts>_<uuid>.jsonl.lock`. Launching the port and quitting without
 typing left both files behind.
 
-**User terms**: the project directory collects session files, and the session
-list can only ever see the current project (see §12).
+**User terms**: the settings are shared with pi, but the sessions are not — pi
+cannot see the port's sessions and the port cannot see pi's, because they are
+in different directories. The project directory also collects session files.
 
 ---
 
-## 11. Project resources: `.pi` versus `.rpi`
+## 11. The project directory is still `.rpi`
 
 **differs.**
 
@@ -385,13 +429,15 @@ list can only ever see the current project (see §12).
 |---|---|---|
 | the project config directory | `.pi` — `packages/coding-agent/src/config.ts:589` (`CONFIG_DIR_NAME`) | `.rpi` — `rpi/crates/rpi-cli/src/resource_dirs.rs:44` |
 | the project resource roots | `<cwd>/.pi/{skills,prompts,themes,extensions}` — `core/resource-loader.ts:998-1001` | `<cwd>/.rpi/{skills,prompts,themes,extensions}` — `resource_dirs.rs:51` ("Only `.rpi` is read") |
+| the project settings file | `<cwd>/.pi/settings.json` — `core/settings-manager.ts:194` | `<cwd>/.rpi/settings.json` — `rpi/crates/rpi-cli/src/settings.rs:1039` |
 | the global resource roots | `<agentDir>/{skills,prompts,themes,extensions}` — `core/resource-loader.ts:992-995` | `<agentDir>/{skills,prompts,themes,extensions}` — `resource_dirs.rs:59` — the same |
 
 **Observed**: the same `hello.md` template loaded by the original from
 `.pi/prompts/` was invisible to the port; the port needed `.rpi/prompts/`.
 
 **User terms**: a project that ships a `.pi/` folder works in the original and
-is silently ignored by the port.
+is silently ignored by the port — including its `.pi/settings.json`, which the
+original reads and the port does not.
 
 ---
 
@@ -476,6 +522,40 @@ One key-name asymmetry survives: the original's key is `enabledModels`
 (`rpi/crates/rpi-cli/src/settings.rs`, `alias = "scopedModels"` on the
 `enabledModels` field). The port reads both, but a port-written
 `settings.json` handed to the original loses the scoped-model set.
+
+### The check for this section
+
+**`scripts/parity/settings-parity.mjs`** is the measurement: for each key, the
+port's behaviour with the key set must equal pi's behaviour with the key set.
+It writes the key into the shared agent settings file, drives both programs
+with the same keys in the same project, reads the pane from each side and
+compares the facts. "The original shows it, the port hides it" is the port
+ignoring the key; "the same on both sides" is the port honouring it.
+
+The cases are a table at the top of the script — one entry per key, with the
+keys to send and the facts to read. The first tranche is in:
+
+| key | cases |
+|---|---|
+| `autocompletePosition` | `above`, `below` (the list's position relative to the input) |
+| `autocompleteMaxVisible` | `3`, `20` |
+| `hideThinkingBlock` | `true`, `false` |
+| `enableSkillCommands` | `true`, `false` (with a skill in the project) |
+| `quietStartup` | `true`, `false` |
+| `outputPad` | `0`, `1` (the transcript's indent) |
+| `editorPaddingX` | `0`, `2` (the input's indent) |
+| `doubleEscapeAction` | `none`, `tree` (Esc Esc) |
+| `defaultProjectTrust` | `ask`, `always` (the trust prompt) |
+
+The cases that still need a fixture — `markdown.mermaid`, `images.*`,
+`warnings.*`, `transport`, `cacheWarming`, `codemode`,
+`projectContextMaxChars`, `npmCommand`, `deviceId`, `modelThinkingLevels`,
+`sessionShareDestination`, `externalEditor`, `queueMode`, `tuiMode` and the
+`fullscreen*` family — are the ones that go in as the reading lands. Each is
+three lines in the table.
+
+The project fixture is written under **both** `.pi` and `.rpi`, so a case
+measures the setting and not the project-directory question in §11.
 
 ---
 
@@ -578,7 +658,145 @@ compare the names a user can type.
 
 ---
 
-## Ranked
+## The original's exact texts
+
+Copied verbatim from the original so the porters work from its text and not
+from a description of it.
+
+### The built-in commands
+
+`packages/coding-agent/src/core/slash-commands.ts:21-53`:
+
+```ts
+{ name: "settings", description: "Open settings menu" },
+{ name: "model", description: "Select model (opens selector UI)", argumentHint: "<provider/model>" },
+{ name: "tree", description: "Navigate session tree (switch branches)" },
+{ name: "thinking", description: "Set thinking level", argumentHint: "<level>" },
+{ name: "scoped-models", description: "Enable/disable models for Ctrl+P cycling" },
+{ name: "skills", description: "Browse and run a skill" },
+{ name: "theme", description: "Change the color theme", argumentHint: "<name>" },
+{ name: "export", description: "Export session (HTML default, or specify path: .html/.jsonl)" },
+{ name: "import", description: "Import and resume a session from a JSONL file" },
+{ name: "share", description: "Share session via a Radius artifact or a GitHub gist" },
+{ name: "bug", description: "Report a bug to the Pi developers", argumentHint: "<description>" },
+{ name: "copy", description: "Copy last agent message to clipboard" },
+{ name: "name", description: "Set session display name" },
+{ name: "stats", description: "Show session info and stats" },
+{ name: "changelog", description: "Show changelog entries" },
+{ name: "hotkeys", description: "Show all keyboard shortcuts" },
+{ name: "fork", description: "Create a new fork from a previous user message" },
+{ name: "clone", description: "Duplicate the current session at the current position" },
+{ name: "trust", description: "Save project trust decision for future sessions" },
+{ name: "login", description: "Configure provider authentication", argumentHint: "<provider>" },
+{ name: "logout", description: "Remove provider authentication" },
+{ name: "new", description: "Start a new session" },
+{ name: "compact", description: "Manually compact the session context" },
+{ name: "resume", description: "Resume a different session", aliases: ["history", "sessions"] },
+{ name: "reload", description: "Reload keybindings, extensions, skills, prompts, themes, and context files" },
+{ name: "quit", description: `Quit ${APP_NAME}`, aliases: ["exit"] },
+```
+
+### How a skill becomes a command
+
+`packages/coding-agent/src/core/agent-session.ts:3440-3445`:
+
+```ts
+const skills: SlashCommandInfo[] = this._resourceLoader.getSkills().skills.map((skill) => ({
+	name: `skill:${skill.name}`,
+	description: skill.description,
+	source: "skill",
+	sourceInfo: skill.sourceInfo,
+}));
+```
+
+### How the autocomplete renders a command
+
+`packages/tui/src/autocomplete.ts:355-360` — the argument hint comes first and
+is separated by an em dash:
+
+```ts
+const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
+const desc = cmd.description ?? "";
+const fullDesc = hint ? (desc ? `${hint} — ${desc}` : hint) : desc;
+```
+
+### The skill invocation block
+
+`packages/coding-agent/src/core/agent-session.ts:2223-2240`:
+
+```ts
+const content = readFileSync(skill.filePath, "utf-8");
+const body = stripFrontmatter(content).trim();
+return `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
+```
+
+### The skill listing in the system prompt
+
+`packages/coding-agent/src/core/skills.ts:424-462` — the exact lines, one per
+array element:
+
+```
+"\n\nThe following skills provide specialized instructions for specific tasks.",
+"Use the read tool to load a skill's file when the task matches its description.",
+"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+"",
+"<available_skills>",
+"  <skill>",
+"    <name>{name}</name>",
+"    <description>{description}</description>",
+"    <location>{filePath}</location>",
+"  </skill>",
+"</available_skills>"
+```
+
+### The prompt-template expansion
+
+`packages/coding-agent/src/core/prompt-templates.ts:309-325`:
+
+```ts
+export function expandPromptTemplate(text: string, templates: PromptTemplate[]): string {
+	if (!text.startsWith("/")) return text;
+
+	const match = text.match(/^\/([^\s]+)(?:\s+([\s\S]*))?$/);
+	if (!match) return text;
+
+	const templateName = match[1];
+	const argsString = match[2] ?? "";
+
+	const template = templates.find((t) => t.name === templateName);
+	if (template) {
+		const args = parseCommandArgs(argsString);
+		return substituteArgs(template.content, args);
+	}
+
+	return text;
+}
+```
+
+The substitution's pattern (`packages/coding-agent/src/core/prompt-templates.ts:84`):
+
+```
+/\$\{(\d+|ARGUMENTS|@):-([^}]*)\}|\$\{@:(\d+)(?::(\d+))?\}|\$(ARGUMENTS|@|\d+)/g
+```
+
+The argument parser is bash-like: quoted strings are one argument, and an
+empty quoted string is still an argument (`packages/coding-agent/src/core/prompt-templates.ts:24-66`).
+
+### The session file
+
+The header (`packages/coding-agent/src/core/session-manager.ts:1062-1069`):
+
+```json
+{"type":"session","version":3,"id":"<uuid>","timestamp":"<ISO-8601>","cwd":"<abs path>"}
+```
+
+Every entry carries (`packages/coding-agent/src/core/session-manager.ts:57-62`):
+
+```json
+{"type":"<type>","id":"<8 hex chars>","parentId":"<id|null>","timestamp":"<ISO-8601>"}
+```
+
+---
 
 1. **The session file formats are unrelated** (§1) — a session cannot cross
    between the two programs in either direction, and five of the original's
@@ -598,8 +816,9 @@ compare the names a user can type.
 8. **`/new` does not start a new session** (§5).
 9. **The session picker has no scope, no sort modes, no rename and no delete**
    (§12); **`/fork` has no fork-point picker** (§13).
-10. **`/skills`, `/bug` and `/stats` are missing** and the canonical names of
-    `/quit` and `/resume` differ (§6, §7).
+10. **The command set** (§6, §7) — `/skills`, `/bug` and `/stats` have landed;
+    what is left is the canonical name of `/quit` and `/resume`, and `/new`
+    still clearing instead of starting a session.
 11. **Project resources: `.pi` versus `.rpi`** (§11); **project settings are
     not deep-merged** (§15).
 12. **The settings menu exposes 15 of 37 rows** (§16).

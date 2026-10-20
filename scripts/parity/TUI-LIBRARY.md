@@ -24,7 +24,7 @@ panel and in the input box.
 | | |
 |---|---|
 | Original | `packages/tui/src/utils.ts:900` (`wrapTextWithAnsi`, token based) and `packages/tui/src/components/editor.ts:126` (`wordWrapLine`, breaks at whitespace and between CJK graphemes) |
-| Port | `rpi/crates/rpi-tui/src/utils.rs:276` (`wrap_text_with_ansi`, per character) and `rpi/crates/rpi-tui/src/editor.rs:194` (`wrap_line_ranges`, per character) |
+| Port | `rpi/crates/rpi-tui/src/utils.rs:693` (`wrap_text_with_ansi`, per character) and `rpi/crates/rpi-tui/src/editor.rs:227` (`wrap_line_ranges`, per character) |
 
 **Observed.**
 
@@ -56,13 +56,18 @@ fixing the one function fixes all of them.
 * Parity: the `tool` and `markdown` scenarios in `scripts/parity/drive.mjs` show the
   wrapped text; the mock server's tool output is the fixture to compare.
 
-**Status.** The shared wrap is fixed (2026-10-20): `rpi/crates/rpi-tui/src/utils.rs:695`
-`wrap_text_with_ansi` is token-based with an ANSI tracker, and the crate's tests pin
-`["Hello","World"]`, `["The quick","brown fox","jumps over","the lazy dog"]`, a broken
-over-long word, no leading whitespace on a line and the ANSI state across the wrap. The
-editor's own wrap (`rpi/crates/rpi-tui/src/editor.rs:194`, `wrap_line_ranges`) was still
-per character at the time of writing — the port must break the input box at word
-boundaries too.
+**Status.** Fixed (2026-10-20). `rpi/crates/rpi-tui/src/utils.rs` `wrap_text_with_ansi` is
+token-based with an ANSI tracker, and `rpi/crates/rpi-tui/src/editor.rs:227`
+`wrap_line_ranges` is a faithful port of the original's `wordWrapLine` (the same
+backtrack condition, the same conservative break, the trailing space kept on the row,
+the CJK break opportunity). The crate's tests pin the original's exact output:
+`["Hello","World"]`, `["The quick","brown fox","jumps over","the lazy dog"]`, the broken
+over-long word, no leading whitespace on a row, the ANSI state across the wrap, the CJK
+run, and the editor's rows at the original's widths.
+
+The original's editor width is `layoutWidth = textWidth - (paddingX ? 0 : 1)`
+(`packages/tui/src/components/editor.ts:648`); the port computes the same
+(`rpi/crates/rpi-tui/src/editor.rs:1745`).
 
 ## 2. The input box has no height cap and no internal scrolling
 
@@ -73,7 +78,7 @@ scrolls inside the box.
 | | |
 |---|---|
 | Original | `packages/tui/src/components/editor.ts:255-284` (`EditorOptions.contentHeight`, `maxContentHeight`, `showScrollHints`); app values `packages/coding-agent/src/modes/interactive/interactive-mode.ts:376` (`EDITOR_MAX_CONTENT_HEIGHT = 12`) and `:676-677` |
-| Port | `rpi/crates/rpi-tui/src/editor.rs:37-46` — `EditorOptions` has only `padding_x`, `autocomplete_max_visible`, `placeholder`, `initial_text`; no cap anywhere, and `rpi/crates/rpi-cli/src/interactive_tui.rs:1425-1428` makes the editor `shrink(0).min_size(3)` so it keeps growing |
+| Port | `rpi/crates/rpi-tui/src/editor.rs:38-58` — `EditorOptions` has only `padding_x`, `autocomplete_max_visible`, `placeholder`, `initial_text`; no cap anywhere, and `rpi/crates/rpi-cli/src/interactive_tui.rs:1425-1428` makes the editor `shrink(0).min_size(3)` so it keeps growing |
 
 **Observed.** `grep -n "max_content_height\|scroll_hint" rpi/crates/rpi-tui/src/editor.rs`
 → no hits.
@@ -84,6 +89,19 @@ scrolls inside the box.
   are above/below.
 * Parity: the `startup` scenario with a long multi-line draft.
 
+**Status.** Fixed (2026-10-20): `EditorOptions` has `content_height`, `max_content_height`
+and `show_scroll_hints` (`rpi/crates/rpi-tui/src/editor.rs:49-52`), the box keeps a fixed
+height, the overflow scrolls inside it, the caret follows the scroll unless the wheel
+pinned the view, and the hidden-line report is drawn on the card's top and bottom rows
+(the original draws it in the border row; the port's card has no rule to sit in, and the
+app sets `show_scroll_hints: false` like the original, so the user sees neither). The app
+sets `max_content_height: 12` at the editor construction, like the original.
+
+One thing to watch: the port's `height_limit()` clamped `max_content_height` with
+`min(rows / 2)`, which the original does not do — the original's cap is absolute
+(`packages/tui/src/components/editor.ts:269-273`). At 12 the clamp bites in a terminal
+shorter than 24 rows. Reported to the porter.
+
 ## 3. The caret is invisible in the multi-line input
 
 **What the user sees.** The prompt has no visible caret when the terminal's hardware
@@ -93,18 +111,26 @@ block over the character under the caret.
 | | |
 |---|---|
 | Original | `packages/tui/src/components/editor.ts:731,736` (`renderFakeCursor(...)` over the grapheme under the caret, or a trailing space); markers and resolution `packages/tui/src/tui.ts:219-227` and `:1583-1585` (the fake cursor becomes `\x1b[7m` when the hardware cursor is hidden) |
-| Port | `rpi/crates/rpi-tui/src/editor.rs:1483` — only `insert_cursor_marker(...)` (the APC hardware-cursor marker). No `FAKE_CURSOR_START` / `FAKE_CURSOR_END` / `renderFakeCursor` anywhere in the tree |
+| Port | `rpi/crates/rpi-tui/src/editor.rs:1790` — only `insert_cursor_marker(...)` (the APC hardware-cursor marker). No `FAKE_CURSOR_START` / `FAKE_CURSOR_END` / `renderFakeCursor` anywhere in the tree |
 
 **Observed.** `grep -rn "FAKE_CURSOR\|renderFakeCursor" rpi/crates/rpi-tui/src/` → no hits.
 (The single-line `Input` does invert the caret — `rpi/crates/rpi-tui/src/input.rs:675` —
 so only the multi-line editor is affected.)
 
 **Check.**
-* Rust: a test asserting the editor's rendered content line contains the fake-cursor
+* Rust: a test that the editor's rendered content line contains the fake-cursor
   markers around the caret grapheme, and that the alt screen turns them into `\x1b[7m`
   when the hardware cursor is off (and drops them when it is on).
 * Parity: none directly (the harness pane has a visible hardware cursor) — a unit test
   is the check.
+
+**Status.** Fixed (2026-10-20): `FAKE_CURSOR_START` / `FAKE_CURSOR_END` are in
+`rpi/crates/rpi-tui/src/ansi.rs`, the editor emits the hardware marker followed by the
+fake cursor around the grapheme under the caret (a trailing space at the end of the row),
+and `rpi/crates/rpi-tui/src/tui_alt_screen.rs:171` `resolve_fake_cursors` turns the
+markers into `\x1b[7m`…`\x1b[27m` when the hardware cursor is hidden and drops the
+focused fake cursor when it is shown — the same rule as the original
+(`packages/tui/src/tui.ts:1583-1585`).
 
 ## 4. The mouse reaches only the select list
 
@@ -115,7 +141,7 @@ lists cannot be hover-selected; the autocomplete list is not clickable.
 | | |
 |---|---|
 | Original | `packages/tui/src/components/editor.ts:813-850` (click positions the caret, the wheel scrolls the text inside the box, the autocomplete list is clickable), `packages/tui/src/components/input.ts:234`, `packages/tui/src/components/settings-list.ts:187,211` (hover-to-select via `applyHover`), `packages/tui/src/components/box.ts:80` (forwards the event to its children), `packages/tui/src/components/mouse-region.ts:25` |
-| Port | the trait has the hook (`rpi/crates/rpi-tui/src/component.rs:130`, `handle_mouse`) and the alt screen dispatches clicks (`rpi/crates/rpi-tui/src/tui_alt_screen.rs:1381-1401`), but only `rpi/crates/rpi-tui/src/select_list.rs:675` implements it. `grep -n "mouse" rpi/crates/rpi-tui/src/{editor,input,settings_list,box_component}.rs` → no hits |
+| Port | the trait has the hook (`rpi/crates/rpi-tui/src/component.rs:130`, `handle_mouse`) and the alt screen dispatches clicks (`rpi/crates/rpi-tui/src/tui_alt_screen.rs:1381-1401`), but only `rpi/crates/rpi-tui/src/select_list.rs:697` implements it. `grep -n "mouse" rpi/crates/rpi-tui/src/{editor,input,settings_list,box_component}.rs` → no hits |
 
 **Check.**
 * Rust: a test that sends a `MouseEventKind::Click` to the editor at a column and asserts
@@ -123,6 +149,14 @@ lists cannot be hover-selected; the autocomplete list is not clickable.
   and not the transcript; a test that a `move` event over a settings row moves the
   selection.
 * Parity: the `panels` scenario (mouse is not in the harness, so unit tests are the check).
+
+**Status.** Fixed (2026-10-20): the editor takes a click (the caret lands on the clicked
+cell) and the wheel (the input scrolls and the view stays pinned until the next key
+press); the settings list takes the mouse in the original's order — the submenu first,
+the search input on row 0, the wheel moves the selection, the hover through
+`crate::list_hover::apply_hover`, the press selects and the click activates. The tests
+in the crate cover the click, the wheel, the hover, that a drag does not move the
+selection, and that a click activates a row.
 
 ## 5. Transcript search finds matches but never highlights or jumps to them
 
@@ -133,7 +167,7 @@ underlined in the transcript, the current one in another colour, and scrolls it 
 | | |
 |---|---|
 | Original | `packages/tui/src/tui-alt-screen.ts:176,178` (`searchMatchStyle`, `searchCurrentMatchStyle`), `:1525` (paints the match), `:600-680` (`refreshSearch` scrolls the selected match into view), `packages/tui/src/alt-screen-search.ts:197` (overlay with next/previous buttons) |
-| Port | `rpi/crates/rpi-tui/src/alt_screen_search.rs:300` has a `highlight_line` helper that **is never called** (`grep -rn "highlight_line" rpi/crates/` finds only the definition); the `on_match` callback (`:219-222`) is never wired, so the view never scrolls to the match; the port shows a flat bar (`rpi/crates/rpi-tui/src/search_bar.rs:10`, `rpi/crates/rpi-cli/src/interactive_tui.rs:2740-2790`) |
+| Port | `rpi/crates/rpi-tui/src/alt_screen_search.rs:302` has a `highlight_line` helper that **is never called** (`grep -rn "highlight_line" rpi/crates/` finds only the definition); the `on_match` callback (`:219-222`) is never wired, so the view never scrolls to the match; the port shows a flat bar (`rpi/crates/rpi-tui/src/search_bar.rs:10`, `rpi/crates/rpi-cli/src/interactive_tui.rs:2740-2790`) |
 
 **Check.**
 * Rust: a test that renders a transcript with a match and asserts the match is highlighted
@@ -147,7 +181,7 @@ underlined in the transcript, the current one in another colour, and scrolls it 
 | | |
 |---|---|
 | Original | `packages/tui/src/tui-alt-screen.ts:192` (`openUrl`), wired at `:265` |
-| Port | the hook exists (`rpi/crates/rpi-tui/src/tui_alt_screen.rs:1282`, `set_url_opener`) but the CLI never calls it — `grep -rn "set_url_opener" rpi/crates/rpi-cli/` → no hits |
+| Port | the hook exists (`rpi/crates/rpi-tui/src/tui_alt_screen.rs:1310`, `set_url_opener`) but the CLI never calls it — `grep -rn "set_url_opener" rpi/crates/rpi-cli/` → no hits |
 
 **Check.** Rust: a test that clicks a link and asserts the opener callback ran. The CLI
 must call `set_url_opener`.
@@ -161,7 +195,7 @@ moves five times as far.
 | | |
 |---|---|
 | Original | `packages/tui/src/wheel-scroll.ts:35` (`WheelScrollAccelerator`: 1 line at rest, up to 6 for a fast spin, 200 ms gesture gap), `packages/tui/src/tui-alt-screen.ts:169-172,286,735-739` (default `"auto"`, app passes `"auto"` at `packages/coding-agent/src/modes/interactive/tui-renderer.ts:34`; Alt+wheel ×5) |
-| Port | `rpi/crates/rpi-tui/src/tui_alt_screen.rs:403` — `wheel_scroll_lines: AtomicI32::new(3)`, fixed per event (`:1437`), no accelerator, no Alt handling; the CLI never calls `set_wheel_scroll_lines` |
+| Port | `rpi/crates/rpi-tui/src/tui_alt_screen.rs:380` — `wheel_scroll_lines: AtomicI32::new(3)`, fixed per event (`:1437`), no accelerator, no Alt handling; the CLI never calls `set_wheel_scroll_lines` |
 
 **Check.** Rust: a test for the accelerator (one notch → 1 line; a fast spin → up to 6;
 Alt → ×5). Parity: not covered by the harness.
@@ -292,7 +326,7 @@ The audit script had to be fixed first — see the note at the end of this file.
 | markdown source transform | `packages/tui/src/components/markdown.ts:226` (`MarkdownOptions.transform`) | missing (`rpi/crates/rpi-tui/src/markdown.rs:22`) |
 | markdown LaTeX toggle | `packages/tui/src/components/markdown.ts:228` (`renderLatex`, default on) | missing (always rendered) |
 | markdown theme | 16 per-element style callbacks (`packages/tui/src/components/markdown.ts:200-218`) | a fixed `TextStyle` enum over theme tokens (`rpi/crates/rpi-tui/src/markdown.rs:713-731`) |
-| scroll view overscroll | `packages/tui/src/components/scroll-view.ts:10` (`overscroll: "chain" \| "contain"`, default `chain`), honoured at `packages/tui/src/tui-alt-screen.ts:1028` (the chain stops at a `contain` view) | declared but never read: `rpi/crates/rpi-tui/src/scroll_view.rs:58` (`OverscrollMode`), and the alt screen always chains the leftover wheel delta to the primary view (`rpi/crates/rpi-tui/src/tui_alt_screen.rs:1439-1451`). Nothing in the original sets `contain` today, so the gap is latent, not visible |
+| scroll view overscroll | `packages/tui/src/components/scroll-view.ts:10` (`overscroll: "chain" \| "contain"`, default `chain`), honoured at `packages/tui/src/tui-alt-screen.ts:1028` (the chain stops at a `contain` view) | declared but never read: `rpi/crates/rpi-tui/src/scroll_view.rs:58` (`OverscrollMode`), and the alt screen always chains the leftover wheel delta to the primary view (`rpi/crates/rpi-tui/src/tui_alt_screen.rs:1467-1479`). Nothing in the original sets `contain` today, so the gap is latent, not visible |
 
 **Check.** Rust: one test per option that the option changes the rendered output.
 
@@ -399,7 +433,7 @@ differently depending on whether the line carries ANSI codes.
 | | |
 |---|---|
 | Original | `packages/tui/src/utils.ts:182-240` — `graphemeWidth` works on a grapheme cluster: an RGI emoji is 2 columns, a regional indicator is 2, a zero-width cluster is 0; `visibleWidth:250` sums the clusters |
-| Port | `rpi/crates/rpi-tui/src/utils.rs:9-65` — `visible_width` sums `UnicodeWidthStr::width(char)` **per character**, so a ZWJ sequence counts every member; it only delegates to `rpi/crates/rpi-tui/src/ansi.rs:15` (which measures the whole string and is correct) when the string carries an OSC/APC sequence. The same per-character walk is in `slice_by_column` (`rpi/crates/rpi-tui/src/utils.rs:71-152`, the comment says "grapheme width" but it measures one char at a time, so it can cut a cluster in half) and `truncate_to_width` (`:159-221`) |
+| Port | `rpi/crates/rpi-tui/src/utils.rs:9-65` — `visible_width` sums `UnicodeWidthStr::width(char)` **per character**, so a ZWJ sequence counts every member; it only delegates to `rpi/crates/rpi-tui/src/ansi.rs:15` (which measures the whole string and is correct) when the string carries an OSC/APC sequence. The same per-character walk is in `slice_by_column` (`rpi/crates/rpi-tui/src/utils.rs:79-160`, the comment says "grapheme width" but it measures one char at a time, so it can cut a cluster in half) and `truncate_to_width` (`:159-221`) |
 
 **Observed.**
 
@@ -425,10 +459,10 @@ right answer for the whole string, so the fix is to stop splitting the string.
 measure the same. This matters for the wrapping work in step 1: the wrap must measure
 graphemes, not characters.
 
-**Status.** The width part is fixed (2026-10-20): `utils::visible_width` now measures the
-whole text (`rpi/crates/rpi-tui/src/utils.rs:12`) and the emoji test is in the crate. The
-cluster-safe `slice_by_column` and `truncate_to_width` are still open — they still walk
-character by character, so they can cut an emoji cluster in half.
+**Status.** Fixed (2026-10-20): `utils::visible_width` measures the whole text
+(`rpi/crates/rpi-tui/src/utils.rs:12`), and `slice_by_column` and `truncate_to_width` walk
+graphemes, so they cannot cut a cluster in half. The crate's tests pin the emoji widths
+(styled and unstyled) and that a truncation and a slice never cut a cluster.
 
 ## 24. The regular (main) screen re-prints the whole transcript on every repaint
 
@@ -522,6 +556,38 @@ with `APP_TITLE = "π"` (`packages/coding-agent/src/config.ts:588`); the port's
 to the branding agent, not to the TUI library.
 
 **Check.** Rust: a test that `set_title` writes `\x1b]0;` and not `\x1b]2;`.
+
+**Status.** Fixed (2026-10-20): `rpi/crates/rpi-tui/src/terminal.rs` writes OSC 0 and the
+crate has the test `the_window_title_is_written_with_osc_zero`. The *text* is the
+branding agent's file (`rpi/crates/rpi-cli/src/brand.rs`): the original's title is
+`${APP_TITLE} - ${sessionName} - ${cwdBasename}` (`APP_TITLE` = "π",
+`packages/coding-agent/src/config.ts:588`).
+
+## 27. `set_text` leaves the caret at the start, the original's `setText` leaves it at the end
+
+**What the user sees.** When a draft is restored programmatically (an extension setting
+the editor text, a restored session draft), the original leaves the caret at the end of
+the text and the port leaves it at the beginning.
+
+| | |
+|---|---|
+| Original | `packages/tui/src/components/editor.ts:1325` — `setText` → `setTextInternal(normalized)`, whose default is `cursorPlacement = "end"` (`packages/tui/src/components/editor.ts:1355-1359`: the caret goes to the last line, at its end). The "start" placement is used only for the history recall (up-arrow → "start", down-arrow → "end") |
+| Port | `rpi/crates/rpi-tui/src/editor.rs` — `set_text` sets `cursor_row = 0; cursor_col = 0;`. The CLI compensates with a helper (`rpi/crates/rpi-cli/src/interactive_tui/events.rs:46-51`, "Place the caret at the END of `text` after `set_text`") |
+
+**Observed.** Rendering the same draft on both sides: the original's caret is after the
+last character, the port's is on the first one.
+
+**Check.** Rust: a test that `set_text("ab")` leaves the caret at the end (row 0, column
+2), and that the history recall keeps its own placement.
+
+**Status.** Fixed (2026-10-20): `Editor::set_text` puts the caret on the last line, at
+its end, and the new `Editor::set_text_at_start` covers the history recall (the
+original's "start" placement). The crate's tests pin both. Two call sites in the CLI
+still use the old shape and belong to the interactive mode port:
+`rpi/crates/rpi-cli/src/interactive_tui/events.rs:46-51` (a now-redundant
+"put the caret at the end" helper) and
+`rpi/crates/rpi-cli/src/interactive_tui/state.rs:962-971` (the history recall should use
+`set_text_at_start`).
 
 ## Verified as parity (do not redo)
 
