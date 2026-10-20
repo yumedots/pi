@@ -59,7 +59,7 @@ const FACTS = [
 ];
 
 /** The pane text that means "the import did not work". */
-const FAILURE = /no session matches|Could not open|not a JSONL|Unknown .*format|Usage: \/import|Failed to import|Import cancelled/i;
+const FAILURE = /no session matches|Could not open|not a JSONL|Unknown .*format|Usage: \/import|Failed to import|Import cancelled|Import source not found/i;
 
 function tmux(args) {
 	return execFileSync("tmux", ["-L", SOCKET, ...args], {
@@ -139,10 +139,12 @@ function writeAgentDir(agentDir, baseUrl) {
 		)}\n`,
 	);
 	// `hideThinkingBlock: false` so the thinking block is visible in the pane
-	// and the round trip can be checked for it.
+	// and the round trip can be checked for it. `threeDEmptySession` is left
+	// off: the empty-session screen covers the transcript, so a pane that
+	// still shows it after an import tells us nothing about the import.
 	writeFile(
 		join(agentDir, "settings.json"),
-		`${JSON.stringify({ threeDEmptySession: true, hideThinkingBlock: false }, null, 1)}\n`,
+		`${JSON.stringify({ hideThinkingBlock: false }, null, 1)}\n`,
 	);
 }
 
@@ -222,15 +224,20 @@ function importSession(side, baseUrl, clock, file) {
 	mkdirSync(agentDir, { recursive: true });
 	mkdirSync(cwd, { recursive: true });
 	writeAgentDir(agentDir, baseUrl);
+	// The port's editor completes a path to its basename, so the file has to
+	// be in the consumer's cwd for the import to resolve. The original
+	// resolves a bare name against its cwd too.
+	const bare = file.split("/").pop();
+	copyFileSync(file, join(cwd, bare));
 	const command =
 		side === "ts" ? tsCommand({ cwd, agentDir, clock }) : rustCommand({ cwd, agentDir, clock });
 	const screen = runInPane(`compat-import-${side}`, command, [
 		{ settle: 5000 },
-		{ keys: [`/import ${file}`], settle: 800 },
+		{ keys: [`/import ${bare}`], settle: 800 },
 		{ keys: ["Enter"], settle: 1500 },
 		// The original asks "Replace current session with <file>?" before it
-		// imports; the port does not. Answer the dialog so both sides get the
-		// same chance.
+		// imports; the port does not. The second Enter answers the dialog, so
+		// both sides get the same chance.
 		{ keys: ["Enter"], settle: 4000 },
 		{ settle: 2000 },
 	]);
@@ -308,6 +315,7 @@ try {
 						: `the transcript survived; lost: ${statsLost.join(", ")}`
 					: `the transcript lost: ${lost.join(", ")}`,
 			tail: outcome.tail,
+			pane: outcome.screen,
 		});
 	}
 
@@ -315,6 +323,10 @@ try {
 	for (const row of rows) {
 		console.log(`${row.producer} -> ${row.consumer}: ${row.result} (${row.detail})`);
 		if (row.result !== "ok" && row.tail) console.log(`    last pane: ${row.tail}`);
+		if (row.result !== "ok" && row.pane) {
+			console.log("    pane:");
+			for (const line of row.pane.split("\n").filter((l) => l.trim())) console.log(`      ${line.trim()}`);
+		}
 	}
 	if (rows.some((row) => row.result === "BROKEN" || row.result === "lossy")) process.exitCode = 1;
 } finally {

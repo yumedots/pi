@@ -33,7 +33,7 @@ session file and prints the round trip. Run it with
 
 | # | Finding | State |
 |---|---|---|
-| 1 | the session file format | **mostly landed** — the port writes pi's version 3 header and the flat entry list, and the session directory has moved to `<agent dir>/sessions`. Measured: `rust -> ts: ok`, `ts -> rust: BROKEN` — the port's messages carry an extra `kind` discriminator its deserializer requires, so the original's messages cannot be read. See §1.7. |
+| 1 | the session file format | **mostly landed** — the port writes pi's version 3 header and the flat entry list, and the session directory has moved to `<agent dir>/sessions`. Measured: `rust -> ts: ok`, `ts -> rust: BROKEN (the transcript lost: thinking block)` — the port opens the original's file and restores the turns, but the thinking block is not persisted by the port and is not rendered on import. See §1.7. |
 | 2 | prompt templates not expanded | in flight with the session port |
 | 3 | skills not invocable | in flight with the session port |
 | 4 | the port's skill validator adds a rule the original does not have | in flight with the session port |
@@ -199,12 +199,28 @@ entry list with `type`/`id`/`parentId`/`timestamp`
 moved to the original's place, `<agent dir>/sessions`.
 
 `node scripts/parity/session-compat.mjs`, against the relinked binary
-(`rpi/target/debug/rpi`, 18:49), says:
+(`rpi/target/debug/rpi`, 23:40), says:
 
 ```
-ts -> rust: BROKEN (the transcript lost: user turn, assistant reply, thinking block)
+ts -> rust: BROKEN (the transcript lost: thinking block)
 rust -> ts: ok (the session opened and the transcript survived)
 ```
+
+The port now opens the original's file, restores the user turn and the
+assistant reply, and says "Imported session from ts-session.jsonl". **The
+thinking block is what is still lost**, and it is lost twice over:
+
+1. **The port does not write the thinking block into its own session file.**
+   The original's assistant message carries the content blocks
+   `['thinking', 'text']`; the port's carry `['toolCall']` and `['text']` — no
+   thinking block at all. A port session therefore loses the reasoning, which
+   the original's `/export` and `/share` both carry.
+2. **The port renders the imported thinking block as the collapsed "+ Thought"
+   summary** even with `hideThinkingBlock: false`, where the original shows
+   the thinking text.
+
+The port's `usage` also has no `reasoning` field (the original writes
+`reasoning: 0`).
 
 **The blocker** is the message discriminator. The port writes an extra `kind`
 field on every message and its deserializer requires it
