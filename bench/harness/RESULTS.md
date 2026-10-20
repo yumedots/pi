@@ -111,17 +111,34 @@ The goal was a harness under 10 MB of ram. The runtime is the floor, and the
 floor is above the goal:
 
 - Node: 37.5 MB before the agent loads a single module.
-- Bun: 17.3 MB.
-- The best artifact, the compiled binary, with the agent on top: 132.8 MB for
-  the interactive mode, 112.9 MB for the headless one.
+- Bun: 17.5 MB.
+- The best artifact, the compiled binary, with the agent on top: 141.3 MB for the
+  interactive mode while it waits, 111.0 MB for the headless one.
 
 So the agent's own work is what can be cut, and that is what this branch cuts.
-The gap to the goal on the compiled binary is 123 MB, of which 95 MB is the
-agent's own code and 17.3 MB the runtime.
+The gap to the goal on the compiled binary is 131 MB, of which 124 MB is the
+agent's own code and 17.5 MB the runtime.
 
 Under 10 MB needs a runtime that starts in a megabyte or two. The repository
 already has one: the Rust daemon of the `env` package serves in 9.6 MB. A
 native harness is a rewrite of the agent loop, not an optimization of it.
+
+## The agent that waits
+
+The number that matters for a harness is the memory the agent holds while it
+waits, not the peak of its startup. The interactive mode left up in a terminal
+holds:
+
+| Runtime | Memory while it waits |
+| --- | --- |
+| node | 159.9 MB |
+| bun | 137.3 MB |
+| the compiled binary | 141.3 MB |
+
+The curve is flat: the memory is the same at the first second and at the
+25th, so the agent does not grow while it waits. The peak of a turn is 24 MB
+above that on Node, and that is the request, the answer and the model
+catalog.
 
 ## The long session: the soak test
 
