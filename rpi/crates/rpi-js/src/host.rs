@@ -312,6 +312,7 @@ impl Host for ProcessHost {
 			| "ui.custom" => Ok(Value::Null),
 			"ui.getEditorText" => Ok(json!("")),
 			"ui.select" => Ok(Value::Null),
+			"ui.pollDialog" => Ok(json!({ "answered": false })),
 			"ui.confirm" => Ok(json!(false)),
 			"ui.input" | "ui.editor" => Ok(Value::Null),
 			"ui.getEditorComponent" => Ok(Value::Null),

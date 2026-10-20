@@ -56,7 +56,9 @@ pub async fn run_with_extensions(
             0
         }
         other => {
-            eprintln!("Error: unknown auth subcommand \"{other}\"");
+            eprintln!(
+                "Error: Unknown auth command \"{other}\". Use \"pi auth print-api-key\", \"pi auth print-bearer-token\", or \"pi auth check\"."
+            );
             eprintln!();
             print_auth_help();
             EXIT_ERROR
@@ -130,15 +132,16 @@ async fn run_check(
     let ready = source.is_present();
     if want_json {
         let json = serde_json::json!({
-            "ready": ready,
+            "status": if ready { "ready" } else { "not_ready" },
             "provider": provider,
-            "source": source.as_json_str(),
+            "reason": if ready { serde_json::Value::Null } else { serde_json::Value::String("no credentials found".into()) },
+            "authType": source.as_json_str(),
         });
         println!("{json}");
     } else if ready {
-        println!("ready ({})", source.as_json_str());
+        println!("ready");
     } else {
-        println!("not_ready — no credentials found.");
+        println!("not_ready");
         eprintln!();
         eprintln!("Run `rpi auth login --provider {provider}`, configure this provider's apiKey in models.json, or pass --api-key when starting rpi.");
         let env = match snapshot.and_then(|snapshot| snapshot.provider_manifest(provider)) {
@@ -397,13 +400,15 @@ fn detect_credential(
 /// `rpi auth --help`. Mirrors the TS auth-command usage but scoped to v1.
 fn print_auth_help() {
     println!(
-        "Usage: {name} auth <subcommand> [options]
+        "Usage:
+  pi auth print-api-key [--provider <provider>] [--model <model>]
+  pi auth print-bearer-token [--provider <provider>] [--model <model>] [--min-expiry <duration>]
+  pi auth check [--provider <provider>] [--model <model>] [--json] [--credentials] [--no-refresh]
 
-Manage persisted credentials and inspect provider package authentication.
+Auth commands require at least one of --provider or --model. Checks refresh expired OAuth credentials by default; --no-refresh prevents this. --credentials emits the credential, or includes it in JSON output.
 
 Subcommands:
   login   Prompt for an API key, or run an OAuth provider login.
-  check   Report whether credentials are available (no network call).
   status  Alias for check; never prints token material.
   refresh Refresh an OAuth token through its provider extension.
   logout  Revoke OAuth credentials, then remove the stored credential.
@@ -412,7 +417,7 @@ Options:
   --provider <id>   Provider id (default: anthropic)
   --extension <path>  Load a provider or OAuth extension explicitly.
   --no-extensions     Disable extension discovery and package auth declarations.
-  --json            (check only) Emit a {{ready, provider, source}} JSON object
+  --json            (check only) Emit a {{status, provider, reason, authType}} JSON object
 
 Environment:
   ANTHROPIC_API_KEY      Fallback API key (x-api-key) when no stored credential.
@@ -425,9 +430,8 @@ Notes:
   otherwise it is a provider-neutral API-key compatibility prompt. The host
   only handles standard interaction and credential responses for OAuth.
   `refresh` and `logout` use extension actions. API-key providers may still
-  use ~/.rpi/agent/models.json or environment variables.
-",
-        name = crate::APP_NAME
+  use models.json or environment variables.
+"
     );
 }
 

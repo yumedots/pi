@@ -163,17 +163,23 @@ pub(super) async fn drain_agent_events(
     }
 }
 
-/// Send an event to the JavaScript extensions, when the session loaded any.
+/// Send an event to the JavaScript extensions, without waiting for them.
+///
+/// The extension runs on its own thread, and it may open a dialog — which the
+/// TUI has to present. So the TUI must not block on the extension's answer;
+/// the extension waits by polling, and the TUI keeps drawing.
 pub(super) fn dispatch_js_event(state: &Arc<TuiState>, event: &str, payload: serde_json::Value) {
     let Some(extensions) = state.js_extensions.as_ref() else {
         return;
     };
-    if let Err(error) = extensions.dispatch(event, payload) {
-        add_error_message(
-            &state.chat_container,
-            &format!("Extension error ({event}): {error}"),
-        );
-    }
+    let extensions = extensions.clone();
+    let chat = state.chat_container.clone();
+    let event = event.to_string();
+    tokio::task::spawn_blocking(move || {
+        if let Err(error) = extensions.dispatch(&event, payload) {
+            add_error_message(&chat, &format!("Extension error ({event}): {error}"));
+        }
+    });
 }
 
 /// Apply a single `AgentEvent` to the UI. Mirrors the TS `handleEvent` switch

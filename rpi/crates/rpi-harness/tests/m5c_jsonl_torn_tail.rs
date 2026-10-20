@@ -30,10 +30,8 @@ fn user_msg(text: &str) -> AgentMessage {
 fn header() -> SessionFileHeader {
     SessionFileHeader::new(
         "sess-1".into(),
-        1_700_000_000_000,
+        rpi_harness::session::types::iso_timestamp_from_ms(1_700_000_000_000),
         "/cwd".into(),
-        None,
-        None,
         None,
     )
 }

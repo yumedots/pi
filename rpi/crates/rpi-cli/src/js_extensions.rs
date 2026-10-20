@@ -147,7 +147,7 @@ impl Default for JsSession {
             flags: RwLock::new(BTreeMap::new()),
             themes: RwLock::new(Vec::new()),
             editor_component: RwLock::new(None),
-            tools_expanded: AtomicBool::new(true),
+            tools_expanded: AtomicBool::new(false),
             session_id: RwLock::new(None),
             session_file: RwLock::new(None),
             session_dir: RwLock::new(None),
@@ -189,6 +189,9 @@ enum JsRequest {
         id: String,
         width: usize,
         reply: Sender<Result<Vec<String>, String>>,
+    },
+    Tools {
+        reply: Sender<Result<Value, String>>,
     },
 }
 
@@ -283,6 +286,16 @@ impl JsExtensions {
             .lock()
             .ok()
             .and_then(|footer| footer.clone())
+    }
+
+    /// The tools the extensions registered, in the shape the host declares
+    /// them to the model.
+    pub fn tools(&self) -> Vec<Value> {
+        self.request(|reply| JsRequest::Tools { reply })
+            .unwrap_or(Value::Array(Vec::new()))
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// The slash commands the extensions registered.
@@ -438,6 +451,14 @@ fn run_runtime(state: Arc<JsState>, requests: Receiver<JsRequest>) {
                 let _ = reply.send(result);
                 continue;
             }
+            JsRequest::Tools { reply } => {
+                let tools = runtime
+                    .tools()
+                    .map_err(|error| error.to_string())
+                    .unwrap_or(Value::Array(Vec::new()));
+                let _ = reply.send(Ok(tools));
+                continue;
+            }
             JsRequest::RenderComponent { id, width, reply } => {
                 let result = runtime
                     .call(
@@ -496,6 +517,16 @@ struct JsHost {
 
 impl rpi_js::Host for JsHost {
     fn call(&self, op: &str, args: Value) -> Result<Value, String> {
+        IN_HOST_CALL.with(|flag| flag.set(true));
+        let answer = self.answer(op, args);
+        IN_HOST_CALL.with(|flag| flag.set(false));
+        answer
+    }
+}
+
+impl JsHost {
+    /// Answer one host operation.
+    fn answer(&self, op: &str, args: Value) -> Result<Value, String> {
         match op {
             "context.mode" => Ok(json!("tui")),
             "theme.get" => Ok(rpi_js::theme_tokens()),
@@ -631,10 +662,11 @@ impl rpi_js::Host for JsHost {
                 }
                 Ok(Value::Null)
             }
-            "ui.select" => self.dialog("selector", &args),
-            "ui.confirm" => self.dialog("confirm", &args),
-            "ui.input" => self.dialog("input", &args),
-            "ui.editor" => self.dialog("editor", &args),
+            "ui.select" | "ui.confirm" | "ui.input" | "ui.editor" => {
+                let kind = args.get("kind").and_then(Value::as_str).unwrap_or("selector");
+                self.dialog(kind, &args)
+            }
+            "ui.pollDialog" => self.poll_dialog(&args),
             "ui.custom" => {
                 let component = args.get("component").and_then(Value::as_str);
                 if let (Some(session), Some(component)) = (self.session(), component) {
@@ -723,9 +755,24 @@ impl rpi_js::Host for JsHost {
             "model.get" => self.action(|host| {
                 Box::pin(async move { host.get_model(json!({})).await })
             }),
-            "model.getThinkingLevel" => self.action(|host| {
-                Box::pin(async move { host.get_thinking_level(json!({})).await })
-            }),
+            "model.getThinkingLevel" => {
+                // A model that cannot reason has only the "off" level, and the
+                // original answers the level the model supports.
+                let model = self.action(|host| {
+                    Box::pin(async move { host.get_model(json!({})).await })
+                })?;
+                let reason = model
+                    .get("reasoning")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if reason {
+                    self.action(|host| {
+                        Box::pin(async move { host.get_thinking_level(json!({})).await })
+                    })
+                } else {
+                    Ok(json!({ "level": "off" }))
+                }
+            }
             "model.set" => {
                 let model = args.get("model").cloned().unwrap_or(Value::Null);
                 let id = model
@@ -982,13 +1029,18 @@ impl rpi_js::Host for JsHost {
             "mcp.register" => {
                 let name = args.get("name").and_then(Value::as_str).unwrap_or("").to_string();
                 let config = args.get("config").cloned().unwrap_or(Value::Null);
+                let extension_path = args
+                    .get("extensionPath")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
                 if let Some(session) = self.session() {
                     if let Ok(mut servers) = session.mcp_servers.write() {
                         servers.retain(|server| server.get("name").and_then(Value::as_str) != Some(&name));
                         servers.push(json!({
                             "name": name,
                             "config": config,
-                            "extensionPath": "",
+                            "extensionPath": extension_path,
                         }));
                         let servers = Value::Array(servers.clone());
                         rpi_extensions::emit_event(
@@ -1128,10 +1180,12 @@ impl JsHost {
         set_working(message.map(str::to_string));
     }
 
-    /// Ask the user a question and wait for the answer.
+    /// Open a question for the user and hand back its request id.
     ///
-    /// The dialog goes through the session's mailbox, the same one the native
-    /// plugins use, so the TUI presents it with its own widgets.
+    /// The call returns at once, like the original's open/poll/cancel
+    /// protocol: the extension waits by polling, and the TUI presents the
+    /// dialog on its own thread. Blocking here would freeze the TUI, because
+    /// the TUI is the thread that presents the dialog.
     fn dialog(&self, kind: &str, args: &Value) -> Result<Value, String> {
         let session = self
             .session()
@@ -1193,37 +1247,46 @@ impl JsHost {
             );
             return Ok(Value::Null);
         }
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(20));
-            let answer = mailbox.handle(json!({ "op": "poll", "requestId": request_id }))?;
-            match answer.get("status").and_then(Value::as_str) {
-                Some("answered") => {
-                    let payload = answer.get("answer").cloned().unwrap_or(Value::Null);
-                    rpi_extensions::emit_event(
-                        "ui_prompt_end",
-                        &json!({
-                            "type": "ui_prompt_end",
-                            "reason": "ui_prompt",
-                            "kind": kind,
-                            "title": title,
-                        }),
-                    );
-                    return Ok(dialog_answer(kind, payload));
-                }
-                Some("cancelled") => {
-                    rpi_extensions::emit_event(
-                        "ui_prompt_end",
-                        &json!({
-                            "type": "ui_prompt_end",
-                            "reason": "ui_prompt",
-                            "kind": kind,
-                            "title": title,
-                        }),
-                    );
-                    return Ok(Value::Null);
-                }
-                _ => {}
+        Ok(json!({ "requestId": request_id }))
+    }
+
+    /// The answer to an open dialog, or `null` while the user has not
+    /// answered yet.
+    fn poll_dialog(&self, args: &Value) -> Result<Value, String> {
+        let kind = args.get("kind").and_then(Value::as_str).unwrap_or("selector");
+        let session = self
+            .session()
+            .ok_or_else(|| "the session is not up yet".to_string())?;
+        let mailbox = session
+            .ui_dialog
+            .clone()
+            .ok_or_else(|| "the dialog needs an interactive UI".to_string())?;
+        let request_id = args
+            .get("requestId")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let answer = mailbox.handle(json!({ "op": "poll", "requestId": request_id }))?;
+        match answer.get("status").and_then(Value::as_str) {
+            Some("answered") => {
+                let payload = answer.get("answer").cloned().unwrap_or(Value::Null);
+                rpi_extensions::emit_event(
+                    "ui_prompt_end",
+                    &json!({ "type": "ui_prompt_end", "reason": "ui_prompt" }),
+                );
+                Ok(json!({
+                    "answered": true,
+                    "value": dialog_answer(kind, payload),
+                }))
             }
+            Some("cancelled") => {
+                rpi_extensions::emit_event(
+                    "ui_prompt_end",
+                    &json!({ "type": "ui_prompt_end", "reason": "ui_prompt" }),
+                );
+                Ok(Value::Null)
+            }
+            _ => Ok(json!({ "answered": false })),
         }
     }
 
@@ -1288,6 +1351,20 @@ impl JsHost {
             hook();
         }
     }
+}
+
+thread_local! {
+    /// True while the host is answering a call from the extension.
+    ///
+    /// The extension runs on the runtime's own thread, so an event published
+    /// from inside a host call cannot be handed to the extensions straight
+    /// away: they are the thread that is making the call.
+    static IN_HOST_CALL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the host is answering a call from the extension right now.
+pub fn in_host_call() -> bool {
+    IN_HOST_CALL.with(|flag| flag.get())
 }
 
 /// The next dialog request id. The ids only have to be unique per session.

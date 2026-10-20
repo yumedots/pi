@@ -1773,6 +1773,9 @@ fn test_agent_event_mapping_creates_assistant_and_tool() {
         model: "claude-sonnet-5".into(),
         response_model: None,
         response_id: None,
+        provider_thinking_level: None,
+        thinking_level: None,
+        diagnostics: None,
         usage: Usage::zero(),
         stop_reason: StopReason::Stop,
         deferred: None,
@@ -1780,6 +1783,7 @@ fn test_agent_event_mapping_creates_assistant_and_tool() {
         raw_stop_reason: None,
         end_turn: None,
         timestamp: 0,
+        duration_ms: None,
     };
 
     // Manually apply the MessageStart assistant branch logic (mirrors the
@@ -2645,6 +2649,9 @@ fn assistant_error_text_keeps_terminal_provider_diagnostic_visible() {
         model: "claude-sonnet-5".into(),
         response_model: None,
         response_id: None,
+        provider_thinking_level: None,
+        thinking_level: None,
+        diagnostics: None,
         usage: Usage::zero(),
         stop_reason: StopReason::Error,
         deferred: None,
@@ -2652,6 +2659,7 @@ fn assistant_error_text_keeps_terminal_provider_diagnostic_visible() {
         raw_stop_reason: None,
         end_turn: None,
         timestamp: 0,
+        duration_ms: None,
     };
     assert_eq!(
         assistant_error_text(&failed).as_deref(),
@@ -3138,6 +3146,114 @@ fn test_accept_top_suggestion_replaces_prefix() {
     );
 }
 
+#[test]
+fn enter_accepts_the_highlighted_autocomplete_item() {
+    // The original binds `tui.select.confirm` (Enter) to the open suggestion
+    // list (`packages/tui/src/components/editor.ts:1004-1030`), so Enter picks
+    // the highlighted row instead of sending the raw draft.
+    let state = autocomplete_test_state(5);
+    let commands: Vec<rpi_tui::SlashCommand> = (0..7)
+        .map(|i| rpi_tui::SlashCommand {
+            name: format!("/choice{i}"),
+            description: format!("choice {i}"),
+            argument_hint: None,
+        })
+        .collect();
+    state
+        .autocomplete
+        .set_provider(Arc::new(SlashCommandAutocompleteProvider::new(commands)));
+    let editor = Arc::new(Editor::simple());
+    editor.set_text("/ch");
+    editor.set_cursor(0, 3);
+    refresh_autocomplete(&state, &editor);
+
+    // ↓ moves the highlight to the second row.
+    assert!(navigate_autocomplete(&state, &editor, 1));
+    assert_eq!(*state.autocomplete_selection.lock().unwrap(), 1);
+
+    let outcome = accept_highlighted_suggestion(&state, &editor);
+    assert_eq!(outcome, AcceptOutcome::SlashCommand);
+    assert!(
+        editor.get_text().starts_with("/choice1"),
+        "Enter should accept the highlighted row, got {}",
+        editor.get_text()
+    );
+}
+
+#[test]
+fn enter_on_a_path_completion_does_not_submit() {
+    // A path completion is not a command: the original applies it and stops
+    // (`packages/tui/src/components/editor.ts:1024-1028`).
+    let state = autocomplete_test_state(5);
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("manual.txt"), "x").unwrap();
+    state.autocomplete.set_provider(Arc::new(FilePathAutocompleteProvider::with_root(
+        tmp.path().to_path_buf(),
+    )));
+    let editor = Arc::new(Editor::simple());
+    let prefix = format!("{}/man", tmp.path().display());
+    editor.set_text(&prefix);
+    editor.set_cursor(0, prefix.len());
+    refresh_autocomplete(&state, &editor);
+
+    let outcome = accept_highlighted_suggestion(&state, &editor);
+    assert_eq!(outcome, AcceptOutcome::Completed);
+    assert!(
+        editor.get_text().ends_with("manual.txt"),
+        "the completion should be applied, got {}",
+        editor.get_text()
+    );
+}
+
+#[test]
+fn enter_without_a_popup_leaves_the_draft_alone() {
+    // A bare word is not a completion in the original, so Enter still sends
+    // the message.
+    let state = autocomplete_test_state(5);
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("docs")).unwrap();
+    state.autocomplete.set_provider(Arc::new(FilePathAutocompleteProvider::with_root(
+        tmp.path().to_path_buf(),
+    )));
+    let editor = Arc::new(Editor::simple());
+    editor.set_text("please check docs");
+    editor.set_cursor(0, 17);
+    refresh_autocomplete(&state, &editor);
+
+    let outcome = accept_highlighted_suggestion(&state, &editor);
+    assert_eq!(outcome, AcceptOutcome::None);
+    assert_eq!(editor.get_text(), "please check docs");
+}
+
+#[test]
+fn escape_closes_the_autocomplete_without_changing_the_text() {
+    // The original's `tui.select.cancel` closes the suggestion list
+    // (`packages/tui/src/components/editor.ts:972-975`).
+    let state = autocomplete_test_state(5);
+    let commands: Vec<rpi_tui::SlashCommand> = (0..3)
+        .map(|i| rpi_tui::SlashCommand {
+            name: format!("/choice{i}"),
+            description: format!("choice {i}"),
+            argument_hint: None,
+        })
+        .collect();
+    state
+        .autocomplete
+        .set_provider(Arc::new(SlashCommandAutocompleteProvider::new(commands)));
+    let editor = Arc::new(Editor::simple());
+    editor.set_text("/ch");
+    editor.set_cursor(0, 3);
+    refresh_autocomplete(&state, &editor);
+
+    close_autocomplete(&state);
+    assert_eq!(editor.get_text(), "/ch", "the draft must not change");
+    assert_eq!(
+        accept_highlighted_suggestion(&state, &editor),
+        AcceptOutcome::None,
+        "a dismissed list must not accept on Enter"
+    );
+}
+
 /// Build a `TuiState` for autocomplete tests (autocomplete providers are
 /// installed by each test).
 fn autocomplete_test_state(max_visible: usize) -> Arc<TuiState> {
@@ -3218,6 +3334,7 @@ fn autocomplete_navigation_reaches_beyond_visible_window() {
         .map(|i| rpi_tui::SlashCommand {
             name: format!("/choice{i}"),
             description: format!("choice {i}"),
+            argument_hint: None,
         })
         .collect();
     state
@@ -3714,4 +3831,17 @@ fn the_originals_commands_are_registered_with_their_text() {
         row("/login").as_deref(),
         Some("<provider> — Configure provider authentication")
     );
+}
+
+#[test]
+fn a_bare_alias_is_a_command_and_an_alias_with_text_is_not() {
+    use super::super::interactive_tui::is_command_token;
+    // The original rewrites `/history` and `/sessions` to `/resume` only when
+    // the input is the bare command name.
+    assert!(is_command_token("/history", ""));
+    assert!(is_command_token("/sessions", ""));
+    assert!(!is_command_token("/history", "some text"));
+    assert!(!is_command_token("/sessions", "some text"));
+    assert!(is_command_token("/resume", ""));
+    assert!(is_command_token("/model", "gpt-4o"));
 }

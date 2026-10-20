@@ -324,10 +324,12 @@ pub struct Usage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<i64>,
     pub total_tokens: i64,
+    /// The cost. Absent in a usage pi wrote without one.
+    #[serde(default)]
     pub cost: UsageCost,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageCost {
     pub input: f64,
@@ -335,6 +337,32 @@ pub struct UsageCost {
     pub cache_read: f64,
     pub cache_write: f64,
     pub total: f64,
+}
+
+/// pi writes the cost as an integer when it is whole (`0`, not `0.0`), so the
+/// session files are byte-comparable. A cost with a fraction keeps it.
+impl Serialize for UsageCost {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("UsageCost", 5)?;
+        state.serialize_field("input", &whole_number(self.input))?;
+        state.serialize_field("output", &whole_number(self.output))?;
+        state.serialize_field("cacheRead", &whole_number(self.cache_read))?;
+        state.serialize_field("cacheWrite", &whole_number(self.cache_write))?;
+        state.serialize_field("total", &whole_number(self.total))?;
+        state.end()
+    }
+}
+
+/// A whole `f64` as an integer number, the way pi writes it.
+fn whole_number(value: f64) -> serde_json::Value {
+    if value.is_finite() && value.fract() == 0.0 && value.abs() < 9.0e15 {
+        serde_json::Value::from(value as i64)
+    } else {
+        serde_json::Number::from_f64(value)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null)
+    }
 }
 
 impl Usage {
@@ -674,6 +702,17 @@ pub struct AssistantMessage {
     pub response_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
+    /// Exact provider-native effort level used for this response. Absent for
+    /// legacy or unmanaged responses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_thinking_level: Option<String>,
+    /// The thinking level the agent loop requested for this response. Absent
+    /// outside the agent loop and for legacy responses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_level: Option<ThinkingLevel>,
+    /// Redacted provider/runtime diagnostics for failures and recoveries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diagnostics: Option<Vec<serde_json::Value>>,
     pub usage: Usage,
     pub stop_reason: StopReason,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -685,6 +724,11 @@ pub struct AssistantMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_turn: Option<bool>,
     pub timestamp: i64,
+    /// Milliseconds from `timestamp` until the response ended, measured with a
+    /// monotonic clock. Absent for legacy messages and for deferred results
+    /// fetched later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -723,12 +767,16 @@ impl AssistantMessage {
             model: model.into(),
             response_model: None,
             response_id: None,
+            provider_thinking_level: None,
+            thinking_level: None,
+            diagnostics: None,
             usage: Usage::zero(),
             stop_reason: StopReason::Pending,
             deferred: None,
             error_message: None,
             raw_stop_reason: None,
             end_turn: None,
+            duration_ms: None,
             timestamp,
         }
     }
@@ -750,14 +798,56 @@ impl AssistantMessage {
             model: model.into(),
             response_model: None,
             response_id: None,
+            provider_thinking_level: None,
+            thinking_level: None,
+            diagnostics: None,
             usage: Usage::zero(),
             stop_reason,
             deferred: None,
             error_message: Some(error_message.into()),
             raw_stop_reason: None,
             end_turn: None,
+            duration_ms: None,
             timestamp,
         }
+    }
+}
+
+/// A system message. Mirrors TS `SystemMessage`
+/// (`packages/ai/src/types.ts:543-558`): the leading system message is the
+/// system prompt, later ones change it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemMessage {
+    #[serde(rename = "role")]
+    pub role: SystemRole,
+    /// The instruction text.
+    pub content: String,
+    /// Named, ordered prompt sections, rendered verbatim after `content`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sections: Option<serde_json::Value>,
+    /// The tools that become available at this point.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools_added: Option<Vec<Tool>>,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SystemRole;
+impl Serialize for SystemRole {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str("system")
+    }
+}
+impl<'de> Deserialize<'de> for SystemRole {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        if s != "system" {
+            return Err(serde::de::Error::custom(format!(
+                "expected \"system\", got {s:?}"
+            )));
+        }
+        Ok(Self)
     }
 }
 

@@ -48,6 +48,7 @@ pub mod fs_watch;
 pub mod install;
 pub mod interactive_tui;
 pub mod js_emitter;
+pub mod js_tools;
 pub mod js_extensions;
 pub mod key_trace;
 pub mod model_registry;

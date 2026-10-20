@@ -667,7 +667,12 @@ impl ToolExecutionComponent {
             };
             let mut content = render_block(&renderer.render_call(&ctx, theme), content_width);
             if result.is_some() {
-                content.extend(render_block(&renderer.render_result(&ctx, theme), content_width));
+                let rendered = render_block(&renderer.render_result(&ctx, theme), content_width);
+                if rendered.is_empty() {
+                    content.push(String::new());
+                } else {
+                    content.extend(rendered);
+                }
             }
             content
         };
@@ -1381,6 +1386,36 @@ mod tests {
         assert!(!rendered.contains("Normal tool access"));
         panel.set_plan_state(String::new(), false);
         assert!(strip_ansi(&panel.render(60).join("\n")).contains("Plan · Idle"));
+    }
+
+    #[test]
+    fn a_collapsed_read_panel_keeps_the_empty_result_region() {
+        use super::*;
+        let theme = Theme::default();
+        let panel = ToolExecutionComponent::new("read", "{}");
+        panel.set_result("The fixture file says hello.", false);
+        let collapsed: Vec<String> = panel
+            .render_panel(60, &theme)
+            .iter()
+            .map(|line| strip_ansi(line).trim_end().to_string())
+            .collect();
+        assert_eq!(
+            collapsed,
+            vec!["", "", " read tool-input.txt", "", ""],
+            "the collapsed result region is an empty row, not a missing row"
+        );
+        panel.set_expanded(true);
+        let expanded: Vec<String> = panel
+            .render_panel(60, &theme)
+            .iter()
+            .map(|line| strip_ansi(line).trim_end().to_string())
+            .collect();
+        assert!(
+            expanded
+                .iter()
+                .any(|line| line.contains("The fixture file says hello.")),
+            "{expanded:?}"
+        );
     }
 
     #[test]

@@ -6,14 +6,17 @@
 //! openness as a four-arm enum: the three base [`Message`] arms plus
 //! [`CustomMessage`]. Apps extend by populating `Custom`, not by adding arms.
 //!
-//! Serialization mirrors the wire shape: `#[serde(tag="kind")]` with
-//! `{kind:"user"|"assistant"|"toolResult"|"custom", ...}`. The three base arms
-//! flatten their `Message` (which itself is tagged on `role`); we serialize
-//! them via a custom impl so the outer `kind` discriminator stays consistent
-//! and the inner role-specific fields survive a round-trip. `Custom` carries a
-//! free-form `data: Value` so each role's structured payload rides along.
+//! Serialization mirrors the wire shape: the message's `role` is the
+//! discriminator, with pi's values `user` / `assistant` / `toolResult` (and the
+//! app-defined role of a custom message). The three base arms carry the
+//! `rpi_ai` message, which already writes its own `role`; the enum is therefore
+//! `untagged` and each arm's own `role` field decides the variant — the same
+//! shape pi writes and reads. `Custom` carries a free-form `data: Value` so
+//! each role's structured payload rides along.
 
-use rpi_ai::types::{AssistantMessage, Content, Message, ToolResultMessage, UserMessage};
+use rpi_ai::types::{
+    AssistantMessage, Content, Message, SystemMessage, ToolResultMessage, UserMessage,
+};
 use serde::{Deserialize, Serialize};
 
 /// `AgentMessage = Message | Custom`. The open-enum port of TS
@@ -22,13 +25,74 @@ use serde::{Deserialize, Serialize};
 /// `PartialEq` is derived so `pi-harness` entry equality (and tests) can compare
 /// persisted messages by value. `rpi_ai`'s base message types already implement
 /// `PartialEq`; `CustomMessage` does too, so the four-arm enum derives cleanly.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+///
+/// The variant is picked by the `role` field, exactly as in pi: `user`,
+/// `assistant` and `toolResult` are the base messages, and any other role is a
+/// custom message. The mapping is written out by hand (mirroring
+/// `rpi_ai::Message`, which does the same) so the wire shape is pi's — the
+/// message's own `role`, and no `kind` field — and so a `role` the port does
+/// not know still reads as a custom message instead of failing the whole file.
+#[derive(Debug, Clone, PartialEq)]
 pub enum AgentMessage {
     User(UserMessage),
     Assistant(Box<AssistantMessage>),
     ToolResult(Box<ToolResultMessage>),
+    System(Box<SystemMessage>),
     Custom(CustomMessage),
+}
+
+impl Serialize for AgentMessage {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            AgentMessage::User(message) => message.serialize(serializer),
+            AgentMessage::Assistant(message) => message.serialize(serializer),
+            AgentMessage::ToolResult(message) => message.serialize(serializer),
+            AgentMessage::System(message) => message.serialize(serializer),
+            AgentMessage::Custom(message) => message.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AgentMessage {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let role = value
+            .get("role")
+            .and_then(|role| role.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let decoded = match role.as_str() {
+            "user" => serde_json::from_value(value).map(AgentMessage::User),
+            "assistant" => serde_json::from_value(value)
+                .map(|message: AssistantMessage| AgentMessage::Assistant(Box::new(message))),
+            "toolResult" => serde_json::from_value(value)
+                .map(|message: ToolResultMessage| AgentMessage::ToolResult(Box::new(message))),
+            "system" => serde_json::from_value(value)
+                .map(|message: SystemMessage| AgentMessage::System(Box::new(message))),
+            _ => {
+                // A custom message: its content may be a plain string.
+                let value = normalize_custom_content(value);
+                serde_json::from_value(value).map(AgentMessage::Custom)
+            }
+        };
+        decoded.map_err(serde::de::Error::custom)
+    }
+}
+
+/// Turn a string `content` into the text block pi's content array holds, so a
+/// custom message whose content is a plain string reads.
+fn normalize_custom_content(mut value: serde_json::Value) -> serde_json::Value {
+    let text = value
+        .get("content")
+        .and_then(|content| content.as_str())
+        .map(|text| text.to_string());
+    if let (Some(text), Some(object)) = (text, value.as_object_mut()) {
+        object.insert(
+            "content".to_string(),
+            serde_json::json!([{ "type": "text", "text": text }]),
+        );
+    }
+    value
 }
 
 impl AgentMessage {
@@ -41,6 +105,7 @@ impl AgentMessage {
             AgentMessage::User(_) => AgentMessageRole::User,
             AgentMessage::Assistant(_) => AgentMessageRole::Assistant,
             AgentMessage::ToolResult(_) => AgentMessageRole::ToolResult,
+            AgentMessage::System(_) => AgentMessageRole::Custom("system".to_string()),
             AgentMessage::Custom(c) => AgentMessageRole::Custom(c.role.clone()),
         }
     }
@@ -67,8 +132,8 @@ impl AgentMessage {
 }
 
 /// Serialize an `AssistantMessage` in the exact shape `AgentMessage::Assistant`
-/// produces (`{"kind":"assistant", …}`), without materializing an owned
-/// `AgentMessage` copy of it.
+/// produces (the message itself, with its `role`), without materializing an
+/// owned `AgentMessage` copy of it.
 ///
 /// [`crate::AgentEvent::MessageUpdate`] carries the streaming partial as an
 /// `Arc<AssistantMessage>` so neither the loop nor its consumers deep-clone the
@@ -80,14 +145,7 @@ impl AgentMessage {
 ///
 /// [`crate::AgentEvent::MessageUpdate`]: crate::events::AgentEvent::MessageUpdate
 pub fn assistant_json(message: &AssistantMessage) -> serde_json::Value {
-    /// Internally tagged exactly like `AgentMessage`, so serde emits the same
-    /// `"kind"` discriminator first and then the message fields.
-    #[derive(serde::Serialize)]
-    #[serde(tag = "kind", rename_all = "snake_case")]
-    enum Tagged<'a> {
-        Assistant(&'a AssistantMessage),
-    }
-    serde_json::to_value(Tagged::Assistant(message)).unwrap_or(serde_json::Value::Null)
+    serde_json::to_value(message).unwrap_or(serde_json::Value::Null)
 }
 
 impl From<UserMessage> for AgentMessage {
@@ -149,8 +207,17 @@ impl AgentMessageRole {
 #[serde(rename_all = "camelCase")]
 pub struct CustomMessage {
     pub role: String,
+    /// pi's `customType` — the app-defined kind of a `role: "custom"` message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_type: Option<String>,
+    /// pi's `display` — whether the message is shown in the transcript.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<bool>,
+    #[serde(default)]
     pub content: Vec<Content>,
+    #[serde(default)]
     pub data: serde_json::Value,
+    #[serde(default)]
     pub timestamp: i64,
 }
 
@@ -163,6 +230,8 @@ impl CustomMessage {
     ) -> Self {
         Self {
             role: role.into(),
+            custom_type: None,
+            display: None,
             content,
             data,
             timestamp,
@@ -188,5 +257,163 @@ mod assistant_json_tests {
             assistant_json(&assistant),
             serde_json::to_value(&as_agent).expect("AgentMessage serializes"),
         );
+    }
+
+    /// pi's messages are discriminated by `role` (`packages/ai/src/types.ts:641`)
+    /// and carry no `kind` field, so a session pi wrote has to read here.
+    #[test]
+    fn pis_message_shapes_read() {
+        let user = serde_json::json!({
+            "role": "user",
+            "content": "hello",
+            "timestamp": 1,
+        });
+        let assistant = serde_json::json!({
+            "role": "assistant",
+            "content": [{"type": "text", "text": "hi"}],
+            "api": "openai-completions",
+            "provider": "local",
+            "model": "m",
+            "stopReason": "stop",
+            "usage": {"input": 1, "output": 2, "cacheRead": 0, "cacheWrite": 0, "reasoning": 0, "totalTokens": 3},
+            "durationMs": 12,
+            "thinkingLevel": "off",
+            "timestamp": 2,
+        });
+        let tool_result = serde_json::json!({
+            "role": "toolResult",
+            "toolCallId": "call-1",
+            "toolName": "read",
+            "content": [{"type": "text", "text": "file"}],
+            "details": {},
+            "isError": false,
+            "durationMs": 3,
+            "timestamp": 3,
+        });
+
+        assert!(matches!(
+            serde_json::from_value::<AgentMessage>(user).expect("pi user message"),
+            AgentMessage::User(_)
+        ));
+        assert!(matches!(
+            serde_json::from_value::<AgentMessage>(assistant).expect("pi assistant message"),
+            AgentMessage::Assistant(_)
+        ));
+        assert!(matches!(
+            serde_json::from_value::<AgentMessage>(tool_result).expect("pi tool result"),
+            AgentMessage::ToolResult(_)
+        ));
+    }
+
+    /// The port writes the same shape pi reads: the `role` discriminator and
+    /// no `kind`.
+    #[test]
+    fn the_written_shape_is_pis() {
+        let message = AgentMessage::User(UserMessage::new(
+            rpi_ai::types::UserContent::Text("hello".into()),
+            1,
+        ));
+        let written = serde_json::to_value(&message).expect("AgentMessage serializes");
+        assert_eq!(written.get("role").and_then(|v| v.as_str()), Some("user"));
+        assert!(written.get("kind").is_none(), "pi writes no kind field");
+    }
+
+    /// pi's own assistant message, byte for byte, reads.
+    #[test]
+    fn pis_assistant_message_with_cost_and_thinking_reads() {
+        let assistant = serde_json::json!({
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "The parity mock thinks before it answers.", "thinkingSignature": "reasoning_content"},
+                {"type": "text", "text": "Hello from the parity mock."}
+            ],
+            "api": "openai-completions",
+            "provider": "mock",
+            "model": "mock-1",
+            "usage": {
+                "input": 42, "output": 7, "cacheRead": 0, "cacheWrite": 0,
+                "reasoning": 0, "totalTokens": 49,
+                "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}
+            },
+            "stopReason": "stop",
+            "timestamp": 1792538011472i64,
+            "responseId": "chatcmpl-parity",
+            "rawStopReason": "stop",
+            "durationMs": 0,
+            "thinkingLevel": "off"
+        });
+        let message = serde_json::from_value::<AgentMessage>(assistant)
+            .expect("pi's assistant message must read");
+        match message {
+            AgentMessage::Assistant(message) => {
+                assert_eq!(message.content.len(), 2);
+                assert_eq!(message.duration_ms, Some(0));
+                assert_eq!(message.usage.total_tokens, 49);
+            }
+            other => panic!("an assistant message must read as one: {other:?}"),
+        }
+    }
+
+    /// pi's own system message, byte for byte, reads.
+    #[test]
+    fn pis_system_message_with_sections_reads() {
+        let system = serde_json::json!({
+            "role": "system",
+            "content": "",
+            "sections": {
+                "preamble": "You are an expert coding assistant.",
+                "tools": "<tools>\n- read: Read file contents\n</tools>"
+            },
+            "timestamp": 1792538011432i64
+        });
+        let message = serde_json::from_value::<AgentMessage>(system)
+            .expect("pi's system message must read");
+        match message {
+            AgentMessage::System(message) => {
+                assert_eq!(message.content, "");
+                assert!(message.sections.is_some());
+            }
+            other => panic!("a system message must read as one: {other:?}"),
+        }
+    }
+
+    /// pi's custom message (`role: "custom"` + `customType`) and its system
+    /// message (`role: "system"`) both read; a custom message whose content is
+    /// a plain string reads too.
+    #[test]
+    fn pis_custom_and_system_messages_read() {
+        let custom = serde_json::json!({
+            "role": "custom",
+            "customType": "note",
+            "content": "a note",
+            "display": true,
+            "timestamp": 4,
+        });
+        let system = serde_json::json!({
+            "role": "system",
+            "content": "the prompt",
+            "sections": {"tools": "read"},
+            "timestamp": 5,
+        });
+
+        let custom = serde_json::from_value::<AgentMessage>(custom).expect("pi custom message");
+        match custom {
+            AgentMessage::Custom(message) => {
+                assert_eq!(message.role, "custom");
+                assert_eq!(message.custom_type.as_deref(), Some("note"));
+                assert_eq!(message.display, Some(true));
+                assert_eq!(message.content.len(), 1);
+            }
+            other => panic!("a custom message must read as custom: {other:?}"),
+        }
+
+        let system = serde_json::from_value::<AgentMessage>(system).expect("pi system message");
+        match system {
+            AgentMessage::System(message) => {
+                assert_eq!(message.content, "the prompt");
+                assert!(message.sections.is_some());
+            }
+            other => panic!("a system message must read as a system message: {other:?}"),
+        }
     }
 }

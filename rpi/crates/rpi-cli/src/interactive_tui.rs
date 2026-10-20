@@ -365,16 +365,14 @@ impl CommandRegistry {
         let mut out: Vec<SlashCommandEntry> = Vec::new();
         for c in &self.commands {
             let description = c.description_owned();
-            // The original's row shows the argument hint in front of the
-            // description: `<hint> — <description>`.
-            let description = match c.argument_hint() {
-                Some(hint) if !description.is_empty() => format!("{hint} — {description}"),
-                _ => description,
-            };
             if c.visible() && !description.is_empty() {
                 out.push(SlashCommandEntry {
                     name: c.name().into(),
                     description: description.clone(),
+                    // The row shows the argument hint in front of the
+                    // description (`<hint> — <description>`); the tui library
+                    // builds that text from the two parts.
+                    argument_hint: c.argument_hint().map(str::to_string),
                 });
             }
             // Surfaced aliases share the command's description.
@@ -382,6 +380,7 @@ impl CommandRegistry {
                 out.push(SlashCommandEntry {
                     name: (*alias).into(),
                     description: description.clone(),
+                    argument_hint: c.argument_hint().map(str::to_string),
                 });
             }
         }
@@ -553,6 +552,16 @@ fn template_autocomplete_description(template: &rpi_harness::types::PromptTempla
 /// Aliases the original rewrites only when the input is the bare command name.
 const BARE_ALIASES: &[&str] = &["/history", "/sessions"];
 
+/// Whether the input's first word is a command invocation. The original
+/// rewrites a bare alias only, so `/history some text` stays a message
+/// (`packages/coding-agent/src/core/slash-commands.ts:57-68`).
+fn is_command_token(token: &str, args: &str) -> bool {
+    if !args.is_empty() && BARE_ALIASES.contains(&token) {
+        return false;
+    }
+    true
+}
+
 /// Resolve a command for a `/`-prefixed input and run it when one matches.
 ///
 /// Unknown slash-prefixed input is deliberately left for the normal prompt
@@ -566,7 +575,7 @@ fn dispatch_slash(text: &str, ctx: &CommandContext, registry: &CommandRegistry) 
     let args = parts.collect::<Vec<_>>().join(" ");
     // The original rewrites a bare alias only: `/history some text` is not an
     // alias invocation and stays a message.
-    if !args.is_empty() && BARE_ALIASES.contains(&token) {
+    if !is_command_token(token, &args) {
         return false;
     }
     match registry.find(token) {
@@ -731,6 +740,8 @@ enum TuiMessage {
     Exit,
     /// Clear the transcript (from `/clear`).
     ClearChat,
+    /// Start a new session (from `/new`).
+    NewSession,
     /// Compact the conversation (from `/compact`).
     Compact,
     /// Copy the last assistant reply to the clipboard (from `/copy`).
@@ -871,6 +882,10 @@ struct TuiStartupSettings {
     /// Show the empty-session screen while the session has no messages
     /// (`threeDEmptySession`).
     three_d_empty_session: bool,
+    /// Register the loaded skills as `/skill:<name>` commands
+    /// (`enableSkillCommands`). The original defaults it to on
+    /// (`packages/coding-agent/src/core/settings-schema.ts:305`).
+    enable_skill_commands: bool,
     /// The terminal buffer the TUI draws into (`tuiMode`). The original
     /// defaults to fullscreen on every platform.
     tui_mode: crate::args::TuiMode,
@@ -1033,6 +1048,11 @@ fn resolve_tui_startup_settings(
         }
     })
     .unwrap_or(crate::args::TuiMode::Fullscreen);
+    let enable_skill_commands = preferred_project_setting(project_settings, |settings| {
+        settings.enable_skill_commands
+    })
+    .or(global.enable_skill_commands)
+    .unwrap_or(true);
 
     TuiStartupSettings {
         editor_padding_x,
@@ -1044,6 +1064,7 @@ fn resolve_tui_startup_settings(
         show_images,
         cache_miss_notices,
         three_d_empty_session,
+        enable_skill_commands,
         tui_mode,
     }
 }
@@ -1419,7 +1440,7 @@ pub async fn interactive_tui(
             if let Err(error) = extensions.load(path) {
                 add_note_message(
                     &chat_container,
-                    &format!("Extension \"{}\" error: {error}", path.display()),
+                    &format!("Failed to load extension \"{}\": {error}", path.display()),
                 );
             }
         }
@@ -1429,6 +1450,68 @@ pub async fn interactive_tui(
         ) {
             add_note_message(&chat_container, &format!("Extension error: {error}"));
         }
+        // The extension's tools are declared to the model: a tool the
+        // extension registers has to be in the session's tool set, or the
+        // model cannot call it.
+        let mut harness_tools = harness.get_tools().await.unwrap_or_default();
+        let mut active_tools = harness
+            .lane("main")
+            .get_active_tools()
+            .await
+            .unwrap_or_default();
+        for entry in extensions.tools() {
+            let name = entry
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            if name.is_empty() {
+                continue;
+            }
+            let label = entry
+                .get("label")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(&name)
+                .to_string();
+            let description = entry
+                .get("description")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let parameters = entry
+                .get("parameters")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({ "type": "object" }));
+            let tool = crate::js_tools::JsTool::new(
+                extensions.clone(),
+                &name,
+                &label,
+                &description,
+                parameters,
+            );
+            harness_tools.retain(|slot| slot.tool.schema().name != name);
+            harness_tools.push(rpi_harness::types::HarnessTool::new(Arc::new(tool)));
+            if !active_tools.contains(&name) {
+                active_tools.push(name);
+            }
+        }
+        harness
+            .set_tools(harness_tools, Some(active_tools))
+            .await
+            .ok();
+
+        // The provider hooks are what publish the events that fire on every
+        // LLM call (`before_provider_request`, `before_provider_headers`,
+        // `after_provider_response`, `before_agent_start`) and the `context`
+        // events. The native path installs them when a native plugin
+        // subscribes; the JavaScript extensions subscribe the same way, so the
+        // hooks go in when they load.
+        harness
+            .set_provider_hooks(Some(Arc::new(
+                rpi_extensions::ExtensionProviderHooks::for_javascript(),
+            )))
+            .await
+            .ok();
         Some(extensions)
     };
 
@@ -1450,7 +1533,11 @@ pub async fn interactive_tui(
         .iter()
         .map(|t| SlashCommandEntry {
             name: format!("/{}", t.name),
-            description: template_autocomplete_description(t),
+            description: t
+                .description
+                .clone()
+                .unwrap_or_else(|| "Expand prompt template".to_string()),
+            argument_hint: t.argument_hint.clone(),
         })
         .collect();
     let resources_arc = Arc::new(Mutex::new(resources_snapshot));
@@ -1478,12 +1565,32 @@ pub async fn interactive_tui(
         .unwrap_or_default();
     // The original registers every loaded skill as a slash command named
     // `skill:<name>` with the skill's description
-    // (`packages/coding-agent/src/core/agent-session.ts:3443`).
-    let skill_slash_commands: Vec<SlashCommandEntry> = skill_mentions
+    // (`packages/coding-agent/src/core/agent-session.ts:3443`). The
+    // `enableSkillCommands` setting decides whether the registration happens
+    // at all (`packages/coding-agent/src/core/settings-schema.ts:305`).
+    let skill_slash_commands: Vec<SlashCommandEntry> = if tui_settings.enable_skill_commands {
+        skill_mentions
+            .iter()
+            .map(|skill| SlashCommandEntry {
+                name: format!("/skill:{}", skill.name),
+                description: skill.description.clone(),
+                argument_hint: None,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    // The skill rows join the command list, so `/skill:<name>` is offered next
+    // to the built-in commands and the prompt templates.
+    all_slash_commands.extend(skill_slash_commands);
+    // The `/skills` list shows the same skills.
+    let skill_list: Vec<(String, String)> = skill_mentions
         .iter()
-        .map(|skill| SlashCommandEntry {
-            name: format!("/skill:{}", skill.name),
-            description: skill.description.clone(),
+        .map(|skill| {
+            (
+                skill.name.clone(),
+                skill.description.clone(),
+            )
         })
         .collect();
     let autocomplete = AutocompleteManager::new();
@@ -2729,6 +2836,20 @@ pub async fn interactive_tui(
             //     selector is open Esc already cancelled it above; when idle,
             //     Esc falls through to the editor (no-op-ish). Only fire while
             //     Working so an idle Esc doesn't abort a non-existent run.
+            //
+            //     An open suggestion list takes the key first: the original
+            //     binds `tui.select.cancel` to the list
+            //     (`packages/tui/src/components/editor.ts:972-975`), so Esc
+            //     closes the list and leaves the draft alone.
+            if key.modifiers == KeyModifiers::NONE
+                && key.code == KeyCode::Esc
+                && !state_for_key.selector_open()
+                && autocomplete_is_open(&state_for_key, &editor_for_key)
+            {
+                close_autocomplete(&state_for_key);
+                tui_for_key.request_render_reusing_scroll_content();
+                continue;
+            }
             if keybinding_matches(
                 &keybindings_for_key,
                 &key,
@@ -3111,6 +3232,27 @@ pub async fn interactive_tui(
                     tui_for_key.request_render_reusing_scroll_content();
                 }
                 continue;
+            }
+
+            // 4b. Enter: accept the highlighted autocomplete suggestion. The
+            //     original's editor binds `tui.select.confirm` to the open
+            //     suggestion list, so Enter picks the highlighted row instead
+            //     of sending the raw draft. A `/` command completion also
+            //     submits (upstream falls through to submit for a command),
+            //     while a path or mention completion only fills the text.
+            if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Enter {
+                match accept_highlighted_suggestion(&state_for_key, &editor_for_key) {
+                    AcceptOutcome::None => {}
+                    AcceptOutcome::Completed => {
+                        tui_for_key.request_render_reusing_scroll_content();
+                        continue;
+                    }
+                    AcceptOutcome::SlashCommand => {
+                        // The command is in the editor now; let it go to the
+                        // editor's submit path below.
+                        tui_for_key.request_render_reusing_scroll_content();
+                    }
+                }
             }
 
             // 5. Global transcript scroll. PageUp/PageDown use the actual
@@ -3902,9 +4044,81 @@ pub async fn interactive_tui(
             }
             // The original's `/skills`, `/bug` and `/stats` are registered and
             // dispatch here; the bodies belong to the interactive mode port.
-            Some(TuiMessage::ShowSkills) => {}
-            Some(TuiMessage::ReportBug(_)) => {}
-            Some(TuiMessage::ShowStats) => {}
+            // The original's `/new` starts a new session; the body belongs to
+            // the interactive mode port.
+            Some(TuiMessage::NewSession) => {
+                add_note_message(
+                    &chat_container,
+                    "A new session is not created by this command yet; the current session continues. Use /session to switch to another one.",
+                );
+            }
+            Some(TuiMessage::ShowSkills) => {
+                if skill_list.is_empty() {
+                    add_note_message(&chat_container, "No skills are loaded.");
+                } else {
+                    let mut lines = vec![format!("## Skills ({})", skill_list.len()), String::new()];
+                    for (name, description) in &skill_list {
+                        lines.push(format!("- {name}: {description}"));
+                    }
+                    add_note_message(&chat_container, &lines.join("\n"));
+                }
+            }
+            Some(TuiMessage::ReportBug(description)) => {
+                let mut bundle = String::new();
+                bundle.push_str("# rpi bug report\n\n");
+                bundle.push_str(&format!(
+                    "- version: {}\n",
+                    crate::changelog::current_version()
+                ));
+                bundle.push_str(&format!("- platform: {}\n", std::env::consts::OS));
+                bundle.push_str(&format!("- description: {description}\n"));
+                if let Ok(snapshot) = agent_session.snapshot().await {
+                    bundle.push_str(&format!("- lane: `{}`\n", snapshot.lane));
+                    bundle.push_str(&format!(
+                        "- leaf: `{}`\n",
+                        snapshot
+                            .leaf_id
+                            .clone()
+                            .unwrap_or_else(|| "(empty)".into())
+                    ));
+                }
+                if let Ok(stats) = agent_session.usage_stats().await {
+                    bundle.push_str(&format!("- messages: {}\n", stats.message_count));
+                    bundle.push_str(&format!("- total tokens: {}\n", stats.total_tokens));
+                }
+                let path = std::env::current_dir()
+                    .unwrap_or_default()
+                    .join("rpi-bug-report.md");
+                match std::fs::write(&path, bundle) {
+                    Ok(()) => add_note_message(
+                        &chat_container,
+                        &format!("Bug report written to {}", path.display()),
+                    ),
+                    Err(error) => add_error_message(
+                        &chat_container,
+                        &format!("Could not write the bug report: {error}"),
+                    ),
+                }
+            }
+            Some(TuiMessage::ShowStats) => {
+                let stats = agent_session.usage_stats().await.ok();
+                let snapshot = agent_session.snapshot().await.ok();
+                let mut lines = vec!["## Stats".to_string(), String::new()];
+                if let Some(snapshot) = &snapshot {
+                    lines.push(format!("- lane: `{}`", snapshot.lane));
+                    lines.push(format!(
+                        "- leaf: `{}`",
+                        snapshot.leaf_id.clone().unwrap_or_else(|| "(empty)".into())
+                    ));
+                }
+                if let Some(stats) = &stats {
+                    lines.push(format!("- messages: {}", stats.message_count));
+                    lines.push(format!("- total tokens: {}", stats.total_tokens));
+                    lines.push(format!("- cached tokens: {}", stats.cached_tokens));
+                    lines.push(format!("- cost: ${:.4}", stats.cost_total));
+                }
+                add_note_message(&chat_container, &lines.join("\n"));
+            }
             None => break,
         }
     }

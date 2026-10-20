@@ -29,6 +29,11 @@ from; the matching [GitHub Release](../../releases) carries the same notes.
 - *(cli)* `--help` has the original's sections, options, examples, environment variables and built-in tool names; `--version` prints the bare version; the diagnostics are capitalised (`Error: `, `Warning: `)
 - *(cli)* the original's slash commands are registered with its text: `/skills` ("Browse and run a skill"), `/bug` ("Report a bug to the Pi developers") and `/stats` ("Show session info and stats"); `/quit` is the canonical exit command with `/exit` as its alias, and `/resume` is canonical with `/history` and `/sessions` as its aliases
 - *(cli)* the autocomplete row shows the argument hint in front of the description (`<provider/model> — Select model (opens selector UI)`), the way the original does
+- *(cli)* the transcript notices use the original's prefixes: `Error: <message>` and `Warning: <message>`, and a status note is plain dim text
+- *(cli)* the startup block is the original's: a blank row, the mark, the version, the key hints, `Press ctrl+o to show full startup help.`, the onboarding note and a blank row; the echoed user message is preceded by a blank row, as the original does
+- *(cli)* `/name` without an argument warns `Usage: /name <name>`, `/copy` without a reply errors `No agent messages to copy yet.`, and `/logout` without stored credentials explains what it does not touch
+- *(cli)* `/new` starts a new session (the original's command) and `/clear` stays a port-only extra; `/help` is generated from the same registry as the `/` autocomplete list, so the two always agree
+- *(cli)* `/export` takes a path, defaults to HTML, exports the session file on disk and reports `Session exported to: <path>`
 
 ### Fixed
 

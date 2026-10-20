@@ -59,6 +59,21 @@ pub(super) fn open_searchable_selector(
     searchable
 }
 
+/// Give the pane to the transcript when the 3-D empty-session screen owns it.
+///
+/// The screen takes the whole layout root while the session is empty, so
+/// anything that shows itself in the transcript — a selector, or a note about
+/// an empty list — has to take the pane over first, or it is drawn behind the
+/// logo.
+pub(super) fn take_pane_from_empty_session(tui: &Arc<TuiAltScreen>) {
+    if super::EMPTY_SESSION_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+        super::EMPTY_SESSION_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+        if let Some(root) = super::NORMAL_ROOT.lock().unwrap().clone() {
+            tui.set_layout_root(Some(root));
+        }
+    }
+}
+
 /// Open a selector with an optional framed view. Native extension selectors
 /// wrap the list with a title and hint while built-in selectors keep the list
 /// as the complete view.
@@ -75,6 +90,10 @@ pub(super) fn open_selector_with_view<V: Component + 'static>(
     view: Arc<V>,
     kind: SelectorKind,
 ) {
+    // The 3-D empty-session screen owns the whole pane; a selector takes it
+    // over, the way the original's startup screen gives the pane up.
+    take_pane_from_empty_session(tui);
+
     // Dispatch ui_prompt_start event
     dispatch_ui_prompt_event(state);
 
@@ -83,14 +102,6 @@ pub(super) fn open_selector_with_view<V: Component + 'static>(
     // A selector replaces the editor slot. Drop stale slash/@file
     // suggestions so they cannot reappear after the selector closes.
     state.autocomplete_container.clear();
-    // The 3-D empty-session screen owns the whole pane; a selector takes it
-    // over, the way the original's startup screen gives the pane up.
-    if super::EMPTY_SESSION_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
-        super::EMPTY_SESSION_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
-        if let Some(root) = super::NORMAL_ROOT.lock().unwrap().clone() {
-            tui.set_layout_root(Some(root));
-        }
-    }
     // Swap: clear the container and add the selector view.
     editor_container.clear();
     editor_container.add_child(view.clone());
@@ -327,6 +338,7 @@ pub(super) fn open_session_selector(
         items
     };
     if items.is_empty() {
+        take_pane_from_empty_session(tui);
         add_note_message(
             &state.chat_container,
             "No saved sessions found. Sessions are created automatically in interactive mode.",
@@ -417,6 +429,7 @@ pub(super) async fn open_tree_selector(
     {
         Ok(entries) => entries,
         Err(error) => {
+            take_pane_from_empty_session(tui);
             add_error_message(chat, &format!("Could not read session tree: {error}"));
             tui.request_render(false);
             return;
@@ -467,6 +480,7 @@ pub(super) async fn open_tree_selector(
         tree_menu_items(&menu.entries, menu.filter, menu.show_label_timestamps)
     };
     if items.is_empty() {
+        take_pane_from_empty_session(tui);
         add_note_message(chat, "The current session has no entries to navigate.");
         tui.request_render(false);
         return;
@@ -708,7 +722,7 @@ pub(super) fn open_logout_provider_selector(
     if items.is_empty() {
         add_note_message(
             &state.chat_container,
-            "No saved provider credentials found.",
+            "No stored credentials to remove. /logout only removes credentials saved by /login; environment variables and models.json config are unchanged.",
         );
         tui.request_render(false);
         return;

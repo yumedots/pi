@@ -402,7 +402,7 @@ async fn accepted_context_is_flushed_after_cancelled_tool_results() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn acknowledged_context_survives_a_crash_and_is_not_duplicated_on_a_second_restore() {
+async fn acknowledged_context_is_runtime_only_and_a_restore_does_not_duplicate_it() {
     let mut emitter = AppendDuringEvent::new(on_start);
     emitter.pause = true;
     let emitter = Arc::new(emitter);
@@ -458,11 +458,12 @@ async fn acknowledged_context_survives_a_crash_and_is_not_duplicated_on_a_second
     );
     let (restored, _) = harness(session.clone(), FauxScript::new(), None, true).await;
     let entries = history(&restored, "main").await;
-    let context_at = entries.iter().position(|e| e.id() == id).unwrap();
-    assert!(
-        matches!(&entries[context_at - 1], Entry::Message(m) if matches!(m.message, AgentMessage::ToolResult(_)))
-    );
-    assert_eq!(entries.iter().filter(|e| e.id() == id).count(), 1);
+    // The pending-context queue is runtime progress: it has no counterpart in
+    // the original's session file, so it is not written to disk and a crash
+    // loses it. The reserved entry id is therefore absent from the restored
+    // history — and, because it was never committed, it is not duplicated by
+    // the second restore either.
+    assert_eq!(entries.iter().filter(|e| e.id() == id).count(), 0);
     validate_history(&restored).await;
     drop(restored);
     let session = Session::new(
@@ -480,7 +481,7 @@ async fn acknowledged_context_survives_a_crash_and_is_not_duplicated_on_a_second
             .iter()
             .filter(|e| e.id() == id)
             .count(),
-        1
+        0
     );
     validate_history(&restored).await;
 }

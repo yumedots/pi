@@ -28,7 +28,7 @@ import { startMockServerProcess } from "./mock-server.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
-const TS = process.env.PI_PARITY_TS_ROOT ?? ROOT;
+const TS = process.env.PI_PARITY_TS_ROOT ?? "/Users/gabriel/pi";
 const RUST_BIN = process.env.PI_PARITY_RUST_BIN ?? join(ROOT, "rpi/target/debug/rpi");
 const HOME = process.env.PI_PARITY_HOME ?? "/tmp/pi-parity";
 const WORK = join(HOME, "session-compat");

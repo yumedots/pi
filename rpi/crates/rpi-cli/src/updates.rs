@@ -503,10 +503,7 @@ pub fn print_startup_notices(report: &UpdateReport) {
         eprintln!("Warning: {} Run `{}`.", warning.message, warning.command);
     }
     for notice in &report.notices {
-        eprintln!(
-            "Update available: {} {} -> {}. Run `{}`.",
-            notice.name, notice.current, notice.latest, notice.command
-        );
+        eprintln!("New version {} is available. Run pi update", notice.latest);
     }
 }
 

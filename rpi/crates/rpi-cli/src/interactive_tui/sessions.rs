@@ -178,7 +178,9 @@ pub(super) async fn import_session(
         add_error_message(chat, "Import source must be a .jsonl session file.");
         return;
     }
-    let dir = crate::session::default_session_dir(cwd);
+    let dir = crate::session::default_session_dir(cwd).join(
+        rpi_harness::session::jsonl::jsonl_session_directory_name(&cwd.to_string_lossy()),
+    );
     if let Err(e) = std::fs::create_dir_all(&dir) {
         add_error_message(chat, &format!("Could not create session dir: {e}"));
         return;
@@ -186,7 +188,10 @@ pub(super) async fn import_session(
     let dest = dir.join(fname);
     match std::fs::copy(src, &dest) {
         Ok(_) => {
-            let id = fname.strip_suffix(".jsonl").unwrap_or(fname).to_string();
+            let id = fname
+                .strip_suffix(".jsonl")
+                .and_then(|stem| stem.rsplit_once('_').map(|(_, id)| id.to_string()))
+                .unwrap_or_else(|| fname.to_string());
             if switch_to_session(harness, lane, &id, cwd, chat, state, tool_context).await {
                 add_note_message(chat, &format!("Imported session from {path}"));
             }
@@ -321,6 +326,10 @@ pub(super) async fn render_session_history(
                         comp.set_markdown_transformer(Some(t.clone()));
                     }
                     comp.update_blocks(&assistant_blocks(a));
+                    // The live path ends the streaming state after the final
+                    // blocks (`run.rs`); without it the restored reply stays
+                    // in its streaming shape and renders empty.
+                    comp.set_streaming(false);
                     chat.add_child(comp);
                     // The component adds spacing only when it has visible content.
                     if let Some(text) = extension_usage_text(extension_session.as_ref(), &a.usage) {
@@ -374,6 +383,10 @@ pub(super) async fn render_session_history(
                     chat.add_child(Arc::new(Spacer::new(1)));
                     rendered_any = true;
                 }
+                AgentMessage::System(system) => {
+                    add_note_message(chat, &system.content);
+                    rendered_any = true;
+                }
                 AgentMessage::Custom(custom) => {
                     if let Some(session) = &extension_session {
                         if let Some(component) = extension_message_component(
@@ -395,6 +408,7 @@ pub(super) async fn render_session_history(
                     add_note_message(chat, &custom_message_fallback(&custom));
                     rendered_any = true;
                 }
+                AgentMessage::System(_) => {}
             },
             // The entries pi writes that the transcript does not render
             // (usage, labels, the session info, the context edits) pass

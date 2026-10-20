@@ -451,6 +451,7 @@ mod tests {
                 tool_name: "read".into(),
                 result: AgentToolResult::text("hello"),
                 is_error: false,
+                duration_ms: None,
             },
         ))
         .unwrap();

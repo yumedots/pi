@@ -20,7 +20,7 @@
  *         PI_PARITY_HOME        scratch directory (default: /tmp/pi-parity)
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,7 +28,7 @@ import { startMockServerProcess } from "./mock-server.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
-const TS = process.env.PI_PARITY_TS_ROOT ?? ROOT;
+const TS = process.env.PI_PARITY_TS_ROOT ?? "/Users/gabriel/pi";
 const RUST_BIN = process.env.PI_PARITY_RUST_BIN ?? join(ROOT, "rpi/target/debug/rpi");
 const HOME = process.env.PI_PARITY_HOME ?? "/tmp/pi-parity";
 const WORK = join(HOME, "settings-parity");
@@ -54,8 +54,9 @@ const CASES = [
 		settings: { autocompletePosition: "above" },
 		keys: ["/he"],
 		facts: [
-			{ id: "the autocomplete lists /help", match: /\/help/, when: "present" },
-			{ id: "the autocomplete lists /hotkeys", match: /\/hotkeys/, when: "present" },
+			// The original lists the command names bare — "hotkeys", "theme" —
+			// with no leading slash. The port prefixes every entry with "/".
+			{ id: "the autocomplete lists hotkeys", match: /(?:^|\s)hotkeys(?:\s|$)/m, when: "present" },
 		],
 		compare: { type: "order", first: /\/help/, second: /^ > /m },
 	},
@@ -63,20 +64,20 @@ const CASES = [
 		id: "autocompletePosition-below",
 		settings: { autocompletePosition: "below" },
 		keys: ["/he"],
-		facts: [{ id: "the autocomplete lists /help", match: /\/help/, when: "present" }],
+		facts: [{ id: "the autocomplete lists hotkeys", match: /(?:^|\s)hotkeys(?:\s|$)/m, when: "present" }],
 		compare: { type: "order", first: /^ > /m, second: /\/help/ },
 	},
 	{
 		id: "autocompleteMaxVisible-3",
 		settings: { autocompleteMaxVisible: 3 },
 		keys: ["/"],
-		facts: [{ id: "the autocomplete opens", match: /\/help/, when: "present" }],
+		facts: [{ id: "the autocomplete opens", match: /(?:^|\s)hotkeys(?:\s|$)/m, when: "present" }],
 	},
 	{
 		id: "autocompleteMaxVisible-20",
 		settings: { autocompleteMaxVisible: 20 },
 		keys: ["/"],
-		facts: [{ id: "the autocomplete opens", match: /\/help/, when: "present" }],
+		facts: [{ id: "the autocomplete opens", match: /(?:^|\s)hotkeys(?:\s|$)/m, when: "present" }],
 	},
 	{
 		id: "hideThinkingBlock-true",
@@ -157,12 +158,14 @@ const CASES = [
 	{
 		id: "defaultProjectTrust-always",
 		settings: { defaultProjectTrust: "always" },
+		trust: false,
 		keys: [],
 		facts: [{ id: "no trust prompt", match: /Trust project folder\?/i, when: "absent" }],
 	},
 	{
 		id: "defaultProjectTrust-ask",
 		settings: { defaultProjectTrust: "ask" },
+		trust: false,
 		keys: [],
 		facts: [{ id: "the trust prompt appears", match: /Trust project folder\?/i, when: "present" }],
 	},
@@ -213,7 +216,7 @@ function writeFile(path, contents) {
 	spawnSync("sh", ["-c", `cat > '${path}'`], { input: contents, encoding: "utf8" });
 }
 
-function writeAgentDir(agentDir, baseUrl, settings) {
+function writeAgentDir(agentDir, baseUrl, settings, cwd, trust = true) {
 	mkdirSync(agentDir, { recursive: true });
 	writeFile(
 		join(agentDir, "models.json"),
@@ -233,6 +236,17 @@ function writeAgentDir(agentDir, baseUrl, settings) {
 		)}\n`,
 	);
 	writeFile(join(agentDir, "settings.json"), `${JSON.stringify(settings, null, 1)}\n`);
+	// The original prompts for project trust when the project holds a
+	// trust-requiring resource; pre-approve it so a case measures the setting
+	// and not the prompt. A case that IS about the prompt passes trust=false
+	// and gets no trust.json.
+	let canonical = cwd;
+	try {
+		canonical = realpathSync(cwd);
+	} catch {}
+	if (trust) {
+		writeFile(join(agentDir, "trust.json"), `${JSON.stringify({ [canonical]: true }, null, 1)}\n`);
+	}
 }
 
 function tsCommand({ cwd, agentDir, clock }) {
@@ -252,7 +266,7 @@ function rustCommand({ cwd, agentDir, clock }) {
 		`PI_CODING_AGENT_DIR=${agentDir}`,
 		`PI_PARITY_CLOCK=${clock}`,
 		RUST_BIN,
-		"--offline --provider mock --model mock/mock-1 --api-key parity-key",
+		"--offline --provider mock --model mock/mock-1 --api-key parity-key --approve",
 	].join(" ");
 }
 
@@ -310,7 +324,7 @@ function runCase(side, testCase, baseUrl, clock) {
 	mkdirSync(agentDir, { recursive: true });
 	mkdirSync(cwd, { recursive: true });
 	writeFixture(cwd);
-	writeAgentDir(agentDir, baseUrl, testCase.settings);
+	writeAgentDir(agentDir, baseUrl, testCase.settings, cwd, testCase.trust !== false);
 	const screen = drive(side, { cwd, agentDir, clock }, testCase.keys ?? []);
 	return { screen, facts: factsIn(screen, testCase.facts ?? []) };
 }
@@ -362,6 +376,14 @@ try {
 			}
 		}
 		rows.push({ id: testCase.id, settings: testCase.settings, differences });
+		// Print each case as it lands, so a long run shows where it is.
+		const label = Object.entries(testCase.settings)
+			.map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+			.join(" ");
+		console.log(
+			`${testCase.id} (${label}): ${differences.length === 0 ? "same on both sides" : "DIFFERS"}`,
+		);
+		for (const difference of differences) console.log(`    ${difference}`);
 	}
 
 	console.log("\n## settings parity");
@@ -369,12 +391,7 @@ try {
 		const label = Object.entries(row.settings)
 			.map(([key, value]) => `${key}=${JSON.stringify(value)}`)
 			.join(" ");
-		if (row.differences.length === 0) {
-			console.log(`${row.id} (${label}): same on both sides`);
-		} else {
-			console.log(`${row.id} (${label}): DIFFERS`);
-			for (const difference of row.differences) console.log(`    ${difference}`);
-		}
+		console.log(`${row.id} (${label}): ${row.differences.length === 0 ? "same on both sides" : "DIFFERS"}`);
 	}
 	if (rows.some((row) => row.differences.length > 0)) process.exitCode = 1;
 } finally {

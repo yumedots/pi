@@ -13157,11 +13157,25 @@
       }
     };
   };
+  var askDialog = async (kind, args) => {
+    const opened = hostCall("ui.select", { ...args, kind });
+    const requestId = opened?.requestId;
+    if (!requestId) return void 0;
+    for (; ; ) {
+      await new Promise((resolve2) => setTimeout(resolve2, 20));
+      const answer = hostCall("ui.pollDialog", { requestId, kind });
+      if (answer?.answered) return answer.value;
+    }
+  };
   var createContext = (state2) => ({
     ui: {
       theme,
-      notify: (message, type2) => hostCall("ui.notify", { message, type: type2 ?? "info" }),
-      setStatus: (key, text) => hostCall("ui.setStatus", { key, text: text ?? "" }),
+      notify: (message, type2) => {
+        hostCall("ui.notify", { message, type: type2 ?? "info" });
+      },
+      setStatus: (key, text) => {
+        hostCall("ui.setStatus", { key, text: text ?? "" });
+      },
       setWidget: (key, content, options) => {
         if (content === void 0) {
           hostCall("ui.setWidget", { key });
@@ -13188,28 +13202,49 @@
         }
         hostCall("ui.setFooter", { component: registerComponent(factory) });
       },
-      setTitle: (title) => hostCall("ui.setTitle", { title }),
-      setWorkingMessage: (message) => hostCall("ui.setWorkingMessage", { message: message ?? "" }),
-      setWorkingVisible: (visible) => hostCall("ui.setWorkingVisible", { visible }),
-      setHiddenThinkingLabel: (label) => hostCall("ui.setHiddenThinkingLabel", { label }),
-      setEditorText: (text) => hostCall("ui.setEditorText", { text }),
+      setTitle: (title) => {
+        hostCall("ui.setTitle", { title });
+      },
+      setWorkingMessage: (message) => {
+        hostCall("ui.setWorkingMessage", { message: message ?? "" });
+      },
+      setWorkingVisible: (visible) => {
+        hostCall("ui.setWorkingVisible", { visible });
+      },
+      setHiddenThinkingLabel: (label) => {
+        hostCall("ui.setHiddenThinkingLabel", { label });
+      },
+      setEditorText: (text) => {
+        hostCall("ui.setEditorText", { text });
+      },
       getEditorText: () => hostCall("ui.getEditorText", {}),
-      pasteToEditor: (text) => hostCall("ui.pasteToEditor", { text }),
-      select: (title, options) => hostCall("ui.select", { title, options }),
-      confirm: (title, message) => hostCall("ui.confirm", { title, message }),
-      input: (title, placeholder) => hostCall("ui.input", { title, placeholder }),
-      editor: (title, prefill) => hostCall("ui.editor", { title, prefill }),
-      custom: (factory) => hostCall("ui.custom", { component: registerComponent(factory) }),
+      pasteToEditor: (text) => {
+        hostCall("ui.pasteToEditor", { text });
+      },
+      select: (title, options) => askDialog("selector", { title, options }),
+      confirm: (title, message) => askDialog("confirm", { title, message }),
+      input: (title, placeholder) => askDialog("input", { title, placeholder }),
+      editor: (title, prefill) => askDialog("editor", { title, prefill }),
+      custom: async (factory) => {
+        hostCall("ui.custom", { component: registerComponent(factory) });
+      },
       setWorkingIndicator: (options) => hostCall("ui.setWorkingIndicator", { options: options ?? null }),
-      setEditorComponent: (factory) => hostCall("ui.setEditorComponent", {
-        component: factory ? registerComponent(factory) : null
-      }),
-      getEditorComponent: () => hostCall("ui.getEditorComponent", {}),
+      setEditorComponent: (factory) => {
+        hostCall("ui.setEditorComponent", {
+          component: factory ? registerComponent(factory) : null
+        });
+      },
+      getEditorComponent: () => {
+        const answer = hostCall("ui.getEditorComponent", {});
+        return answer ?? void 0;
+      },
       getAllThemes: () => hostCall("ui.getAllThemes", {}),
       getTheme: (name) => hostCall("ui.getTheme", { name }),
       setTheme: (theme2) => hostCall("ui.setTheme", { theme: theme2 }),
       getToolsExpanded: () => hostCall("ui.getToolsExpanded", {}),
-      setToolsExpanded: (expanded) => hostCall("ui.setToolsExpanded", { expanded }),
+      setToolsExpanded: (expanded) => {
+        hostCall("ui.setToolsExpanded", { expanded });
+      },
       onTerminalInput: (handler) => registerTerminalInput(state2, handler),
       addAutocompleteProvider: (factory) => {
         state2.autocompleteProviders.push(factory);
@@ -13239,7 +13274,10 @@
       getHeader: () => hostCall("session.getHeader", {}),
       getEntries: () => hostCall("session.getEntries", {}),
       getTree: () => hostCall("session.getTree", {}),
-      getSessionName: () => hostCall("session.getSessionName", {})
+      getSessionName: () => {
+        const answer = hostCall("session.getSessionName", {});
+        return answer ?? void 0;
+      }
     },
     modelRegistry: createModelRegistry(),
     get model() {
@@ -13247,7 +13285,8 @@
     },
     scopedModels: [],
     get thinkingLevel() {
-      return hostCall("model.getThinkingLevel", {});
+      const answer = hostCall("model.getThinkingLevel", {});
+      return answer?.level ?? "off";
     },
     isIdle: () => hostCall("agent.isIdle", {}),
     isProjectTrusted: () => hostCall("agent.isProjectTrusted", {}),
@@ -13257,7 +13296,10 @@
     shutdown: () => hostCall("session.shutdown", {}),
     getContextUsage: () => hostCall("agent.getContextUsage", {}),
     compact: (options) => hostCall("agent.compact", { options }),
-    getSystemPrompt: () => hostCall("agent.getSystemPrompt", {}),
+    getSystemPrompt: () => {
+      const answer = hostCall("agent.getSystemPrompt", {});
+      return answer?.prompt ?? "";
+    },
     extensionPath: state2.path
   });
   var createToolContext = (state2) => ({
@@ -13321,12 +13363,18 @@
       setSessionName: (name) => {
         hostCall("session.setSessionName", { name });
       },
-      getSessionName: () => hostCall("session.getSessionName", {}),
+      getSessionName: () => {
+        const answer = hostCall("session.getSessionName", {});
+        return answer ?? void 0;
+      },
       setLabel: (entryId, label) => {
         hostCall("session.setLabel", { entryId, label });
       },
       exec: (command, args, options) => hostCall("session.exec", { command, args, options }),
-      getActiveTools: () => hostCall("tools.getActive", {}),
+      getActiveTools: () => {
+        const answer = hostCall("tools.getActive", {});
+        return answer?.tools ?? [];
+      },
       getAllTools: () => hostCall("tools.getAll", {}),
       getSettings: () => hostCall("settings.get", {}),
       setActiveTools: (toolNames) => {
@@ -13334,7 +13382,10 @@
       },
       getCommands: () => hostCall("commands.get", {}),
       setModel: (model) => hostCall("model.set", { model }),
-      getThinkingLevel: () => hostCall("model.getThinkingLevel", {}),
+      getThinkingLevel: () => {
+        const answer = hostCall("model.getThinkingLevel", {});
+        return answer?.level ?? "off";
+      },
       setThinkingLevel: (level) => {
         hostCall("model.setThinkingLevel", { level });
       },
@@ -13345,7 +13396,7 @@
         hostCall("provider.unregister", { name });
       },
       registerMcpServer: (name, config) => {
-        hostCall("mcp.register", { name, config });
+        hostCall("mcp.register", { name, config, extensionPath: state2.path });
       },
       unregisterMcpServer: (name) => {
         hostCall("mcp.unregister", { name });

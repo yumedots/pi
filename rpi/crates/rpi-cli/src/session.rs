@@ -3317,10 +3317,7 @@ mod tests {
             cwd: ".".to_string(),
             path: path.to_string_lossy().into_owned(),
             modified_at: 0,
-            source_format: rpi_harness::session::jsonl::JsonlSourceFormat::V4,
-            parent_session_id: None,
-            legacy_parent_session_path: None,
-            metadata: None,
+            source_format: rpi_harness::session::jsonl::JsonlSourceFormat::V3,
         }
     }
 

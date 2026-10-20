@@ -3867,6 +3867,60 @@ impl AgentHarness {
                 .collect(),
         ));
         let context_write_error = Arc::new(Mutex::new(None));
+        // The compaction threshold check runs at the turn boundary, the way the
+        // original runs it (`_compactBeforeNextAssistantResponse`,
+        // `packages/coding-agent/src/core/agent-session.ts:791-799`): after
+        // every assistant response, before the next request — not only after a
+        // turn that produced tool results.
+        let compaction_hook: Option<AfterToolResults> = {
+            let harness = self.clone();
+            let enabled = snap.compaction.enabled;
+            let settings = snap.compaction;
+            let model = snap.model.clone();
+            let provider = snap
+                .models
+                .iter()
+                .find(|p| p.id() == model.provider)
+                .cloned();
+            let compaction_signal = signal.clone();
+            let compaction_run_id = run_id.clone();
+            if enabled && model.context_window > 0 && provider.is_some() {
+                let cut_for_hook = Arc::clone(&post_compaction_cut);
+                Some(Arc::new(move |ctx: ShouldStopAfterTurnContext<'_>| -> BoxFuture<'static, Option<rpi_agent::AgentLoopTurnUpdate>> {
+                    let harness = harness.clone();
+                    let model = model.clone();
+                    let provider = provider.clone().expect("checked above");
+                    let cut = Arc::clone(&cut_for_hook);
+                    let compaction_signal = compaction_signal.clone();
+                    let compaction_run_id = compaction_run_id.clone();
+                    let context = ctx.context.clone();
+                    let new_messages_len = ctx.new_messages.len();
+                    Box::pin(async move {
+                        let tokens = estimate_context_tokens(&context.messages).tokens;
+                        if !should_compact(tokens, model.context_window as i64, &settings) {
+                            return None;
+                        }
+                        let entries: Vec<Entry> = context.messages.iter().enumerate().map(|(i, message)| Entry::Message(crate::session::types::MessageEntry {
+                            base: crate::session::types::EntryBase { entry_type: "message".into(), id: format!("runtime-{i}"), seq: i as u64 + 1, parent_id: None, timestamp: i as i64 },
+                            message: message.clone(), terminate: None,
+                        })).collect();
+                        let prep = match prepare_compaction(&entries, settings) { Ok(Some(p)) => p, _ => return None };
+                        let opts = CompactionLlmOptions { provider, model: model.clone(), api_key: None, signal: compaction_signal, thinking_level: None, retry: None, custom_instructions: None };
+                        let result = match { let _progress = crate::events::CompactionProgressGuard::new(&harness.bus, &harness.lane, false); compact(&prep, &opts).await } { Ok(r) => r, Err(_) => return None };
+                        // The turn pushed the context over the threshold.
+                        if harness.persist_compaction_entry(&compaction_run_id, &result, CompactionReason::Threshold).await.is_err() { return None; }
+                        cut.store(new_messages_len, Ordering::Release);
+                        let mut messages = Vec::with_capacity(result.retained_tail.len() + 1);
+                        messages.push(create_compaction_summary_message(&result.summary, result.tokens_before, 0));
+                        messages.extend(result.retained_tail);
+                        Some(rpi_agent::AgentLoopTurnUpdate { context: Some(AgentContext { system_prompt: context.system_prompt.clone(), messages, tools: context.tools.clone() }), model: None, thinking_level: None })
+                    })
+                }) as AfterToolResults)
+            } else {
+                None
+            }
+        };
+
         let mut config = AgentLoopConfig {
             model: snap.model.clone(),
             convert_to_llm: convert,
@@ -3876,55 +3930,7 @@ impl AgentHarness {
             prepare_next_turn: None,
             prepare_request: snap.prepare_request.clone(),
             finish_turn: snap.finish_turn.clone(),
-            after_tool_results: {
-                let harness = self.clone();
-                let enabled = snap.compaction.enabled;
-                let settings = snap.compaction;
-                let model = snap.model.clone();
-                let provider = snap
-                    .models
-                    .iter()
-                    .find(|p| p.id() == model.provider)
-                    .cloned();
-                let compaction_signal = signal.clone();
-                let compaction_run_id = run_id.clone();
-                if enabled && model.context_window > 0 && provider.is_some() {
-                    let cut_for_hook = Arc::clone(&post_compaction_cut);
-                    Some(Arc::new(move |ctx: ShouldStopAfterTurnContext<'_>| -> BoxFuture<'static, Option<rpi_agent::AgentLoopTurnUpdate>> {
-                        let harness = harness.clone();
-                        let model = model.clone();
-                        let provider = provider.clone().expect("checked above");
-                        let cut = Arc::clone(&cut_for_hook);
-                        let compaction_signal = compaction_signal.clone();
-                        let compaction_run_id = compaction_run_id.clone();
-                        let context = ctx.context.clone();
-                        let new_messages_len = ctx.new_messages.len();
-                        Box::pin(async move {
-                            let tokens = estimate_context_tokens(&context.messages).tokens;
-                            if !should_compact(tokens, model.context_window as i64, &settings) {
-                                return None;
-                            }
-                            let entries: Vec<Entry> = context.messages.iter().enumerate().map(|(i, message)| Entry::Message(crate::session::types::MessageEntry {
-                                base: crate::session::types::EntryBase { entry_type: "message".into(), id: format!("runtime-{i}"), seq: i as u64 + 1, parent_id: None, timestamp: i as i64 },
-                                message: message.clone(), terminate: None,
-                            })).collect();
-                            let prep = match prepare_compaction(&entries, settings) { Ok(Some(p)) => p, _ => return None };
-                            let opts = CompactionLlmOptions { provider, model: model.clone(), api_key: None, signal: compaction_signal, thinking_level: None, retry: None, custom_instructions: None };
-                            let result = match { let _progress = crate::events::CompactionProgressGuard::new(&harness.bus, &harness.lane, false); compact(&prep, &opts).await } { Ok(r) => r, Err(_) => return None };
-                            // Mid-loop compaction fires because the turn pushed the
-                            // context over the threshold.
-                            if harness.persist_compaction_entry(&compaction_run_id, &result, CompactionReason::Threshold).await.is_err() { return None; }
-                            cut.store(new_messages_len, Ordering::Release);
-                            let mut messages = Vec::with_capacity(result.retained_tail.len() + 1);
-                            messages.push(create_compaction_summary_message(&result.summary, result.tokens_before, 0));
-                            messages.extend(result.retained_tail);
-                            Some(rpi_agent::AgentLoopTurnUpdate { context: Some(AgentContext { system_prompt: context.system_prompt.clone(), messages, tools: context.tools.clone() }), model: None, thinking_level: None })
-                        })
-                    }) as AfterToolResults)
-                } else {
-                    None
-                }
-            },
+            after_tool_results: None,
             get_steering_messages: Some({
                 let queue = Arc::clone(&snap.steering_queue);
                 let harness = self.clone();
@@ -3975,8 +3981,11 @@ impl AgentHarness {
             signal.clone(),
             Arc::clone(&context_write_error),
         ));
+        // The compaction check hangs on the turn boundary, so it runs after
+        // every assistant response — a turn that produced no tool results
+        // included.
         config.prepare_next_turn = Some(self.context_boundary_hook(
-            None,
+            compaction_hook,
             Arc::clone(&settle_state),
             signal.clone(),
             Arc::clone(&context_write_error),

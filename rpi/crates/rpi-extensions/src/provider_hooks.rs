@@ -64,6 +64,21 @@ impl ExtensionProviderHooks {
     ///   plugin that only transforms the prompt registers no handlers at all;
     ///   keying this check on the tags alone would skip the bridge and silently
     ///   ignore its transform.
+    /// The hooks for a session whose only extensions are JavaScript ones.
+    ///
+    /// The native path installs the hooks only when a native plugin subscribes
+    /// to one of the provider events. The JavaScript extensions subscribe the
+    /// same way, so without this the provider events never fire for them.
+    pub fn for_javascript() -> Self {
+        let registry = crate::registry::ExtensionRegistry::new();
+        Self {
+            snapshot: Arc::new(registry.snapshot()),
+            _keepalive: Arc::new(crate::PluginKeepalive::new(Vec::new(), None)),
+            last_before_agent_start: Mutex::new(None),
+            last_forced_prompt: Mutex::new(None),
+        }
+    }
+
     pub fn from_session(session: &ExtensionSession) -> Option<Self> {
         let snapshot = session.snapshot_arc()?;
         let observes_events = [
@@ -97,31 +112,19 @@ impl ProviderHooks for ExtensionProviderHooks {
     /// transformer, when they all declined, or when the registry is stale, all
     /// of which mean "leave the prompt alone".
     fn transform_context(&self, _model: &Model, ctx: &Context) -> Option<ContextPatch> {
-        if self.snapshot.before_agent_start().is_empty() {
-            return None;
-        }
-        // Keyed on the user prompt, like the observer event below: the prompt is
-        // what identifies a turn, and it is stable across the run's provider
-        // calls. With no user message (a continuation) there is nothing to key
-        // on, so the transform is skipped rather than applied to an unknown turn.
-        let (timestamp, prompt, image_count) = latest_user_prompt(&ctx.messages)?;
-
-        let mut cache = self.last_forced_prompt.lock().unwrap();
-        if cache.as_ref().map(|(ts, _)| *ts) != Some(timestamp) {
-            let event = before_agent_start_event(&prompt, image_count, ctx);
-            let forced = emit_before_agent_start(
-                ctx.system_prompt.as_deref().unwrap_or_default(),
-                &event.to_string(),
-                &self.snapshot,
-            );
-            *cache = Some((timestamp, forced));
-        }
-        cache
-            .as_ref()
-            .and_then(|(_, forced)| forced.clone())
-            .map(|system_prompt| ContextPatch {
-                system_prompt: Some(system_prompt),
-            })
+        // pi's `context` event: the conversation without the system messages,
+        // and then the full transcript.
+        let messages = serde_json::to_value(&ctx.messages).unwrap_or(serde_json::Value::Null);
+        crate::event_sink::emit_event(
+            "context",
+            &serde_json::json!({ "type": "context", "messages": messages }),
+        );
+        let with_system = serde_json::json!({
+            "type": "context_with_system",
+            "messages": messages,
+        });
+        crate::event_sink::emit_event("context_with_system", &with_system);
+        self.transformed_context(ctx)
     }
 
     /// Fan the planned request out to `BeforeProviderRequest` +
@@ -785,5 +788,36 @@ mod tests {
             payload["systemPrompt"], "base MARK",
             "observers must be shown the prompt the provider will actually get"
         );
+    }
+}
+
+/// The prompt an extension asked for, if any.
+impl ExtensionProviderHooks {
+    fn transformed_context(&self, ctx: &Context) -> Option<ContextPatch> {
+        if self.snapshot.before_agent_start().is_empty() {
+            return None;
+        }
+        // Keyed on the user prompt, like the observer event below: the prompt is
+        // what identifies a turn, and it is stable across the run's provider
+        // calls. With no user message (a continuation) there is nothing to key
+        // on, so the transform is skipped rather than applied to an unknown turn.
+        let (timestamp, prompt, image_count) = latest_user_prompt(&ctx.messages)?;
+
+        let mut cache = self.last_forced_prompt.lock().unwrap();
+        if cache.as_ref().map(|(ts, _)| *ts) != Some(timestamp) {
+            let event = before_agent_start_event(&prompt, image_count, ctx);
+            let forced = emit_before_agent_start(
+                ctx.system_prompt.as_deref().unwrap_or_default(),
+                &event.to_string(),
+                &self.snapshot,
+            );
+            *cache = Some((timestamp, forced));
+        }
+        cache
+            .as_ref()
+            .and_then(|(_, forced)| forced.clone())
+            .map(|system_prompt| ContextPatch {
+                system_prompt: Some(system_prompt),
+            })
     }
 }

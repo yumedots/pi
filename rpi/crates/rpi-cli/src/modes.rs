@@ -99,7 +99,8 @@ pub async fn print(
                                 }
                             }
                         }
-                        eprintln!("run failed: {}", error.message);
+                        // The original's print-mode failure line (`modes/print-mode.ts:113,159`).
+                        eprintln!("Error: {}", error.message);
                     }
                     HarnessRunOutcome::Suspended { .. } => {
                         eprintln!("run suspended (deferred) — resume is not supported in v1");
@@ -118,13 +119,19 @@ pub async fn print(
     if let Some(m) = &last_msg {
         match m.stop_reason {
             StopReason::Error => {
-                if let Some(em) = &m.error_message {
-                    eprintln!("{em}");
+                // The original's print mode: the error message, or
+                // `Request <stopReason>` (`modes/print-mode.ts:148`).
+                match &m.error_message {
+                    Some(em) => eprintln!("{em}"),
+                    None => eprintln!("Request error"),
                 }
                 last_exit = 1;
             }
             StopReason::Aborted => {
-                eprintln!("request aborted");
+                match &m.error_message {
+                    Some(em) => eprintln!("{em}"),
+                    None => eprintln!("Request aborted"),
+                }
                 last_exit = 1;
             }
             _ => {
@@ -135,6 +142,13 @@ pub async fn print(
                     let _ = out.write_all(b"\n");
                 }
                 let _ = out.flush();
+                // The original's truncation notice (`modes/print-mode.ts:168`).
+                if m.stop_reason == StopReason::Length {
+                    eprintln!(
+                        "Response was truncated: the model reached its output token limit."
+                    );
+                    last_exit = 1;
+                }
             }
         }
     }
@@ -984,7 +998,8 @@ async fn run_one(
                             eprintln!("Error: {em}");
                         }
                     }
-                    eprintln!("run failed: {}", error.message);
+                    // The original's print-mode failure line (`modes/print-mode.ts:113,159`).
+                        eprintln!("Error: {}", error.message);
                 }
                 HarnessRunOutcome::Suspended { .. } => {
                     eprintln!("run suspended (deferred) — resume not supported in v1");
@@ -1491,6 +1506,9 @@ mod tests {
             model: "claude-sonnet-5".into(),
             response_model: None,
             response_id: None,
+            provider_thinking_level: None,
+            thinking_level: None,
+            diagnostics: None,
             usage: Usage::zero(),
             stop_reason: stop,
             deferred: None,
@@ -1498,6 +1516,7 @@ mod tests {
             raw_stop_reason: None,
             end_turn: None,
             timestamp: 0,
+            duration_ms: None,
         }
     }
 
