@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "serena",
+      "args": ["start-mcp-server"],
+      "description": "Semantic code navigation over the TypeScript tree"
+    }
+  }
+}
