@@ -321,7 +321,6 @@ pub(super) async fn render_session_history(
                         AssistantMessageOptions::default(),
                     ));
                     comp.set_show_images(show_images);
-                    comp.set_trailing_spacing(1);
                     if let Some(t) = &transformer {
                         comp.set_markdown_transformer(Some(t.clone()));
                     }

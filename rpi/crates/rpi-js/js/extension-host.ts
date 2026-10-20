@@ -2,13 +2,52 @@ import * as piCodingAgent from "../../../../packages/coding-agent/src/core/exten
 import * as piAgentCore from "./pi-agent-core.ts";
 import * as piAi from "./pi-ai.ts";
 import * as piTui from "./pi-tui.ts";
-import * as nodeChildProcess from "node:child_process";
-import * as nodeOs from "node:os";
-import * as nodePerfHooks from "node:perf_hooks";
-import * as nodeUrl from "node:url";
 import * as typebox from "typebox";
 import * as typeboxCompile from "typebox/compile";
 import * as typeboxValue from "typebox/value";
+import * as shim_assert from "./shims/node-assert.ts";
+import * as shim_async_hooks from "./shims/node-async-hooks.ts";
+import * as shim_buffer from "./shims/node-buffer.ts";
+import * as shim_child_process from "./shims/node-child-process.ts";
+import * as shim_cluster from "./shims/node-cluster.ts";
+import * as shim_console from "./shims/node-console.ts";
+import * as shim_crypto from "./shims/node-crypto.ts";
+import * as shim_dgram from "./shims/node-dgram.ts";
+import * as shim_diagnostics_channel from "./shims/node-diagnostics-channel.ts";
+import * as shim_dns from "./shims/node-dns.ts";
+import * as shim_events from "./shims/node-events.ts";
+import * as shim_fs from "./shims/node-fs.ts";
+import * as shim_fs_promises from "./shims/node-fs-promises.ts";
+import * as shim_http from "./shims/node-http.ts";
+import * as shim_http2 from "./shims/node-http2.ts";
+import * as shim_inspector from "./shims/node-inspector.ts";
+import * as shim_module from "./shims/node-module.ts";
+import * as shim_net from "./shims/node-net.ts";
+import * as shim_os from "./shims/node-os.ts";
+import * as shim_path from "./shims/node-path.ts";
+import * as shim_perf_hooks from "./shims/node-perf-hooks.ts";
+import * as shim_process from "./shims/node-process.ts";
+import * as shim_punycode from "./shims/node-punycode.ts";
+import * as shim_querystring from "./shims/node-querystring.ts";
+import * as shim_readline from "./shims/node-readline.ts";
+import * as shim_readline_promises from "./shims/node-readline-promises.ts";
+import * as shim_sqlite from "./shims/node-sqlite.ts";
+import * as shim_stream from "./shims/node-stream.ts";
+import * as shim_stream_promises from "./shims/node-stream-promises.ts";
+import * as shim_stream_web from "./shims/node-stream-web.ts";
+import * as shim_string_decoder from "./shims/node-string-decoder.ts";
+import * as shim_sys from "./shims/node-sys.ts";
+import * as shim_timers from "./shims/node-timers.ts";
+import * as shim_timers_promises from "./shims/timers-promises.ts";
+import * as shim_tls from "./shims/node-tls.ts";
+import * as shim_trace_events from "./shims/node-trace-events.ts";
+import * as shim_tty from "./shims/node-tty.ts";
+import * as shim_url from "./shims/node-url.ts";
+import * as shim_util from "./shims/node-util.ts";
+import * as shim_v8 from "./shims/node-v8.ts";
+import * as shim_vm from "./shims/node-vm.ts";
+import * as shim_worker_threads from "./shims/node-worker-threads.ts";
+import * as shim_zlib from "./shims/node-zlib.ts";
 
 type Handler = (event: unknown, context: unknown) => unknown;
 
@@ -369,14 +408,87 @@ const moduleCache = new Map<string, { exports: Record<string, unknown> }>();
 /// builtin that is not here fails to load at all, so the list is the
 /// contract.
 const NODE_BUILTINS: Record<string, unknown> = {
-	"node:child_process": nodeChildProcess,
-	"node:os": nodeOs,
-	"node:perf_hooks": nodePerfHooks,
-	"node:url": nodeUrl,
-	child_process: nodeChildProcess,
-	os: nodeOs,
-	perf_hooks: nodePerfHooks,
-	url: nodeUrl,
+	"node:assert": shim_assert,
+	assert: shim_assert,
+	"node:async_hooks": shim_async_hooks,
+	async_hooks: shim_async_hooks,
+	"node:buffer": shim_buffer,
+	buffer: shim_buffer,
+	"node:child_process": shim_child_process,
+	child_process: shim_child_process,
+	"node:cluster": shim_cluster,
+	cluster: shim_cluster,
+	"node:console": shim_console,
+	console: shim_console,
+	"node:crypto": shim_crypto,
+	crypto: shim_crypto,
+	"node:dgram": shim_dgram,
+	dgram: shim_dgram,
+	"node:diagnostics_channel": shim_diagnostics_channel,
+	diagnostics_channel: shim_diagnostics_channel,
+	"node:dns": shim_dns,
+	dns: shim_dns,
+	"node:events": shim_events,
+	events: shim_events,
+	"node:fs": shim_fs,
+	fs: shim_fs,
+	"node:fs/promises": shim_fs_promises,
+	"node:http": shim_http,
+	http: shim_http,
+	"node:http2": shim_http2,
+	http2: shim_http2,
+	"node:inspector": shim_inspector,
+	inspector: shim_inspector,
+	"node:module": shim_module,
+	module: shim_module,
+	"node:net": shim_net,
+	net: shim_net,
+	"node:os": shim_os,
+	os: shim_os,
+	"node:path": shim_path,
+	path: shim_path,
+	"node:perf_hooks": shim_perf_hooks,
+	perf_hooks: shim_perf_hooks,
+	"node:process": shim_process,
+	process: shim_process,
+	"node:punycode": shim_punycode,
+	punycode: shim_punycode,
+	"node:querystring": shim_querystring,
+	querystring: shim_querystring,
+	"node:readline": shim_readline,
+	readline: shim_readline,
+	"node:readline/promises": shim_readline_promises,
+	"node:sqlite": shim_sqlite,
+	sqlite: shim_sqlite,
+	"node:stream": shim_stream,
+	stream: shim_stream,
+	"node:stream/promises": shim_stream_promises,
+	"node:stream/web": shim_stream_web,
+	"node:string_decoder": shim_string_decoder,
+	string_decoder: shim_string_decoder,
+	"node:sys": shim_sys,
+	sys: shim_sys,
+	"node:timers": shim_timers,
+	timers: shim_timers,
+	"node:timers/promises": shim_timers_promises,
+	"node:tls": shim_tls,
+	tls: shim_tls,
+	"node:trace_events": shim_trace_events,
+	trace_events: shim_trace_events,
+	"node:tty": shim_tty,
+	tty: shim_tty,
+	"node:url": shim_url,
+	url: shim_url,
+	"node:util": shim_util,
+	"node:v8": shim_v8,
+	v8: shim_v8,
+	"node:vm": shim_vm,
+	vm: shim_vm,
+	"node:worker_threads": shim_worker_threads,
+	worker_threads: shim_worker_threads,
+	"node:zlib": shim_zlib,
+	zlib: shim_zlib,
+	"constants": shim_os.constants,
 };
 
 const resolveModule = (specifier: string, referrer: string): Record<string, unknown> => {

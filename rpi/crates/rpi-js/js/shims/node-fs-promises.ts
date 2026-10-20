@@ -1,22 +1,24 @@
-import { promises } from "./node-fs.ts";
+import fs from "./node-fs.ts";
 
-export const readFile = promises.readFile;
-export const writeFile = promises.writeFile;
-export const exists = promises.exists;
-export const readdir = promises.readdir;
-export const stat = promises.stat;
-export const open = promises.open;
-export const mkdir = promises.mkdir;
-export const rm = promises.rm;
-export const unlink = promises.unlink;
-export const rename = promises.rename;
-export const copyFile = promises.copyFile;
-export const access = promises.access;
-export const realpath = promises.realpath;
-export const appendFile = promises.appendFile;
-export const mkdtemp = promises.mkdtemp;
+const { promises } = fs;
 
-export default {
+const readFile = promises.readFile;
+const writeFile = promises.writeFile;
+const exists = promises.exists;
+const readdir = promises.readdir;
+const stat = promises.stat;
+const open = promises.open;
+const mkdir = promises.mkdir;
+const rm = promises.rm;
+const unlink = promises.unlink;
+const rename = promises.rename;
+const copyFile = promises.copyFile;
+const access = promises.access;
+const realpath = promises.realpath;
+const appendFile = promises.appendFile;
+const mkdtemp = promises.mkdtemp;
+
+const fsPromises = {
 	readFile,
 	writeFile,
 	exists,
@@ -33,3 +35,5 @@ export default {
 	appendFile,
 	mkdtemp,
 };
+
+export = fsPromises;

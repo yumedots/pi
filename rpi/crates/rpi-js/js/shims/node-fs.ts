@@ -1,44 +1,44 @@
 const call = (op: string, args: Record<string, unknown>): unknown =>
 	(globalThis as unknown as { __piHostCall: (op: string, args: unknown) => unknown }).__piHostCall(op, args);
 
-export const readFileSync = (path: string): string => call("fs.readFile", { path }) as string;
-export const writeFileSync = (path: string, content: string): void => {
+const readFileSync = (path: string): string => call("fs.readFile", { path }) as string;
+const writeFileSync = (path: string, content: string): void => {
 	call("fs.writeFile", { path, content });
 };
-export const existsSync = (path: string): boolean => call("fs.exists", { path }) as boolean;
-export const readdirSync = (path: string): string[] => call("fs.readdir", { path }) as string[];
-export const statSync = (path: string): { isDirectory: boolean; isFile: boolean; size: number } =>
+const existsSync = (path: string): boolean => call("fs.exists", { path }) as boolean;
+const readdirSync = (path: string): string[] => call("fs.readdir", { path }) as string[];
+const statSync = (path: string): { isDirectory: boolean; isFile: boolean; size: number } =>
 	call("fs.stat", { path }) as { isDirectory: boolean; isFile: boolean; size: number };
-export const mkdirSync = (path: string): void => {
+const mkdirSync = (path: string): void => {
 	call("fs.mkdir", { path });
 };
-export const unlinkSync = (path: string): void => {
+const unlinkSync = (path: string): void => {
 	call("fs.unlink", { path });
 };
-export const openSync = (path: string, _flags: string): number => {
+const openSync = (path: string, _flags: string): number => {
 	call("fs.open", { path, flags: _flags });
 	return 0;
 };
-export const accessSync = (path: string): boolean => call("fs.access", { path }) as boolean;
-export const realpathSync = (path: string): string => call("fs.realpath", { path }) as string;
-export const renameSync = (from: string, to: string): void => {
+const accessSync = (path: string): boolean => call("fs.access", { path }) as boolean;
+const realpathSync = (path: string): string => call("fs.realpath", { path }) as string;
+const renameSync = (from: string, to: string): void => {
 	call("fs.rename", { from, to });
 };
-export const copyFileSync = (from: string, to: string): void => {
+const copyFileSync = (from: string, to: string): void => {
 	call("fs.copyFile", { from, to });
 };
-export const appendFileSync = (path: string, content: string): void => {
+const appendFileSync = (path: string, content: string): void => {
 	call("fs.appendFile", { path, content });
 };
-export const closeSync = (_descriptor: number): void => undefined;
-export const chmodSync = (path: string, mode: number): void => {
+const closeSync = (_descriptor: number): void => undefined;
+const chmodSync = (path: string, mode: number): void => {
 	call("fs.chmod", { path, mode });
 };
-export const watch = (_path: string, _listener: (...args: unknown[]) => void): (() => void) => () => undefined;
+const watch = (_path: string, _listener: (...args: unknown[]) => void): (() => void) => () => undefined;
 
 /// A readable stream over a file. The embedded host has no streams, so the
 /// object carries the content and the helpers that read it.
-export const createReadStream = (path: string) => {
+const createReadStream = (path: string) => {
 	const content = readFileSync(path);
 	let position = 0;
 	return {
@@ -52,10 +52,10 @@ export const createReadStream = (path: string) => {
 		close: () => undefined,
 	};
 };
-export const globSync = (_pattern: string): string[] => {
+const globSync = (_pattern: string): string[] => {
 	throw new Error("fs.globSync is not available in the embedded extension host");
 };
-export const createWriteStream = (path: string) => {
+const createWriteStream = (path: string) => {
 	let content = "";
 	return {
 		write: (chunk: string) => {
@@ -68,32 +68,32 @@ export const createWriteStream = (path: string) => {
 		on: () => undefined,
 	};
 };
-export const mkdtempSync = (prefix: string): string =>
+const mkdtempSync = (prefix: string): string =>
 	call("fs.mkdtemp", { prefix }) as string;
-export const unwatchFile = (_path: string): void => undefined;
-export const watchFile = (_path: string, _listener: (...args: unknown[]) => void): (() => void) => () => undefined;
-export const lstatSync = (path: string) => statSync(path);
-export const fstatSync = (descriptor: number) => statSync(String(descriptor));
-export const readlinkSync = (path: string): string => path;
-export const symlinkSync = (_target: string, _path: string): void => undefined;
-export const rmdirSync = (path: string): void => {
+const unwatchFile = (_path: string): void => undefined;
+const watchFile = (_path: string, _listener: (...args: unknown[]) => void): (() => void) => () => undefined;
+const lstatSync = (path: string) => statSync(path);
+const fstatSync = (descriptor: number) => statSync(String(descriptor));
+const readlinkSync = (path: string): string => path;
+const symlinkSync = (_target: string, _path: string): void => undefined;
+const rmdirSync = (path: string): void => {
 	call("fs.rmdir", { path });
 };
-export const truncateSync = (path: string, length: number): void => {
+const truncateSync = (path: string, length: number): void => {
 	call("fs.truncate", { path, length });
 };
-export const chownSync = (_path: string, _uid: number, _gid: number): void => undefined;
-export const utimesSync = (_path: string, _atime: number, _mtime: number): void => undefined;
-export const writeSync = (_descriptor: number, content: string): number => content.length;
-export const readSync = (descriptor: number, _buffer: unknown, _offset?: number, _length?: number, _position?: number): number => {
+const chownSync = (_path: string, _uid: number, _gid: number): void => undefined;
+const utimesSync = (_path: string, _atime: number, _mtime: number): void => undefined;
+const writeSync = (_descriptor: number, content: string): number => content.length;
+const readSync = (descriptor: number, _buffer: unknown, _offset?: number, _length?: number, _position?: number): number => {
 	void descriptor;
 	return 0;
 };
-export const rmSync = (path: string, options?: { recursive?: boolean; force?: boolean }): void => {
+const rmSync = (path: string, options?: { recursive?: boolean; force?: boolean }): void => {
 	if (options?.force && !existsSync(path)) return;
 	unlinkSync(path);
 };
-export const constants = {
+const constants = {
 	F_OK: 0,
 	R_OK: 4,
 	W_OK: 2,
@@ -106,32 +106,32 @@ export const constants = {
 	O_APPEND: 1024,
 };
 
-export const readFile = async (path: string): Promise<string> => readFileSync(path);
-export const writeFile = async (path: string, content: string): Promise<void> => {
+const readFile = async (path: string): Promise<string> => readFileSync(path);
+const writeFile = async (path: string, content: string): Promise<void> => {
 	writeFileSync(path, content);
 };
-export const exists = async (path: string): Promise<boolean> => existsSync(path);
-export const readdir = async (path: string): Promise<string[]> => readdirSync(path);
-export const stat = async (path: string): Promise<{ isDirectory: boolean; isFile: boolean; size: number }> =>
+const exists = async (path: string): Promise<boolean> => existsSync(path);
+const readdir = async (path: string): Promise<string[]> => readdirSync(path);
+const stat = async (path: string): Promise<{ isDirectory: boolean; isFile: boolean; size: number }> =>
 	statSync(path);
-export const mkdir = async (path: string): Promise<void> => {
+const mkdir = async (path: string): Promise<void> => {
 	mkdirSync(path);
 };
-export const unlink = async (path: string): Promise<void> => {
+const unlink = async (path: string): Promise<void> => {
 	unlinkSync(path);
 };
-export const access = async (path: string): Promise<boolean> => accessSync(path);
-export const realpath = async (path: string): Promise<string> => realpathSync(path);
-export const rename = async (from: string, to: string): Promise<void> => {
+const access = async (path: string): Promise<boolean> => accessSync(path);
+const realpath = async (path: string): Promise<string> => realpathSync(path);
+const rename = async (from: string, to: string): Promise<void> => {
 	renameSync(from, to);
 };
-export const copyFile = async (from: string, to: string): Promise<void> => {
+const copyFile = async (from: string, to: string): Promise<void> => {
 	copyFileSync(from, to);
 };
-export const appendFile = async (path: string, content: string): Promise<void> => {
+const appendFile = async (path: string, content: string): Promise<void> => {
 	appendFileSync(path, content);
 };
-export const open = async (
+const open = async (
 	path: string,
 	flags: string,
 ): Promise<{ read: () => Promise<string>; close: () => Promise<void> }> => {
@@ -142,9 +142,9 @@ export const open = async (
 	};
 };
 
-export const mkdtemp = async (prefix: string): Promise<string> => mkdtempSync(prefix);
+const mkdtemp = async (prefix: string): Promise<string> => mkdtempSync(prefix);
 
-export const promises = {
+const promises = {
 	readFile,
 	writeFile,
 	exists,
@@ -161,43 +161,31 @@ export const promises = {
 	mkdtemp,
 };
 
-export default {
-	readFile,
+/// The module object.
+///
+/// It is a plain object on purpose: a CommonJS package in pi's dependency
+/// tree (`graceful-fs`) patches `fs.closeSync` and the rest, and an ESM
+/// namespace has getter-only properties, so the assignment would throw.
+const fs = {
 	readFileSync,
-	writeFile,
 	writeFileSync,
-	exists,
 	existsSync,
-	readdir,
 	readdirSync,
-	stat,
 	statSync,
-	mkdir,
 	mkdirSync,
-	unlink,
 	unlinkSync,
-	open,
 	openSync,
-	access,
 	accessSync,
-	realpath,
 	realpathSync,
-	unlink,
-	unlinkSync,
-	rename,
 	renameSync,
-	copyFile,
 	copyFileSync,
-	appendFile,
 	appendFileSync,
-	constants,
 	closeSync,
 	chmodSync,
 	watch,
 	createReadStream,
-	createWriteStream,
 	globSync,
-	readSync,
+	createWriteStream,
 	mkdtempSync,
 	unwatchFile,
 	watchFile,
@@ -210,6 +198,24 @@ export default {
 	chownSync,
 	utimesSync,
 	writeSync,
+	readSync,
 	rmSync,
+	constants,
+	readFile,
+	writeFile,
+	exists,
+	readdir,
+	stat,
+	mkdir,
+	unlink,
+	access,
+	realpath,
+	rename,
+	copyFile,
+	appendFile,
+	open,
+	mkdtemp,
 	promises,
 };
+
+export = fs;

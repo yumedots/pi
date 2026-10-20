@@ -1392,7 +1392,7 @@ mod tests {
     fn a_collapsed_read_panel_keeps_the_empty_result_region() {
         use super::*;
         let theme = Theme::default();
-        let panel = ToolExecutionComponent::new("read", "{}");
+        let panel = ToolExecutionComponent::new("read", r#"{"path":"tool-input.txt"}"#);
         panel.set_result("The fixture file says hello.", false);
         let collapsed: Vec<String> = panel
             .render_panel(60, &theme)
@@ -1858,8 +1858,9 @@ mod tests {
         assert_eq!(plain[0], "", "the spacer in front of the panel");
         assert_eq!(plain[1].trim_end(), "", "the panel's top padding");
         assert_eq!(plain[2].trim_end(), " read tool-input.txt");
-        assert_eq!(plain[3].trim_end(), "", "the panel's bottom padding");
-        assert_eq!(lines.len(), 4);
+        assert_eq!(plain[3].trim_end(), "", "the empty result region");
+        assert_eq!(plain[4].trim_end(), "", "the panel's bottom padding");
+        assert_eq!(lines.len(), 5);
         // A collapsed read result is not drawn at all.
         assert!(!plain.join("\n").contains("hello from the parity fixture"));
 

@@ -6,6 +6,7 @@ use super::*;
 /// remain shared, so switching sessions/lanes keeps the same semantics.
 #[derive(Clone)]
 pub struct WeakAgentHarness {
+    session_id: Option<String>,
     session: Session,
     inner: std::sync::Weak<Mutex<HarnessInner>>,
     bus: HarnessEventBus,
@@ -18,6 +19,7 @@ pub struct WeakAgentHarness {
 impl AgentHarness {
     pub fn downgrade(&self) -> WeakAgentHarness {
         WeakAgentHarness {
+            session_id: self.session_id.clone(),
             session: self.session.clone(),
             inner: Arc::downgrade(&self.inner),
             bus: self.bus.clone(),
@@ -33,6 +35,7 @@ impl WeakAgentHarness {
     pub fn upgrade(&self) -> Option<AgentHarness> {
         Some(AgentHarness {
             session: self.session.clone(),
+            session_id: self.session_id.clone(),
             inner: self.inner.upgrade()?,
             bus: self.bus.clone(),
             lane: self.lane.clone(),

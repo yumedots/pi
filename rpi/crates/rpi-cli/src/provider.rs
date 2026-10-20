@@ -1712,7 +1712,7 @@ mod tests {
             !crate::credentials::has_header_auth(
                 unauthenticated
                     .execution
-                    .request_model(&unauthenticated.model)
+                    .request_model(unauthenticated.model.as_ref().expect("a selected model"))
                     .headers
                     .as_ref()
             ),
@@ -1780,7 +1780,7 @@ mod tests {
             !crate::credentials::has_header_auth(
                 expired
                     .execution
-                    .request_model(&expired.model)
+                    .request_model(expired.model.as_ref().expect("a selected model"))
                     .headers
                     .as_ref()
             ),
@@ -2278,7 +2278,7 @@ mod tests {
         // the provider's default key, surfaced to the provider at build time).
         assert!(
             r.execution
-                .request_model(&r.model)
+                .request_model(r.model.as_ref().expect("a credential selects a model"))
                 .headers
                 .as_ref()
                 .and_then(|h| h.get("authorization"))
@@ -2395,9 +2395,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(gateway.provider.id(), "gateway");
-        assert_eq!(gateway.model.id, "gateway-model");
+        assert_eq!(gateway.model.as_ref().expect("a credential selects a model").id, "gateway-model");
         assert!(
-            gateway.execution.request_model(&gateway.model).headers.is_none(),
+            gateway.execution.request_model(gateway.model.as_ref().expect("a credential selects a model")).headers.is_none(),
             "the anthropic credential must not authenticate the gateway"
         );
         assert!(
@@ -2407,7 +2407,7 @@ mod tests {
 
         let default = resolve(None, None, None, None, None).unwrap();
         assert_eq!(default.provider.id(), DEFAULT_PROVIDER_ID);
-        assert_eq!(default.model.id, "claude-opus-4-8");
+        assert_eq!(default.model.as_ref().expect("a credential selects a model").id, "claude-opus-4-8");
     }
 
     #[test]
@@ -2493,11 +2493,11 @@ mod tests {
 
         let lower = resolve(None, Some("alpha/shared-model"), None, None, None).unwrap();
         assert_eq!(lower.provider.id(), "alpha");
-        assert_eq!(lower.model.base_url, "https://lower.example.com");
+        assert_eq!(lower.model.as_ref().expect("a credential selects a model").base_url, "https://lower.example.com");
         assert_eq!(
             lower
                 .execution
-                .request_model(&lower.model)
+                .request_model(lower.model.as_ref().expect("a credential selects a model"))
                 .headers
                 .as_ref()
                 .and_then(|headers| headers.get("authorization"))
@@ -2507,11 +2507,11 @@ mod tests {
 
         let upper = resolve(None, Some("ALPHA/shared-model"), None, None, None).unwrap();
         assert_eq!(upper.provider.id(), "ALPHA");
-        assert_eq!(upper.model.base_url, "https://upper.example.com");
+        assert_eq!(upper.model.as_ref().expect("a credential selects a model").base_url, "https://upper.example.com");
         assert_eq!(
             upper
                 .execution
-                .request_model(&upper.model)
+                .request_model(upper.model.as_ref().expect("a credential selects a model"))
                 .headers
                 .as_ref()
                 .and_then(|headers| headers.get("authorization"))
@@ -2563,8 +2563,8 @@ mod tests {
         assert_eq!(resolved.model.as_ref().expect("a selected model").base_url, "https://routeryo-copy.example.com");
 
         let prefixed = resolve(None, Some("ROUTERYO-COPY/copy-model"), None, None, None).unwrap();
-        assert_eq!(prefixed.model.provider, "routeryo-copy");
-        assert_eq!(prefixed.model.id, "copy-model");
+        assert_eq!(prefixed.model.as_ref().expect("a credential selects a model").provider, "routeryo-copy");
+        assert_eq!(prefixed.model.as_ref().expect("a credential selects a model").id, "copy-model");
     }
 
     #[test]
@@ -2587,11 +2587,11 @@ mod tests {
         .unwrap();
 
         let custom = resolve(Some("OpenAI"), Some("custom-model"), None, None, None).unwrap();
-        assert_eq!(custom.model.provider, "OpenAI");
-        assert_eq!(custom.model.base_url, "https://custom-openai.example.com");
+        assert_eq!(custom.model.as_ref().expect("a credential selects a model").provider, "OpenAI");
+        assert_eq!(custom.model.as_ref().expect("a credential selects a model").base_url, "https://custom-openai.example.com");
 
         let builtin = resolve(Some("openai"), Some("gpt-6-astra"), None, None, None).unwrap();
-        assert_eq!(builtin.model.provider, "openai");
+        assert_eq!(builtin.model.as_ref().expect("a credential selects a model").provider, "openai");
 
         let error = resolve(Some("OPENAI"), None, None, None, None).unwrap_err();
         assert!(matches!(
@@ -2673,7 +2673,7 @@ mod tests {
         // No provider key carries auth — it lives on the model header.
         let headers = r
             .execution
-            .request_model(&r.model)
+            .request_model(r.model.as_ref().expect("a credential selects a model"))
             .headers
             .expect("bearer header on model");
         assert_eq!(
@@ -2706,7 +2706,7 @@ mod tests {
         let r = resolve(None, None, None, Some("flag-key"), None).unwrap();
         assert!(
             r.execution
-                .request_model(&r.model)
+                .request_model(r.model.as_ref().expect("a credential selects a model"))
                 .headers
                 .as_ref()
                 .and_then(|h| h.get("authorization"))
@@ -2720,7 +2720,7 @@ mod tests {
         let _env = TestEnv::new();
         std::env::set_var(ANTHROPIC_API_KEY_ENV, "k");
         let r = resolve(None, None, None, None, Some("https://gw.example.com")).unwrap();
-        assert_eq!(r.model.base_url, "https://gw.example.com");
+        assert_eq!(r.model.as_ref().expect("a credential selects a model").base_url, "https://gw.example.com");
     }
 
     #[test]
@@ -2729,7 +2729,7 @@ mod tests {
         std::env::set_var(ANTHROPIC_API_KEY_ENV, "k");
         std::env::set_var(ANTHROPIC_BASE_URL_ENV, "https://env-gw.example.com");
         let r = resolve(None, None, None, None, None).unwrap();
-        assert_eq!(r.model.base_url, "https://env-gw.example.com");
+        assert_eq!(r.model.as_ref().expect("a credential selects a model").base_url, "https://env-gw.example.com");
     }
 
     #[test]
@@ -2759,7 +2759,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(r.model.base_url, "https://gateway.example.com");
+        assert_eq!(r.model.as_ref().expect("a credential selects a model").base_url, "https://gateway.example.com");
         assert!(r.has_provider_key);
     }
 
@@ -2785,13 +2785,13 @@ mod tests {
         .unwrap();
         let r = resolve(None, Some("custom-claude"), None, None, None).unwrap();
         assert_eq!(r.model.as_ref().expect("a credential selects a model").id, "custom-claude");
-        assert_eq!(r.model.base_url, "https://gw.example.com");
-        assert_eq!(r.model.provider, "gateway");
+        assert_eq!(r.model.as_ref().expect("a credential selects a model").base_url, "https://gw.example.com");
+        assert_eq!(r.model.as_ref().expect("a credential selects a model").provider, "gateway");
         assert_eq!(r.provider.id(), "gateway");
         // Provider-level authHeader folded in.
         let headers = r
             .execution
-            .request_model(&r.model)
+            .request_model(r.model.as_ref().expect("a credential selects a model"))
             .headers
             .expect("headers merged");
         assert_eq!(
@@ -2931,7 +2931,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(explicit.provider.id(), "routeryo");
-        assert_eq!(explicit.model.id, "gpt-5.6-sol");
+        assert_eq!(explicit.model.as_ref().expect("a credential selects a model").id, "gpt-5.6-sol");
     }
 
     #[test]
@@ -2990,11 +2990,11 @@ mod tests {
 
         let alpha = resolve(None, Some("alpha/shared-model"), None, None, None).unwrap();
         assert_eq!(alpha.provider.id(), "alpha");
-        assert_eq!(alpha.model.base_url, "https://alpha.example.com");
+        assert_eq!(alpha.model.as_ref().expect("a credential selects a model").base_url, "https://alpha.example.com");
         assert_eq!(
             alpha
                 .execution
-                .request_model(&alpha.model)
+                .request_model(alpha.model.as_ref().expect("a credential selects a model"))
                 .headers
                 .as_ref()
                 .and_then(|headers| headers.get("authorization"))
@@ -3004,10 +3004,10 @@ mod tests {
 
         let beta = resolve(None, Some("beta/shared-model"), None, None, None).unwrap();
         assert_eq!(beta.provider.id(), "beta");
-        assert_eq!(beta.model.base_url, "https://beta.example.com");
+        assert_eq!(beta.model.as_ref().expect("a credential selects a model").base_url, "https://beta.example.com");
         assert_eq!(
             beta.execution
-                .request_model(&beta.model)
+                .request_model(beta.model.as_ref().expect("a credential selects a model"))
                 .headers
                 .as_ref()
                 .and_then(|headers| headers.get("authorization"))
@@ -3165,7 +3165,7 @@ mod tests {
         assert!(chat.has_provider_key);
         assert_eq!(
             chat.execution
-                .request_model(&chat.model)
+                .request_model(chat.model.as_ref().expect("a credential selects a model"))
                 .headers
                 .as_ref()
                 .and_then(|headers| headers.get("authorization"))
@@ -3185,7 +3185,7 @@ mod tests {
         assert_eq!(
             responses
                 .execution
-                .request_model(&responses.model)
+                .request_model(responses.model.as_ref().expect("a credential selects a model"))
                 .headers
                 .as_ref()
                 .and_then(|headers| headers.get("authorization"))
@@ -3266,7 +3266,7 @@ mod tests {
 
         let official = resolve(None, None, None, None, None).unwrap();
         assert_eq!(official.provider.id(), "openai");
-        assert_eq!(official.model.id, "gpt-6-astra");
+        assert_eq!(official.model.as_ref().expect("a credential selects a model").id, "gpt-6-astra");
         assert!(official.has_provider_key);
     }
 
@@ -3342,12 +3342,12 @@ mod tests {
 
         let alpha = resolve(None, Some("alpha/shared-model"), None, None, None).unwrap();
         assert_eq!(alpha.provider.id(), "alpha");
-        assert_eq!(alpha.model.provider, "alpha");
-        assert_eq!(alpha.model.base_url, "https://alpha.example.com");
+        assert_eq!(alpha.model.as_ref().expect("a credential selects a model").provider, "alpha");
+        assert_eq!(alpha.model.as_ref().expect("a credential selects a model").base_url, "https://alpha.example.com");
         assert!(alpha.has_provider_key);
         assert!(alpha
             .execution
-            .request_model(&alpha.model)
+            .request_model(alpha.model.as_ref().expect("a credential selects a model"))
             .headers
             .as_ref()
             .map_or(true, |headers| {
@@ -3358,11 +3358,11 @@ mod tests {
 
         let beta = resolve(None, Some("beta/shared-model"), None, None, None).unwrap();
         assert_eq!(beta.provider.id(), "beta");
-        assert_eq!(beta.model.provider, "beta");
-        assert_eq!(beta.model.base_url, "https://beta.example.com");
+        assert_eq!(beta.model.as_ref().expect("a credential selects a model").provider, "beta");
+        assert_eq!(beta.model.as_ref().expect("a credential selects a model").base_url, "https://beta.example.com");
         assert_eq!(
             beta.execution
-                .request_model(&beta.model)
+                .request_model(beta.model.as_ref().expect("a credential selects a model"))
                 .headers
                 .as_ref()
                 .and_then(|headers| headers.get("authorization"))
@@ -3407,12 +3407,12 @@ mod tests {
 
         let trusted = resolve_for_cwd(None, None, None, None, None, project.path(), true).unwrap();
         assert_eq!(trusted.provider.id(), "project");
-        assert_eq!(trusted.model.id, "project-model");
+        assert_eq!(trusted.model.as_ref().expect("a credential selects a model").id, "project-model");
 
         let untrusted =
             resolve_for_cwd(None, None, None, None, None, project.path(), false).unwrap();
         assert_eq!(untrusted.provider.id(), "global");
-        assert_eq!(untrusted.model.id, "global-model");
+        assert_eq!(untrusted.model.as_ref().expect("a credential selects a model").id, "global-model");
     }
 
     #[test]
@@ -3468,10 +3468,10 @@ mod tests {
         .unwrap();
         let r = resolve(None, Some("custom-claude"), None, None, None).unwrap();
         assert_eq!(r.model.as_ref().expect("a credential selects a model").id, "custom-claude");
-        assert_eq!(r.model.base_url, "https://gw.example.com");
+        assert_eq!(r.model.as_ref().expect("a credential selects a model").base_url, "https://gw.example.com");
         let headers = r
             .execution
-            .request_model(&r.model)
+            .request_model(r.model.as_ref().expect("a credential selects a model"))
             .headers
             .expect("bearer folded onto model");
         assert_eq!(
@@ -3515,11 +3515,11 @@ mod tests {
         // to api.anthropic.com → 401, the bug this fixes).
         let r = resolve(None, None, None, None, None).unwrap();
         assert_eq!(r.model.as_ref().expect("a credential selects a model").id, "custom-claude");
-        assert_eq!(r.model.base_url, "https://gw.example.com");
+        assert_eq!(r.model.as_ref().expect("a credential selects a model").base_url, "https://gw.example.com");
         // Gateway model carries the folded Bearer.
         let headers = r
             .execution
-            .request_model(&r.model)
+            .request_model(r.model.as_ref().expect("a credential selects a model"))
             .headers
             .expect("bearer on gateway model");
         assert_eq!(
@@ -3548,7 +3548,7 @@ mod tests {
         let r = resolve(None, Some("custom-claude"), None, Some("flag-key"), None).unwrap();
         assert_eq!(
             r.execution
-                .request_model(&r.model)
+                .request_model(r.model.as_ref().expect("a credential selects a model"))
                 .headers
                 .as_ref()
                 .and_then(|h| h.get("authorization"))
@@ -3586,11 +3586,11 @@ mod tests {
         .unwrap();
         let r = resolve(None, Some("custom-claude"), None, None, None).unwrap();
         assert_eq!(r.model.as_ref().expect("a credential selects a model").id, "custom-claude");
-        assert_eq!(r.model.base_url, "https://gw.example.com");
+        assert_eq!(r.model.as_ref().expect("a credential selects a model").base_url, "https://gw.example.com");
         assert!(r.has_provider_key);
         assert!(r
             .execution
-            .request_model(&r.model)
+            .request_model(r.model.as_ref().expect("a credential selects a model"))
             .headers
             .as_ref()
             .map_or(true, |headers| {
@@ -3629,7 +3629,7 @@ mod tests {
         // No --model (None): the default selector must pick the gateway model.
         let r = resolve(None, None, None, None, None).unwrap();
         assert_eq!(r.model.as_ref().expect("a credential selects a model").id, "custom-claude");
-        assert_eq!(r.model.base_url, "https://gw.example.com");
+        assert_eq!(r.model.as_ref().expect("a credential selects a model").base_url, "https://gw.example.com");
         assert!(r.has_provider_key);
     }
 
@@ -3713,7 +3713,7 @@ mod tests {
         let r = resolve(None, Some("bearer-model"), None, None, None).unwrap();
         let h = r
             .execution
-            .request_model(&r.model)
+            .request_model(r.model.as_ref().expect("a credential selects a model"))
             .headers
             .expect("bearer folded");
         assert_eq!(
@@ -3730,7 +3730,7 @@ mod tests {
         assert!(r2.has_provider_key);
         assert!(r2
             .execution
-            .request_model(&r2.model)
+            .request_model(r2.model.as_ref().expect("a credential selects a model"))
             .headers
             .as_ref()
             .map_or(true, |headers| {

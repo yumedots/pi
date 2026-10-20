@@ -116,7 +116,9 @@ pub(super) fn render_autocomplete(
     let muted = state.theme_manager.get().colors.muted;
     // The original's label column: the widest label of the filtered items plus
     // two, clamped to 12..32 (`packages/tui/src/components/select-list.ts:6-7`,
-    // `packages/tui/src/components/editor.ts:286-288`).
+    // `packages/tui/src/components/editor.ts:286-288`). The rule itself is the
+    // tui library's (`SelectListLayoutOptions::column_width`), so the popup and
+    // the select lists cannot drift apart.
     let visible: Vec<(usize, &rpi_tui::autocomplete::AutocompleteItem)> = sugg
         .items
         .iter()
@@ -124,13 +126,20 @@ pub(super) fn render_autocomplete(
         .skip(window_start)
         .take(window_end - window_start)
         .collect();
-    let widest = visible
+    // The width is measured over every filtered item, not just the visible
+    // window (`packages/tui/src/components/select-list.ts:288-307` reads
+    // `this.filteredItems`).
+    let labels: Vec<&str> = sugg
+        .items
         .iter()
-        .map(|(_, item)| rpi_tui::utils::visible_width(bare_label(item)))
-        .max()
-        .unwrap_or(0)
-        + 2;
-    let column = widest.clamp(12, 32);
+        .map(|item| bare_label(item))
+        .collect();
+    let column = rpi_tui::SelectListLayoutOptions {
+        min_primary_column_width: Some(12),
+        max_primary_column_width: Some(32),
+        truncate_primary: None,
+    }
+    .column_width(&labels);
     for (i, item) in visible {
         let prefix = if i == selection { "→ " } else { "  " };
         let label = bare_label(item);

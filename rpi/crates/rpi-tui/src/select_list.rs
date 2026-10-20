@@ -116,6 +116,40 @@ impl Default for SelectListLayoutOptions {
     }
 }
 
+impl SelectListLayoutOptions {
+    /// The width of the primary column for a list showing these labels.
+    ///
+    /// The original's rule (`packages/tui/src/components/select-list.ts:288-307`):
+    /// the widest label plus the gap, clamped to the layout's bounds. The
+    /// slash-command list uses `{ min: 12, max: 32 }`
+    /// (`packages/tui/src/components/editor.ts:286-288`).
+    pub fn column_width(&self, labels: &[&str]) -> usize {
+        let (min_width, max_width) = primary_column_bounds(self);
+        let widest = labels
+            .iter()
+            .map(|label| visible_width(label) + PRIMARY_COLUMN_GAP)
+            .max()
+            .unwrap_or(DEFAULT_PRIMARY_COLUMN_WIDTH);
+        widest.clamp(min_width, max_width)
+    }
+}
+
+/// The primary column's bounds: the layout's min and max, in order.
+fn primary_column_bounds(layout: &SelectListLayoutOptions) -> (usize, usize) {
+    let raw_min = layout
+        .min_primary_column_width
+        .or(layout.max_primary_column_width)
+        .unwrap_or(DEFAULT_PRIMARY_COLUMN_WIDTH);
+    let raw_max = layout
+        .max_primary_column_width
+        .or(layout.min_primary_column_width)
+        .unwrap_or(DEFAULT_PRIMARY_COLUMN_WIDTH);
+
+    let min = raw_min.min(raw_max).max(1);
+    let max = raw_min.max(raw_max).max(1);
+    (min, max)
+}
+
 /// SelectList component.
 pub struct SelectList {
     items: Mutex<Vec<SelectItem>>,
@@ -530,33 +564,13 @@ impl SelectList {
 
     /// Get primary column width.
     fn get_primary_column_width(&self, filtered: &[SelectItem]) -> usize {
-        let (min_width, max_width) = self.get_primary_column_bounds();
-
-        let widest = filtered
-            .iter()
-            .map(|item| visible_width(item.display_value()) + PRIMARY_COLUMN_GAP)
-            .max()
-            .unwrap_or(DEFAULT_PRIMARY_COLUMN_WIDTH);
-
-        widest.clamp(min_width, max_width)
+        let labels: Vec<&str> = filtered.iter().map(|item| item.display_value()).collect();
+        self.layout.column_width(&labels)
     }
 
     /// Get primary column bounds.
     fn get_primary_column_bounds(&self) -> (usize, usize) {
-        let raw_min = self
-            .layout
-            .min_primary_column_width
-            .or(self.layout.max_primary_column_width)
-            .unwrap_or(DEFAULT_PRIMARY_COLUMN_WIDTH);
-        let raw_max = self
-            .layout
-            .max_primary_column_width
-            .or(self.layout.min_primary_column_width)
-            .unwrap_or(DEFAULT_PRIMARY_COLUMN_WIDTH);
-
-        let min = raw_min.min(raw_max).max(1);
-        let max = raw_min.max(raw_max).max(1);
-        (min, max)
+        primary_column_bounds(&self.layout)
     }
 
     /// Render an item.
@@ -818,6 +832,36 @@ fn normalize_single_line(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_column_is_the_widest_label_plus_the_gap() {
+        // The original's rule
+        // (`packages/tui/src/components/select-list.ts:288-307`): the widest
+        // label plus the gap of two, clamped to the layout's bounds.
+        let layout = SelectListLayoutOptions {
+            min_primary_column_width: Some(12),
+            max_primary_column_width: Some(32),
+            truncate_primary: None,
+        };
+        assert_eq!(layout.column_width(&["settings"]), 12);
+        assert_eq!(layout.column_width(&["scoped-models"]), 15);
+        // A label wider than the cap is clamped to it.
+        assert_eq!(
+            layout.column_width(&["a-command-name-far-wider-than-the-cap"]),
+            32
+        );
+    }
+
+    #[test]
+    fn the_column_clamps_to_the_layouts_bounds() {
+        let narrow = SelectListLayoutOptions {
+            min_primary_column_width: Some(4),
+            max_primary_column_width: Some(8),
+            truncate_primary: None,
+        };
+        assert_eq!(narrow.column_width(&["ab"]), 4);
+        assert_eq!(narrow.column_width(&["abcdefghijkl"]), 8);
+    }
 
     #[test]
     fn test_select_list_new() {

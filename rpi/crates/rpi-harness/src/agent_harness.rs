@@ -658,6 +658,9 @@ struct HarnessInner {
 #[derive(Clone)]
 pub struct AgentHarness {
     session: Session,
+    /// The session's id, used as the request's session id (pi's `sessionId`).
+    /// OpenCode's gateway routes by it.
+    session_id: Option<String>,
     inner: Arc<Mutex<HarnessInner>>,
     bus: HarnessEventBus,
     lane: String,
@@ -796,8 +799,15 @@ impl AgentHarness {
             queue.lock().unwrap().pending.push_back(item);
         }
 
+        let session_id = options
+            .session
+            .get_metadata()
+            .await
+            .ok()
+            .map(|metadata| metadata.id);
         let harness = Self {
             session: options.session,
+            session_id,
             inner: Arc::new(Mutex::new(inner)),
             bus: HarnessEventBus::new(),
             lane: "main".to_string(),
@@ -1080,6 +1090,7 @@ impl AgentHarness {
     pub fn lane(&self, name: &str) -> Arc<dyn AgentLane> {
         Arc::new(Self {
             session: self.session.clone(),
+            session_id: self.session_id.clone(),
             inner: Arc::clone(&self.inner),
             bus: self.bus.clone(),
             lane: name.to_string(),
@@ -1996,7 +2007,7 @@ impl AgentHarness {
     fn deferred_stream_options(&self, snap: &ConfigSnapshot) -> rpi_ai::SimpleStreamOptions {
         rpi_ai::SimpleStreamOptions {
             timeout: snap.stream_options.timeout,
-            session_id: None,
+            session_id: self.session_id.clone(),
             signal: CancellationToken::new(),
             reasoning: match snap.thinking_level {
                 ThinkingLevel::Off => None,
@@ -3969,7 +3980,7 @@ impl AgentHarness {
                 std::time::Duration::from_millis(snap.retry.max_agent_delay_ms),
             )),
             cache_retention: snap.stream_options.cache_retention.unwrap_or_default(),
-            session_id: None,
+            session_id: self.session_id.clone(),
             signal: signal.clone(),
         };
 
@@ -5236,6 +5247,7 @@ pub struct LaneHandle {
 impl LaneHandle {
     fn runner(&self) -> AgentHarness {
         AgentHarness {
+            session_id: None,
             session: self.session.clone(),
             inner: Arc::clone(&self.inner),
             bus: self.bus.clone(),

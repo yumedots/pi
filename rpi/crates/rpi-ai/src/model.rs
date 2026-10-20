@@ -433,3 +433,45 @@ mod tests {
         assert_eq!(m.clamp_thinking_level(ThinkingLevel::High), ThinkingLevel::Off);
     }
 }
+
+#[cfg(test)]
+mod opencode_header_tests {
+    use super::*;
+
+    fn model(provider: &str) -> Model {
+        Model::new(
+            "m",
+            "M",
+            Api::OpenaiCompletions,
+            provider,
+            "https://example.test/v1",
+        )
+    }
+
+    #[test]
+    fn opencode_providers_get_the_session_header() {
+        for provider in ["opencode", "opencode-go"] {
+            let header = opencode_session_header(&model(provider), Some("sess-1"));
+            assert_eq!(
+                header,
+                Some(("x-opencode-session", "sess-1".to_string())),
+                "{provider} must carry the session header"
+            );
+        }
+    }
+
+    #[test]
+    fn other_providers_do_not_get_the_session_header() {
+        for provider in ["anthropic", "openai", "groq", "openrouter"] {
+            assert_eq!(
+                opencode_session_header(&model(provider), Some("sess-1")),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn without_a_session_id_there_is_no_header() {
+        assert_eq!(opencode_session_header(&model("opencode"), None), None);
+    }
+}

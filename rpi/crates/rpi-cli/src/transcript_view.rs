@@ -317,7 +317,6 @@ impl TranscriptView {
         ));
         comp.set_hide_thinking(*self.hide_thinking.lock().unwrap());
         comp.set_show_images(self.show_images);
-        comp.set_trailing_spacing(1);
         if let Some(transformer) = self.markdown_transformer.lock().unwrap().clone() {
             comp.set_markdown_transformer(Some(transformer));
         }
@@ -337,7 +336,6 @@ impl TranscriptView {
             ));
             comp.set_hide_thinking(*self.hide_thinking.lock().unwrap());
             comp.set_show_images(self.show_images);
-            comp.set_trailing_spacing(1);
             if let Some(transformer) = self.markdown_transformer.lock().unwrap().clone() {
                 comp.set_markdown_transformer(Some(transformer));
             }

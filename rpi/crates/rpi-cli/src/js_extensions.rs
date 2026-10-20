@@ -54,6 +54,7 @@ pub struct JsWidget {
 pub struct JsCommand {
     pub name: String,
     pub description: String,
+    pub path: String,
 }
 
 /// The state the extensions share with the TUI.
@@ -193,6 +194,9 @@ enum JsRequest {
     Tools {
         reply: Sender<Result<Value, String>>,
     },
+    Commands {
+        reply: Sender<Result<Value, String>>,
+    },
 }
 
 /// The JavaScript extension backend.
@@ -242,6 +246,21 @@ impl JsExtensions {
     pub fn set_render_hook(&self, hook: Arc<dyn Fn() + Send + Sync>) {
         if let Ok(mut slot) = self.state.render.lock() {
             *slot = Some(hook);
+        }
+    }
+
+    /// Publish the session's slash commands, so an extension can read them.
+    pub fn set_commands(&self, commands: Vec<Value>) {
+        if let Some(session) = self
+            .state
+            .session
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
+        {
+            if let Ok(mut slot) = session.commands.write() {
+                *slot = commands;
+            }
         }
     }
 
@@ -451,6 +470,14 @@ fn run_runtime(state: Arc<JsState>, requests: Receiver<JsRequest>) {
                 let _ = reply.send(result);
                 continue;
             }
+            JsRequest::Commands { reply } => {
+                let commands = runtime
+                    .call("__piExtensionHost.listCommands", &[])
+                    .map_err(|error| error.to_string())
+                    .unwrap_or(Value::Array(Vec::new()));
+                let _ = reply.send(Ok(commands));
+                continue;
+            }
             JsRequest::Tools { reply } => {
                 let tools = runtime
                     .tools()
@@ -502,7 +529,15 @@ fn collect_registrations(runtime: &mut rpi_js::Runtime, state: &Arc<JsState>) {
                             .and_then(Value::as_str)
                             .unwrap_or("")
                             .to_string();
-                        Some(JsCommand { name, description })
+                        Some(JsCommand {
+                            name,
+                            description,
+                            path: entry
+                                .get("path")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_string(),
+                        })
                     })
                     .collect()
             })
@@ -699,21 +734,34 @@ impl JsHost {
                         .map(|themes| Value::Array(themes.clone()))
                         .unwrap_or(Value::Array(Vec::new()))
                 })
-                .unwrap_or(Value::Array(Vec::new()))),
+                .unwrap_or_else(|| theme_list())),
             "ui.getTheme" => {
                 let name = args.get("name").and_then(Value::as_str).unwrap_or("");
-                Ok(self
-                    .session()
-                    .and_then(|session| {
-                        session
-                            .themes
-                            .read()
-                            .ok()
-                            .and_then(|themes| themes.iter().find(|theme| {
-                                theme.get("name").and_then(Value::as_str) == Some(name)
-                            }).cloned())
-                    })
-                    .unwrap_or(Value::Null))
+                let from_session = self.session().and_then(|session| {
+                    session
+                        .themes
+                        .read()
+                        .ok()
+                        .and_then(|themes| {
+                            themes
+                                .iter()
+                                .find(|theme| theme.get("name").and_then(Value::as_str) == Some(name))
+                                .cloned()
+                        })
+                });
+                Ok(from_session.unwrap_or_else(|| {
+                    theme_list()
+                        .as_array()
+                        .and_then(|themes| {
+                            themes
+                                .iter()
+                                .find(|theme| {
+                                    theme.get("name").and_then(Value::as_str) == Some(name)
+                                })
+                                .cloned()
+                        })
+                        .unwrap_or(Value::Null)
+                }))
             }
             "ui.setTheme" => Ok(json!({ "success": false, "error": "the theme is not changeable" })),
             "ui.getToolsExpanded" => Ok(json!(self
@@ -873,26 +921,57 @@ impl JsHost {
             "tools.getNamespace" => Ok(Value::Null),
             "tools.getPromptGuidelines" => Ok(json!([])),
             "tools.execute" => Ok(Value::Null),
-            "settings.get" => Ok(self
-                .session()
-                .map(|session| {
-                    session
-                        .settings
-                        .read()
-                        .map(|settings| settings.clone())
-                        .unwrap_or(Value::Object(serde_json::Map::new()))
-                })
-                .unwrap_or(Value::Object(serde_json::Map::new()))),
-            "commands.get" => Ok(self
-                .session()
-                .map(|session| {
-                    session
-                        .commands
-                        .read()
-                        .map(|commands| Value::Array(commands.clone()))
-                        .unwrap_or(Value::Array(Vec::new()))
-                })
-                .unwrap_or(Value::Array(Vec::new()))),
+            "settings.get" => {
+                // The effective values: the defaults applied, the project
+                // settings merged over the global ones.
+                if let Some(session) = self.session() {
+                    if let Ok(settings) = session.settings.read() {
+                        if !settings.is_null() {
+                            return Ok(settings.clone());
+                        }
+                    }
+                }
+                Ok(crate::settings::load_settings()
+                    .map(|settings| settings.effective())
+                    .unwrap_or_else(|_| Value::Object(serde_json::Map::new())))
+            }
+            "commands.get" => {
+                // The session's commands, plus the ones the extensions
+                // registered: the extension's own command is in the list, the
+                // same way its own tool is in the active tool set.
+                let mut commands = self
+                    .session()
+                    .and_then(|session| {
+                        session
+                            .commands
+                            .read()
+                            .ok()
+                            .map(|commands| commands.clone())
+                    })
+                    .unwrap_or_default();
+                for command in self.extension_commands() {
+                    let name = command.name.clone();
+                    if name.is_empty()
+                        || commands.iter().any(|entry| {
+                            entry.get("name").and_then(Value::as_str) == Some(&name)
+                        })
+                    {
+                        continue;
+                    }
+                    commands.push(json!({
+                        "name": name,
+                        "description": command.description,
+                        "source": "extension",
+                        "sourceInfo": {
+                            "path": command.path,
+                            "source": "auto",
+                            "scope": "user",
+                            "origin": "top-level",
+                        },
+                    }));
+                }
+                Ok(Value::Array(commands))
+            }
             "session.getSessionName" => Ok(self
                 .session()
                 .and_then(|session| session.session_name.read().ok().and_then(|n| n.clone()))
@@ -1134,6 +1213,15 @@ impl JsHost {
 }
 
 impl JsHost {
+    /// The commands the extensions registered.
+    fn extension_commands(&self) -> Vec<JsCommand> {
+        self.state
+            .commands
+            .lock()
+            .map(|commands| commands.clone())
+            .unwrap_or_default()
+    }
+
     /// The live session, when the TUI installed one.
     fn session(&self) -> Option<Arc<JsSession>> {
         self.state.session.lock().ok().and_then(|slot| slot.clone())
@@ -1365,6 +1453,19 @@ thread_local! {
 /// Whether the host is answering a call from the extension right now.
 pub fn in_host_call() -> bool {
     IN_HOST_CALL.with(|flag| flag.get())
+}
+
+/// The themes the session offers.
+///
+/// The port has three presets; the original has a "system" entry and two
+/// files. The list is what the two operations answer, so the port's list is
+/// what they return, in the original's shape.
+fn theme_list() -> Value {
+    json!([
+        { "name": "dark", "path": Value::Null },
+        { "name": "light", "path": Value::Null },
+        { "name": "monochrome", "path": Value::Null },
+    ])
 }
 
 /// The next dialog request id. The ids only have to be unique per session.

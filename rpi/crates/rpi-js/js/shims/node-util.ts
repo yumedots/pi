@@ -55,6 +55,32 @@ export const inspect = (value: unknown): string => {
 
 export const deprecate = <T extends (...args: never[]) => unknown>(fn: T): T => fn;
 
+/// The debug log. The embedded host has no log levels, so it writes nothing.
+export const debuglog = (_section: string, _callback?: unknown): (() => void) => () => undefined;
+
+export const callbackify = (fn: (...args: unknown[]) => unknown) => fn;
+
+export const inherits = (constructor: unknown, superConstructor: unknown): void => {
+	const child = constructor as { super_?: (value: unknown) => void };
+	const parent = superConstructor as { prototype: object };
+	child.super_ = parent.prototype;
+};
+
+export const isArray = Array.isArray;
+
+export const isDeepStrictEqual = (left: unknown, right: unknown): boolean => {
+	try {
+		return JSON.stringify(left) === JSON.stringify(right);
+	} catch {
+		return false;
+	}
+};
+
+export const _extend = (target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> => {
+	Object.assign(target, source);
+	return target;
+};
+
 export const types = {
 	isDate: (value: unknown): boolean => value instanceof Date,
 	isRegExp: (value: unknown): boolean => value instanceof RegExp,
@@ -71,4 +97,17 @@ export const parseArgs = (options: unknown): { values: Record<string, unknown> }
 	return { values };
 };
 
-export default { format, promisify, inspect, deprecate, types, parseArgs };
+export default {
+	format,
+	promisify,
+	inspect,
+	deprecate,
+	debuglog,
+	callbackify,
+	inherits,
+	isArray,
+	isDeepStrictEqual,
+	_extend,
+	types,
+	parseArgs,
+};

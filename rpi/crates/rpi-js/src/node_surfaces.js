@@ -142,6 +142,7 @@
 	// the global object itself.
 	globalThis.global = globalThis;
 
+
 	globalThis.process = {
 		env: call("process.env", {}),
 		argv: call("process.argv", {}),
@@ -153,6 +154,11 @@
 			throw new Error(`process.exit(${code}) is not available in the embedded host`);
 		},
 	};
+
+	// The bundle replaces the global `process` when it loads (a CommonJS
+	// package in pi's dependency tree installs its own). The runtime restores
+	// the host's object after the bundle has run.
+	globalThis.__piProcess = globalThis.process;
 
 	globalThis.performance = {
 		now: () => call("performance.now", {}),

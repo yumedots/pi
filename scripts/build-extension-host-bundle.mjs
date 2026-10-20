@@ -172,6 +172,13 @@ const result = await build({
 	// `main` field (most of them) never resolves. The vendored pi packages
 	// pull those in.
 	mainFields: ["module", "main"],
+	// pi's code reads `import.meta.url` to find its own package root. The
+	// neutral platform empties `import.meta`, so the value is defined here.
+	define: {
+		"import.meta.url": JSON.stringify(
+			`file://${join(crateDir, "js", "extension-host.bundle.js")}`,
+		),
+	},
 	target: "es2022",
 	write: false,
 	plugins: [virtualModulePlugin],

@@ -222,6 +222,54 @@ fn an_async_factory_registers_before_the_load_returns() {
 	assert_eq!(commands[0]["name"], "async-cmd");
 }
 
+/// Every shim in the shim directory is reachable by an extension.
+///
+/// A builtin that an extension cannot import kills the extension at load
+/// time, and the shim list grew one builtin at a time. This test walks the
+/// directory, so a shim that is not published fails here.
+#[test]
+fn every_shim_is_reachable_by_an_extension() {
+    let shim_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("js/shims");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&shim_dir).expect("the shim directory") {
+        let entry = entry.expect("a shim");
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.ends_with(".ts") {
+            continue;
+        }
+        let specifier = shim_specifier(&name);
+        let source = format!(
+            "import * as builtin from \"node:{specifier}\";\n\
+             export default function () {{ return typeof builtin; }}\n"
+        );
+        let host = Arc::new(ProcessHost::new());
+        let mut runtime = Runtime::new(host).expect("the runtime starts");
+        runtime
+            .load_extension(&format!("{specifier}.ts"), &source)
+            .unwrap_or_else(|error| panic!("`node:{specifier}` does not resolve: {error}"));
+        checked += 1;
+    }
+    assert!(checked > 30, "the shim directory looks empty: {checked} shims");
+}
+
+/// The builtin a shim file stands for.
+fn shim_specifier(file_name: &str) -> String {
+    let stem = file_name.trim_end_matches(".ts");
+    let stem = stem.strip_prefix("node-").unwrap_or(stem);
+    for (dashed, slashed) in [
+        ("fs-promises", "fs/promises"),
+        ("stream-promises", "stream/promises"),
+        ("stream-web", "stream/web"),
+        ("readline-promises", "readline/promises"),
+        ("timers-promises", "timers/promises"),
+    ] {
+        if stem == dashed {
+            return slashed.to_string();
+        }
+    }
+    stem.replace('-', "_")
+}
+
 /// A host that records the operations the extension host asks for.
 #[derive(Default)]
 struct RecordingHost {

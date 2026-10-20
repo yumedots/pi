@@ -76,6 +76,9 @@ impl Runtime {
 		runtime.run_script(BOOT)?;
 		runtime.run_source(PRELUDE)?;
 		runtime.run_source(BUNDLE)?;
+		// The bundle may have replaced the global `process`; the host's object
+		// is the one the extensions get.
+		runtime.run_source("globalThis.process = globalThis.__piProcess;")?;
 		Ok(runtime)
 	}
 

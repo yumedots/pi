@@ -768,6 +768,9 @@ enum TuiMessage {
     /// Import a JSONL session file into the session dir and switch to it
     /// (from `/import <path>`).
     ImportSession(String),
+    /// The import was confirmed in the "Replace current session with <path>?"
+    /// prompt; the session is replaced now.
+    ImportSessionConfirmed(String),
     /// Share the current session (`/share`): `gh gist create` when the gh CLI
     /// is available, otherwise copy the transcript to the clipboard.
     ShareSession,
@@ -1556,6 +1559,28 @@ pub async fn interactive_tui(
     }
     let registry = Arc::new(command_registry);
     let mut all_slash_commands = registry.visible_entries();
+    // The session's commands are what an extension reads with
+    // `pi.getCommands()`; the host answers from the session.
+    if let Some(extensions) = js_extensions.as_ref() {
+        extensions.set_commands(
+            all_slash_commands
+                .iter()
+                .map(|entry| {
+                    serde_json::json!({
+                        "name": entry.name,
+                        "description": entry.description,
+                        "source": "extension",
+                        "sourceInfo": {
+                            "path": "",
+                            "source": "auto",
+                            "scope": "user",
+                            "origin": "top-level",
+                        },
+                    })
+                })
+                .collect(),
+        );
+    }
     all_slash_commands.extend(template_slash_commands);
     let skill_mentions = resources_arc
         .lock()
@@ -1818,6 +1843,13 @@ pub async fn interactive_tui(
             editor_container.clone(),
             EMPTY_SESSION_EDITOR_WIDTH,
         ));
+        // The autocomplete lives in the dock, and the 3-D screen owns the pane
+        // while the session is empty, so the suggestion list has to be part of
+        // the screen: the user types `/` and expects the commands.
+        let empty_session_editor = Arc::new(VStack::from_children(vec![
+            StackChild::Entry(StackEntry::new(centered_editor)),
+            StackChild::Entry(StackEntry::new(autocomplete_container.clone())),
+        ]));
         let tui_weak = Arc::downgrade(&tui);
         let height = Arc::new(move || {
             tui_weak
@@ -1829,7 +1861,7 @@ pub async fn interactive_tui(
         Some(Arc::new(EmptySessionScreen::new(
             logo,
             empty_session::greeting(),
-            centered_editor,
+            empty_session_editor,
             height,
         )))
     } else {
@@ -3724,6 +3756,44 @@ pub async fn interactive_tui(
                 tui.request_render(false);
             }
             Some(TuiMessage::ImportSession(path)) => {
+                // The original asks before it replaces the session: a titled
+                // "Import session" block, the question, and a Yes/No list.
+                let items = vec![
+                    SelectItem::new("yes", "Yes"),
+                    SelectItem::new("no", "No"),
+                ];
+                let list = Arc::new(SelectList::new(items, 10));
+                let state_confirm = state.clone();
+                let ec_confirm = editor_container.clone();
+                let editor_confirm = editor.clone();
+                let tui_confirm = tui.clone();
+                let tx_confirm = tx.clone();
+                let path_confirm = path.clone();
+                list.on_select(Arc::new(move |item| {
+                    close_selector(&state_confirm, &ec_confirm, &editor_confirm, &tui_confirm);
+                    if item.value == "yes" {
+                        let _ = tx_confirm.send(TuiMessage::ImportSessionConfirmed(path_confirm.clone()));
+                    }
+                }));
+                let state_cancel = state.clone();
+                let ec_cancel = editor_container.clone();
+                let editor_cancel = editor.clone();
+                let tui_cancel = tui.clone();
+                list.on_cancel(Arc::new(move || {
+                    close_selector(&state_cancel, &ec_cancel, &editor_cancel, &tui_cancel);
+                }));
+                open_searchable_selector(
+                    &state,
+                    &editor_container,
+                    &editor,
+                    &tui,
+                    Some("Import session"),
+                    Some(&format!("Replace current session with {path}?")),
+                    list,
+                    SelectorKind::Settings,
+                );
+            }
+            Some(TuiMessage::ImportSessionConfirmed(path)) => {
                 import_session(
                     &harness,
                     &lane,

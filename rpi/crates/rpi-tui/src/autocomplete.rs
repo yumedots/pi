@@ -115,7 +115,14 @@ pub trait AutocompleteProvider: Send + Sync {
 /// Slash command for command completion.
 #[derive(Debug, Clone)]
 pub struct SlashCommand {
-    /// Command name (including the slash).
+    /// The command name, as the original lists it: bare, without the leading
+    /// slash (`model`, `theme`, `skill:demo`).
+    ///
+    /// The original's picker lists the bare names
+    /// (`packages/tui/src/components/editor.ts:722-733`) and adds the slash
+    /// back when the completion is applied
+    /// (`packages/tui/src/autocomplete.ts:451-457`). A caller that keeps the
+    /// slash for dispatch may pass it here; the matching tolerates both.
     pub name: String,
     /// Description.
     pub description: String,

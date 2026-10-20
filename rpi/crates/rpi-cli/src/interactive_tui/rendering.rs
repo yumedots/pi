@@ -567,8 +567,10 @@ pub(super) fn add_user_message(container: &Arc<Container>, text: &str) {
     if container.child_count() > 0 {
         container.add_child(Arc::new(Spacer::new(1)));
     }
+    // The original's user message is a Markdown with a vertical padding of one,
+    // so the blank row below the text is the component's own
+    // (`components/user-message.ts:43-48`); no extra spacer follows it.
     container.add_child(Arc::new(UserMessageComponent::new(text.to_string())));
-    container.add_child(Arc::new(Spacer::new(1)));
 }
 
 /// Add an error message to the chat container.

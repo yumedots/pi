@@ -1080,6 +1080,7 @@ fn tui_startup_settings_prefer_rpi_project_fields_over_pi() {
             show_images: true,
             cache_miss_notices: false,
             three_d_empty_session: false,
+            enable_skill_commands: true,
         }
     );
 }
@@ -1127,6 +1128,7 @@ fn tui_startup_settings_use_global_values_without_project_fields() {
             show_images: false,
             cache_miss_notices: true,
             three_d_empty_session: false,
+            enable_skill_commands: true,
         }
     );
 }
@@ -2834,8 +2836,10 @@ fn test_autocomplete_slash_suggestions_render() {
     refresh_autocomplete(&state, &editor);
     let lines = state.autocomplete_container.render(80);
     let joined: String = lines.join("\n");
+    // The original's command rows show the bare name, without the leading
+    // slash (`packages/tui/src/autocomplete.ts:352-360`).
     assert!(
-        joined.contains("/help"),
+        joined.contains("help"),
         "slash suggestions not rendered: {joined}"
     );
 

@@ -307,10 +307,12 @@ impl AssistantMessageComponent {
             return;
         }
 
-        // No leading spacer here — the host adds a Spacer(1) after each
-        // transcript entry, which already separates this message from the
-        // one above. A leading spacer stacked with the host's trailing one
-        // produced a double blank between messages.
+        // The original puts a blank row in front of the message's own content
+        // (packages/coding-agent/src/modes/interactive/components/assistant-message.ts:154-156).
+        // The host's spacer sits before each transcript entry, not after it, so
+        // the two are not stacked on the same gap.
+        self.content_container
+            .add_child(Arc::new(crate::spacer::Spacer::new(1)));
         let mut i = 0;
         let mut thinking_run_index = 0usize;
         while i < blocks.len() {
@@ -630,6 +632,19 @@ impl Component for AssistantMessageComponent {
 mod tests {
     use super::*;
     use crate::ansi::strip_ansi;
+
+    #[test]
+    fn an_assistant_message_starts_with_a_blank_row() {
+        use crate::component::Component;
+        let message = AssistantMessageComponent::new(AssistantMessageOptions::default());
+        message.update_text("hello");
+        let lines = message.render(40);
+        assert_eq!(lines[0].trim_end(), "", "the leading spacer: {lines:?}");
+        assert!(
+            lines.iter().any(|line| line.contains("hello")),
+            "{lines:?}"
+        );
+    }
 
     #[test]
     fn test_assistant_message_basic() {

@@ -1560,6 +1560,7 @@ mod tests {
         assert_eq!(end["messages"], serde_json::json!([]));
 
         let tool = agent_event_json(&AgentEvent::ToolExecutionEnd {
+            duration_ms: None,
             tool_call_id: "call-1".into(),
             tool_name: "read".into(),
             result: AgentToolResult::text("hello"),

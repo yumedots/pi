@@ -1,10 +1,287 @@
 "use strict";
 (() => {
+  var __create = Object.create;
   var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __getProtoOf = Object.getPrototypeOf;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __commonJS = (cb, mod) => function __require() {
+    try {
+      return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    } catch (e) {
+      throw mod = 0, e;
+    }
+  };
   var __export = (target, all) => {
     for (var name in all)
       __defProp(target, name, { get: all[name], enumerable: true });
   };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+    // If the importer is in node compatibility mode or this is not an ESM
+    // file that has been converted to a CommonJS file using a Babel-
+    // compatible transform (i.e. "__esModule" has not been set), then set
+    // "default" to the CommonJS "module.exports" for node compatibility.
+    isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+    mod
+  ));
+
+
+  var require_node_fs = __commonJS({
+    "rpi/crates/rpi-js/js/shims/node-fs.ts"(exports, module) {
+      "use strict";
+      var call = (op, args) => globalThis.__piHostCall(op, args);
+      var readFileSync = (path2) => call("fs.readFile", { path: path2 });
+      var writeFileSync = (path2, content) => {
+        call("fs.writeFile", { path: path2, content });
+      };
+      var existsSync = (path2) => call("fs.exists", { path: path2 });
+      var readdirSync = (path2) => call("fs.readdir", { path: path2 });
+      var statSync = (path2) => call("fs.stat", { path: path2 });
+      var mkdirSync = (path2) => {
+        call("fs.mkdir", { path: path2 });
+      };
+      var unlinkSync = (path2) => {
+        call("fs.unlink", { path: path2 });
+      };
+      var openSync = (path2, _flags) => {
+        call("fs.open", { path: path2, flags: _flags });
+        return 0;
+      };
+      var accessSync = (path2) => call("fs.access", { path: path2 });
+      var realpathSync = (path2) => call("fs.realpath", { path: path2 });
+      var renameSync = (from, to) => {
+        call("fs.rename", { from, to });
+      };
+      var copyFileSync = (from, to) => {
+        call("fs.copyFile", { from, to });
+      };
+      var appendFileSync = (path2, content) => {
+        call("fs.appendFile", { path: path2, content });
+      };
+      var closeSync = (_descriptor) => void 0;
+      var chmodSync = (path2, mode) => {
+        call("fs.chmod", { path: path2, mode });
+      };
+      var watch = (_path, _listener) => () => void 0;
+      var createReadStream = (path2) => {
+        const content = readFileSync(path2);
+        let position = 0;
+        return {
+          read: () => {
+            if (position >= content.length) return null;
+            const chunk = content.slice(position);
+            position = content.length;
+            return chunk;
+          },
+          on: () => void 0,
+          close: () => void 0
+        };
+      };
+      var globSync = (_pattern) => {
+        throw new Error("fs.globSync is not available in the embedded extension host");
+      };
+      var createWriteStream = (path2) => {
+        let content = "";
+        return {
+          write: (chunk) => {
+            content += chunk;
+            return true;
+          },
+          end: () => {
+            writeFileSync(path2, content);
+          },
+          on: () => void 0
+        };
+      };
+      var mkdtempSync = (prefix) => call("fs.mkdtemp", { prefix });
+      var unwatchFile = (_path) => void 0;
+      var watchFile = (_path, _listener) => () => void 0;
+      var lstatSync = (path2) => statSync(path2);
+      var fstatSync = (descriptor) => statSync(String(descriptor));
+      var readlinkSync = (path2) => path2;
+      var symlinkSync = (_target, _path) => void 0;
+      var rmdirSync = (path2) => {
+        call("fs.rmdir", { path: path2 });
+      };
+      var truncateSync = (path2, length) => {
+        call("fs.truncate", { path: path2, length });
+      };
+      var chownSync = (_path, _uid, _gid) => void 0;
+      var utimesSync = (_path, _atime, _mtime) => void 0;
+      var writeSync = (_descriptor, content) => content.length;
+      var readSync = (descriptor, _buffer, _offset, _length, _position) => {
+        void descriptor;
+        return 0;
+      };
+      var rmSync = (path2, options) => {
+        if (options?.force && !existsSync(path2)) return;
+        unlinkSync(path2);
+      };
+      var constants2 = {
+        F_OK: 0,
+        R_OK: 4,
+        W_OK: 2,
+        X_OK: 1,
+        O_RDONLY: 0,
+        O_WRONLY: 1,
+        O_RDWR: 2,
+        O_CREAT: 64,
+        O_TRUNC: 512,
+        O_APPEND: 1024
+      };
+      var readFile = async (path2) => readFileSync(path2);
+      var writeFile = async (path2, content) => {
+        writeFileSync(path2, content);
+      };
+      var exists = async (path2) => existsSync(path2);
+      var readdir = async (path2) => readdirSync(path2);
+      var stat = async (path2) => statSync(path2);
+      var mkdir = async (path2) => {
+        mkdirSync(path2);
+      };
+      var unlink = async (path2) => {
+        unlinkSync(path2);
+      };
+      var access = async (path2) => accessSync(path2);
+      var realpath = async (path2) => realpathSync(path2);
+      var rename = async (from, to) => {
+        renameSync(from, to);
+      };
+      var copyFile = async (from, to) => {
+        copyFileSync(from, to);
+      };
+      var appendFile = async (path2, content) => {
+        appendFileSync(path2, content);
+      };
+      var open2 = async (path2, flags) => {
+        openSync(path2, flags);
+        return {
+          read: async () => readFileSync(path2),
+          close: async () => void 0
+        };
+      };
+      var mkdtemp = async (prefix) => mkdtempSync(prefix);
+      var promises2 = {
+        readFile,
+        writeFile,
+        exists,
+        readdir,
+        stat,
+        mkdir,
+        unlink,
+        open: open2,
+        access,
+        realpath,
+        rename,
+        copyFile,
+        appendFile,
+        mkdtemp
+      };
+      var fs = {
+        readFileSync,
+        writeFileSync,
+        existsSync,
+        readdirSync,
+        statSync,
+        mkdirSync,
+        unlinkSync,
+        openSync,
+        accessSync,
+        realpathSync,
+        renameSync,
+        copyFileSync,
+        appendFileSync,
+        closeSync,
+        chmodSync,
+        watch,
+        createReadStream,
+        globSync,
+        createWriteStream,
+        mkdtempSync,
+        unwatchFile,
+        watchFile,
+        lstatSync,
+        fstatSync,
+        readlinkSync,
+        symlinkSync,
+        rmdirSync,
+        truncateSync,
+        chownSync,
+        utimesSync,
+        writeSync,
+        readSync,
+        rmSync,
+        constants: constants2,
+        readFile,
+        writeFile,
+        exists,
+        readdir,
+        stat,
+        mkdir,
+        unlink,
+        access,
+        realpath,
+        rename,
+        copyFile,
+        appendFile,
+        open: open2,
+        mkdtemp,
+        promises: promises2
+      };
+      module.exports = fs;
+    }
+  });
+
+
+  var require_node_fs_promises = __commonJS({
+    "rpi/crates/rpi-js/js/shims/node-fs-promises.ts"(exports, module) {
+      "use strict";
+      var import_node_fs = __toESM(require_node_fs(), 1);
+      var { promises: promises2 } = import_node_fs.default;
+      var readFile = promises2.readFile;
+      var writeFile = promises2.writeFile;
+      var exists = promises2.exists;
+      var readdir = promises2.readdir;
+      var stat = promises2.stat;
+      var open2 = promises2.open;
+      var mkdir = promises2.mkdir;
+      var rm = promises2.rm;
+      var unlink = promises2.unlink;
+      var rename = promises2.rename;
+      var copyFile = promises2.copyFile;
+      var access = promises2.access;
+      var realpath = promises2.realpath;
+      var appendFile = promises2.appendFile;
+      var mkdtemp = promises2.mkdtemp;
+      var fsPromises = {
+        readFile,
+        writeFile,
+        exists,
+        readdir,
+        stat,
+        open: open2,
+        mkdir,
+        rm,
+        unlink,
+        rename,
+        copyFile,
+        access,
+        realpath,
+        appendFile,
+        mkdtemp
+      };
+      module.exports = fsPromises;
+    }
+  });
 
 
   var types_exports = {};
@@ -1317,8 +1594,8 @@
   __export(arguments_exports, {
     Match: () => Match
   });
-  function Match(args, match) {
-    return match[args.length]?.(...args) ?? (() => {
+  function Match(args, match2) {
+    return match2[args.length]?.(...args) ?? (() => {
       throw Error("Invalid Arguments");
     })();
   }
@@ -1368,8 +1645,8 @@
   }
 
 
-  function Intersect(types, options = {}) {
-    return memory_exports.Create({ "~kind": "Intersect" }, { allOf: types }, options);
+  function Intersect(types2, options = {}) {
+    return memory_exports.Create({ "~kind": "Intersect" }, { allOf: types2 }, options);
   }
   function IsIntersect(value) {
     return IsKind(value, "Intersect");
@@ -1551,8 +1828,8 @@
   }
 
 
-  function en_US(error) {
-    switch (error.keyword) {
+  function en_US(error2) {
+    switch (error2.keyword) {
       case "additionalProperties":
         return "must not have additional properties";
       case "anyOf":
@@ -1564,49 +1841,49 @@
       case "contains":
         return "must contain at least 1 valid item";
       case "dependencies":
-        return `must have properties ${error.params.dependencies.join(", ")} when property ${error.params.property} is present`;
+        return `must have properties ${error2.params.dependencies.join(", ")} when property ${error2.params.property} is present`;
       case "dependentRequired":
-        return `must have properties ${error.params.dependencies.join(", ")} when property ${error.params.property} is present`;
+        return `must have properties ${error2.params.dependencies.join(", ")} when property ${error2.params.property} is present`;
       case "enum":
         return "must be equal to one of the allowed values";
       case "exclusiveMaximum":
-        return `must be ${error.params.comparison} ${error.params.limit}`;
+        return `must be ${error2.params.comparison} ${error2.params.limit}`;
       case "exclusiveMinimum":
-        return `must be ${error.params.comparison} ${error.params.limit}`;
+        return `must be ${error2.params.comparison} ${error2.params.limit}`;
       case "format":
-        return `must match format "${error.params.format}"`;
+        return `must match format "${error2.params.format}"`;
       case "if":
-        return `must match "${error.params.failingKeyword}" schema`;
+        return `must match "${error2.params.failingKeyword}" schema`;
       case "maxItems":
-        return `must not have more than ${error.params.limit} items`;
+        return `must not have more than ${error2.params.limit} items`;
       case "maxLength":
-        return `must not have more than ${error.params.limit} characters`;
+        return `must not have more than ${error2.params.limit} characters`;
       case "maxProperties":
-        return `must not have more than ${error.params.limit} properties`;
+        return `must not have more than ${error2.params.limit} properties`;
       case "maximum":
-        return `must be ${error.params.comparison} ${error.params.limit}`;
+        return `must be ${error2.params.comparison} ${error2.params.limit}`;
       case "minItems":
-        return `must not have fewer than ${error.params.limit} items`;
+        return `must not have fewer than ${error2.params.limit} items`;
       case "minLength":
-        return `must not have fewer than ${error.params.limit} characters`;
+        return `must not have fewer than ${error2.params.limit} characters`;
       case "minProperties":
-        return `must not have fewer than ${error.params.limit} properties`;
+        return `must not have fewer than ${error2.params.limit} properties`;
       case "minimum":
-        return `must be ${error.params.comparison} ${error.params.limit}`;
+        return `must be ${error2.params.comparison} ${error2.params.limit}`;
       case "multipleOf":
-        return `must be multiple of ${error.params.multipleOf}`;
+        return `must be multiple of ${error2.params.multipleOf}`;
       case "not":
         return "must not be valid";
       case "oneOf":
         return "must match exactly one schema in oneOf";
       case "pattern":
-        return `must match pattern "${error.params.pattern}"`;
+        return `must match pattern "${error2.params.pattern}"`;
       case "propertyNames":
-        return `property names ${error.params.propertyNames.join(", ")} are invalid`;
+        return `property names ${error2.params.propertyNames.join(", ")} are invalid`;
       case "required":
-        return `must have required properties ${error.params.requiredProperties.join(", ")}`;
+        return `must have required properties ${error2.params.requiredProperties.join(", ")}`;
       case "type":
-        return typeof error.params.type === "string" ? `must be ${error.params.type}` : `must be either ${error.params.type.join(" or ")}`;
+        return typeof error2.params.type === "string" ? `must be ${error2.params.type}` : `must be either ${error2.params.type.join(" or ")}`;
       case "unevaluatedItems":
         return "must not have unevaluated items";
       case "unevaluatedProperties":
@@ -1614,7 +1891,7 @@
       case "uniqueItems":
         return `must not have duplicate items`;
       case "~refine":
-        return error.params.message;
+        return error2.params.message;
       // deno-coverage-ignore - unreachable
       default:
         return "an unknown validation error occurred";
@@ -1696,11 +1973,11 @@
     return memory_exports.Update(type2, { "~refine": refinements }, {});
   }
   function Refine(...args) {
-    const [type2, check, error] = arguments_exports.Match(args, {
-      3: (type3, check2, error2) => [type3, check2, error2],
+    const [type2, check, error2] = arguments_exports.Match(args, {
+      3: (type3, check2, error3) => [type3, check2, error3],
       2: (type3, check2) => [type3, check2, () => "Refine Error"]
     });
-    return RefineAdd(type2, { check, error });
+    return RefineAdd(type2, { check, error: error2 });
   }
   function IsRefinement(value) {
     return guard_exports.IsObjectNotArray(value) && guard_exports.HasPropertyKey(value, "check") && guard_exports.HasPropertyKey(value, "error") && guard_exports.IsFunction(value.check) && guard_exports.IsFunction(value.error);
@@ -1851,18 +2128,18 @@
   function FromLiteral(_value) {
     return true;
   }
-  function FromTypesReduce(types) {
-    return guard_exports.ShiftLeft(types, (left, right) => FromType(left) ? FromTypesReduce(right) : false, () => true);
+  function FromTypesReduce(types2) {
+    return guard_exports.ShiftLeft(types2, (left, right) => FromType(left) ? FromTypesReduce(right) : false, () => true);
   }
-  function FromTypes(types) {
-    const result = guard_exports.IsEqual(types.length, 0) ? false : FromTypesReduce(types);
+  function FromTypes(types2) {
+    const result = guard_exports.IsEqual(types2.length, 0) ? false : FromTypesReduce(types2);
     return result;
   }
   function FromType(type2) {
     return IsUnion(type2) ? FromTypes(type2.anyOf) : IsLiteral(type2) ? FromLiteral(type2.const) : false;
   }
-  function IsTemplateLiteralFinite(types) {
-    const result = FromTypes(types);
+  function IsTemplateLiteralFinite(types2) {
+    const result = FromTypes(types2);
     return result;
   }
 
@@ -1878,34 +2155,34 @@
   function FromLiteral2(variants, value) {
     return guard_exports.IsEqual(variants.length, 0) ? [`${value}`] : FromLiteralPush(variants, value);
   }
-  function FromUnion(variants, types, result = []) {
-    return guard_exports.ShiftLeft(types, (left, right) => FromUnion(variants, right, [...result, ...FromType2(variants, left)]), () => result);
+  function FromUnion(variants, types2, result = []) {
+    return guard_exports.ShiftLeft(types2, (left, right) => FromUnion(variants, right, [...result, ...FromType2(variants, left)]), () => result);
   }
   function FromType2(variants, type2) {
     const result = IsUnion(type2) ? FromUnion(variants, type2.anyOf) : IsLiteral(type2) ? FromLiteral2(variants, type2.const) : Unreachable();
     return result;
   }
-  function DecodeFromSpan(variants, types) {
-    return guard_exports.ShiftLeft(types, (left, right) => DecodeFromSpan(FromType2(variants, left), right), () => variants);
+  function DecodeFromSpan(variants, types2) {
+    return guard_exports.ShiftLeft(types2, (left, right) => DecodeFromSpan(FromType2(variants, left), right), () => variants);
   }
   function VariantsToLiterals(variants) {
     return variants.map((variant2) => Literal(variant2));
   }
-  function DecodeTypesAsUnion(types) {
-    const variants = DecodeFromSpan([], types);
+  function DecodeTypesAsUnion(types2) {
+    const variants = DecodeFromSpan([], types2);
     const literals = VariantsToLiterals(variants);
     const result = Union(literals);
     return result;
   }
-  function DecodeTypes(types) {
-    return guard_exports.IsEqual(types.length, 0) ? Unreachable() : (
+  function DecodeTypes(types2) {
+    return guard_exports.IsEqual(types2.length, 0) ? Unreachable() : (
       // Literal('') :
-      guard_exports.IsEqual(types.length, 1) && IsLiteral(types[0]) ? types[0] : DecodeTypesAsUnion(types)
+      guard_exports.IsEqual(types2.length, 1) && IsLiteral(types2[0]) ? types2[0] : DecodeTypesAsUnion(types2)
     );
   }
   function TemplateLiteralDecodeUnsafe(pattern) {
-    const types = ParsePatternIntoTypes(pattern);
-    const result = guard_exports.IsEqual(types.length, 0) ? String2() : IsTemplateLiteralFinite(types) ? DecodeTypes(types) : TemplateLiteralCreate(pattern);
+    const types2 = ParsePatternIntoTypes(pattern);
+    const result = guard_exports.IsEqual(types2.length, 0) ? String2() : IsTemplateLiteralFinite(types2) ? DecodeTypes(types2) : TemplateLiteralCreate(pattern);
     return result;
   }
   function TemplateLiteralDecode(pattern) {
@@ -1932,8 +2209,8 @@
   }
 
 
-  function Tuple(types, options = {}) {
-    const [items, minItems, additionalItems] = [types, types.length, false];
+  function Tuple(types2, options = {}) {
+    const [items, minItems, additionalItems] = [types2, types2.length, false];
     return memory_exports.Create({ ["~kind"]: "Tuple" }, { type: "array", additionalItems, items, minItems }, options);
   }
   function IsTuple(value) {
@@ -1986,8 +2263,8 @@
   }
 
 
-  function TupleElementsToProperties(types) {
-    const result = types.reduceRight((result2, right, index3) => {
+  function TupleElementsToProperties(types2) {
+    const result = types2.reduceRight((result2, right, index3) => {
       return { [index3]: right, ...result2 };
     }, {});
     return result;
@@ -2063,14 +2340,14 @@
     const result = shouldEvaluate ? EvaluateIntersect([evaluatedLeft, evaluatedRight]) : Narrow(evaluatedLeft, evaluatedRight);
     return result;
   }
-  function DistributeType(type2, types, result = []) {
-    return guard_exports.ShiftLeft(types, (left, right) => DistributeType(type2, right, [...result, DistributeOperation(left, type2)]), () => guard_exports.IsEqual(result.length, 0) ? [type2] : result);
+  function DistributeType(type2, types2, result = []) {
+    return guard_exports.ShiftLeft(types2, (left, right) => DistributeType(type2, right, [...result, DistributeOperation(left, type2)]), () => guard_exports.IsEqual(result.length, 0) ? [type2] : result);
   }
-  function DistributeUnion(types, distribution, result = []) {
-    return guard_exports.ShiftLeft(types, (left, right) => DistributeUnion(right, distribution, [...result, ...Distribute([left], distribution)]), () => result);
+  function DistributeUnion(types2, distribution, result = []) {
+    return guard_exports.ShiftLeft(types2, (left, right) => DistributeUnion(right, distribution, [...result, ...Distribute([left], distribution)]), () => result);
   }
-  function Distribute(types, result = []) {
-    return guard_exports.ShiftLeft(types, (left, right) => IsUnion(left) ? Distribute(right, DistributeUnion(left.anyOf, result)) : Distribute(right, DistributeType(left, result)), () => result);
+  function Distribute(types2, result = []) {
+    return guard_exports.ShiftLeft(types2, (left, right) => IsUnion(left) ? Distribute(right, DistributeUnion(left.anyOf, result)) : Distribute(right, DistributeType(left, result)), () => result);
   }
 
 
@@ -2100,8 +2377,8 @@
   function EvaluateEnum(values, result = []) {
     return guard_exports.ShiftLeft(values, (left, right) => EvaluateEnum(right, [...result, Literal(left)]), () => EvaluateUnion(result));
   }
-  function EvaluateIntersect(types) {
-    const distribution = Distribute(types);
+  function EvaluateIntersect(types2) {
+    const distribution = Distribute(types2);
     const broadend = Broaden(distribution);
     const result = EvaluateUnion(broadend);
     return result;
@@ -2111,8 +2388,8 @@
     const result = EvaluateType(evaluated);
     return result;
   }
-  function EvaluateUnion(types) {
-    const broadend = Broaden(types);
+  function EvaluateUnion(types2) {
+    const broadend = Broaden(types2);
     const result = EvaluateUnionFast(broadend);
     return result;
   }
@@ -2120,8 +2397,8 @@
     const result = IsDependent(type2) ? EvaluateDependent(type2.if, type2.then, type2.else) : IsEnum(type2) ? EvaluateEnum(type2.enum) : IsIntersect(type2) ? EvaluateIntersect(type2.allOf) : IsTemplateLiteral(type2) ? EvaluateTemplateLiteral(type2.pattern) : IsUnion(type2) ? EvaluateUnion(type2.anyOf) : type2;
     return result;
   }
-  function EvaluateUnionFast(types) {
-    const result = guard_exports.IsEqual(types.length, 1) ? types[0] : guard_exports.IsEqual(types.length, 0) ? Never() : Union(types);
+  function EvaluateUnionFast(types2) {
+    const result = guard_exports.IsEqual(types2.length, 1) ? types2[0] : guard_exports.IsEqual(types2.length, 0) ? Never() : Union(types2);
     return result;
   }
 
@@ -2139,8 +2416,8 @@
   }
 
 
-  function FromIntersectKey(types, value) {
-    const evaluatedKey = EvaluateIntersect(types);
+  function FromIntersectKey(types2, value) {
+    const evaluatedKey = EvaluateIntersect(types2);
     const result = FromKey(evaluatedKey, value);
     return result;
   }
@@ -2163,8 +2440,8 @@
 
 
   function FromTemplateKey(pattern, value) {
-    const types = ParsePatternIntoTypes(pattern);
-    const finite = IsTemplateLiteralFinite(types);
+    const types2 = ParsePatternIntoTypes(pattern);
+    const finite = IsTemplateLiteralFinite(types2);
     const result = finite ? FromKey(EvaluateTemplateLiteral(pattern), value) : CreateRecord(pattern, value);
     return result;
   }
@@ -2174,29 +2451,29 @@
     const result = IsUnion(type2) ? Flatten(type2.anyOf) : [type2];
     return result;
   }
-  function Flatten(types, result = []) {
-    return guard_exports.ShiftLeft(types, (left, right) => Flatten(right, [...result, ...FlattenType(left)]), () => result);
+  function Flatten(types2, result = []) {
+    return guard_exports.ShiftLeft(types2, (left, right) => Flatten(right, [...result, ...FlattenType(left)]), () => result);
   }
 
 
-  function StringOrNumberCheck(types) {
-    return types.some((type2) => IsString4(type2) || IsNumber4(type2) || IsInteger3(type2));
+  function StringOrNumberCheck(types2) {
+    return types2.some((type2) => IsString4(type2) || IsNumber4(type2) || IsInteger3(type2));
   }
-  function TryBuildRecord(types, value) {
-    return guard_exports.IsEqual(StringOrNumberCheck(types), true) ? CreateRecord(StringKey, value) : void 0;
+  function TryBuildRecord(types2, value) {
+    return guard_exports.IsEqual(StringOrNumberCheck(types2), true) ? CreateRecord(StringKey, value) : void 0;
   }
-  function CreateProperties(types, value) {
-    return types.reduce((result, left) => {
+  function CreateProperties(types2, value) {
+    return types2.reduce((result, left) => {
       return IsLiteral(left) && (guard_exports.IsString(left.const) || guard_exports.IsNumber(left.const)) ? { ...result, [left.const]: value } : result;
     }, {});
   }
-  function CreateObject(types, value) {
-    const properties = CreateProperties(types, value);
+  function CreateObject(types2, value) {
+    const properties = CreateProperties(types2, value);
     const result = _Object_(properties);
     return result;
   }
-  function FromUnionKey(types, value) {
-    const flattened = Flatten(types);
+  function FromUnionKey(types2, value) {
+    const flattened = Flatten(types2);
     const record = TryBuildRecord(flattened, value);
     return IsSchema(record) ? record : CreateObject(flattened, value);
   }
@@ -2717,8 +2994,8 @@
   function IsMatch(value) {
     return IsEqual(value.length, 2);
   }
-  function Match2(input, ok, fail) {
-    return IsMatch(input) ? ok(input[0], input[1]) : fail();
+  function Match2(input, ok2, fail2) {
+    return IsMatch(input) ? ok2(input[0], input[1]) : fail2();
   }
 
 
@@ -2735,8 +3012,8 @@
   }
 
 
-  function Range(start, end) {
-    return Array.from({ length: end - start + 1 }, (_, i) => String.fromCharCode(start + i));
+  function Range(start2, end) {
+    return Array.from({ length: end - start2 + 1 }, (_, i) => String.fromCharCode(start2 + i));
   }
   var Alpha = [
     ...Range(97, 122),
@@ -2940,9 +3217,9 @@
   }
 
 
-  function MultiLine(start, end, input) {
+  function MultiLine(start2, end, input) {
     return Match2(
-      Take([start], input),
+      Take([start2], input),
       (_, Rest2) => Match2(
         Until([end], Rest2),
         (Until2, UntilRest) => Match2(Take([end], UntilRest), (_2, Rest3) => [`${Until2}`, Rest3], () => []),
@@ -2953,9 +3230,9 @@
       () => []
     );
   }
-  function SingleLine(start, end, input) {
+  function SingleLine(start2, end, input) {
     return Match2(
-      Take([start], input),
+      Take([start2], input),
       (_, Rest2) => Match2(
         Until([NewLine, end], Rest2),
         (Until2, UntilRest) => Match2(Take([end], UntilRest), (_2, EndRest) => [`${Until2}`, EndRest], () => []),
@@ -2966,8 +3243,8 @@
       () => []
     );
   }
-  function Span(start, end, multiLine, input) {
-    return multiLine ? MultiLine(start, end, Trim(input)) : SingleLine(start, end, Trim(input));
+  function Span(start2, end, multiLine, input) {
+    return multiLine ? MultiLine(start2, end, Trim(input)) : SingleLine(start2, end, Trim(input));
   }
 
 
@@ -3154,8 +3431,8 @@
   function EncodeTemplateLiteral(templatePattern, right, pattern) {
     return EncodeTypes(right, `${pattern}${UnwrapTemplateLiteralPattern(templatePattern)}`);
   }
-  function EncodeTemplateLiteralDeferred(types, right, pattern) {
-    const templateLiteral = TemplateLiteralAction(types, {});
+  function EncodeTemplateLiteralDeferred(types2, right, pattern) {
+    const templateLiteral = TemplateLiteralAction(types2, {});
     const result = EncodeType(templateLiteral, right, pattern);
     return result;
   }
@@ -3163,49 +3440,49 @@
     const evaluated = EvaluateEnum(values);
     return EncodeType(evaluated, right, pattern);
   }
-  function EncodeUnion(types, right, pattern, result = []) {
-    return guard_exports.ShiftLeft(types, (head, tail) => EncodeUnion(tail, right, pattern, [...result, EncodeType(head, [], "")]), () => EncodeTypes(right, `${pattern}(${JoinString(result)})`));
+  function EncodeUnion(types2, right, pattern, result = []) {
+    return guard_exports.ShiftLeft(types2, (head, tail) => EncodeUnion(tail, right, pattern, [...result, EncodeType(head, [], "")]), () => EncodeTypes(right, `${pattern}(${JoinString(result)})`));
   }
   function EncodeType(type2, right, pattern) {
     return IsEnum(type2) ? EncodeEnum(type2.enum, right, pattern) : IsInteger3(type2) ? EncodeInteger(right, pattern) : IsLiteral(type2) ? EncodeLiteral(type2.const, right, pattern) : IsBigInt3(type2) ? EncodeBigInt(right, pattern) : IsBoolean4(type2) ? EncodeBoolean(right, pattern) : IsNumber4(type2) ? EncodeNumber(right, pattern) : IsString4(type2) ? EncodeString(right, pattern) : IsTemplateLiteral(type2) ? EncodeTemplateLiteral(type2.pattern, right, pattern) : IsTemplateLiteralDeferred(type2) ? EncodeTemplateLiteralDeferred(type2.parameters[0], right, pattern) : IsUnion(type2) ? EncodeUnion(type2.anyOf, right, pattern) : NeverPattern;
   }
-  function EncodeTypes(types, pattern) {
-    return guard_exports.ShiftLeft(types, (left, right) => EncodeType(left, right, pattern), () => pattern);
+  function EncodeTypes(types2, pattern) {
+    return guard_exports.ShiftLeft(types2, (left, right) => EncodeType(left, right, pattern), () => pattern);
   }
-  function EncodePattern(types) {
-    const encoded = EncodeTypes(types, "");
+  function EncodePattern(types2) {
+    const encoded = EncodeTypes(types2, "");
     const result = `^${encoded}$`;
     return result;
   }
-  function TemplateLiteralEncode(types) {
-    const pattern = EncodePattern(types);
+  function TemplateLiteralEncode(types2) {
+    const pattern = EncodePattern(types2);
     const result = TemplateLiteralCreate(pattern);
     return result;
   }
 
 
-  function TemplateLiteralAction(types, options) {
-    const result = CanInstantiate(types) ? memory_exports.Update(TemplateLiteralEncode(types), {}, options) : TemplateLiteralDeferred(types, options);
+  function TemplateLiteralAction(types2, options) {
+    const result = CanInstantiate(types2) ? memory_exports.Update(TemplateLiteralEncode(types2), {}, options) : TemplateLiteralDeferred(types2, options);
     return result;
   }
-  function TemplateLiteralInstantiate(context, state2, types, options) {
-    const instantiatedTypes = InstantiateTypes(context, state2, types);
+  function TemplateLiteralInstantiate(context, state2, types2, options) {
+    const instantiatedTypes = InstantiateTypes(context, state2, types2);
     return TemplateLiteralAction(instantiatedTypes, options);
   }
 
 
-  function TemplateLiteralDeferred(types, options = {}) {
-    return Deferred("TemplateLiteral", [types], options);
+  function TemplateLiteralDeferred(types2, options = {}) {
+    return Deferred("TemplateLiteral", [types2], options);
   }
   function IsTemplateLiteralDeferred(value) {
     return IsSchema(value) && guard_exports.HasPropertyKey(value, "action") && guard_exports.IsEqual(value.action, "TemplateLiteral");
   }
-  function TemplateLiteralFromTypes(types) {
-    return TemplateLiteralAction(types, {});
+  function TemplateLiteralFromTypes(types2) {
+    return TemplateLiteralAction(types2, {});
   }
   function TemplateLiteralFromString(template) {
-    const types = ParseTemplateIntoTypes(template);
-    return TemplateLiteralFromTypes(types);
+    const types2 = ParseTemplateIntoTypes(template);
+    return TemplateLiteralFromTypes(types2);
   }
   function TemplateLiteral2(input, options = {}) {
     const type2 = guard_exports.IsString(input) ? TemplateLiteralFromString(input) : TemplateLiteralFromTypes(input);
@@ -3499,14 +3776,14 @@
   }
 
 
-  function Reverse(types) {
-    return [...types].reverse();
+  function Reverse(types2) {
+    return [...types2].reverse();
   }
-  function ApplyReverse(types, reversed) {
-    return reversed ? Reverse(types) : types;
+  function ApplyReverse(types2, reversed) {
+    return reversed ? Reverse(types2) : types2;
   }
-  function Reversed(types) {
-    const first = types.length > 0 ? types[0] : void 0;
+  function Reversed(types2) {
+    const first = types2.length > 0 ? types2[0] : void 0;
     const inferrable = IsSchema(first) ? TryRestInferable(first) : void 0;
     return IsSchema(inferrable);
   }
@@ -3603,11 +3880,11 @@
     return stack.includes(ref) ? true : FromType3([...stack, ref], context, context[ref]);
   }
   function FromProperties(stack, context, properties) {
-    const types = PropertyValues(properties);
-    return FromTypes2(stack, context, types);
+    const types2 = PropertyValues(properties);
+    return FromTypes2(stack, context, types2);
   }
-  function FromTypes2(stack, context, types) {
-    return guard_exports.ShiftLeft(types, (left, right) => FromType3(stack, context, left) ? true : FromTypes2(stack, context, right), () => false);
+  function FromTypes2(stack, context, types2) {
+    return guard_exports.ShiftLeft(types2, (left, right) => FromType3(stack, context, left) ? true : FromTypes2(stack, context, right), () => false);
   }
   function FromType3(stack, context, type2) {
     return IsRef(type2) ? FromRef(stack, context, type2.$ref) : IsArray3(type2) ? FromType3(stack, context, type2.items) : IsConstructor3(type2) ? FromTypes2(stack, context, [...type2.parameters, type2.instanceType]) : IsFunction3(type2) ? FromTypes2(stack, context, [...type2.parameters, type2.returnType]) : IsInterfaceDeferred(type2) ? FromProperties(stack, context, type2.parameters[1]) : IsIntersect(type2) ? FromTypes2(stack, context, type2.allOf) : IsObject3(type2) ? FromProperties(stack, context, type2.properties) : IsUnion(type2) ? FromTypes2(stack, context, type2.anyOf) : IsTuple(type2) ? FromTypes2(stack, context, type2.items) : IsRecord(type2) ? FromType3(stack, context, RecordValue(type2)) : false;
@@ -3634,11 +3911,11 @@
     return result.includes(ref) ? result : ref in context ? FromType4(context, context[ref], [...result, ref]) : Unreachable();
   }
   function FromProperties2(context, properties, result) {
-    const types = PropertyValues(properties);
-    return FromTypes3(context, types, result);
+    const types2 = PropertyValues(properties);
+    return FromTypes3(context, types2, result);
   }
-  function FromTypes3(context, types, result) {
-    return types.reduce((result2, left) => {
+  function FromTypes3(context, types2, result) {
+    return types2.reduce((result2, left) => {
       return FromType4(context, left, result2);
     }, result);
   }
@@ -3659,8 +3936,8 @@
       return { ...result, [key]: FromType5(properties[key]) };
     }, {});
   }
-  function FromTypes4(types) {
-    return types.reduce((result, left) => {
+  function FromTypes4(types2) {
+    return types2.reduce((result, left) => {
       return [...result, FromType5(left)];
     }, []);
   }
@@ -3726,33 +4003,33 @@
   }
 
 
-  function BroadenFilter(type2, types, result = [], all = types) {
-    return guard_exports.ShiftLeft(types, (left, right) => {
+  function BroadenFilter(type2, types2, result = [], all = types2) {
+    return guard_exports.ShiftLeft(types2, (left, right) => {
       const compare = Compare(type2, left);
       return guard_exports.IsEqual(compare, CompareResultLeftInside) || guard_exports.IsEqual(compare, CompareResultEqual) ? all : guard_exports.IsEqual(compare, CompareResultDisjoint) ? BroadenFilter(type2, right, [...result, left], all) : BroadenFilter(type2, right, result, all);
     }, () => [...result, type2]);
   }
-  function BroadenType(type2, types, result) {
+  function BroadenType(type2, types2, result) {
     const evaluated = EvaluateType(type2);
     return IsAny(evaluated) ? [evaluated] : (
       // terminate (always the most broad)
       IsUnknown(evaluated) ? [evaluated] : (
         // terminate (always the most broad)
-        IsNever(evaluated) ? BroadenTypes(types, result) : (
+        IsNever(evaluated) ? BroadenTypes(types2, result) : (
           // ignored: never is dropped
-          IsObject3(evaluated) ? BroadenTypes(types, [...result, evaluated]) : (
+          IsObject3(evaluated) ? BroadenTypes(types2, [...result, evaluated]) : (
             // objects are always considered (too expensive to compare)
-            BroadenTypes(types, BroadenFilter(evaluated, result))
+            BroadenTypes(types2, BroadenFilter(evaluated, result))
           )
         )
       )
     );
   }
-  function BroadenTypes(types, result = []) {
-    return guard_exports.ShiftLeft(types, (left, right) => BroadenType(left, right, result), () => result);
+  function BroadenTypes(types2, result = []) {
+    return guard_exports.ShiftLeft(types2, (left, right) => BroadenType(left, right, result), () => result);
   }
-  function Broaden(types) {
-    const broadened = BroadenTypes(types);
+  function Broaden(types2) {
+    const broadened = BroadenTypes(types2);
     const flattened = Flatten(broadened);
     return flattened;
   }
@@ -3950,8 +4227,8 @@
   }
 
 
-  function FromUnion2(mapping, types) {
-    const result = types.map((type2) => FromType7(mapping, type2));
+  function FromUnion2(mapping, types2) {
+    const result = types2.map((type2) => FromType7(mapping, type2));
     return Union(result);
   }
 
@@ -4179,8 +4456,8 @@
     const shared = memory_exports.Assign(unique, sharedProperties);
     return shared;
   }
-  function FromIntersect(types) {
-    return types.reduce((result, left) => {
+  function FromIntersect(types2) {
+    return types2.reduce((result, left) => {
       return CollapseIntersectProperties(result, FromType8(left));
     }, {});
   }
@@ -4191,8 +4468,8 @@
   }
 
 
-  function FromTuple(types) {
-    const object = TupleToObject(Tuple(types));
+  function FromTuple(types2) {
+    const object = TupleToObject(Tuple(types2));
     const result = FromType8(object);
     return result;
   }
@@ -4205,11 +4482,11 @@
     }, {});
     return result;
   }
-  function ReduceVariants(types, result) {
-    return guard_exports.ShiftLeft(types, (left, right) => ReduceVariants(right, CollapseUnionProperties(result, FromType8(left))), () => result);
+  function ReduceVariants(types2, result) {
+    return guard_exports.ShiftLeft(types2, (left, right) => ReduceVariants(right, CollapseUnionProperties(result, FromType8(left))), () => result);
   }
-  function FromUnion3(types) {
-    return guard_exports.ShiftLeft(types, (left, right) => ReduceVariants(right, FromType8(left)), () => Unreachable());
+  function FromUnion3(types2) {
+    return guard_exports.ShiftLeft(types2, (left, right) => ReduceVariants(right, FromType8(left)), () => Unreachable());
   }
 
 
@@ -4235,8 +4512,8 @@
   function NormalizeLiteral(value) {
     return Literal(ConvertToIntegerKey(value));
   }
-  function NormalizeIndexerTypes(types) {
-    return types.map((type2) => NormalizeIndexer(type2));
+  function NormalizeIndexerTypes(types2) {
+    return types2.map((type2) => NormalizeIndexer(type2));
   }
   function NormalizeIndexer(type2) {
     return IsIntersect(type2) ? Intersect(NormalizeIndexerTypes(type2.allOf)) : IsUnion(type2) ? Union(NormalizeIndexerTypes(type2.anyOf)) : IsLiteral(type2) ? NormalizeLiteral(type2.const) : type2;
@@ -4273,8 +4550,8 @@
   }
 
 
-  function FromIntersect2(types) {
-    const evaluated = EvaluateIntersect(types);
+  function FromIntersect2(types2) {
+    const evaluated = EvaluateIntersect(types2);
     const result = FromType9(evaluated);
     return result;
   }
@@ -4293,8 +4570,8 @@
   }
 
 
-  function FromUnion4(types) {
-    return types.reduce((result, left) => {
+  function FromUnion4(types2) {
+    return types2.reduce((result, left) => {
       return [...result, ...FromType9(left)];
     }, []);
   }
@@ -4311,8 +4588,8 @@
   }
 
 
-  function FromTypes5(properties, types) {
-    return types.map((type2) => FromType10(properties, type2));
+  function FromTypes5(properties, types2) {
+    return types2.map((type2) => FromType10(properties, type2));
   }
   function FromType10(properties, type2) {
     return IsArray3(type2) ? _Array_(FromType10(properties, type2.items)) : IsConstructor3(type2) ? Constructor(FromTypes5(properties, type2.parameters), FromType10(properties, type2.instanceType)) : IsFunction3(type2) ? _Function_(FromTypes5(properties, type2.parameters), FromType10(properties, type2.returnType)) : IsTuple(type2) ? Tuple(FromTypes5(properties, type2.items)) : IsUnion(type2) ? Union(FromTypes5(properties, type2.anyOf)) : IsIntersect(type2) ? Intersect(FromTypes5(properties, type2.allOf)) : IsThis(type2) ? _Object_(properties) : type2;
@@ -4360,32 +4637,32 @@
   function ConvertLiteral(value) {
     return Literal(ConvertToIntegerKey(value));
   }
-  function ArrayIndexerTypes(types) {
-    return types.map((type2) => FormatArrayIndexer(type2));
+  function ArrayIndexerTypes(types2) {
+    return types2.map((type2) => FormatArrayIndexer(type2));
   }
   function FormatArrayIndexer(type2) {
     return IsIntersect(type2) ? Intersect(ArrayIndexerTypes(type2.allOf)) : IsUnion(type2) ? Union(ArrayIndexerTypes(type2.anyOf)) : IsLiteral(type2) ? ConvertLiteral(type2.const) : type2;
   }
 
 
-  function IndexElementsWithIndexer(types, indexer) {
-    return types.reduceRight((result, right, index3) => {
+  function IndexElementsWithIndexer(types2, indexer) {
+    return types2.reduceRight((result, right, index3) => {
       const check = Extends({}, Literal(index3), indexer);
       return result_exports.IsExtendsTrueLike(check) ? [right, ...result] : result;
     }, []);
   }
-  function FromTupleWithIndexer(types, indexer) {
+  function FromTupleWithIndexer(types2, indexer) {
     const formattedArrayIndexer = FormatArrayIndexer(indexer);
-    const elements = IndexElementsWithIndexer(types, formattedArrayIndexer);
+    const elements = IndexElementsWithIndexer(types2, formattedArrayIndexer);
     return EvaluateUnionFast(elements);
   }
-  function FromTupleWithoutIndexer(types) {
-    return EvaluateUnionFast(types);
+  function FromTupleWithoutIndexer(types2) {
+    return EvaluateUnionFast(types2);
   }
-  function FromTuple2(types, indexer) {
+  function FromTuple2(types2, indexer) {
     return (
       // length (intrinsic)
-      IsLiteral(indexer) && guard_exports.IsEqual(indexer.const, "length") ? Literal(types.length) : IsNumber4(indexer) || IsInteger3(indexer) ? FromTupleWithoutIndexer(types) : FromTupleWithIndexer(types, indexer)
+      IsLiteral(indexer) && guard_exports.IsEqual(indexer.const, "length") ? Literal(types2.length) : IsNumber4(indexer) || IsInteger3(indexer) ? FromTupleWithoutIndexer(types2) : FromTupleWithIndexer(types2, indexer)
     );
   }
 
@@ -4468,8 +4745,8 @@
   }
 
 
-  function FromTuple3(types) {
-    const result = types.map((_, index3) => Literal(index3));
+  function FromTuple3(types2) {
+    const result = types2.map((_, index3) => Literal(index3));
     return EvaluateUnionFast(result);
   }
 
@@ -4505,8 +4782,8 @@
     const result = FromType13(evaluated);
     return result;
   }
-  function FromUnion5(types) {
-    return types.reduce((result, left) => {
+  function FromUnion5(types2) {
+    return types2.reduce((result, left) => {
       return [...result, ...FromType13(left)];
     }, []);
   }
@@ -4707,15 +4984,15 @@
   }
 
 
-  function FromIntersect3(types) {
-    const evaluated = EvaluateIntersect(types);
+  function FromIntersect3(types2) {
+    const evaluated = EvaluateIntersect(types2);
     const result = FromType15(evaluated);
     return result;
   }
 
 
-  function FromUnion6(types) {
-    const result = types.map((type2) => FromType15(type2));
+  function FromUnion6(types2) {
+    const result = types2.map((type2) => FromType15(type2));
     return Union(result);
   }
 
@@ -4809,8 +5086,8 @@
   }
 
 
-  function FromIntersect4(types) {
-    const evaluated = EvaluateIntersect(types);
+  function FromIntersect4(types2) {
+    const evaluated = EvaluateIntersect(types2);
     const result = FromType17(evaluated);
     return result;
   }
@@ -4825,14 +5102,14 @@
   }
 
 
-  function FromTuple4(types) {
-    const result = AddImmutable(Tuple(types));
+  function FromTuple4(types2) {
+    const result = AddImmutable(Tuple(types2));
     return result;
   }
 
 
-  function FromUnion7(types) {
-    const result = types.map((type2) => FromType17(type2));
+  function FromUnion7(types2) {
+    const result = types2.map((type2) => FromType17(type2));
     return Union(result);
   }
 
@@ -4872,15 +5149,15 @@
   }
 
 
-  function FromIntersect5(types) {
-    const evaluated = EvaluateIntersect(types);
+  function FromIntersect5(types2) {
+    const evaluated = EvaluateIntersect(types2);
     const result = FromType18(evaluated);
     return result;
   }
 
 
-  function FromUnion8(types) {
-    const result = types.map((type2) => FromType18(type2));
+  function FromUnion8(types2) {
+    const result = types2.map((type2) => FromType18(type2));
     return Union(result);
   }
 
@@ -4960,8 +5237,8 @@
     const result = IsRest(type2) ? IsTuple(type2.items) ? RestSpread(type2.items.items) : IsInfer(type2.items) ? [type2] : IsRef(type2.items) ? [type2] : [Never()] : [type2];
     return result;
   }
-  function RestSpread(types) {
-    const result = types.reduce((result2, left) => {
+  function RestSpread(types2) {
+    const result = types2.reduce((result2, left) => {
       return [...result2, ...SpreadElement(left)];
     }, []);
     return result;
@@ -4971,21 +5248,21 @@
   function State(callstack, visited2) {
     return { callstack, visited: visited2 };
   }
-  function CanInstantiate(types) {
-    return guard_exports.ShiftLeft(types, (left, right) => IsRef(left) ? false : CanInstantiate(right), () => true);
+  function CanInstantiate(types2) {
+    return guard_exports.ShiftLeft(types2, (left, right) => IsRef(left) ? false : CanInstantiate(right), () => true);
   }
   function InstantiateProperties(context, state2, properties) {
     return guard_exports.Keys(properties).reduce((result, key) => {
       return { ...result, [key]: InstantiateType(context, state2, properties[key]) };
     }, {});
   }
-  function InstantiateElements(context, state2, types) {
-    const elements = InstantiateTypes(context, state2, types);
+  function InstantiateElements(context, state2, types2) {
+    const elements = InstantiateTypes(context, state2, types2);
     const result = RestSpread(elements);
     return result;
   }
-  function InstantiateTypes(context, state2, types) {
-    return types.map((type2) => InstantiateType(context, state2, type2));
+  function InstantiateTypes(context, state2, types2) {
+    return types2.map((type2) => InstantiateType(context, state2, type2));
   }
   function WithModifiers(type2, instantiatedType) {
     const withOptional = IsOptional(type2) ? AddOptionalAction(instantiatedType, {}) : instantiatedType;
@@ -5065,21 +5342,21 @@
     const compareResult = Compare(left, right);
     return guard_exports.IsEqual(compareResult, CompareResultRightInside) ? 1 : guard_exports.IsEqual(compareResult, CompareResultDisjoint) ? 1 : 0;
   }
-  function Insert(type2, types, result = []) {
-    return guard_exports.ShiftLeft(types, (left, right) => guard_exports.IsEqual(Comparer(type2, left), 1) ? Insert(type2, right, [...result, left]) : [...result, type2, ...types], () => [...result, type2]);
+  function Insert(type2, types2, result = []) {
+    return guard_exports.ShiftLeft(types2, (left, right) => guard_exports.IsEqual(Comparer(type2, left), 1) ? Insert(type2, right, [...result, left]) : [...result, type2, ...types2], () => [...result, type2]);
   }
-  function Sort(types, result = []) {
-    return guard_exports.ShiftLeft(types, (left, right) => Sort(right, Insert(left, result)), () => result);
+  function Sort(types2, result = []) {
+    return guard_exports.ShiftLeft(types2, (left, right) => Sort(right, Insert(left, result)), () => result);
   }
-  function Priority(types) {
-    const result = Sort(types);
+  function Priority(types2) {
+    const result = Sort(types2);
     return result;
   }
 
 
   function IsTemplateLiteralPattern(pattern) {
-    const types = ParsePatternIntoTypes(pattern);
-    const result = guard_exports.IsEqual(types.length, 0) ? false : true;
+    const types2 = ParsePatternIntoTypes(pattern);
+    const result = guard_exports.IsEqual(types2.length, 0) ? false : true;
     return result;
   }
 
@@ -5278,13 +5555,13 @@
     let fastPathStart = ranges[0];
     let fastPathEnd = ranges[1];
     for (let index3 = 0; index3 < ranges.length; index3 += 2) {
-      const start = ranges[index3];
+      const start2 = ranges[index3];
       const end = ranges[index3 + 1];
-      if (commonCjkCodePoint >= start && commonCjkCodePoint <= end) {
-        return [start, end];
+      if (commonCjkCodePoint >= start2 && commonCjkCodePoint <= end) {
+        return [start2, end];
       }
-      if (end - start > fastPathEnd - fastPathStart) {
-        fastPathStart = start;
+      if (end - start2 > fastPathEnd - fastPathStart) {
+        fastPathStart = start2;
         fastPathEnd = end;
       }
     }
@@ -5662,9 +5939,9 @@
       if (!ansiCode.endsWith("m")) {
         return;
       }
-      const match = ansiCode.match(/\x1b\[([\d;]*)m/);
-      if (!match) return;
-      const params = match[1];
+      const match2 = ansiCode.match(/\x1b\[([\d;]*)m/);
+      if (!match2) return;
+      const params = match2[1];
       if (params === "" || params === "0") {
         this.reset();
         return;
@@ -6685,10 +6962,10 @@
     return false;
   }
   function parseModifyOtherKeysSequence(data) {
-    const match = data.match(/^\x1b\[27;(\d+);(\d+)~$/);
-    if (!match) return null;
-    const modValue = parseInt(match[1], 10);
-    const codepoint = parseInt(match[2], 10);
+    const match2 = data.match(/^\x1b\[27;(\d+);(\d+)~$/);
+    if (!match2) return null;
+    const modValue = parseInt(match2[1], 10);
+    const codepoint = parseInt(match2[2], 10);
     return { codepoint, modifier: modValue - 1 };
   }
   function matchesModifyOtherKeys(data, expectedKeycode, expectedModifier) {
@@ -7195,6 +7472,25 @@
   };
 
 
+  var node_path_exports = {};
+  __export(node_path_exports, {
+    basename: () => basename,
+    default: () => node_path_default,
+    delimiter: () => delimiter,
+    dirname: () => dirname,
+    extname: () => extname,
+    format: () => format,
+    isAbsolute: () => isAbsolute,
+    join: () => join,
+    normalize: () => normalize,
+    parse: () => parse,
+    posix: () => posix,
+    relative: () => relative,
+    resolve: () => resolve,
+    sep: () => sep,
+    toNamespacedPath: () => toNamespacedPath,
+    win32: () => win32
+  });
   var modules = globalThis.__piNodeModules;
   var path = modules["node:path"];
   var sep = path.sep;
@@ -8085,9 +8381,9 @@
       let totalScore = 0;
       let allMatch = true;
       for (const token of tokens) {
-        const match = fuzzyMatch(token, text);
-        if (match.matches) {
-          totalScore += match.score;
+        const match2 = fuzzyMatch(token, text);
+        if (match2.matches) {
+          totalScore += match2.score;
         } else {
           allMatch = false;
           break;
@@ -8470,9 +8766,9 @@
     AtCapacity() {
       return this.errors.length >= settings_exports.Get().maxErrors;
     }
-    AddError(error) {
+    AddError(error2) {
       if (!this.AtCapacity())
-        this.errors.push(error);
+        this.errors.push(error2);
       return false;
     }
     GetErrors() {
@@ -8670,7 +8966,7 @@
     }, []);
     const isAllOf = guard_exports.IsEqual(results.length, schema.allOf.length) && context.Merge(results);
     if (!isAllOf)
-      failedContexts.forEach((failed) => failed.GetErrors().forEach((error) => context.AddError(error)));
+      failedContexts.forEach((failed) => failed.GetErrors().forEach((error2) => context.AddError(error2)));
     return isAllOf;
   }
 
@@ -8703,7 +8999,7 @@
     }, []);
     const isAnyOf = guard_exports.IsGreaterThan(results.length, 0) && context.Merge(results);
     if (!isAnyOf)
-      failedContexts.forEach((failed) => failed.GetErrors().forEach((error) => context.AddError(error)));
+      failedContexts.forEach((failed) => failed.GetErrors().forEach((error2) => context.AddError(error2)));
     return isAnyOf || context.AddError({
       keyword: "anyOf",
       schemaPath,
@@ -9480,17 +9776,17 @@
   function Entries3() {
     return [...formats.entries()];
   }
-  function Set3(format2, check) {
-    formats.set(format2, check);
+  function Set3(format3, check) {
+    formats.set(format3, check);
   }
-  function Has(format2) {
-    return formats.has(format2);
+  function Has(format3) {
+    return formats.has(format3);
   }
-  function Get3(format2) {
-    return formats.get(format2);
+  function Get3(format3) {
+    return formats.get(format3);
   }
-  function Test(format2, value) {
-    return formats.get(format2)?.(value) ?? true;
+  function Test(format3, value) {
+    return formats.get(format3)?.(value) ?? true;
   }
   function Reset2() {
     Clear();
@@ -9899,7 +10195,7 @@
     }, []);
     const isOneOf = guard_exports.IsEqual(passedContexts.length, 1) && context.Merge(passedContexts);
     if (!isOneOf && guard_exports.IsEqual(passingSchemas.length, 0))
-      failedContexts.forEach((failed) => failed.GetErrors().forEach((error) => context.AddError(error)));
+      failedContexts.forEach((failed) => failed.GetErrors().forEach((error2) => context.AddError(error2)));
     return isOneOf || context.AddError({
       keyword: "oneOf",
       schemaPath,
@@ -10097,7 +10393,7 @@
     if (result)
       context.Merge([nextContext]);
     if (!result)
-      nextContext.GetErrors().forEach((error) => context.AddError(error));
+      nextContext.GetErrors().forEach((error2) => context.AddError(error2));
     return result;
   }
 
@@ -10146,8 +10442,8 @@
   function BuildTypeNames(stack, context, typenames, value) {
     return emit_exports.ReduceOr(typenames.map((type2) => BuildTypeName(stack, context, type2, value)));
   }
-  function CheckTypeNames(stack, context, types, schema, value) {
-    return guard_exports.Some(types, (type2) => CheckTypeName(stack, context, type2, schema, value));
+  function CheckTypeNames(stack, context, types2, schema, value) {
+    return guard_exports.Some(types2, (type2) => CheckTypeName(stack, context, type2, schema, value));
   }
   function BuildType(stack, context, schema, value) {
     return guard_exports.IsArray(schema.type) ? BuildTypeNames(stack, context, schema.type, value) : BuildTypeName(stack, context, schema.type, value);
@@ -10672,8 +10968,8 @@
   }
   function FromArray6(schema, base, ref) {
     return schema.reduce((result, item) => {
-      const match = FromValue3(item, base, ref);
-      return !guard_exports.IsUndefined(match) ? match : result;
+      const match2 = FromValue3(item, base, ref);
+      return !guard_exports.IsUndefined(match2) ? match2 : result;
     }, void 0);
   }
   function SkipProperty(key) {
@@ -10683,8 +10979,8 @@
     return guard_exports.Keys(schema).reduce((result, key) => {
       if (SkipProperty(key))
         return result;
-      const match = FromValue3(schema[key], base, ref);
-      return !guard_exports.IsUndefined(match) ? match : result;
+      const match2 = FromValue3(schema[key], base, ref);
+      return !guard_exports.IsUndefined(match2) ? match2 : result;
     }, void 0);
   }
   function FromValue3(schema, base, ref) {
@@ -11118,7 +11414,7 @@
     const result = ErrorSchema(stack, errorContext, "#", "", schema, value);
     const errors = errorContext.GetErrors();
     const locale2 = Get2();
-    const localized = errors.map((error) => ({ ...error, message: locale2(error) }));
+    const localized = errors.map((error2) => ({ ...error2, message: locale2(error2) }));
     return [result, localized];
   }
 
@@ -11143,9 +11439,9 @@
   function ImportSection(build) {
     const context = build.UseUnevaluated() ? [`import { CheckContext } from "typebox/schema"`] : [];
     const hashing = `import { Hashing } from "typebox/system"`;
-    const format2 = `import { Format } from "typebox/format"`;
+    const format3 = `import { Format } from "typebox/format"`;
     const guard = `import { Guard } from "typebox/guard"`;
-    return [...context, hashing, format2, guard];
+    return [...context, hashing, format3, guard];
   }
   function ExternalSection(build) {
     const { identifier } = build.External();
@@ -11389,11 +11685,11 @@
       result[key] = FromType20(properties[key]);
     return result;
   }
-  function FromPriorityTypes(types) {
-    return FromTypes6(Priority(types));
+  function FromPriorityTypes(types2) {
+    return FromTypes6(Priority(types2));
   }
-  function FromTypes6(types) {
-    return types.map((type2) => FromType20(type2));
+  function FromTypes6(types2) {
+    return types2.map((type2) => FromType20(type2));
   }
   function FromType20(type2) {
     const next = IsArray3(type2) ? _Array_(FromType20(type2.items), ArrayOptions(type2)) : IsIntersect(type2) ? Intersect(FromTypes6(type2.allOf)) : IsUnion(type2) ? Union(FromPriorityTypes(type2.anyOf)) : IsObject3(type2) ? _Object_(FromProperties4(type2.properties)) : IsRecord(type2) ? Record(RecordKey(type2), FromType20(RecordValue(type2))) : IsTuple(type2) ? Tuple(FromTypes6(type2.items)) : type2;
@@ -11858,13 +12154,13 @@
   }
 
 
-  function Pipeline(pipeline) {
+  function Pipeline(pipeline2) {
     return (...args) => {
       const [context, type2, value] = arguments_exports.Match(args, {
         3: (context2, type3, value2) => [context2, type3, value2],
         2: (type3, value2) => [{}, type3, value2]
       });
-      return pipeline.reduce((result, func) => func(context, type2, result), value);
+      return pipeline2.reduce((result, func) => func(context, type2, result), value);
     };
   }
 
@@ -12855,6 +13151,1062 @@
   var compile_default = Compile;
 
 
+  var node_assert_exports = {};
+  __export(node_assert_exports, {
+    AssertionError: () => AssertionError,
+    deepStrictEqual: () => deepStrictEqual,
+    default: () => node_assert_default,
+    doesNotThrow: () => doesNotThrow,
+    fail_: () => fail_,
+    match: () => match,
+    notDeepStrictEqual: () => notDeepStrictEqual,
+    notStrictEqual: () => notStrictEqual,
+    ok: () => ok,
+    rejects: () => rejects,
+    strictEqual: () => strictEqual,
+    throws: () => throws
+  });
+  var AssertionError = class extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "AssertionError";
+    }
+  };
+  var fail = (message) => {
+    throw new AssertionError(message);
+  };
+  var show = (value) => {
+    try {
+      return typeof value === "string" ? value : JSON.stringify(value) ?? String(value);
+    } catch {
+      return String(value);
+    }
+  };
+  var ok = (value, message) => {
+    if (!value) fail(message ?? `expected a truthy value, got ${show(value)}`);
+  };
+  var strictEqual = (actual, expected, message) => {
+    if (actual !== expected) {
+      fail(message ?? `expected ${show(expected)}, got ${show(actual)}`);
+    }
+  };
+  var notStrictEqual = (actual, expected, message) => {
+    if (actual === expected) fail(message ?? `expected a value other than ${show(expected)}`);
+  };
+  var deepStrictEqual = (actual, expected, message) => {
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      fail(message ?? `expected ${show(expected)}, got ${show(actual)}`);
+    }
+  };
+  var notDeepStrictEqual = (actual, expected, message) => {
+    if (JSON.stringify(actual) === JSON.stringify(expected)) {
+      fail(message ?? `expected a value other than ${show(expected)}`);
+    }
+  };
+  var match = (value, pattern, message) => {
+    if (!pattern.test(value)) fail(message ?? `expected ${show(value)} to match ${pattern}`);
+  };
+  var throws = (fn, message) => {
+    try {
+      fn();
+    } catch (error2) {
+      return error2;
+    }
+    return fail(message ?? "expected the function to throw");
+  };
+  var doesNotThrow = (fn, message) => {
+    try {
+      fn();
+    } catch (error2) {
+      fail(message ?? `expected the function not to throw, got ${show(error2)}`);
+    }
+  };
+  var rejects = async (promise, message) => {
+    try {
+      await promise;
+    } catch (error2) {
+      return error2;
+    }
+    return fail(message ?? "expected the promise to reject");
+  };
+  var fail_ = fail;
+  var node_assert_default = {
+    ok,
+    strictEqual,
+    notStrictEqual,
+    deepStrictEqual,
+    notDeepStrictEqual,
+    match,
+    throws,
+    doesNotThrow,
+    rejects,
+    fail: fail_,
+    AssertionError
+  };
+
+
+  var node_async_hooks_exports = {};
+  __export(node_async_hooks_exports, {
+    AsyncResource: () => AsyncResource,
+    asyncResource: () => asyncResource,
+    createHook: () => createHook,
+    default: () => node_async_hooks_default,
+    executionAsyncId: () => executionAsyncId,
+    executionAsyncResource: () => executionAsyncResource,
+    triggerAsyncId: () => triggerAsyncId
+  });
+  var createHook = () => ({
+    enable: () => void 0,
+    disable: () => void 0
+  });
+  var executionAsyncId = () => 0;
+  var triggerAsyncId = () => 0;
+  var asyncResource = () => ({
+    triggerAsyncId: () => 0
+  });
+  var executionAsyncResource = () => void 0;
+  var AsyncResource = class {
+    constructor(_type) {
+    }
+    runInAsyncScope = (fn) => fn();
+    emitDestroy = () => void 0;
+  };
+  var node_async_hooks_default = {
+    createHook,
+    executionAsyncId,
+    triggerAsyncId,
+    asyncResource,
+    executionAsyncResource,
+    AsyncResource
+  };
+
+
+  var node_buffer_exports = {};
+  __export(node_buffer_exports, {
+    Buffer: () => Buffer2,
+    default: () => node_buffer_default
+  });
+  var Buffer2 = class _Buffer extends Uint8Array {
+    static from(value, encoding) {
+      if (value instanceof Uint8Array) return _Buffer.from(value);
+      const text = String(value);
+      if (encoding === "base64") {
+        const binary = atob(text);
+        const bytes = new Uint8Array(binary.length);
+        for (let index3 = 0; index3 < binary.length; index3++) bytes[index3] = binary.charCodeAt(index3);
+        return new _Buffer(bytes);
+      }
+      return new _Buffer(new TextEncoder().encode(text));
+    }
+    static alloc(size) {
+      return new _Buffer(new Uint8Array(size));
+    }
+    static isBuffer(value) {
+      return value instanceof Uint8Array;
+    }
+    static concat(list) {
+      const total = list.reduce((sum, chunk) => sum + chunk.length, 0);
+      const out = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of list) {
+        out.set(chunk, offset);
+        offset += chunk.length;
+      }
+      return new _Buffer(out);
+    }
+    toString(encoding) {
+      if (encoding === "base64") {
+        let binary = "";
+        for (const byte of this) binary += String.fromCharCode(byte);
+        return btoa(binary);
+      }
+      return new TextDecoder().decode(this);
+    }
+    toString(encoding, start2, end) {
+      return this.toString(encoding);
+    }
+  };
+  var node_buffer_default = { Buffer: Buffer2 };
+
+
+  var node_cluster_exports = {};
+  __export(node_cluster_exports, {
+    default: () => node_cluster_default,
+    fork: () => fork,
+    isPrimary: () => isPrimary,
+    on: () => on
+  });
+  var isPrimary = true;
+  var fork = () => {
+    throw new Error("node:cluster is not available in the embedded extension host");
+  };
+  var on = (_event, _listener) => void 0;
+  var node_cluster_default = { isPrimary, fork, on };
+
+
+  var node_console_exports = {};
+  __export(node_console_exports, {
+    assert: () => assert,
+    debug: () => debug,
+    default: () => node_console_default,
+    dir: () => dir,
+    error: () => error,
+    group: () => group,
+    groupEnd: () => groupEnd,
+    info: () => info,
+    log: () => log,
+    table: () => table,
+    time: () => time,
+    timeEnd: () => timeEnd,
+    trace: () => trace,
+    warn: () => warn
+  });
+  var console2 = globalThis.console;
+  var log = console2.log;
+  var info = console2.info;
+  var warn = console2.warn;
+  var error = console2.error;
+  var debug = console2.debug;
+  var trace = console2.debug;
+  var dir = console2.log;
+  var table = console2.log;
+  var time = console2.log;
+  var timeEnd = console2.log;
+  var assert = console2.log;
+  var group = console2.log;
+  var groupEnd = console2.log;
+  var node_console_default = console2;
+
+
+  var node_crypto_exports = {};
+  __export(node_crypto_exports, {
+    createHash: () => createHash,
+    createHmac: () => createHmac,
+    default: () => node_crypto_default,
+    getRandomValues: () => getRandomValues,
+    randomBytes: () => randomBytes,
+    randomUUID: () => randomUUID,
+    timingSafeEqual: () => timingSafeEqual
+  });
+  var HEX = "0123456789abcdef";
+  var randomByte = () => Math.floor(Math.random() * 256);
+  var randomBytes = (size) => {
+    const bytes = new Uint8Array(size);
+    for (let index3 = 0; index3 < size; index3++) bytes[index3] = randomByte();
+    return bytes;
+  };
+  var randomUUID = () => {
+    let uuid = "";
+    for (let index3 = 0; index3 < 36; index3++) {
+      if (index3 === 8 || index3 === 13 || index3 === 18 || index3 === 23) {
+        uuid += "-";
+        continue;
+      }
+      if (index3 === 14) {
+        uuid += "4";
+        continue;
+      }
+      uuid += HEX[randomByte() & 15];
+    }
+    return uuid;
+  };
+  var getRandomValues = (array) => {
+    for (let index3 = 0; index3 < array.length; index3++) array[index3] = randomByte();
+    return array;
+  };
+  var digest = (input) => {
+    let low = 2166136261;
+    let high = 16777619;
+    for (let index3 = 0; index3 < input.length; index3++) {
+      low = Math.imul(low ^ input.charCodeAt(index3), 16777619) >>> 0;
+      high = Math.imul(high + input.charCodeAt(index3) + index3, 2246822507) >>> 0;
+    }
+    return low.toString(16).padStart(8, "0") + high.toString(16).padStart(8, "0");
+  };
+  var createHash = (_algorithm) => {
+    const chunks = [];
+    return {
+      update(chunk) {
+        chunks.push(chunk);
+        return chunks;
+      },
+      digest(encoding) {
+        const hex = digest(chunks.join(""));
+        if (encoding === "base64") {
+          return btoa(hex);
+        }
+        return hex;
+      }
+    };
+  };
+  var createHmac = (_algorithm, _key) => createHash("sha256");
+  var timingSafeEqual = (left, right) => {
+    if (left.length !== right.length) return false;
+    let difference = 0;
+    for (let index3 = 0; index3 < left.length; index3++) difference |= left[index3] ^ right[index3];
+    return difference === 0;
+  };
+  var node_crypto_default = {
+    randomBytes,
+    randomUUID,
+    getRandomValues,
+    createHash,
+    createHmac,
+    timingSafeEqual
+  };
+
+
+  var node_dgram_exports = {};
+  __export(node_dgram_exports, {
+    createSocket: () => createSocket,
+    default: () => node_dgram_default
+  });
+  var createSocket = (_type) => {
+    throw new Error("node:dgram is not available in the embedded extension host");
+  };
+  var node_dgram_default = { createSocket };
+
+
+  var node_diagnostics_channel_exports = {};
+  __export(node_diagnostics_channel_exports, {
+    channel: () => channel,
+    default: () => node_diagnostics_channel_default,
+    hasSubscribers: () => hasSubscribers,
+    publish: () => publish,
+    subscribe: () => subscribe
+  });
+  var channel = (_name) => ({
+    subscribe: () => () => void 0,
+    publish: () => void 0,
+    hasSubscribers: () => false
+  });
+  var subscribe = (_name, _listener) => () => void 0;
+  var publish = (_name, _message) => false;
+  var hasSubscribers = (_name) => false;
+  var node_diagnostics_channel_default = { channel, subscribe, publish, hasSubscribers };
+
+
+  var node_dns_exports = {};
+  __export(node_dns_exports, {
+    default: () => node_dns_default,
+    lookup: () => lookup,
+    promises: () => promises,
+    resolve: () => resolve2
+  });
+  var lookup = (_hostname, _options, _callback) => void 0;
+  var resolve2 = (_hostname, _callback) => void 0;
+  var promises = { lookup: async () => ({ address: "127.0.0.1", family: 4 }) };
+  var node_dns_default = { lookup, resolve: resolve2, promises };
+
+
+  var node_events_exports = {};
+  __export(node_events_exports, {
+    EventEmitter: () => EventEmitter,
+    default: () => node_events_default
+  });
+  var EventEmitter = class {
+    listeners = /* @__PURE__ */ new Map();
+    on(event, listener) {
+      const existing = this.listeners.get(event) ?? [];
+      existing.push(listener);
+      this.listeners.set(event, existing);
+      return this;
+    }
+    addListener(event, listener) {
+      return this.on(event, listener);
+    }
+    once(event, listener) {
+      const wrapper = (...args) => {
+        this.off(event, wrapper);
+        listener(...args);
+      };
+      return this.on(event, wrapper);
+    }
+    off(event, listener) {
+      const existing = this.listeners.get(event);
+      if (!existing) return this;
+      const index3 = existing.indexOf(listener);
+      if (index3 >= 0) existing.splice(index3, 1);
+      if (existing.length === 0) this.listeners.delete(event);
+      return this;
+    }
+    removeListener(event, listener) {
+      return this.off(event, listener);
+    }
+    removeAllListeners(event) {
+      if (event === void 0) this.listeners.clear();
+      else this.listeners.delete(event);
+      return this;
+    }
+    listeners(event) {
+      return [...this.listeners.get(event) ?? []];
+    }
+    emit(event, ...args) {
+      const existing = this.listeners.get(event);
+      if (!existing || existing.length === 0) return false;
+      for (const listener of [...existing]) {
+        listener(...args);
+      }
+      return true;
+    }
+  };
+  var node_events_default = { EventEmitter };
+
+
+  var shim_fs = __toESM(require_node_fs(), 1);
+  var shim_fs_promises = __toESM(require_node_fs_promises(), 1);
+
+
+  var node_http_exports = {};
+  __export(node_http_exports, {
+    createServer: () => createServer,
+    default: () => node_http_default,
+    get: () => get,
+    request: () => request
+  });
+  var unavailable2 = (name) => () => {
+    throw new Error(`${name} is not available in the embedded extension host`);
+  };
+  var createServer = unavailable2("createServer");
+  var request = unavailable2("request");
+  var get = unavailable2("get");
+  var node_http_default = { createServer, request, get };
+
+
+  var node_http2_exports = {};
+  __export(node_http2_exports, {
+    connect: () => connect,
+    createServer: () => createServer2,
+    default: () => node_http2_default
+  });
+  var connect = (_authority, _options) => {
+    throw new Error("node:http2 is not available in the embedded extension host");
+  };
+  var createServer2 = () => {
+    throw new Error("node:http2 is not available in the embedded extension host");
+  };
+  var node_http2_default = { connect, createServer: createServer2 };
+
+
+  var node_inspector_exports = {};
+  __export(node_inspector_exports, {
+    close: () => close,
+    default: () => node_inspector_default,
+    open: () => open
+  });
+  var open = (_target) => {
+    throw new Error("node:inspector is not available in the embedded extension host");
+  };
+  var close = () => void 0;
+  var node_inspector_default = { open, close };
+
+
+  var node_module_exports = {};
+  __export(node_module_exports, {
+    Module: () => Module3,
+    createRequire: () => createRequire,
+    default: () => node_module_default,
+    isBuiltin: () => isBuiltin
+  });
+  var unavailable3 = (name) => () => {
+    throw new Error(`${name} is not available in the embedded extension host`);
+  };
+  var createRequire = unavailable3("createRequire");
+  var Module3 = unavailable3("Module");
+  var isBuiltin = (name) => name.startsWith("node:") || ["fs", "path", "os", "url", "events", "module"].includes(name);
+  var node_module_default = { createRequire, Module: Module3, isBuiltin };
+
+
+  var node_net_exports = {};
+  __export(node_net_exports, {
+    Socket: () => Socket,
+    connect: () => connect2,
+    createConnection: () => createConnection,
+    createServer: () => createServer3,
+    default: () => node_net_default
+  });
+  var unavailable4 = (name) => () => {
+    throw new Error(`${name} is not available in the embedded extension host`);
+  };
+  var createServer3 = unavailable4("createServer");
+  var connect2 = unavailable4("connect");
+  var createConnection = unavailable4("createConnection");
+  var Socket = class {
+    constructor(_options) {
+    }
+    on(_event, _listener) {
+      return this;
+    }
+    end() {
+      return this;
+    }
+    destroy() {
+      return this;
+    }
+  };
+  var node_net_default = { createServer: createServer3, connect: connect2, createConnection, Socket };
+
+
+  var node_process_exports = {};
+  __export(node_process_exports, {
+    argv: () => argv,
+    cwd: () => cwd,
+    default: () => node_process_default,
+    env: () => env,
+    exit: () => exit,
+    pid: () => pid,
+    platform: () => platform2,
+    stderr: () => stderr,
+    stdout: () => stdout,
+    version: () => version2,
+    versions: () => versions
+  });
+  var process2 = globalThis.process;
+  var env = process2.env;
+  var argv = process2.argv;
+  var platform2 = process2.platform;
+  var pid = process2.pid;
+  var version2 = process2.version;
+  var versions = process2.versions;
+  var cwd = process2.cwd;
+  var exit = process2.exit;
+  var stdout = process2.stdout;
+  var stderr = process2.stderr;
+  var node_process_default = process2;
+
+
+  var node_punycode_exports = {};
+  __export(node_punycode_exports, {
+    default: () => node_punycode_default,
+    toASCII: () => toASCII,
+    toUnicode: () => toUnicode
+  });
+  var toASCII = (domain) => domain;
+  var toUnicode = (domain) => domain;
+  var node_punycode_default = { toASCII, toUnicode };
+
+
+  var node_querystring_exports = {};
+  __export(node_querystring_exports, {
+    default: () => node_querystring_default,
+    escape: () => escape,
+    parse: () => parse2,
+    stringify: () => stringify,
+    unescape: () => unescape
+  });
+  var stringify = (value) => {
+    const parts = Object.entries(value).map(([key, item]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(item))}`);
+    return parts.join("&");
+  };
+  var parse2 = (text) => {
+    const out = {};
+    for (const pair of text.split("&")) {
+      if (!pair) continue;
+      const [key, value = ""] = pair.split("=");
+      out[decodeURIComponent(key)] = decodeURIComponent(value);
+    }
+    return out;
+  };
+  var escape = (value) => encodeURIComponent(value);
+  var unescape = (value) => decodeURIComponent(value);
+  var node_querystring_default = { stringify, parse: parse2, escape, unescape };
+
+
+  var node_readline_exports = {};
+  __export(node_readline_exports, {
+    createInterface: () => createInterface,
+    default: () => node_readline_default
+  });
+  var createInterface = (options) => {
+    const listeners = /* @__PURE__ */ new Map();
+    return {
+      prompt: () => void 0,
+      close: () => void 0,
+      on: (event, listener) => {
+        const existing = listeners.get(event) ?? [];
+        existing.push(listener);
+        listeners.set(event, existing);
+        return void 0;
+      }
+    };
+  };
+  var node_readline_default = { createInterface };
+
+
+  var node_readline_promises_exports = {};
+  __export(node_readline_promises_exports, {
+    createInterface: () => createInterface2,
+    default: () => node_readline_promises_default
+  });
+  var createInterface2 = (options) => ({
+    question: async () => {
+      throw new Error("readline is not available in the embedded extension host");
+    },
+    close: () => void 0
+  });
+  var node_readline_promises_default = { createInterface: createInterface2 };
+
+
+  var node_sqlite_exports = {};
+  __export(node_sqlite_exports, {
+    DatabaseSync: () => DatabaseSync,
+    default: () => node_sqlite_default
+  });
+  var DatabaseSync = class {
+    constructor(_path, _options) {
+      throw new Error("node:sqlite is not available in the embedded extension host");
+    }
+  };
+  var node_sqlite_default = { DatabaseSync };
+
+
+  var node_stream_exports = {};
+  __export(node_stream_exports, {
+    PassThrough: () => PassThrough,
+    Readable: () => Readable,
+    Transform: () => Transform,
+    Writable: () => Writable,
+    default: () => node_stream_default
+  });
+  var Readable = class {
+    constructor(_options) {
+    }
+    pipe(destination) {
+      return destination;
+    }
+    on(_event, _listener) {
+      return this;
+    }
+    once(_event, _listener) {
+      return this;
+    }
+    removeListener(_event, _listener) {
+      return this;
+    }
+    push(_chunk) {
+      return true;
+    }
+    read() {
+      return void 0;
+    }
+  };
+  var Writable = class {
+    write(_chunk) {
+      return true;
+    }
+    end(_chunk) {
+      return this;
+    }
+    on(_event, _listener) {
+      return this;
+    }
+  };
+  var Transform = class extends Readable {
+  };
+  var PassThrough = class extends Readable {
+  };
+  var node_stream_default = { Readable, Writable, Transform, PassThrough };
+
+
+  var node_stream_promises_exports = {};
+  __export(node_stream_promises_exports, {
+    default: () => node_stream_promises_default,
+    finished: () => finished,
+    pipeline: () => pipeline,
+    readableToWeb: () => readableToWeb
+  });
+  var unavailable5 = (name) => () => {
+    throw new Error(`${name} is not available in the embedded extension host`);
+  };
+  var pipeline = unavailable5("pipeline");
+  var finished = unavailable5("finished");
+  var readableToWeb = unavailable5("readableToWeb");
+  var node_stream_promises_default = { pipeline, finished, readableToWeb };
+
+
+  var node_stream_web_exports = {};
+  __export(node_stream_web_exports, {
+    ByteLengthQueuingStrategy: () => ByteLengthQueuingStrategy,
+    CountQueuingStrategy: () => CountQueuingStrategy,
+    ReadableStream: () => ReadableStream,
+    TransformStream: () => TransformStream,
+    WritableStream: () => WritableStream,
+    default: () => node_stream_web_default
+  });
+  var ReadableStream = class {
+    constructor(_source, _strategy) {
+    }
+    getReader() {
+      return { read: async () => ({ done: true }) };
+    }
+    [Symbol.asyncIterator]() {
+      return {
+        next: async () => ({ done: true, value: void 0 })
+      };
+    }
+  };
+  var WritableStream = class {
+    constructor(_sink, _strategy) {
+    }
+    getWriter() {
+      return { write: async () => void 0, close: async () => void 0 };
+    }
+  };
+  var TransformStream = class {
+    constructor(_transformer, _writableStrategy, _readableStrategy) {
+    }
+    readable = new ReadableStream();
+    writable = new WritableStream();
+  };
+  var ByteLengthQueuingStrategy = class {
+    constructor(_options) {
+    }
+  };
+  var CountQueuingStrategy = class {
+    constructor(_options) {
+    }
+  };
+  var node_stream_web_default = {
+    ReadableStream,
+    WritableStream,
+    TransformStream,
+    ByteLengthQueuingStrategy,
+    CountQueuingStrategy
+  };
+
+
+  var node_string_decoder_exports = {};
+  __export(node_string_decoder_exports, {
+    StringDecoder: () => StringDecoder,
+    default: () => node_string_decoder_default
+  });
+  var StringDecoder = class {
+    decoder = new TextDecoder();
+    write(buffer) {
+      return this.decoder.decode(buffer, { stream: true });
+    }
+    end(buffer) {
+      return this.decoder.decode(buffer);
+    }
+    text(buffer, encoding) {
+      return this.decoder.decode(buffer);
+    }
+  };
+  var node_string_decoder_default = { StringDecoder };
+
+
+  var node_sys_exports = {};
+  __export(node_sys_exports, {
+    arch: () => arch2,
+    cpus: () => cpus2,
+    default: () => node_sys_default,
+    endianness: () => endianness2,
+    freemem: () => freemem2,
+    platform: () => platform3,
+    totalmem: () => totalmem2
+  });
+  var cpus2 = () => [];
+  var endianness2 = () => "LE";
+  var platform3 = () => "linux";
+  var arch2 = () => "x64";
+  var totalmem2 = () => 0;
+  var freemem2 = () => 0;
+  var node_sys_default = { cpus: cpus2, endianness: endianness2, platform: platform3, arch: arch2, totalmem: totalmem2, freemem: freemem2 };
+
+
+  var node_timers_exports = {};
+  __export(node_timers_exports, {
+    default: () => node_timers_default,
+    setImmediate: () => setImmediate,
+    setInterval: () => setInterval,
+    setTimeout: () => setTimeout2
+  });
+  var unavailable6 = (name) => () => {
+    throw new Error(`${name} is not available in the embedded extension host`);
+  };
+  var setTimeout2 = unavailable6("setTimeout");
+  var setInterval = unavailable6("setInterval");
+  var setImmediate = unavailable6("setImmediate");
+  var node_timers_default = { setTimeout: setTimeout2, setInterval, setImmediate };
+
+
+  var timers_promises_exports = {};
+  __export(timers_promises_exports, {
+    default: () => timers_promises_default,
+    setImmediate: () => setImmediate2,
+    setInterval: () => setInterval2,
+    setTimeout: () => setTimeout3
+  });
+  var immediate = () => Promise.resolve();
+  var setTimeout3 = () => immediate();
+  var setImmediate2 = immediate;
+  var setInterval2 = () => new Promise(() => void 0);
+  var timers_promises_default = { setTimeout: setTimeout3, setImmediate: setImmediate2, setInterval: setInterval2 };
+
+
+  var node_tls_exports = {};
+  __export(node_tls_exports, {
+    TLSSocket: () => TLSSocket,
+    connect: () => connect3,
+    createSecureContext: () => createSecureContext,
+    default: () => node_tls_default
+  });
+  var unavailable7 = (name) => () => {
+    throw new Error(`${name} is not available in the embedded extension host`);
+  };
+  var connect3 = unavailable7("connect");
+  var createSecureContext = unavailable7("createSecureContext");
+  var TLSSocket = class {
+    on(_event, _listener) {
+      return this;
+    }
+    end() {
+      return this;
+    }
+    destroy() {
+      return this;
+    }
+  };
+  var node_tls_default = { connect: connect3, createSecureContext, TLSSocket };
+
+
+  var node_trace_events_exports = {};
+  __export(node_trace_events_exports, {
+    categories: () => categories,
+    default: () => node_trace_events_default,
+    start: () => start,
+    stop: () => stop
+  });
+  var categories = () => [];
+  var start = () => void 0;
+  var stop = () => void 0;
+  var node_trace_events_default = { categories, start, stop };
+
+
+  var node_tty_exports = {};
+  __export(node_tty_exports, {
+    ReadStream: () => ReadStream,
+    WriteStream: () => WriteStream,
+    default: () => node_tty_default,
+    isatty: () => isatty
+  });
+  var isatty = (stream) => {
+    const candidate = stream;
+    return candidate?.isTTY === true;
+  };
+  var ReadStream = class {
+    constructor(_path, _options) {
+    }
+    isTTY = false;
+    on(_event, _listener) {
+      return this;
+    }
+    setRawMode(_mode) {
+      return this;
+    }
+    resume() {
+      return this;
+    }
+    pause() {
+      return this;
+    }
+  };
+  var WriteStream = class {
+    constructor(_fd) {
+    }
+    isTTY = false;
+    write(_chunk) {
+      return true;
+    }
+    on(_event, _listener) {
+      return this;
+    }
+  };
+  var node_tty_default = { isatty, ReadStream, WriteStream };
+
+
+  var node_util_exports = {};
+  __export(node_util_exports, {
+    _extend: () => _extend,
+    callbackify: () => callbackify,
+    debuglog: () => debuglog,
+    default: () => node_util_default,
+    deprecate: () => deprecate,
+    format: () => format2,
+    inherits: () => inherits,
+    inspect: () => inspect,
+    isArray: () => isArray,
+    isDeepStrictEqual: () => isDeepStrictEqual,
+    parseArgs: () => parseArgs,
+    promisify: () => promisify,
+    types: () => types
+  });
+  var format2 = (first, ...rest) => {
+    if (typeof first !== "string") {
+      return [first, ...rest].map((value) => String(value)).join(" ");
+    }
+    let index3 = 0;
+    const formatted = first.replace(/%[sdjioO%]/g, (token) => {
+      if (token === "%%") return "%";
+      if (index3 >= rest.length) return token;
+      const value = rest[index3++];
+      switch (token) {
+        case "%s":
+          return typeof value === "string" ? value : String(value);
+        case "%d":
+          return String(Number(value));
+        case "%j":
+          try {
+            return JSON.stringify(value) ?? "undefined";
+          } catch {
+            return "[Circular]";
+          }
+        default:
+          return typeof value === "string" ? value : JSON.stringify(value) ?? String(value);
+      }
+    });
+    const trailing = rest.slice(index3).map((value) => String(value));
+    return trailing.length > 0 ? `${formatted} ${trailing.join(" ")}` : formatted;
+  };
+  var promisify = (fn) => (...args) => new Promise((resolve3, reject) => {
+    fn(...args, (error2, value) => {
+      if (error2) reject(error2);
+      else resolve3(value);
+    });
+  });
+  var inspect = (value) => {
+    try {
+      return JSON.stringify(value) ?? String(value);
+    } catch {
+      return String(value);
+    }
+  };
+  var deprecate = (fn) => fn;
+  var debuglog = (_section, _callback) => () => void 0;
+  var callbackify = (fn) => fn;
+  var inherits = (constructor, superConstructor) => {
+    const child = constructor;
+    const parent = superConstructor;
+    child.super_ = parent.prototype;
+  };
+  var isArray = Array.isArray;
+  var isDeepStrictEqual = (left, right) => {
+    try {
+      return JSON.stringify(left) === JSON.stringify(right);
+    } catch {
+      return false;
+    }
+  };
+  var _extend = (target, source) => {
+    Object.assign(target, source);
+    return target;
+  };
+  var types = {
+    isDate: (value) => value instanceof Date,
+    isRegExp: (value) => value instanceof RegExp,
+    isPromise: (value) => typeof value === "object" && value !== null && "then" in value
+  };
+  var parseArgs = (options) => {
+    const spec = options ?? {};
+    const values = {};
+    for (const [name, option] of Object.entries(spec.options ?? {})) {
+      if (option?.type === "boolean") values[name] = false;
+    }
+    return { values };
+  };
+  var node_util_default = {
+    format: format2,
+    promisify,
+    inspect,
+    deprecate,
+    debuglog,
+    callbackify,
+    inherits,
+    isArray,
+    isDeepStrictEqual,
+    _extend,
+    types,
+    parseArgs
+  };
+
+
+  var node_v8_exports = {};
+  __export(node_v8_exports, {
+    default: () => node_v8_default,
+    deserialize: () => deserialize,
+    serialize: () => serialize,
+    setFlagsFromString: () => setFlagsFromString
+  });
+  var serialize = (value) => JSON.stringify(value) ?? "null";
+  var deserialize = (value) => JSON.parse(value);
+  var setFlagsFromString = (_flags) => void 0;
+  var node_v8_default = { serialize, deserialize, setFlagsFromString };
+
+
+  var node_vm_exports = {};
+  __export(node_vm_exports, {
+    Script: () => Script3,
+    compileFunction: () => compileFunction,
+    createContext: () => createContext,
+    default: () => node_vm_default,
+    runInThisContext: () => runInThisContext
+  });
+  var unavailable8 = (name) => () => {
+    throw new Error(`${name} is not available in the embedded extension host`);
+  };
+  var runInThisContext = unavailable8("runInThisContext");
+  var createContext = unavailable8("createContext");
+  var compileFunction = unavailable8("compileFunction");
+  var Script3 = class {
+    constructor(_code) {
+    }
+    runInThisContext() {
+      throw new Error("node:vm is not available in the embedded extension host");
+    }
+  };
+  var node_vm_default = { runInThisContext, createContext, compileFunction, Script: Script3 };
+
+
+  var node_worker_threads_exports = {};
+  __export(node_worker_threads_exports, {
+    Worker: () => Worker,
+    default: () => node_worker_threads_default,
+    isMainThread: () => isMainThread,
+    parentPort: () => parentPort,
+    threadId: () => threadId,
+    workerData: () => workerData
+  });
+  var unavailable9 = (name) => () => {
+    throw new Error(`${name} is not available in the embedded extension host`);
+  };
+  var Worker = unavailable9("Worker");
+  var parentPort = null;
+  var workerData = null;
+  var isMainThread = true;
+  var threadId = 0;
+  var node_worker_threads_default = { Worker, parentPort, workerData, isMainThread, threadId };
+
+
+  var node_zlib_exports = {};
+  __export(node_zlib_exports, {
+    crc32: () => crc32,
+    default: () => node_zlib_default,
+    deflateRawSync: () => deflateRawSync,
+    gunzipSync: () => gunzipSync,
+    gzipSync: () => gzipSync,
+    inflateRawSync: () => inflateRawSync
+  });
+  var unavailable10 = (name) => () => {
+    throw new Error(`${name} is not available in the embedded extension host`);
+  };
+  var crc32 = unavailable10("crc32");
+  var deflateRawSync = unavailable10("deflateRawSync");
+  var inflateRawSync = unavailable10("inflateRawSync");
+  var gzipSync = unavailable10("gzipSync");
+  var gunzipSync = unavailable10("gunzipSync");
+  var node_zlib_default = { crc32, deflateRawSync, inflateRawSync, gzipSync, gunzipSync };
+
+
   var globals = globalThis;
   var hostCall = (op, args) => {
     const response = JSON.parse(globals.__piHostCall(op, JSON.stringify(args ?? {})));
@@ -13077,14 +14429,87 @@
   };
   var moduleCache = /* @__PURE__ */ new Map();
   var NODE_BUILTINS = {
+    "node:assert": node_assert_exports,
+    assert: node_assert_exports,
+    "node:async_hooks": node_async_hooks_exports,
+    async_hooks: node_async_hooks_exports,
+    "node:buffer": node_buffer_exports,
+    buffer: node_buffer_exports,
     "node:child_process": node_child_process_exports,
-    "node:os": node_os_exports,
-    "node:perf_hooks": node_perf_hooks_exports,
-    "node:url": node_url_exports,
     child_process: node_child_process_exports,
+    "node:cluster": node_cluster_exports,
+    cluster: node_cluster_exports,
+    "node:console": node_console_exports,
+    console: node_console_exports,
+    "node:crypto": node_crypto_exports,
+    crypto: node_crypto_exports,
+    "node:dgram": node_dgram_exports,
+    dgram: node_dgram_exports,
+    "node:diagnostics_channel": node_diagnostics_channel_exports,
+    diagnostics_channel: node_diagnostics_channel_exports,
+    "node:dns": node_dns_exports,
+    dns: node_dns_exports,
+    "node:events": node_events_exports,
+    events: node_events_exports,
+    "node:fs": shim_fs,
+    fs: shim_fs,
+    "node:fs/promises": shim_fs_promises,
+    "node:http": node_http_exports,
+    http: node_http_exports,
+    "node:http2": node_http2_exports,
+    http2: node_http2_exports,
+    "node:inspector": node_inspector_exports,
+    inspector: node_inspector_exports,
+    "node:module": node_module_exports,
+    module: node_module_exports,
+    "node:net": node_net_exports,
+    net: node_net_exports,
+    "node:os": node_os_exports,
     os: node_os_exports,
+    "node:path": node_path_exports,
+    path: node_path_exports,
+    "node:perf_hooks": node_perf_hooks_exports,
     perf_hooks: node_perf_hooks_exports,
-    url: node_url_exports
+    "node:process": node_process_exports,
+    process: node_process_exports,
+    "node:punycode": node_punycode_exports,
+    punycode: node_punycode_exports,
+    "node:querystring": node_querystring_exports,
+    querystring: node_querystring_exports,
+    "node:readline": node_readline_exports,
+    readline: node_readline_exports,
+    "node:readline/promises": node_readline_promises_exports,
+    "node:sqlite": node_sqlite_exports,
+    sqlite: node_sqlite_exports,
+    "node:stream": node_stream_exports,
+    stream: node_stream_exports,
+    "node:stream/promises": node_stream_promises_exports,
+    "node:stream/web": node_stream_web_exports,
+    "node:string_decoder": node_string_decoder_exports,
+    string_decoder: node_string_decoder_exports,
+    "node:sys": node_sys_exports,
+    sys: node_sys_exports,
+    "node:timers": node_timers_exports,
+    timers: node_timers_exports,
+    "node:timers/promises": timers_promises_exports,
+    "node:tls": node_tls_exports,
+    tls: node_tls_exports,
+    "node:trace_events": node_trace_events_exports,
+    trace_events: node_trace_events_exports,
+    "node:tty": node_tty_exports,
+    tty: node_tty_exports,
+    "node:url": node_url_exports,
+    url: node_url_exports,
+    "node:util": node_util_exports,
+    "node:v8": node_v8_exports,
+    v8: node_v8_exports,
+    "node:vm": node_vm_exports,
+    vm: node_vm_exports,
+    "node:worker_threads": node_worker_threads_exports,
+    worker_threads: node_worker_threads_exports,
+    "node:zlib": node_zlib_exports,
+    zlib: node_zlib_exports,
+    "constants": constants
   };
   var resolveModule = (specifier, referrer) => {
     if (Object.prototype.hasOwnProperty.call(VIRTUAL_MODULES, specifier)) {
@@ -13136,21 +14561,21 @@
   var createEventBus = () => {
     const handlers = /* @__PURE__ */ new Map();
     return {
-      emit: (channel, data) => {
-        for (const handler of handlers.get(channel) ?? []) {
+      emit: (channel2, data) => {
+        for (const handler of handlers.get(channel2) ?? []) {
           try {
             void handler(data, void 0);
-          } catch (error) {
-            console.error(`Event handler error (${channel}):`, error);
+          } catch (error2) {
+            console.error(`Event handler error (${channel2}):`, error2);
           }
         }
       },
-      on: (channel, handler) => {
-        const list = handlers.get(channel) ?? [];
+      on: (channel2, handler) => {
+        const list = handlers.get(channel2) ?? [];
         list.push(handler);
-        handlers.set(channel, list);
+        handlers.set(channel2, list);
         return () => {
-          const current = handlers.get(channel) ?? [];
+          const current = handlers.get(channel2) ?? [];
           const index3 = current.indexOf(handler);
           if (index3 >= 0) current.splice(index3, 1);
         };
@@ -13162,12 +14587,12 @@
     const requestId = opened?.requestId;
     if (!requestId) return void 0;
     for (; ; ) {
-      await new Promise((resolve2) => setTimeout(resolve2, 20));
+      await new Promise((resolve3) => setTimeout(resolve3, 20));
       const answer = hostCall("ui.pollDialog", { requestId, kind });
       if (answer?.answered) return answer.value;
     }
   };
-  var createContext = (state2) => ({
+  var createContext2 = (state2) => ({
     ui: {
       theme,
       notify: (message, type2) => {
@@ -13303,7 +14728,7 @@
     extensionPath: state2.path
   });
   var createToolContext = (state2) => ({
-    ...createContext(state2),
+    ...createContext2(state2),
     tools: {
       registered: hostCall("tools.getAll", {}),
       getExposure: (name) => hostCall("tools.getExposure", { name }),
@@ -13475,7 +14900,7 @@
   var dispatch = async (event, payload) => {
     let result;
     for (const state2 of extensions) {
-      const context = createContext(state2);
+      const context = createContext2(state2);
       for (const handler of state2.handlers.get(event) ?? []) {
         const value = await handler(payload, context);
         if (value !== void 0 && result === void 0) result = value;
@@ -13487,7 +14912,7 @@
     let currentText = text;
     let currentImages = images;
     for (const state2 of extensions) {
-      const context = createContext(state2);
+      const context = createContext2(state2);
       for (const handler of state2.handlers.get("input") ?? []) {
         const result = await handler(
           { type: "input", text: currentText, images: currentImages, source },
@@ -13508,7 +14933,7 @@
       if (!options || typeof options !== "object" || !("handler" in options)) continue;
       const handler = options.handler;
       if (typeof handler !== "function") continue;
-      const result = await handler(args, createContext(state2));
+      const result = await handler(args, createContext2(state2));
       return result === void 0 ? null : result;
     }
     throw new Error(`unknown command: ${name}`);
