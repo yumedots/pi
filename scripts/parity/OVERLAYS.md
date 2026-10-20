@@ -37,14 +37,13 @@ relative to `/Users/gabriel/pi/`.
 
 ## Re-verification (2026-10-20, after the port's settings rewrite)
 
-**This table is authoritative.** The per-row `Status` lines further down are the ones
-the audit wrote at the time; the port then moved (the settings list was rewritten with
-a search field, a hint line, aligned values, a description block and nested submenus,
-and the `rpi-tui` crate gained an `agent_progress.rs`). The rows below re-read the
-source after that rewrite. Because the tree was red at the time, the **runtime**
-re-check is still owed: the newest binary in `rpi/target/debug/rpi` (18:25) predates the
-settings rewrite, so everything below marked "fixed in source" still needs one capture
-against a rebuilt binary.
+**This table is a source-level snapshot; the runtime table below it is the verdict.** The
+per-row `Status` lines further down are the ones the audit wrote at the time; the port
+then moved (the settings list was rewritten with a search field, a hint line, aligned
+values, a description block and nested submenus, and the `rpi-tui` crate gained an
+`agent_progress.rs`). The table below re-reads the source after that rewrite; the table
+after it re-measures all twenty rows against a freshly relinked binary. Where the two
+disagree, the runtime table wins.
 
 | # | Finding | Status now | Where |
 |---|---|---|---|
@@ -102,11 +101,11 @@ settings rewrite). This is the authoritative verdict per row.
 | 19 | **Open** — the `ask_user` hints are still hard-coded and there is still no timeout countdown | `rpi/crates/rpi-cli/src/interactive_tui/extensions.rs:341`, `:449`, `:561`; `rpi/crates/rpi-cli/src/tui_shell/dialogs.rs:60`, `:122-124` |
 | 20 | **Open** — a settings change is still announced in the transcript | `rpi/crates/rpi-cli/src/interactive_tui/settings.rs:88`, `:140` |
 
-**Net:** rows 1, 2, 3, 4, 5 (settings submenu), 12, 13 and 18 are now closed —
-seven of the twenty findings are fixed and verified on screen. **Ten are still open and
-worth a porter:** 6, 7, 8, 9, 10, 11, 14, 15, 16, 17 (plus 19 and 20, which need an
-extension to reach). Rows 9, 10 and 11 are the most visible of the remaining ones —
-they are the viewport chrome every user sees while reading a long transcript.
+**Net:** rows 1, 2, 3, 4, 5 (settings submenu), 12, 13 and 18 are now closed — eight of
+the twenty findings are fixed and verified on screen. **Ten are still open and worth a
+porter:** 6, 7, 8, 9, 10, 11, 14, 15, 16, 17 (plus 19 and 20, which need an extension
+to reach). Rows 9, 10 and 11 are the most visible of the remaining ones — they are the
+viewport chrome every user sees while reading a long transcript.
 
 **One harness note for whoever runs the captures next:** the port reads pi's config
 directory, so the Rust side of the harness must be driven with `PI_CODING_AGENT_DIR`
@@ -240,11 +239,11 @@ port:      >            (empty chat prompt — the settings menu is gone)
 **Check.** A Rust test on the selector stack: opening a submenu from the settings menu
 and cancelling it must restore the parent list, not clear the slot.
 
-**Status (re-verified).** Fixed in source — the list now owns its submenu
-(`rpi/crates/rpi-tui/src/settings_list.rs:127` `with_submenu_factory`, `:259`
-`close_submenu`, `:509` `has_open_submenu`, test `:1059`), so cancelling a submenu
-returns to the parent list. The capture above is from the older binary; one runtime
-re-check is owed.
+**Status (re-verified).** Fixed and verified on the fresh binary — after `Escape` in the
+theme submenu the pane shows the settings list again with the filter and the selected
+row intact (`> theme` / `→ Theme   dark` / `  Default thinking level per model  none`).
+The list now owns its submenu (`rpi/crates/rpi-tui/src/settings_list.rs:127`
+`with_submenu_factory`, `:259` `close_submenu`, `:509` `has_open_submenu`, test `:1059`).
 
 ---
 
