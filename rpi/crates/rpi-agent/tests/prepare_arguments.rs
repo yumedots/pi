@@ -135,9 +135,6 @@ async fn prepare_arguments_folds_legacy_oldtext_newtext_into_edits() {
         model: "mock".to_string(),
         response_model: None,
         response_id: None,
-        provider_thinking_level: None,
-        thinking_level: None,
-        diagnostics: None,
         usage: Usage::zero(),
         stop_reason: StopReason::ToolUse,
         deferred: None,
@@ -145,7 +142,6 @@ async fn prepare_arguments_folds_legacy_oldtext_newtext_into_edits() {
         raw_stop_reason: None,
         end_turn: None,
         timestamp: 0,
-        duration_ms: None,
     };
     let done = assistant_text("done", StopReason::Stop);
 

@@ -216,7 +216,7 @@ impl AgentLoopConfig {
 }
 
 /// The default `convert_to_llm`: keep only `user`/`assistant`/`toolResult`
-/// messages, drop `custom` and `system`. Mirrors TS `defaultConvertToLlm`.
+/// messages, drop `custom`. Mirrors TS `defaultConvertToLlm`.
 pub fn default_convert_to_llm(messages: Vec<AgentMessage>) -> Vec<Message> {
     messages
         .into_iter()
@@ -224,7 +224,6 @@ pub fn default_convert_to_llm(messages: Vec<AgentMessage>) -> Vec<Message> {
             AgentMessage::User(u) => Some(Message::User(u)),
             AgentMessage::Assistant(a) => Some(Message::Assistant(a)),
             AgentMessage::ToolResult(t) => Some(Message::ToolResult(t)),
-            AgentMessage::System(_) => None,
             AgentMessage::Custom(_) => None,
         })
         .collect()

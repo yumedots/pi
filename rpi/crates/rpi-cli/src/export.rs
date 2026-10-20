@@ -23,20 +23,18 @@ pub enum ExportFormat {
 /// lane/fact/record lines are skipped (they are not conversational content).
 pub fn export_file(input: &Path, output: &Path) -> Result<(), String> {
     // Determine format from output extension
-    // The original exports HTML (`core/export-html/index.ts:288-316`); only an
-    // explicit extension asks for another format.
     let format = if output
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+    {
+        ExportFormat::Html
+    } else if output
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("jsonl"))
     {
         ExportFormat::Jsonl
-    } else if output
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-    {
-        ExportFormat::Markdown
     } else {
-        ExportFormat::Html
+        ExportFormat::Markdown
     };
 
     let entries = read_jsonl_session_entries(input)?;
@@ -52,11 +50,6 @@ pub fn export_file(input: &Path, output: &Path) -> Result<(), String> {
 fn read_jsonl_session_entries(input: &Path) -> Result<Vec<Entry>, String> {
     use rpi_harness::session::jsonl::parse_entry;
 
-    // The original's message for a missing session file
-    // (`core/export-html/index.ts:292-294`).
-    if !input.exists() {
-        return Err(format!("File not found: {}", input.display()));
-    }
     let content = std::fs::read_to_string(input)
         .map_err(|e| format!("Could not read input file {}: {e}", input.display()))?;
 
@@ -249,9 +242,9 @@ fn escape_html(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rpi_harness::session::jsonl::codec::{encode_entry, encode_header};
-    use rpi_harness::session::jsonl::SessionFileHeader;
-    use rpi_harness::session::types::{Entry, EntryBase, MessageEntry};
+    use rpi_harness::session::jsonl::codec::{encode_header, encode_mutation};
+    use rpi_harness::session::jsonl::{HeaderKind, JsonlV4Header};
+    use rpi_harness::session::types::{Entry, EntryBase, MessageEntry, SessionMutation};
 
     #[test]
     fn test_escape_html() {
@@ -262,19 +255,23 @@ mod tests {
         assert_eq!(escape_html("Hello & World"), "Hello &amp; World");
     }
 
-    /// Build a real JSONL session file containing one user + one assistant
+    /// Build a real JSONL v4 session file containing one user + one assistant
     /// message, then export it to each format via the `--export` code path.
     #[test]
     fn export_file_renders_a_real_jsonl_session() {
         let dir = tempfile::tempdir().unwrap();
         let session_path = dir.path().join("session.jsonl");
 
-        let header = SessionFileHeader::new(
-            "s-export".to_string(),
-            "2026-01-01T00:00:00.000Z".to_string(),
-            "/tmp".to_string(),
-            None,
-        );
+        let header = JsonlV4Header {
+            kind: HeaderKind,
+            version: 4,
+            id: "s-export".to_string(),
+            created_at: 0,
+            cwd: "/tmp".to_string(),
+            parent_session_id: None,
+            legacy_parent_session_path: None,
+            metadata: None,
+        };
 
         let mut lines = vec![encode_header(&header)];
         for (seq, message) in [
@@ -314,7 +311,12 @@ mod tests {
                 message,
                 terminate: None,
             });
-            lines.push(encode_entry(&entry));
+            lines.push(encode_mutation(&SessionMutation::Entry {
+                seq,
+                timestamp: 0,
+                lane: Some("main".to_string()),
+                entry,
+            }));
         }
         std::fs::write(&session_path, lines.concat()).unwrap();
 

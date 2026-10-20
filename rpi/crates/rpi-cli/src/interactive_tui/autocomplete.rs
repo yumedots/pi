@@ -6,30 +6,6 @@ use super::*;
 // Autocomplete
 // ===========================================================================
 
-/// The selection value that means "the user dismissed the popup".
-///
-/// The port draws the suggestion list from the provider on every keystroke, so
-/// "closed" is not a state of the list itself. The marker stands in for
-/// upstream's `autocompleteState = null`: it survives until the text changes
-/// (which re-renders the list) and keeps a dismissed popup from accepting a
-/// suggestion on Enter.
-pub(super) const AUTOCOMPLETE_DISMISSED: usize = usize::MAX;
-
-/// What Enter did with the open suggestion list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum AcceptOutcome {
-    /// No popup was open, or the completion is not in a context where upstream
-    /// shows one. The key is the caller's to handle.
-    None,
-    /// The highlighted item was accepted and the text is a `/` command, so the
-    /// Enter also submits it (upstream falls through to submit for a command
-    /// completion).
-    SlashCommand,
-    /// The highlighted item was accepted and the text is not a command, so the
-    /// Enter does not submit.
-    Completed,
-}
-
 /// Refresh the autocomplete suggestion list from the current editor text +
 /// cursor. Renders the suggestions into `autocomplete_container` (above the
 /// editor) or clears it when there are none.
@@ -65,7 +41,7 @@ pub(super) fn set_editor_cursor_offset(editor: &Editor, text: &str, offset: usiz
             editor.set_cursor(row, offset - consumed);
             return;
         }
-        consumed += line.len() + 1;
+        consumed = end + 1;
     }
     let last_row = text.bytes().filter(|byte| *byte == b'\n').count();
     editor.set_cursor(
@@ -94,12 +70,7 @@ pub(super) fn render_autocomplete(
     let total = sugg.items.len();
     let selection = {
         let mut sel = state.autocomplete_selection.lock().unwrap();
-        // A dismissed list reopens on the first item when the text changes.
-        *sel = if *sel == AUTOCOMPLETE_DISMISSED {
-            0
-        } else {
-            (*sel).min(total.saturating_sub(1))
-        };
+        *sel = (*sel).min(total.saturating_sub(1));
         *sel
     };
     let window_start = if total <= max_visible {
@@ -114,95 +85,32 @@ pub(super) fn render_autocomplete(
     // Cap the list so the dock doesn't swallow the transcript.
     let accent = state.theme_manager.get().colors.accent;
     let muted = state.theme_manager.get().colors.muted;
-    // The original's label column: the widest label of the filtered items plus
-    // two, clamped to 12..32 (`packages/tui/src/components/select-list.ts:6-7`,
-    // `packages/tui/src/components/editor.ts:286-288`).
-    let visible: Vec<(usize, &rpi_tui::autocomplete::AutocompleteItem)> = sugg
+    for (i, item) in sugg
         .items
         .iter()
         .enumerate()
         .skip(window_start)
         .take(window_end - window_start)
-        .collect();
-    let widest = visible
-        .iter()
-        .map(|(_, item)| rpi_tui::utils::visible_width(bare_label(item)))
-        .max()
-        .unwrap_or(0)
-        + 2;
-    let column = widest.clamp(12, 32);
-    for (i, item) in visible {
+    {
         let prefix = if i == selection { "→ " } else { "  " };
-        let label = bare_label(item);
-        let label_width = rpi_tui::utils::visible_width(label);
-        let spacing = " ".repeat(column.saturating_sub(label_width).max(1));
-        let description = item.description.as_deref().unwrap_or("");
+        let label = item.display_text();
         let line = if i == selection {
             format!(
-                "{prefix}{}{spacing}{}",
+                "{prefix}{} {}",
                 accent.fg(label),
-                muted.fg(description)
+                muted.fg(item.description.as_deref().unwrap_or(""))
             )
         } else {
-            format!("{prefix}{}{spacing}{}", muted.fg(label), muted.fg(description))
+            format!(
+                "{prefix}{} {}",
+                muted.fg(label),
+                muted.fg(item.description.as_deref().unwrap_or(""))
+            )
         };
         state
             .autocomplete_container
             .add_child(Arc::new(Text::new(line, 1, 0)));
     }
-}
-
-/// The row label of an autocomplete item. The original's command rows show the
-/// bare command name, without the leading slash
-/// (`packages/tui/src/autocomplete.ts:352-360`).
-fn bare_label(item: &rpi_tui::autocomplete::AutocompleteItem) -> &str {
-    item.display_text().trim_start_matches('/')
-}
-
-/// Whether a completion is in a context where upstream shows a popup the user
-/// picks from with the keyboard.
-///
-/// Upstream's editor opens the list for a `/` command, an `@` mention, or a
-/// path — a token with a separator in it
-/// (`packages/tui/src/autocomplete.ts:412-424`). A bare word is not a
-/// completion there, so its Enter still sends the message.
-pub(super) fn is_explicit_completion(text: &str, start: usize, end: usize) -> bool {
-    let start = start.min(text.len());
-    let end = end.clamp(start, text.len());
-    let span = &text[start..end];
-    let before = &text[..start];
-    span.contains('/') || span.starts_with('@') || before.ends_with('@')
-}
-
-/// Replace the completed span with the suggestion's text and report the caret
-/// offset that follows the inserted text.
-///
-/// `start`/`end` are byte offsets emitted by the providers on char boundaries,
-/// so the slices are sound for multibyte input. The text *after* the replaced
-/// span is kept: a mid-line completion must not drop the rest of the line.
-pub(super) fn apply_completion(
-    text: &str,
-    start: usize,
-    end: usize,
-    suggestion: &str,
-    insert_space: bool,
-) -> (String, usize) {
-    let start = start.min(text.len());
-    let end = end.clamp(start, text.len());
-    let mut replaced = String::with_capacity(text.len() + suggestion.len());
-    replaced.push_str(&text[..start]);
-    replaced.push_str(suggestion);
-    replaced.push_str(&text[end..]);
-    let space = if insert_space && !replaced.ends_with('/') {
-        1
-    } else {
-        0
-    };
-    if space > 0 {
-        replaced.push(' ');
-    }
-    let caret = (start + suggestion.len() + space).min(replaced.len());
-    (replaced, caret)
 }
 
 /// Accept the highlighted autocomplete suggestion: replace `text[start..end]`
@@ -214,94 +122,43 @@ pub(super) fn accept_top_suggestion(state: &Arc<TuiState>, editor: &Arc<Editor>)
     let Some(sugg) = state.autocomplete.get_suggestions(&text, cursor) else {
         return false;
     };
-    if sugg.items.is_empty() {
-        return false;
-    }
     let index = {
         let sel = *state.autocomplete_selection.lock().unwrap();
-        if sel == AUTOCOMPLETE_DISMISSED {
-            return false;
-        }
         sel.min(sugg.items.len().saturating_sub(1))
     };
-    let Some(item) = sugg.items.get(index) else {
+    let Some(top) = sugg.items.get(index) else {
         return false;
     };
-    let (replaced, caret) = apply_completion(
-        &text,
-        sugg.start,
-        sugg.end,
-        &item.text,
-        item.insert_space,
+    // Replace the [start, end) span with the suggestion text. `start`/`end`
+    // are byte offsets emitted by the providers on char boundaries, so the
+    // `text[..start]` / `text[end..]` slices are sound for multibyte input.
+    let start = sugg.start.min(text.len());
+    let end = sugg.end.min(text.len());
+    let mut replaced = String::with_capacity(text.len() + top.text.len());
+    replaced.push_str(&text[..start]);
+    replaced.push_str(&top.text);
+    // Keep the text AFTER the replaced span (mid-line completion: replacing
+    // `[start, end)` must not drop the rest of the line).
+    replaced.push_str(&text[end..]);
+    if top.insert_space && !replaced.ends_with('/') {
+        replaced.push(' ');
+    }
+    // New caret position: after the inserted text (byte offset; the editor
+    // snaps `set_cursor` to a char boundary as a safety net).
+    let new_cursor = replaced.len().min(
+        start
+            + top.text.len()
+            + if top.insert_space && !top.text.ends_with('/') {
+                1
+            } else {
+                0
+            },
     );
     editor.set_text(&replaced);
-    set_editor_cursor_offset(editor, &replaced, caret);
+    set_editor_cursor_offset(editor, &replaced, new_cursor);
     state.autocomplete_container.clear();
     *state.autocomplete_selection.lock().unwrap() = 0;
     true
-}
-
-/// Accept the highlighted suggestion for an Enter keypress.
-///
-/// Upstream's editor binds `tui.select.confirm` (Enter) to the open
-/// suggestion list: the highlighted item is applied, and for a `/` command the
-/// Enter then submits the command as well. A completion that is not a command
-/// (a path or an `@` mention) is applied without submitting.
-pub(super) fn accept_highlighted_suggestion(
-    state: &Arc<TuiState>,
-    editor: &Arc<Editor>,
-) -> AcceptOutcome {
-    let text = editor.get_text();
-    let cursor = editor_cursor_offset(editor, &text);
-    let Some(sugg) = state.autocomplete.get_suggestions(&text, cursor) else {
-        return AcceptOutcome::None;
-    };
-    if sugg.items.is_empty() {
-        return AcceptOutcome::None;
-    }
-    if !is_explicit_completion(&text, sugg.start, sugg.end) {
-        return AcceptOutcome::None;
-    }
-    let index = {
-        let sel = *state.autocomplete_selection.lock().unwrap();
-        if sel == AUTOCOMPLETE_DISMISSED {
-            return AcceptOutcome::None;
-        }
-        sel.min(sugg.items.len().saturating_sub(1))
-    };
-    let Some(item) = sugg.items.get(index) else {
-        return AcceptOutcome::None;
-    };
-    let (replaced, caret) = apply_completion(
-        &text,
-        sugg.start,
-        sugg.end,
-        &item.text,
-        item.insert_space,
-    );
-    // A `/` command completion also submits the command; a path or a mention
-    // completion only fills the text. The command provider is the only one
-    // whose completion starts with a slash (the path provider's own rows never
-    // do, and it marks them with `is_path`).
-    let is_command = !sugg.is_path && text[sugg.start.min(text.len())..].starts_with('/');
-    editor.set_text(&replaced);
-    set_editor_cursor_offset(editor, &replaced, caret);
-    state.autocomplete_container.clear();
-    *state.autocomplete_selection.lock().unwrap() = 0;
-    if is_command {
-        AcceptOutcome::SlashCommand
-    } else {
-        AcceptOutcome::Completed
-    }
-}
-
-/// Close the suggestion list without changing the editor text.
-///
-/// The list is redrawn from the provider on the next keystroke, so the
-/// dismissal is recorded in the selection and cleared by that redraw.
-pub(super) fn close_autocomplete(state: &Arc<TuiState>) {
-    state.autocomplete_container.clear();
-    *state.autocomplete_selection.lock().unwrap() = AUTOCOMPLETE_DISMISSED;
 }
 
 /// Move the autocomplete highlight up (`direction < 0`) or down (`direction > 0`)
@@ -323,55 +180,22 @@ pub(super) fn navigate_autocomplete(
     if sugg.items.is_empty() {
         return false;
     }
-    if !is_explicit_completion(&text, sugg.start, sugg.end) {
+    let start = sugg.start.min(text.len());
+    // `/` commands keep the slash at `start`; the path provider keeps `@` by
+    // placing `start` *after* it, so look just before `start` for `@`.
+    let explicit = text[start..].starts_with('/') || text[..start].ends_with('@');
+    if !explicit {
         return false;
     }
+    let total = sugg.items.len();
     {
         let mut sel = state.autocomplete_selection.lock().unwrap();
-        if *sel == AUTOCOMPLETE_DISMISSED {
-            return false;
-        }
         if direction < 0 {
             *sel = sel.saturating_sub(1);
         } else {
-            *sel = (*sel + 1).min(sugg.items.len().saturating_sub(1));
+            *sel = (*sel + 1).min(total.saturating_sub(1));
         }
     }
     render_autocomplete(state, Some(sugg));
     true
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn apply_completion_replaces_the_span_and_keeps_the_rest_of_the_line() {
-        let (text, caret) = apply_completion("say /mo now", 4, 7, "/model", false);
-        assert_eq!(text, "say /model now");
-        assert_eq!(caret, 10);
-    }
-
-    #[test]
-    fn apply_completion_adds_the_space_the_item_asks_for() {
-        let (text, caret) = apply_completion("@fi", 0, 3, "@file.txt", true);
-        assert_eq!(text, "@file.txt ");
-        assert_eq!(caret, 10);
-    }
-
-    #[test]
-    fn apply_completion_keeps_a_directory_open_for_more_completion() {
-        let (text, _) = apply_completion("src/", 0, 4, "src/lib/", false);
-        assert_eq!(text, "src/lib/");
-    }
-
-    #[test]
-    fn only_a_command_a_mention_or_a_path_is_an_explicit_completion() {
-        assert!(is_explicit_completion("/mod", 0, 4));
-        assert!(is_explicit_completion("@fi", 0, 3));
-        assert!(is_explicit_completion("say @fi", 4, 7));
-        assert!(is_explicit_completion("src/li", 0, 6));
-        assert!(!is_explicit_completion("docs", 0, 4));
-        assert!(!is_explicit_completion("say docs", 4, 8));
-    }
 }

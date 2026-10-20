@@ -20,7 +20,6 @@ use crate::session::types::{IdGenerator, JsonValue, SessionCreateOptions, Sessio
 /// (`packages/coding-agent/src/core/session-manager.ts:44`). `parentSession`
 /// is the parent session's file path.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SessionFileHeader {
     #[serde(rename = "type")]
     pub entry_type: String,

@@ -52,8 +52,10 @@ fn user_msg(text: &str) -> AgentMessage {
 fn header(id: &str) -> SessionFileHeader {
     SessionFileHeader::new(
         id.into(),
-        rpi_harness::session::types::iso_timestamp_from_ms(1_700_000_000_000),
+        1_700_000_000_000,
         "/proj".into(),
+        None,
+        None,
         None,
     )
 }

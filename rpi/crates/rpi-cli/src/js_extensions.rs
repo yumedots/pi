@@ -496,13 +496,6 @@ struct JsHost {
 
 impl rpi_js::Host for JsHost {
     fn call(&self, op: &str, args: Value) -> Result<Value, String> {
-        IN_HOST_CALL.with(|flag| flag.set(true));
-        let answer = self.answer(op, args);
-        IN_HOST_CALL.with(|flag| flag.set(false));
-        answer
-    }
-
-    fn answer(&self, op: &str, args: Value) -> Result<Value, String> {
         match op {
             "context.mode" => Ok(json!("tui")),
             "theme.get" => Ok(rpi_js::theme_tokens()),
@@ -642,7 +635,6 @@ impl rpi_js::Host for JsHost {
             "ui.confirm" => self.dialog("confirm", &args),
             "ui.input" => self.dialog("input", &args),
             "ui.editor" => self.dialog("editor", &args),
-            "ui.pollDialog" => self.poll_dialog(&args),
             "ui.custom" => {
                 let component = args.get("component").and_then(Value::as_str);
                 if let (Some(session), Some(component)) = (self.session(), component) {
@@ -1136,12 +1128,10 @@ impl JsHost {
         set_working(message.map(str::to_string));
     }
 
-    /// Open a question for the user and hand back its request id.
+    /// Ask the user a question and wait for the answer.
     ///
-    /// The call returns at once, like the original's open/poll/cancel
-    /// protocol: the extension waits by polling, and the TUI presents the
-    /// dialog on its own thread. Blocking here would freeze the TUI, because
-    /// the TUI is the thread that presents the dialog.
+    /// The dialog goes through the session's mailbox, the same one the native
+    /// plugins use, so the TUI presents it with its own widgets.
     fn dialog(&self, kind: &str, args: &Value) -> Result<Value, String> {
         let session = self
             .session()
@@ -1203,42 +1193,37 @@ impl JsHost {
             );
             return Ok(Value::Null);
         }
-        Ok(json!({ "requestId": request_id }))
-    }
-
-    /// The answer to an open dialog, or `null` while the user has not
-    /// answered yet.
-    fn poll_dialog(&self, args: &Value) -> Result<Value, String> {
-        let session = self
-            .session()
-            .ok_or_else(|| "the session is not up yet".to_string())?;
-        let mailbox = session
-            .ui_dialog
-            .clone()
-            .ok_or_else(|| "the dialog needs an interactive UI".to_string())?;
-        let request_id = args
-            .get("requestId")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        let answer = mailbox.handle(json!({ "op": "poll", "requestId": request_id }))?;
-        match answer.get("status").and_then(Value::as_str) {
-            Some("answered") => {
-                let payload = answer.get("answer").cloned().unwrap_or(Value::Null);
-                rpi_extensions::emit_event(
-                    "ui_prompt_end",
-                    &json!({ "type": "ui_prompt_end", "reason": "ui_prompt" }),
-                );
-                Ok(dialog_answer("selector", payload))
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let answer = mailbox.handle(json!({ "op": "poll", "requestId": request_id }))?;
+            match answer.get("status").and_then(Value::as_str) {
+                Some("answered") => {
+                    let payload = answer.get("answer").cloned().unwrap_or(Value::Null);
+                    rpi_extensions::emit_event(
+                        "ui_prompt_end",
+                        &json!({
+                            "type": "ui_prompt_end",
+                            "reason": "ui_prompt",
+                            "kind": kind,
+                            "title": title,
+                        }),
+                    );
+                    return Ok(dialog_answer(kind, payload));
+                }
+                Some("cancelled") => {
+                    rpi_extensions::emit_event(
+                        "ui_prompt_end",
+                        &json!({
+                            "type": "ui_prompt_end",
+                            "reason": "ui_prompt",
+                            "kind": kind,
+                            "title": title,
+                        }),
+                    );
+                    return Ok(Value::Null);
+                }
+                _ => {}
             }
-            Some("cancelled") => {
-                rpi_extensions::emit_event(
-                    "ui_prompt_end",
-                    &json!({ "type": "ui_prompt_end", "reason": "ui_prompt" }),
-                );
-                Ok(Value::Null)
-            }
-            _ => Ok(Value::Null),
         }
     }
 
@@ -1303,20 +1288,6 @@ impl JsHost {
             hook();
         }
     }
-}
-
-thread_local! {
-    /// True while the host is answering a call from the extension.
-    ///
-    /// The extension runs on the runtime's own thread, so an event published
-    /// from inside a host call cannot be handed to the extensions straight
-    /// away: they are the thread that is making the call.
-    static IN_HOST_CALL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-/// Whether the host is answering a call from the extension right now.
-pub fn in_host_call() -> bool {
-    IN_HOST_CALL.with(|flag| flag.get())
 }
 
 /// The next dialog request id. The ids only have to be unique per session.

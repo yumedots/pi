@@ -306,9 +306,6 @@ pub(super) async fn render_session_history(
     for e in entries {
         match e {
             Entry::Message(me) => match &me.message {
-                // The original's session carries a system entry; it is not
-                // conversational content and is not shown in the transcript.
-                AgentMessage::System(_) => {}
                 AgentMessage::User(u) => {
                     add_user_message(chat, &user_message_text(u));
                     add_user_images(chat, u, show_images);
@@ -377,10 +374,6 @@ pub(super) async fn render_session_history(
                     chat.add_child(Arc::new(Spacer::new(1)));
                     rendered_any = true;
                 }
-                AgentMessage::System(system) => {
-                    add_note_message(chat, &system.content);
-                    rendered_any = true;
-                }
                 AgentMessage::Custom(custom) => {
                     if let Some(session) = &extension_session {
                         if let Some(component) = extension_message_component(
@@ -402,7 +395,6 @@ pub(super) async fn render_session_history(
                     add_note_message(chat, &custom_message_fallback(&custom));
                     rendered_any = true;
                 }
-                AgentMessage::System(_) => {}
             },
             // The entries pi writes that the transcript does not render
             // (usage, labels, the session info, the context edits) pass

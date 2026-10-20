@@ -708,7 +708,7 @@ pub(super) fn open_logout_provider_selector(
     if items.is_empty() {
         add_note_message(
             &state.chat_container,
-            "No stored credentials to remove. /logout only removes credentials saved by /login; environment variables and models.json config are unchanged.",
+            "No saved provider credentials found.",
         );
         tui.request_render(false);
         return;

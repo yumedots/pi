@@ -146,7 +146,6 @@ impl SessionSearch {
                     AgentMessage::User(_) => "user",
                     AgentMessage::Assistant(_) => "assistant",
                     AgentMessage::ToolResult(_) => "tool_result",
-                    AgentMessage::System(_) => "system",
                     AgentMessage::Custom(_) => return None,
                 };
 
@@ -212,7 +211,6 @@ impl SessionSearch {
                 }
                 parts.join("\n")
             }
-            AgentMessage::System(system_msg) => system_msg.content.clone(),
             AgentMessage::Custom(c) => serde_json::to_string(&c.data).unwrap_or_default(),
         }
     }
@@ -322,10 +320,6 @@ mod tests {
                 model: "test-model".to_string(),
                 response_model: None,
                 response_id: None,
-                duration_ms: None,
-                thinking_level: None,
-                provider_thinking_level: None,
-                diagnostics: None,
                 usage: rpi_ai::types::Usage::zero(),
                 stop_reason: rpi_ai::types::StopReason::Stop,
                 deferred: None,

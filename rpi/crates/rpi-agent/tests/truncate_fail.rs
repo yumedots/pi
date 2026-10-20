@@ -171,9 +171,6 @@ fn assistant_message_with_tool_call_and_length() -> rpi_ai::types::AssistantMess
         model: "mock".to_string(),
         response_model: None,
         response_id: None,
-        provider_thinking_level: None,
-        thinking_level: None,
-        diagnostics: None,
         usage: Usage::zero(),
         stop_reason: StopReason::Length,
         deferred: None,
@@ -181,6 +178,5 @@ fn assistant_message_with_tool_call_and_length() -> rpi_ai::types::AssistantMess
         raw_stop_reason: None,
         end_turn: None,
         timestamp: 0,
-        duration_ms: None,
     }
 }

@@ -118,9 +118,6 @@ pub fn assistant_text(text: impl Into<String>, stop: StopReason) -> AssistantMes
         model: "mock".to_string(),
         response_model: None,
         response_id: None,
-        provider_thinking_level: None,
-        thinking_level: None,
-        diagnostics: None,
         usage: rpi_ai::types::Usage::zero(),
         stop_reason: stop,
         deferred: None,
@@ -128,7 +125,6 @@ pub fn assistant_text(text: impl Into<String>, stop: StopReason) -> AssistantMes
         raw_stop_reason: None,
         end_turn: None,
         timestamp: 0,
-        duration_ms: None,
     }
 }
 
@@ -159,9 +155,6 @@ pub fn assistant_tool_calls(
         model: "mock".to_string(),
         response_model: None,
         response_id: None,
-        provider_thinking_level: None,
-        thinking_level: None,
-        diagnostics: None,
         usage: rpi_ai::types::Usage::zero(),
         stop_reason: stop,
         deferred: None,
@@ -169,7 +162,6 @@ pub fn assistant_tool_calls(
         raw_stop_reason: None,
         end_turn: None,
         timestamp: 0,
-        duration_ms: None,
     }
 }
 
@@ -188,7 +180,6 @@ pub fn identity_converter() -> Arc<
                 rpi_agent::AgentMessage::User(u) => Some(Message::User(u)),
                 rpi_agent::AgentMessage::Assistant(a) => Some(Message::Assistant(a)),
                 rpi_agent::AgentMessage::ToolResult(t) => Some(Message::ToolResult(t)),
-                rpi_agent::AgentMessage::System(_) => None,
                 rpi_agent::AgentMessage::Custom(_) => None,
             })
             .collect();

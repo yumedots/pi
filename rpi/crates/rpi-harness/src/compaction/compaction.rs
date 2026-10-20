@@ -198,7 +198,6 @@ fn agent_message_timestamp(message: &AgentMessage) -> i64 {
         AgentMessage::User(u) => u.timestamp,
         AgentMessage::Assistant(a) => a.timestamp,
         AgentMessage::ToolResult(t) => t.timestamp,
-        AgentMessage::System(s) => s.timestamp,
         AgentMessage::Custom(c) => c.timestamp,
     }
 }

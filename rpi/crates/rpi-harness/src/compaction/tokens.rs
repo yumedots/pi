@@ -241,7 +241,6 @@ fn estimate_message_chars(message: &AgentMessage) -> usize {
         },
         AgentMessage::Assistant(a) => estimate_assistant_chars(a),
         AgentMessage::ToolResult(t) => estimate_text_and_image_chars_content(&t.content),
-        AgentMessage::System(s) => s.content.len(),
         AgentMessage::Custom(c) => estimate_custom_chars(c),
     }
 }

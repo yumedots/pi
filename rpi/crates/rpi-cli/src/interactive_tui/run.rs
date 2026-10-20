@@ -302,7 +302,7 @@ pub(super) async fn run_compact(
 pub(super) fn copy_last_assistant(state: &Arc<TuiState>, chat: &Arc<Container>) {
     let text = state.last_assistant_text.lock().unwrap().clone();
     if text.is_empty() {
-        add_error_message(chat, "No agent messages to copy yet.");
+        add_note_message(chat, "Nothing to copy yet — no assistant reply captured.");
         return;
     }
     if copy_to_clipboard(&text) {
