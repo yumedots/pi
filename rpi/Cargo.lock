@@ -2301,7 +2301,6 @@ dependencies = [
  "async-trait",
  "futures",
  "rpi-ai",
- "rpi-telemetry",
  "schemars",
  "serde",
  "serde_json",
@@ -2323,7 +2322,6 @@ dependencies = [
  "jsonschema",
  "regex",
  "reqwest",
- "rpi-telemetry",
  "schemars",
  "serde",
  "serde_json",
@@ -2358,7 +2356,6 @@ dependencies = [
  "rpi-extensions",
  "rpi-harness",
  "rpi-plugin-sdk",
- "rpi-telemetry",
  "rpi-tools",
  "rpi-tui",
  "schemars",
@@ -2406,7 +2403,6 @@ dependencies = [
  "futures",
  "rpi-agent",
  "rpi-ai",
- "rpi-telemetry",
  "rpi-tools",
  "rusqlite",
  "schemars",
@@ -2432,16 +2428,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "rpi-telemetry"
-version = "0.6.3"
-dependencies = [
- "async-trait",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

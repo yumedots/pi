@@ -14,7 +14,6 @@ keywords = ["agent", "llm", "ai", "anthropic", "openai"]
 categories = ["api-bindings", "asynchronous", "artificial-intelligence"]
 
 [dependencies]
-rpi-telemetry = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 async-trait = { workspace = true }

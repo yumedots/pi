@@ -1,7 +1,6 @@
 # rpi — a Rust agent runtime + CLI. See README.md and docs/architecture/overview.md.
 [workspace]
 members = [
-    "crates/rpi-telemetry",
     "crates/rpi-ai",
     "crates/rpi-agent",
     "crates/rpi-tools",
@@ -70,7 +69,6 @@ dirs = "5"
 rpassword = "7"
 
 # rpi internal crates (package names and directories both use the `rpi-` prefix).
-rpi-telemetry = { path = "crates/rpi-telemetry", version = "0.6.3" }
 rpi-ai = { path = "crates/rpi-ai", version = "0.6.3" }
 rpi-agent = { path = "crates/rpi-agent", version = "0.6.3" }
 rpi-tools = { path = "crates/rpi-tools", version = "0.6.3" }

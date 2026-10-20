@@ -19,7 +19,6 @@ categories = [
 ]
 
 [dependencies]
-rpi-telemetry = { workspace = true }
 rpi-ai = { workspace = true, features = ["providers"] }
 rpi-agent = { workspace = true }
 rpi-tools = { workspace = true }

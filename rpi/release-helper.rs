@@ -6,7 +6,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const RELEASE_CRATES: &[(&str, &str)] = &[
-    ("rpi-telemetry", "crates/rpi-telemetry/Cargo.toml"),
     ("rpi-ai", "crates/rpi-ai/Cargo.toml"),
     ("rpi-agent", "crates/rpi-agent/Cargo.toml"),
     ("rpi-plugin-sdk", "crates/rpi-plugin-sdk/Cargo.toml"),
@@ -18,7 +17,6 @@ const RELEASE_CRATES: &[(&str, &str)] = &[
 ];
 
 const INTERNAL_DEPENDENCIES: &[&str] = &[
-    "rpi-telemetry",
     "rpi-ai",
     "rpi-agent",
     "rpi-plugin-sdk",
@@ -575,7 +573,6 @@ mod tests {
     fn dry_run_uses_full_verification_with_only_declared_local_dependencies() {
         let manifest = r#"
 [dependencies]
-rpi-telemetry = { workspace = true }
 rpi-plugin-sdk = { version = "0.1.12" }
 serde = { version = "1" }
 "#;
@@ -592,8 +589,6 @@ serde = { version = "1" }
                 "crates-io",
                 "-p",
                 "rpi-ai",
-                "--config",
-                "patch.crates-io.rpi-telemetry.path=\"workspace/crates/rpi-telemetry\"",
                 "--config",
                 "patch.crates-io.rpi-plugin-sdk.path=\"workspace/crates/rpi-plugin-sdk\"",
             ]

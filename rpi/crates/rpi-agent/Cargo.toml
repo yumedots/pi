@@ -14,7 +14,6 @@ keywords = ["agent", "llm", "ai", "claude", "sdk"]
 categories = ["api-bindings", "asynchronous", "artificial-intelligence"]
 
 [dependencies]
-rpi-telemetry = { workspace = true }
 rpi-ai = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

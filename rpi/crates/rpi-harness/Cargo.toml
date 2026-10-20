@@ -14,7 +14,6 @@ keywords = ["agent", "llm", "ai", "claude", "harness"]
 categories = ["api-bindings", "asynchronous", "artificial-intelligence"]
 
 [dependencies]
-rpi-telemetry = { workspace = true }
 rpi-ai = { workspace = true }
 rpi-agent = { workspace = true }
 rpi-tools = { workspace = true }
@@ -33,7 +32,6 @@ rusqlite = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-rpi-telemetry = { workspace = true }
 rpi-ai = { workspace = true }
 rpi-agent = { workspace = true }
 
