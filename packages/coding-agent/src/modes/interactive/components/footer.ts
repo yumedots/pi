@@ -44,13 +44,18 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
 	return relativeToHome === "" ? "~" : `~${sep}${relativeToHome}`;
 }
 
-/** Separator between the cwd group and the stats group on the footer line. */
-const GROUP_SEPARATOR = " • ";
-/** Minimum spaces between the left group and the right-aligned model info. */
+/** Separator between the groups on the left of the footer line. */
+const GROUP_SEPARATOR = " / ";
+/** Separator between the cwd and the git branch. */
+const PATH_SEPARATOR = ":";
+/** Separator between the path and the session name. */
+const SESSION_SEPARATOR = " • ";
+/** Minimum spaces between the left groups and the right-aligned path. */
 const MIN_PADDING = 2;
 
 /**
  * Shorten a path from the left so the tail (the project folder) stays visible.
+ * Returns an empty string when the path cannot be shortened to something readable.
  */
 function truncateCwd(cwd: string, maxWidth: number): string {
 	if (maxWidth <= 0) return "";
@@ -60,7 +65,9 @@ function truncateCwd(cwd: string, maxWidth: number): string {
 		const candidate = `…/${segments.slice(i).join("/")}`;
 		if (visibleWidth(candidate) <= maxWidth) return candidate;
 	}
-	return truncateToWidth(cwd, maxWidth, "…");
+	const clipped = truncateToWidth(cwd, maxWidth, "…");
+	// A stub like "~…" tells the user nothing, so the path is dropped instead.
+	return visibleWidth(clipped) >= 4 ? clipped : "";
 }
 
 interface FooterFit {
@@ -72,20 +79,32 @@ interface FooterFit {
  * Fit the footer parts on one line.
  *
  * Shrink order: drop the detail stats (token counts, cache, cost) one by one, then shorten the
- * cwd from the left so its tail stays visible, then drop the cwd, then shorten the model info.
- * The context percentage keeps its content as long as possible.
+ * path from the left so its tail stays visible, then drop the session name, the branch, and the
+ * path, then the thinking level, then the model name. The context percentage keeps its content
+ * as long as possible.
  */
 function fitFooterLine(
-	cwd: string,
-	cwdSuffixes: string[],
+	modelCandidates: string[],
+	thinkingGroup: string | undefined,
 	detailParts: string[],
-	coreParts: string[],
-	rightCandidates: string[],
+	tailGroups: string[],
+	cwd: string,
+	branch: string | undefined,
+	sessionName: string | undefined,
 	width: number,
 ): FooterFit {
 	let best: FooterFit = { left: "", right: "" };
-	for (const right of rightCandidates) {
-		const fit = fitFooterLineWithRight(cwd, cwdSuffixes, detailParts, coreParts, right, width);
+	for (const model of modelCandidates) {
+		const fit = fitFooterLineWithModel(
+			model,
+			thinkingGroup,
+			detailParts,
+			tailGroups,
+			cwd,
+			branch,
+			sessionName,
+			width,
+		);
 		best = fit;
 		// The model info was cut, try the shorter candidate before giving up on it.
 		if (!fit.truncated) break;
@@ -93,71 +112,99 @@ function fitFooterLine(
 	return best;
 }
 
-function fitFooterLineWithRight(
-	cwd: string,
-	cwdSuffixes: string[],
+function fitFooterLineWithModel(
+	model: string,
+	thinkingGroup: string | undefined,
 	detailParts: string[],
-	coreParts: string[],
-	right: string,
+	tailGroups: string[],
+	cwd: string,
+	branch: string | undefined,
+	sessionName: string | undefined,
 	width: number,
 ): FooterFit & { truncated: boolean } {
-	const core = coreParts.join(" ");
-	const rightWidth = visibleWidth(right);
 	const details = [...detailParts];
-	const suffixes = [...cwdSuffixes];
+	let modelGroup = model;
+	let thinking = thinkingGroup;
+	let path = cwd;
+	let pathBranch = branch;
+	let pathSession = sessionName;
 
-	const buildLeft = (path: string): string => {
-		const cwdGroup = [path, ...suffixes].filter((part) => part.length > 0).join(" ");
-		const stats = [...details, core].filter((part) => part.length > 0).join(" ");
-		if (!cwdGroup) return stats;
-		return stats ? `${cwdGroup}${GROUP_SEPARATOR}${stats}` : cwdGroup;
+	const buildLeft = (): string =>
+		[modelGroup, thinking, details.join(" "), ...tailGroups]
+			.filter((part): part is string => !!part && part.length > 0)
+			.join(GROUP_SEPARATOR);
+
+	const buildRight = (): string => {
+		const pathGroup = [path, pathBranch]
+			.filter((part): part is string => !!part && part.length > 0)
+			.join(PATH_SEPARATOR);
+		return [pathGroup, pathSession]
+			.filter((part): part is string => !!part && part.length > 0)
+			.join(SESSION_SEPARATOR);
 	};
 
-	const fits = (left: string): boolean => visibleWidth(left) + MIN_PADDING + rightWidth <= width;
+	const fits = (left: string, right: string): boolean =>
+		visibleWidth(left) + (right ? MIN_PADDING + visibleWidth(right) : 0) <= width;
 
-	let path = cwd;
-	let left = buildLeft(path);
+	let left = buildLeft();
+	let right = buildRight();
 
 	// Drop the detail stats until the line fits.
-	while (details.length > 0 && !fits(left)) {
+	while (details.length > 0 && !fits(left, right)) {
 		details.shift();
-		left = buildLeft(path);
+		left = buildLeft();
 	}
 
-	// Shorten the cwd from the left so the project folder stays visible.
-	if (!fits(left)) {
-		const stats = [...details, core].filter((part) => part.length > 0).join(" ");
-		const statsWidth = stats ? visibleWidth(GROUP_SEPARATOR) + visibleWidth(stats) : 0;
-		const suffixWidth = visibleWidth(suffixes.join(" "));
-		path = truncateCwd(cwd, width - MIN_PADDING - rightWidth - statsWidth - suffixWidth - 1);
-		left = buildLeft(path);
+	// Drop the session name before it pushes the path out of the line.
+	if (!fits(left, right)) {
+		pathSession = undefined;
+		right = buildRight();
 	}
 
-	// Drop the cwd, then the branch and session name, before cutting the model info.
-	if (!fits(left)) {
+	// Shorten the path from the left so the project folder stays visible.
+	if (!fits(left, right)) {
+		const fixedWidth =
+			visibleWidth(left) +
+			(pathBranch ? PATH_SEPARATOR.length + visibleWidth(pathBranch) : 0) +
+			(pathSession ? SESSION_SEPARATOR.length + visibleWidth(pathSession) : 0);
+		path = truncateCwd(cwd, width - MIN_PADDING - fixedWidth);
+		right = buildRight();
+	}
+
+	// Drop the branch, then the path.
+	if (!fits(left, right)) {
+		pathBranch = undefined;
+		right = buildRight();
+	}
+	if (!fits(left, right)) {
 		path = "";
-		left = buildLeft(path);
-	}
-	if (!fits(left)) {
-		suffixes.length = 0;
-		left = buildLeft(path);
+		right = buildRight();
 	}
 
-	// Shorten the model info.
-	let fittedRight = right;
+	// Drop the thinking level, then shorten the model name.
 	let truncated = false;
-	if (!fits(left)) {
+	if (!fits(left, right)) {
+		thinking = undefined;
+		left = buildLeft();
+	}
+	if (!fits(left, right)) {
 		truncated = true;
-		const available = width - visibleWidth(left) - MIN_PADDING;
-		fittedRight = available > 0 ? truncateToWidth(right, available, "") : "";
+		const rest = [details.join(" "), ...tailGroups]
+			.filter((part): part is string => !!part && part.length > 0)
+			.join(GROUP_SEPARATOR);
+		const restWidth = visibleWidth(rest);
+		const available =
+			width - visibleWidth(right) - (right ? MIN_PADDING : 0) - restWidth - (restWidth ? GROUP_SEPARATOR.length : 0);
+		modelGroup = available > 0 ? truncateToWidth(modelGroup, available, "") : "";
+		left = buildLeft();
 	}
 
-	// The stats alone do not fit either.
+	// The groups alone do not fit either.
 	if (visibleWidth(left) > width) {
 		left = truncateToWidth(left, width, "…");
 	}
 
-	return { left, right: fittedRight, truncated };
+	return { left, right, truncated };
 }
 
 interface SessionStats {
@@ -281,15 +328,8 @@ export class FooterComponent implements Component {
 		const cwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);
 
 		// Git branch and session name stay visible when the path has to be shortened.
-		const cwdSuffixes: string[] = [];
-		const branch = this.footerData.getGitBranch();
-		if (branch) {
-			cwdSuffixes.push(`(${branch})`);
-		}
+		const branch = this.footerData.getGitBranch() ?? undefined;
 		const sessionName = this.session.sessionManager.getSessionName();
-		if (sessionName) {
-			cwdSuffixes.push(`• ${sessionName}`);
-		}
 
 		// Detail stats, dropped from the front when the line does not fit.
 		const detailParts: string[] = [];
@@ -324,34 +364,43 @@ export class FooterComponent implements Component {
 		} else {
 			contextPercentStr = contextPercentDisplay;
 		}
-		const coreParts = [contextPercentStr];
+		// The context percentage and the experimental marker close the line.
+		const tailGroups = [contextPercentStr];
 		if (areExperimentalFeaturesEnabled()) {
-			coreParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
+			tailGroups.push(theme.bold(theme.fg("warning", "xp")));
 		}
 
-		// Add model name on the right side, plus thinking level if model supports it
+		// The model name starts the line, followed by the thinking level and the stats.
 		const modelName = state.model?.id || "no-model";
-		let rightSideWithoutProvider = modelName;
+		const thinkingLevel = state.thinkingLevel || "off";
+		let thinkingGroup: string | undefined;
 		if (state.model?.reasoning) {
-			const thinkingLevel = state.thinkingLevel || "off";
-			rightSideWithoutProvider =
-				thinkingLevel === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinkingLevel}`;
+			thinkingGroup = thinkingLevel === "off" ? "thinking off" : thinkingLevel;
 		}
 		// A virtual model routes each request; show where the latest response went.
 		const routed = this.session.routedModel;
-		if (routed) {
-			const level = routed.thinkingLevel ? ` • ${routed.thinkingLevel}` : "";
-			rightSideWithoutProvider += ` → ${routed.model.id}${level}`;
+		const routedSuffix = routed ? ` → ${routed.model.id}` : "";
+		if (routed?.thinkingLevel && routed.thinkingLevel !== thinkingLevel) {
+			thinkingGroup = thinkingGroup ? `${thinkingGroup} → ${routed.thinkingLevel}` : routed.thinkingLevel;
 		}
 
-		// The provider is only shown when several providers are available. The plain model name is
-		// the fallback when the provider prefix does not fit.
-		const rightCandidates =
-			this.footerData.getAvailableProviderCount() > 1 && state.model
-				? [`(${state.model.provider}) ${rightSideWithoutProvider}`, rightSideWithoutProvider]
-				: [rightSideWithoutProvider];
+		// The provider comes in front of the model name. The plain model name is the fallback when
+		// the provider does not fit.
+		const provider = state.model?.provider;
+		const modelCandidates = provider
+			? [`${provider}/${modelName}${routedSuffix}`, `${modelName}${routedSuffix}`]
+			: [`${modelName}${routedSuffix}`];
 
-		const { left, right } = fitFooterLine(cwd, cwdSuffixes, detailParts, coreParts, rightCandidates, width);
+		const { left, right } = fitFooterLine(
+			modelCandidates,
+			thinkingGroup,
+			detailParts,
+			tailGroups,
+			cwd,
+			branch,
+			sessionName,
+			width,
+		);
 
 		// Dim the groups separately. The left group may contain color codes (for context %)
 		// that end with a reset, which would clear an outer dim wrapper.

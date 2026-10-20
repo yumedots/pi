@@ -35,7 +35,7 @@
 - `Ctrl+C` no longer clears the editor. It only exits when pressed twice, and clearing the editor moved to `Alt+C` (`app.clear`). The exit shortcut is the new `app.quit` action
 - The startup listing of loaded context files, skills, prompt templates, and extensions is gone. Resource conflicts and load errors still show as warnings on startup
 - The settings menu no longer lists the fullscreen exit output while it holds its default value
-- The footer now shows the cwd and the stats on a single line, with the model info right-aligned on the same line
+- The footer now shows the model, the thinking level, and the stats on a single line, with the path and the git branch right-aligned on the same line, for example `zhipu/glm-5.1 / medium / 12.3%/200k (auto)` and `~/pi:main`
 - Sent messages now share one gray card background, instead of a blue card for regular messages and a purple card for skill invocations
 - The input box is now a card in the same gray as the sent messages, instead of a box framed by horizontal rules
 - The input box shows a `>` prompt in front of the text, like a shell prompt, and grows with the prompt up to 12 text lines. A longer prompt scrolls inside the box, instead of hiding all but the last line behind a `↑ N more` hint

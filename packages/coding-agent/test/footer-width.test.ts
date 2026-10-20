@@ -157,7 +157,7 @@ describe("FooterComponent width handling", () => {
 		}
 	});
 
-	it("puts the cwd and the stats on one line", () => {
+	it("puts the model, the stats, and the path on one line", () => {
 		const session = createSession({
 			sessionName: "",
 			modelId: "glm-5.1",
@@ -169,8 +169,23 @@ describe("FooterComponent width handling", () => {
 		const lines = footer.render(120);
 		expect(lines).toHaveLength(1);
 		const line = stripAnsi(lines[0]);
-		expect(line).toContain("/tmp/project (main) • 12.3%/200k (auto)");
-		expect(line).toContain("glm-5.1 • medium");
+		expect(line).toContain("test/glm-5.1 / medium / 12.3%/200k (auto)");
+		expect(line).toContain("/tmp/project:main");
+		expect(line.indexOf("glm-5.1")).toBeLessThan(line.indexOf("/tmp/project:main"));
+	});
+
+	it("puts the provider in front of the model name", () => {
+		const session = createSession({
+			sessionName: "",
+			modelId: "glm-5.1",
+			provider: "zhipu",
+			reasoning: true,
+			thinkingLevel: "medium",
+		});
+		const footer = new FooterComponent(session, createFooterData(1));
+
+		const line = stripAnsi(footer.render(120)[0]);
+		expect(line).toContain("zhipu/glm-5.1 / medium");
 	});
 
 	it("keeps the context percentage and the model on a narrow line", () => {
@@ -185,10 +200,10 @@ describe("FooterComponent width handling", () => {
 		const line = stripAnsi(footer.render(40)[0]);
 		expect(visibleWidth(line)).toBeLessThanOrEqual(40);
 		expect(line).toContain("12.3%/200k (auto)");
-		expect(line).toContain("glm-5.1 • medium");
+		expect(line).toContain("test/glm-5.1");
 	});
 
-	it("drops the detail stats before the cwd on a narrow line", () => {
+	it("drops the detail stats before the path on a narrow line", () => {
 		const session = createSession({
 			sessionName: "",
 			modelId: "glm-5.1",
@@ -204,7 +219,7 @@ describe("FooterComponent width handling", () => {
 
 		const line = stripAnsi(footer.render(60)[0]);
 		expect(visibleWidth(line)).toBeLessThanOrEqual(60);
-		expect(line).toContain("/tmp/project (main)");
+		expect(line).toContain("/tmp/project:main");
 		expect(line).toContain("12.3%/200k (auto)");
 		expect(line).not.toContain("↑12k");
 	});
@@ -221,7 +236,7 @@ describe("FooterComponent width handling", () => {
 
 		const statsLine = stripAnsi(footer.render(120)[0]);
 
-		expect(statsLine).toContain("auto \u2022 high \u2192 gpt-5.6-luna \u2022 medium");
+		expect(statsLine).toContain("auto → gpt-5.6-luna / high → medium");
 	});
 
 	it("includes summary and tool result usage in the total cost", () => {
