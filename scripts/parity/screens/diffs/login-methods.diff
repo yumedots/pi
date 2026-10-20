@@ -1,23 +1,5 @@
 --- ts/login-methods.txt
 +++ rust/login-methods.txt
-- ▀▀█  v1.3.0
-+
-- █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
-+ ▀▀█  v1.3.0
-- Press ctrl+o to show full startup help.
-+ █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
--
-+ Press ctrl+o to show full startup help.
-- Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
-+
--
-+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
-- Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
-+
-- on` to ~/.tmux.conf and restart tmux.
-+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
--
-+ on` to ~/.tmux.conf and restart tmux.
 -
 +Log in to provider
 -
@@ -32,18 +14,19 @@
 +  azure                           Not configured · API key / AZURE_OPENAI_API_KEY
 -
 +  baseten                         Not configured · API key / BASETEN_API_KEY
--  Select authentication method:
+-
 +  cerebras                        Not configured · API key / CEREBRAS_API_KEY
--> Search
+-  Select authentication method:
 +  cloudflare-ai-gateway           Not configured · API key / CLOUDFLARE_API_KEY
--→ Sign in with an account
+-> Search
 +  cloudflare-workers-ai           Not configured · API key / CLOUDFLARE_API_KEY
--  Sign in with an API key
+-→ Sign in with an account
 +  deepseek                        Not configured · API key / DEEPSEEK_API_KEY
--  Sign in with Radius • not configured
+-  Sign in with an API key
 +  fireworks                       Not configured · API key / FIREWORKS_API_KEY
--↑↓ navigate  enter select  escape/ctrl+c cancel
+-  Sign in with Radius • not configured
 +  github-copilot                  Not configured · API key / COPILOT_GITHUB_TOKEN
--mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                 /private/tmp/pi-screens/work/login-methods
+-↑↓ navigate  enter select  escape/ctrl+c cancel
 +  (1/40)
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                 /private/tmp/pi-screens/work/login-methods
 +mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens            /private/tmp/pi-screens/work/login-methods

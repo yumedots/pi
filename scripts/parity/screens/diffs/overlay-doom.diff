@@ -1,34 +1,34 @@
 --- ts/overlay-doom.txt
 +++ rust/overlay-doom.txt
 - ▀▀█  v1.3.0
-+
-- █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
 + Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+- █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
++
 - Press ctrl+o to show full startup help.
 +
-- Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
-+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
 -
++ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+- Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
 + on` to ~/.tmux.conf and restart tmux.
 -
 + Failed to load extension
-- Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
-+ "/Users/gabriel/pi/packages/coding-agent/examples/extensions/doom-overlay/index.ts": javascript
-- on` to ~/.tmux.conf and restart tmux.
-+ error: SyntaxError: Cannot use 'import.meta' outside a module
 -
++ "/Users/gabriel/pi/packages/coding-agent/examples/extensions/doom-overlay/index.ts": javascript
+- Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
++ error: SyntaxError: Cannot use 'import.meta' outside a module
+- on` to ~/.tmux.conf and restart tmux.
 +     at new Function (<anonymous>)
 -
 +     at loadModule (eval at globalThis.__piRun (unknown source), <anonymous>:14542:21)
-- /doom-overlay
-+     at resolveModule (eval at globalThis.__piRun (unknown source), <anonymous>:14529:14)
 -
++     at resolveModule (eval at globalThis.__piRun (unknown source), <anonymous>:14529:14)
+- /doom-overlay
 +     at eval (eval at globalThis.__piRun (unknown source), <anonymous>:14553:22)
 -
 +     at eval (eval at loadModule (eval at globalThis.__piRun (unknown source)), <anonymous>:6:23)
-- Loading DOOM...
-+     at loadModule (eval at globalThis.__piRun (unknown source), <anonymous>:14551:5)
 -
++     at loadModule (eval at globalThis.__piRun (unknown source), <anonymous>:14551:5)
+- Loading DOOM...
 +     at loadExtension (eval at globalThis.__piRun (unknown source), <anonymous>:14849:21)
 -
 +     at globalThis.__piCall (eval at globalThis.__piRun (unknown source), <anonymous>:265:24)
@@ -40,10 +40,5 @@
 + (http://127.0.0.1:9/v1/chat/completions)
 -⠹ Working
 +
-->
-+
--
-+>
 -mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                  /private/tmp/pi-screens/work/overlay-doom
-+
 +mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens             /private/tmp/pi-screens/work/overlay-doom

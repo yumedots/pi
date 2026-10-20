@@ -1,35 +1,16 @@
 --- ts/model-selector.txt
 +++ rust/model-selector.txt
-- ▀▀█  v1.3.0
-+
-- █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
-+ ▀▀█  v1.3.0
-- Press ctrl+o to show full startup help.
-+ █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
--
-+ Press ctrl+o to show full startup help.
-- Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
-+
--
-+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
-- Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
-+
-- on` to ~/.tmux.conf and restart tmux.
-+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
--
-+ on` to ~/.tmux.conf and restart tmux.
 -
 +Select model
 -  Only showing models from configured providers. Use /login to add providers.
-+
--> Search
 +Type to filter by name, provider, or id
+-> Search
++
 -→ ✓ mock-1                        [mock]
-+
--  Model catalogs refreshed.
 +>
--  Enter to select · Ctrl+S to set as default · Escape/Ctrl+C to cancel
+-  Model catalogs refreshed.
 +
--mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                /private/tmp/pi-screens/work/model-selector
+-  Enter to select · Ctrl+S to set as default · Escape/Ctrl+C to cancel
 +→ ✓ mock-1                        [mock]
+-mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                /private/tmp/pi-screens/work/model-selector
 +mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens           /private/tmp/pi-screens/work/model-selector

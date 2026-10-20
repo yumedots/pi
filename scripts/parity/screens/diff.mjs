@@ -60,6 +60,11 @@ function readScreen(side, name) {
 	}
 	const body = start === -1 ? lines : lines.slice(start + 1);
 	while (body.length > 0 && body[body.length - 1].trim() === "") body.pop();
+	// The original's first paint races: the same screen captured twice starts
+	// with a blank line once and without it the next time (the header is built
+	// after the terminal's colour reply). One leading blank line is dropped on
+	// both sides so the comparison is about the screen, not about that race.
+	if (body.length > 0 && body[0].trim() === "") body.shift();
 	return { raw, body };
 }
 
@@ -168,6 +173,10 @@ for (const spec of SCREENS) {
 		"  challenge and state, the pairing code, the session uuid, the export",
 		"  timestamp, the animation frame counter and a duration) and the per-side",
 		"  scratch path.",
+		"- The original's first paint races: the same screen captured twice starts with",
+		"  a blank line once and without it the next time, because the header is built",
+		"  after the terminal's colour reply. One leading blank line is dropped from",
+		"  both sides, so that race does not show up as a difference.",
 		"- `diffs/<screen>.diff` holds the line diff of the screens that differ.",
 		"- *Port file* names the file in the port that draws the screen, relative to",
 		"  `rpi/crates`.",
