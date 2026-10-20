@@ -130,7 +130,18 @@ export const ModelsJsonSchemas = {
 	modelOverride: ModelOverrideSchema,
 };
 
-const validateModelsConfig = Compile(ModelsConfigSchema);
+/**
+ * The validator of the models configuration.
+ *
+ * The compiler is loaded when it is first needed: a models.json that is valid
+ * never reaches it, and the compiler is one of the heavier modules of the agent.
+ */
+let validateModelsConfig: ReturnType<typeof Compile<typeof ModelsConfigSchema>> | undefined;
+
+function getModelsConfigValidator(): ReturnType<typeof Compile<typeof ModelsConfigSchema>> {
+	validateModelsConfig ??= Compile(ModelsConfigSchema);
+	return validateModelsConfig;
+}
 
 export type ModelsJsonModel = Static<typeof ModelDefinitionSchema>;
 export type ModelsJsonModelOverride = Static<typeof ModelOverrideSchema>;
@@ -189,9 +200,10 @@ export class ModelConfig {
 			);
 		}
 
-		if (!validateModelsConfig.Check(parsed)) {
+		const validator = getModelsConfigValidator();
+		if (!validator.Check(parsed)) {
 			const errors =
-				validateModelsConfig
+				validator
 					.Errors(parsed)
 					.map((error) => `  - ${formatValidationPath(error)}: ${error.message}`)
 					.join("\n") || "Unknown schema error";

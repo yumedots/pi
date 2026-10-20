@@ -89,7 +89,18 @@ export const ThemeJsonSchema = Type.Object(
 	},
 );
 
-const compiledThemeSchema = Compile(ThemeJsonSchema);
+/**
+ * The validator of a theme document.
+ *
+ * The compiler is loaded when it is first needed: the built-in themes are
+ * trusted, and the compiler is one of the heavier modules of the agent.
+ */
+let compiledThemeSchema: ReturnType<typeof Compile<typeof ThemeJsonSchema>> | undefined;
+
+function getThemeValidator(): ReturnType<typeof Compile<typeof ThemeJsonSchema>> {
+	compiledThemeSchema ??= Compile(ThemeJsonSchema);
+	return compiledThemeSchema;
+}
 
 export type ValidatedThemeJson = Static<typeof ThemeJsonSchema>;
 
@@ -107,8 +118,9 @@ export function validateThemeJson(label: string, json: unknown): ValidatedThemeJ
 		);
 	}
 
-	if (!compiledThemeSchema.Check(json)) {
-		const errors = Array.from(compiledThemeSchema.Errors(json));
+	const validator = getThemeValidator();
+	if (!validator.Check(json)) {
+		const errors = Array.from(validator.Errors(json));
 		const missingColors = new Set<string>();
 		const otherErrors: string[] = [];
 
