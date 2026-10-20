@@ -2,9 +2,9 @@
 // Verifies that bun.lock and package-lock.json resolve the same package versions.
 //
 // The repository keeps both lockfiles:
-//   - package-lock.json is the source of truth. The nix build reads it with
-//     importNpmLock, and packages/coding-agent/install-lock (the shrinkwrap the
-//     published installer uses) is generated from it.
+//   - package-lock.json is the source of truth.
+//     packages/coding-agent/install-lock (the shrinkwrap the published installer
+//     uses) is generated from it.
 //   - bun.lock is what `bun install` reads. It is generated from
 //     package-lock.json with `bun pm migrate`, so both describe one tree.
 //
@@ -86,7 +86,7 @@ if (!existsSync(bunLockPath)) {
 	process.exit(1);
 }
 if (!existsSync(npmLockPath)) {
-	console.error("package-lock.json is missing. The nix build and the installer shrinkwrap need it.");
+	console.error("package-lock.json is missing. The installer shrinkwrap needs it.");
 	process.exit(1);
 }
 

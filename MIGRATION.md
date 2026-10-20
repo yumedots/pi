@@ -71,8 +71,6 @@ and the registry as much as on the package manager.
 
 ### npm keeps `package-lock.json` and the publication path
 
-- `nix/package.nix` reads the root lockfile with `importNpmLock`. Nix has no
-  Bun support, and the nix build is a release artifact.
 - `packages/coding-agent/install-lock/` is the shrinkwrap the published pi.dev
   installer uses. It is generated from `package-lock.json` and ships to end
   users, who install it with npm.
@@ -217,7 +215,7 @@ esbuild stays.
 
 - **Two lockfiles.** `package-lock.json` and `bun.lock` describe one tree, and
   `bun run check:lockfiles` enforces that. The check runs in `bun run check`,
-  which CI and the pre-commit hook both run.
+  which CI runs.
 - **A stale `tsbuildinfo` can silently skip work.** The package builds are
   incremental. The buildinfo lives in `dist/`, which the clean script removes,
   so `rm -rf dist` is always a full rebuild. A buildinfo next to the config
@@ -252,8 +250,8 @@ npm ci --ignore-scripts                          # or restore the npm tree
 ```
 
 `package-lock.json` is unchanged on this branch, so `npm ci --ignore-scripts`
-still produces the tree the release scripts, the nix build and the published
-installer shrinkwrap expect. Nothing outside the toolchain changed: the
+still produces the tree the release scripts and the published-installer
+shrinkwrap expect. Nothing outside the toolchain changed: the
 published packages, the public API, the package names and the versions are the
 same, and the compiled binary is built with the same `bun build --compile`
 flags as before.

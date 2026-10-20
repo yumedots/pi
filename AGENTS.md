@@ -46,7 +46,7 @@
 - Treat npm dep and lockfile changes as reviewed code. Direct registry deps, including internal workspace deps, stay pinned to exact versions.
 - When updating `undici`, you MUST read its changelog/release notes for the target version and evaluate whether any changes may affect functionality before applying the update.
 - Hydrate/update locally with `bun install`; clean/CI-style with `bun install --frozen-lockfile --ignore-scripts`. Don't run lifecycle scripts unless the user asks.
-- `package-lock.json` stays the dependency ground truth: the nix build reads it with `importNpmLock`, and `packages/coding-agent/install-lock/` (the shrinkwrap the published installer uses) is generated from it. `bun.lock` is generated from it with `bun pm migrate`; run `bun run check:lockfiles` after changing either.
+- `package-lock.json` stays the dependency ground truth: `packages/coding-agent/install-lock/` (the shrinkwrap the published installer uses) is generated from it. `bun.lock` is generated from it with `bun pm migrate`; run `bun run check:lockfiles` after changing either.
 - If dep metadata changes, refresh `package-lock.json` with `npm install --package-lock-only --ignore-scripts`, then regenerate `bun.lock` with `bun pm migrate`.
 - If `packages/coding-agent/install-lock/` needs regen, run `bun run install-lock:coding-agent` (verify with `--check` or `bun run check`). New deps with lifecycle scripts require review and an explicit allowlist entry in that script; never add one silently.
 - Bun blocks dependency lifecycle scripts. Nothing is trusted: the repository installs with `--ignore-scripts`, and no dependency needs its install script. Check `bun pm untrusted` before adding anything to `trustedDependencies`.

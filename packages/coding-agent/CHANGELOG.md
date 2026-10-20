@@ -57,6 +57,10 @@
 - Fixed the menu cutting a row's text off with a reset that cleared the panel background, so the end of the row showed the terminal's own background
 - Fixed the system theme taking the menu's selected row color from the terminal palette, which made it brown on a warm palette. The menu now has its own `menuSelectedBg` token that stays gray
 
+### Removed
+
+- Removed the Nix package and its flake. Pi is no longer installable with `nix profile add github:earendil-works/pi/stable`, and the release no longer pins a model catalog for an offline Nix build
+
 ## [1.3.0] - 2026-10-15
 
 ### New Features
