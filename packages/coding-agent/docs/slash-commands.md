@@ -51,7 +51,7 @@ Review a session before exporting or sharing it. Sessions can contain prompts, t
 | `/reload` | Reload keybindings, extensions, skills, templates, themes, and context files |
 | `/hotkeys` | Show active keyboard shortcuts |
 | `/changelog` | Show changelog entries |
-| `/quit` | Quit Pi |
+| `/quit`, `/exit` | Quit Pi |
 
 ## Commands added by resources
 

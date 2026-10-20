@@ -5,6 +5,7 @@ describe("slash command aliases", () => {
 	it("runs the command an alias points at", () => {
 		expect(resolveBuiltinSlashAlias("/history")).toBe("/resume");
 		expect(resolveBuiltinSlashAlias("/sessions")).toBe("/resume");
+		expect(resolveBuiltinSlashAlias("/exit")).toBe("/quit");
 	});
 
 	it("leaves commands and messages alone", () => {
