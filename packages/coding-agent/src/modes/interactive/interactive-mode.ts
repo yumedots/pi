@@ -971,7 +971,6 @@ export class InteractiveMode {
 			this.footerContainer,
 		]);
 		// Accept text while startup completes, but only enable interrupt, exit, and submission feedback.
-		this.defaultEditor.onAction("app.clear", () => this.handleClear());
 		this.defaultEditor.onAction("app.quit", () => this.handleQuit());
 		this.defaultEditor.onCtrlD = () => this.handleCtrlD();
 		this.defaultEditor.onSubmit = (text) => this.handleStartupSubmit(text);
@@ -1006,7 +1005,6 @@ export class InteractiveMode {
 			const expandedInstructions = () =>
 				[
 					hint("app.interrupt", "to interrupt"),
-					hint("app.clear", "to clear"),
 					rawKeyHint(`${keyText("app.quit")} twice`, "to exit"),
 					hint("app.exit", "to exit (empty)"),
 					hint("app.suspend", "to suspend"),
@@ -1031,7 +1029,6 @@ export class InteractiveMode {
 			const compactInstructions = () =>
 				[
 					hint("app.interrupt", "interrupt"),
-					hint("app.clear", "clear"),
 					rawKeyHint(`${keyText("app.quit")} twice`, "to exit"),
 					rawKeyHint("/", "commands"),
 					rawKeyHint("!", "bash"),
@@ -2738,7 +2735,6 @@ export class InteractiveMode {
 		};
 
 		// Register app action handlers
-		this.defaultEditor.onAction("app.clear", () => this.handleClear());
 		this.defaultEditor.onAction("app.quit", () => this.handleQuit());
 		this.defaultEditor.onCtrlD = () => this.handleCtrlD();
 		this.defaultEditor.onAction("app.suspend", () => this.handleCtrlZ());
@@ -3993,13 +3989,6 @@ export class InteractiveMode {
 	// =========================================================================
 
 	/**
-	 * Clear the editor. Never exits: the quit key is bound to `app.quit`.
-	 */
-	private handleClear(): void {
-		this.clearEditor();
-	}
-
-	/**
 	 * Quit on a double press. Never touches the editor content.
 	 */
 	private handleQuit(): void {
@@ -4350,11 +4339,6 @@ export class InteractiveMode {
 	// =========================================================================
 	// UI helpers
 	// =========================================================================
-
-	clearEditor(): void {
-		this.editor.setText("");
-		this.ui.requestRender();
-	}
 
 	private warningBannerTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 
@@ -6710,7 +6694,6 @@ export class InteractiveMode {
 
 		// App keybindings
 		const interrupt = this.getAppKeyDisplay("app.interrupt");
-		const clear = this.getAppKeyDisplay("app.clear");
 		const quit = this.getAppKeyDisplay("app.quit");
 		const exit = this.getAppKeyDisplay("app.exit");
 		const suspend = this.getAppKeyDisplay("app.suspend");
@@ -6755,7 +6738,6 @@ export class InteractiveMode {
 |-----|--------|
 | \`${tab}\` | Path completion / accept autocomplete |
 | \`${interrupt}\` | Cancel autocomplete / abort streaming |
-| \`${clear}\` | Clear editor |
 | \`${quit}\` | Exit (press twice) |
 | \`${exit}\` | Exit (when editor is empty) |
 | \`${suspend}\` | Suspend to background |

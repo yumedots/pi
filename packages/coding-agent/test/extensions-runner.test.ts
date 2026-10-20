@@ -304,7 +304,7 @@ describe("ExtensionRunner", () => {
 
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
-			const keybindings = { ...defaultKeybindings, "app.clear": ["ctrl+x", "ctrl+y"] as KeyId[] };
+			const keybindings = { ...defaultKeybindings, "app.quit": ["ctrl+x", "ctrl+y"] as KeyId[] };
 			const shortcuts = runner.getShortcuts(keybindings);
 
 			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("conflicts with built-in"));

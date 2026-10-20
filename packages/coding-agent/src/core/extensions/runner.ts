@@ -97,7 +97,6 @@ import type {
 // Only editor-global shortcuts are reserved here. Picker-specific bindings are not.
 const RESERVED_KEYBINDINGS_FOR_EXTENSION_CONFLICTS = [
 	"app.interrupt",
-	"app.clear",
 	"app.quit",
 	"app.exit",
 	"app.suspend",

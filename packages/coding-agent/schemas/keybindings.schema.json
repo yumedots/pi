@@ -195,10 +195,6 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Cancel or abort"
     },
-    "app.clear": {
-      "$ref": "#/$defs/KeybindingValue",
-      "description": "Clear editor"
-    },
     "app.quit": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Exit (press twice)"

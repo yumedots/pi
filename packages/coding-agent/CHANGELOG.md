@@ -5,6 +5,7 @@
 ### Breaking Changes
 
 - Removed the `enableInstallTelemetry` and `enableAnalytics` settings, the `PI_TELEMETRY` environment variable, the anonymous install/update ping to `pi.dev`, and the provider attribution headers they gated. The first-run setup no longer asks about usage data sharing
+- Removed the `app.clear` action. No key clears the editor anymore
 - `parseSkillBlock()` is replaced by `parseSkillMessage()`. It returns the skill blocks of a message and the request that came with them, so a message can now carry more than one skill
 
 ### Added
@@ -35,7 +36,7 @@
 - Slash-command autocomplete descriptions no longer carry the `[u:npm:...]` resource source tag
 - The session picker renders full-width block rows with a scrollbar instead of a `(n/m)` counter
 - `generateSummary()` and `generateSummaryWithUsage()` now ignore their `reserveTokens` parameter. Summary requests use the model's output limit instead.
-- `Ctrl+C` no longer clears the editor. It only exits when pressed twice, and clearing the editor moved to `Alt+C` (`app.clear`). The exit shortcut is the new `app.quit` action
+- `Ctrl+C` no longer clears the editor. It only exits when pressed twice. The exit shortcut is the new `app.quit` action
 - The startup listing of loaded context files, skills, prompt templates, and extensions is gone. Resource conflicts and load errors still show as warnings on startup
 - The settings menu no longer lists the fullscreen exit output while it holds its default value
 - The footer now shows the model, the thinking level, and the stats on a single line, with the path and the git branch right-aligned on the same line, for example `zhipu/glm-5.1 / medium / 24,600 tokens 12.3%` and `~/pi:main`. The context usage shows the exact number of consumed tokens next to the percentage, and the auto-compaction marker is gone

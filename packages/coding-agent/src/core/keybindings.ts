@@ -24,7 +24,6 @@ const windowsKeybindings = useWindowsKeybindings();
 
 const APP_KEYBINDINGS = {
 	"app.interrupt": { defaultKeys: "escape", description: "Cancel or abort" },
-	"app.clear": { defaultKeys: "alt+c", description: "Clear editor" },
 	"app.quit": { defaultKeys: "ctrl+c", description: "Exit (press twice)" },
 	"app.exit": { defaultKeys: "ctrl+d", description: "Exit when editor is empty" },
 	"app.suspend": {
@@ -231,7 +230,6 @@ const KEYBINDING_NAME_MIGRATIONS = {
 	selectConfirm: "tui.select.confirm",
 	selectCancel: "tui.select.cancel",
 	interrupt: "app.interrupt",
-	clear: "app.clear",
 	exit: "app.exit",
 	suspend: "app.suspend",
 	cycleThinkingLevel: "app.thinking.cycle",

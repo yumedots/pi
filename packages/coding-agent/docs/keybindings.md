@@ -121,7 +121,6 @@ In fullscreen mode, these actions control the transcript and take precedence ove
 | Keybinding id | Default | Description |
 |--------|---------|-------------|
 | `app.interrupt` | `escape` | Cancel / abort |
-| `app.clear` | `alt+c` | Clear editor |
 | `app.quit` | `ctrl+c` | Exit (press twice) |
 | `app.exit` | `ctrl+d` | Exit (when editor empty) |
 | `app.suspend` | `ctrl+z` (None on Windows) | Suspend to background |

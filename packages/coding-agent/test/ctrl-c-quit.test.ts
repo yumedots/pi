@@ -11,15 +11,11 @@ afterEach(() => {
 });
 
 describe("ctrl+c quits without clearing the editor", () => {
-	it("routes ctrl+c to the quit action and alt+c to the clear action", () => {
+	it("routes ctrl+c to the quit action and leaves the editor content alone", () => {
 		const keybindings = new KeybindingsManager();
 		setKeybindings(keybindings);
 		const editor = new CustomEditor(new TuiMainScreen(new VirtualTerminal()), defaultEditorTheme, keybindings);
-		let clears = 0;
 		let quits = 0;
-		editor.onAction("app.clear", () => {
-			clears++;
-		});
 		editor.onAction("app.quit", () => {
 			quits++;
 		});
@@ -28,17 +24,16 @@ describe("ctrl+c quits without clearing the editor", () => {
 		editor.handleInput("\x03"); // Ctrl+C
 		expect(editor.getText()).toBe("draft");
 		expect(quits).toBe(1);
-		expect(clears).toBe(0);
 
-		editor.handleInput("\x1bc"); // Alt+C
-		expect(clears).toBe(1);
+		editor.handleInput("\x1bc"); // Alt+C: no longer bound to anything
+		expect(editor.getText()).toBe("draft");
 		expect(quits).toBe(1);
 	});
 
-	it("exits on a double press and leaves the editor content alone", () => {
+	it("exits on a double press", () => {
 		setKeybindings(new KeybindingsManager());
 		const handleQuit = Reflect.get(InteractiveMode.prototype, "handleQuit") as (this: FakeMode) => void;
-		const state = { text: "draft", shutdowns: 0, banners: [] as string[] };
+		const state = { shutdowns: 0, banners: [] as string[] };
 		const fake: FakeMode = {
 			lastSigintTime: 0,
 			shutdown: () => {
@@ -47,19 +42,14 @@ describe("ctrl+c quits without clearing the editor", () => {
 			showWarningBanner: (message: string) => {
 				state.banners.push(message);
 			},
-			clearEditor: () => {
-				state.text = "";
-			},
 		};
 
 		handleQuit.call(fake);
-		expect(state.text).toBe("draft");
 		expect(state.shutdowns).toBe(0);
 		expect(state.banners[0]).toContain("Ctrl+C");
 
 		handleQuit.call(fake);
 		expect(state.shutdowns).toBe(1);
-		expect(state.text).toBe("draft");
 	});
 });
 
@@ -67,5 +57,4 @@ interface FakeMode {
 	lastSigintTime: number;
 	shutdown(): void;
 	showWarningBanner(message: string): void;
-	clearEditor(): void;
 }
