@@ -115,6 +115,27 @@ list out from under the pointer.
 
 ---
 
+## 6. The caret placement after `set_text` — DONE
+
+| | |
+|---|---|
+| Original | `packages/tui/src/components/editor.ts:1325` `setText` → `setTextInternal(text)` with the default placement `"end"` (`:1355-1359`); the history recall uses `"start"` |
+| Port | `rpi/crates/rpi-tui/src/editor.rs` `set_text` (the end) and `set_text_at_start` (the start) |
+
+`set_text` now leaves the caret at the end of the last line, and the scroll
+goes back to the top of the box (the original's `setTextInternal` resets the
+scroll too). The history recall has its own placement, `set_text_at_start`.
+
+The CLI still compensates in
+`rpi/crates/rpi-cli/src/interactive_tui/events.rs:46-51`
+(`set_editor_text_caret_at_end`) — that helper is now redundant, and the
+history recall in `rpi/crates/rpi-cli/src/interactive_tui/state.rs:962-971`
+should call `set_text_at_start` (the original's up-arrow placement). Both are
+in the interactive mode's files, so I did not touch them.
+
+**Checks**: `setting_the_text_leaves_the_caret_at_the_end`,
+`the_history_recall_keeps_its_own_placement`.
+
 ## Still open
 
 * The single-line `Input` has no yank-pop (Alt+Y) — the original binds it at

@@ -492,36 +492,38 @@ switch), and no Kitty-image bookkeeping (`previousKittyImageIds`,
 
 ---
 
-## Verification baseline (2026-10-20, after the wrap and width fix)
+## Verification baseline (2026-10-20, 19:05, fresh binary)
 
-The captures only compare with the goldens when the port runs in **fullscreen** mode: the
-original's default is `tuiMode: "fullscreen"`
-(`packages/coding-agent/src/core/settings-defaults.ts:64`), the port's default is regular
-on macOS (`rpi/crates/rpi-cli/src/args.rs:90`). With a wrapper that appends
-`--tui-mode fullscreen`:
-
-| scenario | golden (lines per step) | port (lines per step) | difference |
-|---|---|---|---|
-| startup | 25, 25 | 25, 25 | **identical** |
-| panels | 25 × 5 | 25 × 5 | **identical** |
-| prompt | 25, 30 | 25, 30 | 1 (the content starts one row lower in the original; the tmux warning is wrapped at 96 columns in the original and at 100 in the port) |
-| tool | 25, 30, 30 | 30, 30, 30 | 3 (the footer format, the booted height, the one-row offset) |
-| thinking | 25, 30 | 30, 30 | 2 (the footer format, the one-row offset) |
-| markdown | 25, 30 | 30, 30 | 2 (the footer format, the one-row offset) |
-
-The footer difference is the interactive-mode footer, not the TUI library. Any **new**
-difference in these panes after a TUI library change is a regression.
-
-How to reproduce:
+`cargo build --workspace` is green and the port's default is now fullscreen on every
+platform (the original's default is `tuiMode: "fullscreen"`,
+`packages/coding-agent/src/core/settings-defaults.ts:64`), so the captures compare with the
+goldens directly, without a flag:
 
 ```
 cd /Users/gabriel/pi-native/rpi && cargo build -p rpi-cli
 cd /Users/gabriel/pi-native
-PI_PARITY_RUST_BIN=/tmp/rpi-fullscreen.sh node scripts/parity/drive.mjs rust <scenario>
-node scripts/parity/compare.mjs rust <scenario>
+node scripts/parity/drive.mjs rust <scenario>
+cd scripts/parity && node compare.mjs rust <scenario>
 ```
 
 (`scripts/parity/out/` is gitignored, so the captures do not dirty the tree.)
+
+| scenario | result |
+|---|---|
+| startup | **identical** to the golden |
+| panels | **identical** to the golden |
+| prompt | 1 difference: the port's transcript is missing the original's leading blank row above the header block, so the visible content sits one row higher; and the tmux warning wraps at 99 columns instead of 98 (the TUI library's `Text`, finding 28) |
+| tool | 2 differences: the same two, in the "tool call" and "answer" steps |
+| thinking | 1 difference: the same two, in the "answer" step |
+| markdown | 1 difference: the same one-row offset |
+
+The missing leading blank row is the original's `this.headerContainer.addChild(new Spacer(1))`
+(`packages/coding-agent/src/modes/interactive/interactive-mode.ts:1172`); the port's
+`add_welcome_message` (`rpi/crates/rpi-cli/src/interactive_tui/rendering.rs:11`) has no
+leading spacer. That is the language lead's file, not the TUI library. Reported there with
+the exact rows.
+
+Any **new** difference in these panes after a TUI library change is a regression.
 
 ## 25. The single-line input has no yank-pop (Alt+Y)
 
@@ -588,6 +590,34 @@ still use the old shape and belong to the interactive mode port:
 "put the caret at the end" helper) and
 `rpi/crates/rpi-cli/src/interactive_tui/state.rs:962-971` (the history recall should use
 `set_text_at_start`).
+
+## 28. The `Text` component pads on one side only and wraps one column late
+
+**What the user sees.** A padded text row in the port is one column wider than the
+original's, so long text breaks at a different place: the tmux warning, for example, is
+one row shorter in the port than in the original.
+
+| | |
+|---|---|
+| Original | `packages/tui/src/components/text.ts:69-93` — `paddingX = Math.min(this.paddingX, Math.max(0, Math.floor((width - 1) / 2)))`, `contentWidth = Math.max(1, width - paddingX * 2)`, the text is wrapped at `contentWidth`, and every row is `leftMargin + line + rightMargin` (a margin on **both** sides), then padded to the full width |
+| Port | `rpi/crates/rpi-tui/src/text.rs:83-94` — `content_width = width.saturating_sub(self.padding_x)` (one column less inset) and the row is `pad + wl`: the right margin is missing and the row is not padded to the width |
+
+**Observed.** The parity capture of the `prompt` scenario: the original's tmux warning
+row is 96 columns and wraps after "…`set -g extended-keys"; the port's is 100 columns and
+fits "…`set -g extended-keys on`" on one line. The warning is rendered with
+`Text::new(text, 1, 0)` (`rpi/crates/rpi-cli/src/interactive_tui/rendering.rs:74`) and the
+original renders the same warning with `new ThemedText(() => theme.fg(color, message), 1, 0)`
+(`packages/coding-agent/src/modes/interactive/interactive-mode.ts:3664`) — the same padding,
+but the original's `Text` insets both sides, so it wraps at 98 and the port at 99.
+
+The original's `Text` also has a background (`customBgFn` / `setCustomBgFn`,
+`packages/tui/src/components/text.ts:26,53`); the port's has no background function (the
+port paints its panels with a `Box` instead, so nothing is broken today, but the library's
+`Text` is not the original's `Text`).
+
+**Check.** Rust: a test that `Text::new("…", 1, 0)` at width 100 wraps at 98 and the row
+is 100 columns with a trailing margin. Parity: the `prompt` scenario — the tmux warning
+row must become 96 columns and wrap after "…`set -g extended-keys".
 
 ## Verified as parity (do not redo)
 

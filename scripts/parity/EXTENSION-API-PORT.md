@@ -117,19 +117,88 @@ call. The port's provider hook has the messages and an empty
 | `onTerminalInput` and `addAutocompleteProvider` are accepted but not consulted | the port's key loop and autocomplete do not call back into the extension host | `types.ts:163`, `:243` |
 | `registerShortcut`, `registerMessageRenderer`, `registerEntryRenderer`, `registerMarkdownTransformer`, `registerToolRenderer` are stored but never read | the port's transcript and tool rows are Rust components | `types.ts:1683-1724` |
 | `getFlag` returns the registered default, not the parsed flag | the port's CLI does not parse extension flags | `types.ts:1758` |
-| `@earendil-works/pi-coding-agent` exposes the contract's 10 exports, not the package's 154 | the extension host maps the module to the contract file | `packages/coding-agent/src/index.ts` |
+| the module surface is the contract's, not the package's | see below | `packages/coding-agent/src/index.ts` |
 | `node:child_process`'s functions throw when called | the embedded host cannot spawn a process; the module resolves, so the extension loads | `rpi/crates/rpi-js/js/shims/node-child-process.ts` |
 | the extension factory is not awaited | the runtime settles microtasks but has no timer, so an extension that registers after `await` never registers | `loader.ts:624` |
+
+## The module surface
+
+The port publishes a **subset** of each of pi's packages:
+
+| module | the original | the port now |
+| --- | --- | --- |
+| `@earendil-works/pi-coding-agent` | `packages/coding-agent/src/index.ts` — the package entry, 154 runtime exports | `packages/coding-agent/src/core/extensions/types.ts` — the contract's 10 (`defineTool` and the type guards) |
+| `@earendil-works/pi-tui` | `packages/tui/src/index.ts` — 92 exports | `rpi/crates/rpi-js/js/pi-tui.ts` — 20, the parts that render |
+| `@earendil-works/pi-ai` (and `/compat`) | `packages/ai/src/compat.ts` | `rpi/crates/rpi-js/js/pi-ai.ts` — 1 (`Type`) |
+| `@earendil-works/pi-agent-core` | `packages/agent/src/index.ts` | `rpi/crates/rpi-js/js/pi-agent-core.ts` — 1 (`AGENT_RUNTIME_AVAILABLE`) |
+
+**The fix is known and small: point the map at the vendored pi sources.** The
+port vendors pi's packages (`/Users/gabriel/pi-native/packages/`), and the
+vendored files are byte-identical to the original's — `diff
+packages/coding-agent/src/index.ts` against the original's is empty. So the
+`VIRTUAL_MODULES` map can point at `packages/coding-agent/src/index.ts`,
+`packages/tui/src/index.ts`, `packages/ai/src/compat.ts` and
+`packages/agent/src/index.ts`, and the export surface becomes pi's.
+
+**What blocks it today** (measured, not guessed): the vendored sources import
+node builtins and npm packages that the embedded host does not have. The
+shims now cover `node:path`, `node:fs`, `node:fs/promises`, `node:os`,
+`node:url`, `node:perf_hooks`, `node:child_process`, `node:events`,
+`node:worker_threads`, `node:module`, `node:timers/promises`, `node:crypto`,
+`node:util`, `node:readline`, `node:stream`, `node:zlib`, `node:http`,
+`node:string_decoder`, `node:stream/promises` and `node:process`
+(`rpi/crates/rpi-js/js/shims/`), and the bundler aliases them
+(`scripts/build-extension-host-bundle.mjs:34`). Still missing:
+
+- the builtins `node:readline/promises`, `node:assert` and `node:v8`;
+- the npm packages `which`, `graceful-fs`, `hosted-git-info` and
+  `standardwebhooks`.
+
+The npm ones are the interesting half: they are in the port's root
+`node_modules` (a symlink to pi's), but esbuild does not resolve them from
+`packages/<pkg>/src/`, while it resolves them from `scripts/`. The node
+resolution path is the thing to look at.
+
+**A subpath the host does not publish no longer kills the extension.** An
+import of `@earendil-works/pi-ai/providers/anthropic` resolves to an empty
+module (`extension-host.ts:404`): the extension loads, and only the names it
+wanted are missing. pi maps every subpath it publishes, so this is a
+port-side gap being made forgiving rather than fatal. The check is
+`rpi/crates/rpi-js/tests/extension.rs:153`.
+
+The names pi's own example extensions import, and where each one lives:
+
+| name | the original |
+| --- | --- |
+| `defineTool` | `core/extensions/index.ts` |
+| `CONFIG_DIR_NAME`, `getAgentDir`, `VERSION` | `config.ts` |
+| `createBashTool` | `core/sdk.ts` |
+| `createReadToolDefinition`, `withFileMutationQueue` | `core/tools/index.ts` |
+| `serializeConversation` | `core/compaction/index.ts` |
+| `BorderedLoader`, `CustomEditor`, `DynamicBorder`, `keyHint` | `modes/interactive/components/index.ts` |
+| `getMarkdownTheme`, `getSettingsListTheme` | `modes/interactive/theme/theme.ts` |
+| `parseFrontmatter` | `utils/frontmatter.ts` |
+| `Box`, `Container`, `Input`, `Markdown`, `SelectList`, `SettingsList`, `Spacer`, `Text`, `Key`, `CURSOR_MARKER`, `isKeyRelease`, `matchesKey`, `parseKey`, `renderFakeCursor`, `truncateToWidth`, `visibleWidth` | `packages/tui/src/index.ts` |
+| `Type`, `StringEnum`, `uuidv7` | `packages/ai/src/index.ts` |
+| `streamSimple` | `packages/ai/src/compat.ts` |
 
 ## The checks
 
 ```sh
-# the host operations and the theme
+# the host operations, the theme, the node surface and the subpaths
 cd /Users/gabriel/pi-native/rpi && cargo test -p rpi-js
+
+# the bundle is the build output of the .ts: rebuild it after every change
+cd /Users/gabriel/pi-native && node scripts/build-extension-host-bundle.mjs
 
 # the whole extension surface, against both sides
 cd /Users/gabriel/pi-native/scripts/parity && node extensions.mjs --all
 ```
+
+`cargo test -p rpi-js` is 5 lib tests + 8 integration tests + the doctests:
+the lib test reads the **bundle** and asserts the host answers every
+operation it asks for; the integration tests cover the node builtins, an
+unpublished subpath, a tool, a command, an event and a screen.
 
 The probe is the precise version; it lives in the extension API lead's scratch
 directory and compares `/tmp/pi-ext-audit/report-ts.json` (the original) with
