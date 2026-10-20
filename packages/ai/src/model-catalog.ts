@@ -90,7 +90,10 @@ export function flattenClassifierModelCatalog<const TProvider extends ProviderId
  */
 export function lazyCatalog<TCatalog extends object>(build: () => TCatalog): TCatalog {
 	let catalog: TCatalog | undefined;
-	const materialize = (): TCatalog => (catalog ??= build());
+	const materialize = (): TCatalog => {
+		if (!catalog) catalog = build();
+		return catalog;
+	};
 	return new Proxy({} as TCatalog, {
 		get: (_target, property, receiver) => Reflect.get(materialize(), property, receiver),
 		has: (_target, property) => Reflect.has(materialize(), property),
