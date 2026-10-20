@@ -15,6 +15,7 @@ type SubmitContext = {
 	};
 	flushPendingBashComponents: () => void;
 	echoUserMessage: (text: string) => void;
+	setEmptySessionScreen: (active: boolean) => void;
 	onInputCallback?: (text: string) => void;
 	pendingUserInputs: string[];
 };
@@ -52,6 +53,7 @@ function createSubmitContext(): SubmitContext {
 		},
 		flushPendingBashComponents: vi.fn(),
 		echoUserMessage: vi.fn(),
+		setEmptySessionScreen: vi.fn(),
 		pendingUserInputs: [],
 	};
 }

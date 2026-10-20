@@ -553,6 +553,11 @@
       "description": "Show Nerd Font glyphs in front of the footer groups. Needs a patched font.",
       "default": false
     },
+    "threeDEmptySession": {
+      "type": "boolean",
+      "description": "Show the spinning 3D pi logo with a centered input box when a session is empty.",
+      "default": false
+    },
     "autocompleteMaxVisible": {
       "type": "number",
       "description": "Maximum visible items in the autocomplete dropdown.",

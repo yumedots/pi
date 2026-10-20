@@ -135,13 +135,15 @@ import { ArminComponent } from "./components/armin.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
 import { BashExecutionComponent } from "./components/bash-execution.ts";
 import { BranchSummaryMessageComponent } from "./components/branch-summary-message.ts";
+import { Centered } from "./components/centered.ts";
 import { CompactionSummaryMessageComponent } from "./components/compaction-summary-message.ts";
 import { CustomEditor } from "./components/custom-editor.ts";
 import { CustomEntryComponent } from "./components/custom-entry.ts";
 import { CustomMessageComponent } from "./components/custom-message.ts";
 import { DynamicBorder } from "./components/dynamic-border.ts";
 import { EarendilAnnouncementComponent } from "./components/earendil-announcement.ts";
-import { playArmin3d, playPiLogo3d } from "./components/easter-egg-3d.lazy.ts";
+import { loadPiLogo3d, type PiLogo3d, playArmin3d, playPiLogo3d } from "./components/easter-egg-3d.lazy.ts";
+import { EmptySessionScreen } from "./components/empty-session-screen.ts";
 import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionInputComponent } from "./components/extension-input.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
@@ -374,6 +376,9 @@ const AUTH_TYPE_ORDER = { oauth: 0, api_key: 1 } satisfies Record<AuthSelectorPr
  */
 const EDITOR_MAX_CONTENT_HEIGHT = 12;
 
+/** Width of the input box on the empty-session screen. */
+const EMPTY_SESSION_EDITOR_WIDTH = 72;
+
 function createFuzzyAutocompleteItems<T>(
 	items: T[],
 	prefix: string,
@@ -469,6 +474,10 @@ export class InteractiveMode {
 	private autocompleteProviderWrappers: AutocompleteProviderFactory[] = [];
 	private fdPath: string | undefined;
 	private editorContainer: Container;
+	/** The spinning logo above a centered input box, shown while the session is empty. */
+	private emptySessionScreen: EmptySessionScreen | undefined;
+	private emptySessionLogo: PiLogo3d | undefined;
+	private emptySessionActive = false;
 	private activeSelectorToken?: object;
 	private activeSelectorDispose?: () => void;
 	private footer: FooterComponent;
@@ -853,9 +862,111 @@ export class InteractiveMode {
 	private mountInteractiveTui(tui: TuiMainScreen | TuiAltScreen, components: readonly Component[]): void {
 		for (const component of components) tui.addChild(component);
 		if (TuiLayouts.isViewportTUI(tui)) {
-			if (!this.fullscreenLayoutRoot) throw new Error("Fullscreen layout is not initialized");
-			tui.setLayoutRoot(this.fullscreenLayoutRoot);
+			const root = this.layoutRoot();
+			if (!root) throw new Error("Fullscreen layout is not initialized");
+			tui.setLayoutRoot(root);
 		}
+	}
+
+	/** The layout root of the fullscreen renderer. */
+	private layoutRoot(): Component | undefined {
+		if (this.emptySessionActive && this.emptySessionScreen) return this.emptySessionScreen;
+		return this.fullscreenLayoutRoot;
+	}
+
+	/** The components mounted in the renderer. */
+	private interactiveComponents(): Component[] {
+		if (this.emptySessionActive && this.emptySessionScreen) return [this.emptySessionScreen];
+		return [
+			this.documentContainer,
+			this.pendingMessagesContainer,
+			this.statusContainer,
+			this.widgetContainerAbove,
+			this.warningContainer,
+			this.editorContainer,
+			this.widgetContainerBelow,
+			this.footerContainer,
+		];
+	}
+
+	/** Load the spinning logo and the screen that shows it above a centered input box. */
+	private async loadEmptySessionScreen(): Promise<void> {
+		if (this.emptySessionScreen) return;
+		const background = theme.appearance === "dark" ? ([0, 0, 0] as const) : ([255, 255, 255] as const);
+		const logo = await loadPiLogo3d(this.ui, background);
+		this.emptySessionLogo = logo;
+		this.emptySessionScreen = new EmptySessionScreen(
+			logo,
+			this.emptySessionGreeting(),
+			new Centered(this.editorContainer, EMPTY_SESSION_EDITOR_WIDTH),
+			() => this.ui.terminal.rows,
+		);
+	}
+
+	/** The greeting above the input box. */
+	private emptySessionGreeting(): string {
+		const username = os.userInfo().username;
+		const name = username ? username.charAt(0).toUpperCase() + username.slice(1) : "there";
+		return `Hi ${name}, what are we building today?`;
+	}
+
+	/** True when the setting is on and the session has no messages yet. */
+	private shouldShowEmptySessionScreen(): boolean {
+		return this.settingsManager.getThreeDEmptySession() && this.session.state.messages.length === 0;
+	}
+
+	/** Show or hide the empty-session screen and remount the components. */
+	private setEmptySessionScreen(active: boolean): void {
+		if (active === this.emptySessionActive) return;
+		this.emptySessionActive = active;
+		this.applyAutocompletePosition();
+		if (active) {
+			void this.showEmptySessionScreen();
+			return;
+		}
+		this.emptySessionLogo?.setActive(false);
+		this.remountComponents();
+	}
+
+	/**
+	 * The autocomplete position: below on the empty-session screen, where the list would
+	 * otherwise cover the logo.
+	 */
+	private autocompletePosition(): "above" | "below" {
+		return this.emptySessionActive ? "below" : this.settingsManager.getAutocompletePosition();
+	}
+
+	private applyAutocompletePosition(): void {
+		const position = this.autocompletePosition();
+		this.defaultEditor.setAutocompletePosition(position);
+		if (this.editor !== this.defaultEditor) {
+			this.editor.setAutocompletePosition?.(position);
+		}
+	}
+
+	private async showEmptySessionScreen(): Promise<void> {
+		await this.loadEmptySessionScreen();
+		if (!this.emptySessionActive) return;
+		this.emptySessionLogo?.setActive(true);
+		this.remountComponents();
+	}
+
+	/** Update the empty-session screen after the session or the setting changed. */
+	private syncEmptySessionScreen(): void {
+		this.setEmptySessionScreen(this.shouldShowEmptySessionScreen());
+	}
+
+	/** Mount the components of the current layout again. */
+	private remountComponents(): void {
+		const tui = this.renderer;
+		tui.clear();
+		for (const component of this.interactiveComponents()) tui.addChild(component);
+		if (TuiLayouts.isViewportTUI(tui)) {
+			const root = this.layoutRoot();
+			if (root) tui.setLayoutRoot(root);
+		}
+		tui.invalidate();
+		tui.requestRender(true);
 	}
 
 	private stopInteractiveTui(fullscreenExitOutput: FullscreenExitOutput): void {
@@ -960,16 +1071,14 @@ export class InteractiveMode {
 		});
 		this.transcriptScrollView = viewport.transcript;
 		this.fullscreenLayoutRoot = viewport.root;
-		this.mountInteractiveTui(this.renderer, [
-			this.documentContainer,
-			this.pendingMessagesContainer,
-			this.statusContainer,
-			this.widgetContainerAbove,
-			this.warningContainer,
-			this.editorContainer,
-			this.widgetContainerBelow,
-			this.footerContainer,
-		]);
+		// The empty-session screen replaces the transcript while the session has no messages.
+		if (this.shouldShowEmptySessionScreen()) {
+			this.emptySessionActive = true;
+			this.applyAutocompletePosition();
+			await this.loadEmptySessionScreen();
+			this.emptySessionLogo?.setActive(true);
+		}
+		this.mountInteractiveTui(this.renderer, this.interactiveComponents());
 		// Accept text while startup completes, but only enable interrupt, exit, and submission feedback.
 		this.defaultEditor.onAction("app.quit", () => this.handleQuit());
 		this.defaultEditor.onCtrlD = () => this.handleCtrlD();
@@ -1704,7 +1813,7 @@ export class InteractiveMode {
 		}
 		const editorPaddingX = this.settingsManager.getEditorPaddingX();
 		const autocompleteMaxVisible = this.settingsManager.getAutocompleteMaxVisible();
-		const autocompletePosition = this.settingsManager.getAutocompletePosition();
+		const autocompletePosition = this.autocompletePosition();
 		this.defaultEditor.setPaddingX(editorPaddingX);
 		this.defaultEditor.setAutocompleteMaxVisible(autocompleteMaxVisible);
 		this.defaultEditor.setAutocompletePosition(autocompletePosition);
@@ -1741,6 +1850,8 @@ export class InteractiveMode {
 		await this.updateAvailableProviderCount();
 		this.updateEditorBorderColor();
 		this.updateTerminalTitle();
+		// A new or resumed session can be empty again, so the empty-session screen follows it.
+		this.syncEmptySessionScreen();
 	}
 
 	private async handleFatalRuntimeError(prefix: string, error: unknown): Promise<never> {
@@ -3011,6 +3122,8 @@ export class InteractiveMode {
 						return;
 					}
 					this.editor.addToHistory?.(text);
+					// The output goes to the transcript, so the empty-session screen has to go.
+					this.setEmptySessionScreen(false);
 					await this.handleBashCommand(command, isExcluded);
 					this.isBashMode = false;
 					this.updateEditorBorderColor();
@@ -3044,6 +3157,9 @@ export class InteractiveMode {
 			// Normal message submission
 			// First, move any pending bash components to chat
 			this.flushPendingBashComponents();
+
+			// The message shows in the transcript, so the empty-session screen has to go.
+			this.setEmptySessionScreen(false);
 
 			// Show the message right away: the run is prepared in the background, and the user
 			// should not wait for extension hooks or session writes to see their own prompt.
@@ -4694,6 +4810,7 @@ export class InteractiveMode {
 					editorPaddingX: this.settingsManager.getEditorPaddingX(),
 					outputPad: this.settingsManager.getOutputPad(),
 					nerdFonts: this.settingsManager.getNerdFonts(),
+					threeDEmptySession: this.settingsManager.getThreeDEmptySession(),
 					autocompleteMaxVisible: this.settingsManager.getAutocompleteMaxVisible(),
 					autocompletePosition: this.settingsManager.getAutocompletePosition(),
 					quietStartup: this.settingsManager.getQuietStartup(),
@@ -4840,6 +4957,10 @@ export class InteractiveMode {
 						this.settingsManager.setNerdFonts(enabled);
 						this.footer.setNerdFonts(enabled);
 						this.ui.requestRender();
+					},
+					onThreeDEmptySessionChange: (enabled) => {
+						this.settingsManager.setThreeDEmptySession(enabled);
+						this.syncEmptySessionScreen();
 					},
 					onAutocompleteMaxVisibleChange: (maxVisible) => {
 						this.settingsManager.setAutocompleteMaxVisible(maxVisible);

@@ -972,6 +972,10 @@ export class SettingsManager {
 		return this.settings.nerdFonts ?? SETTINGS_DEFAULTS.nerdFonts;
 	}
 
+	getThreeDEmptySession(): boolean {
+		return this.settings.threeDEmptySession ?? SETTINGS_DEFAULTS.threeDEmptySession;
+	}
+
 	getExternalEditorCommand(): string {
 		const configuredEditor = this.settings.externalEditor;
 		if (typeof configuredEditor === "string" && configuredEditor.trim() !== "") {
@@ -999,6 +1003,12 @@ export class SettingsManager {
 	setNerdFonts(enabled: boolean): void {
 		this.globalSettings.nerdFonts = enabled;
 		this.markModified("nerdFonts");
+		this.save();
+	}
+
+	setThreeDEmptySession(enabled: boolean): void {
+		this.globalSettings.threeDEmptySession = enabled;
+		this.markModified("threeDEmptySession");
 		this.save();
 	}
 

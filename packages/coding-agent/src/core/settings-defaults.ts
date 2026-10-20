@@ -46,6 +46,7 @@ export const SETTINGS_DEFAULTS = {
 	editorPaddingX: 0,
 	outputPad: 1,
 	nerdFonts: false,
+	threeDEmptySession: false,
 	autocompleteMaxVisible: 5,
 	autocompletePosition: "above",
 	markdown: {

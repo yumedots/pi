@@ -1,5 +1,7 @@
 import { type TUI, TuiAltScreen } from "@earendil-works/pi-tui";
-import type { EasterEgg3d } from "./easter-egg-3d.ts";
+import type { EasterEgg3d, PiLogo3d as PiLogo3dComponent, Rgb } from "./easter-egg-3d.ts";
+
+export type { PiLogo3d } from "./easter-egg-3d.ts";
 
 /**
  * Plays a 3D easter egg (see easter-egg-3d.ts), which loads on first use. Only fullscreen mode can show it, because
@@ -24,4 +26,10 @@ export function playPiLogo3d(tui: TUI, column: number, row: number): void {
 /** Plays the 3D Armin. Returns false when it cannot play, so the caller can fall back to the inline version. */
 export function playArmin3d(tui: TUI): boolean {
 	return playEasterEgg3d(tui, { kind: "armin" });
+}
+
+/** Loads the spinning 3D pi logo component (see easter-egg-3d.ts), which loads on first use. */
+export async function loadPiLogo3d(tui: TUI, background: Rgb): Promise<PiLogo3dComponent> {
+	const { PiLogo3d } = await import("./easter-egg-3d.ts");
+	return new PiLogo3d(tui, background);
 }

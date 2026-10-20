@@ -125,6 +125,7 @@ type InteractiveBashContext = {
 	pendingBashComponents: unknown[];
 	isBashMode: boolean;
 	handleBashCommand(command: string, excludeFromContext?: boolean): Promise<void>;
+	setEmptySessionScreen(active: boolean): void;
 	showError(message: string): void;
 	updateEditorBorderColor(): void;
 };
@@ -247,6 +248,7 @@ describe("Interactive user_bash failure handling (#9068)", () => {
 			pendingBashComponents: [],
 			isBashMode: true,
 			handleBashCommand: interactiveModePrototype.handleBashCommand,
+			setEmptySessionScreen: vi.fn(),
 			showError: vi.fn(),
 			updateEditorBorderColor: vi.fn(),
 		};

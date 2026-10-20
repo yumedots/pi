@@ -90,6 +90,7 @@ export interface SettingsConfig {
 	editorPaddingX: number;
 	outputPad: 0 | 1;
 	nerdFonts: boolean;
+	threeDEmptySession: boolean;
 	autocompleteMaxVisible: number;
 	autocompletePosition: "above" | "below";
 	quietStartup: QuietStartup;
@@ -137,6 +138,7 @@ export interface SettingsCallbacks {
 	onDefaultProjectTrustChange: (defaultProjectTrust: DefaultProjectTrust) => void;
 	onClearOnShrinkChange: (enabled: boolean) => void;
 	onShowTerminalProgressChange: (enabled: boolean) => void;
+	onThreeDEmptySessionChange: (enabled: boolean) => void;
 	onTuiModeChange: (mode: TuiMode) => void;
 	onFullscreenExitOutputChange: (output: FullscreenExitOutput) => void;
 	onFullscreenScrollbarChange: (mode: ScrollViewScrollbar) => void;
@@ -897,6 +899,16 @@ export class SettingsSelectorComponent extends Container {
 			values: ["true", "false"],
 		});
 
+		// 3D empty session toggle (insert after terminal-progress)
+		const terminalProgressIndex = items.findIndex((item) => item.id === "terminal-progress");
+		items.splice(terminalProgressIndex + 1, 0, {
+			id: "three-d-empty-session",
+			label: "3D empty session",
+			description: "Show the spinning 3D pi logo with a centered input box while a session is empty",
+			currentValue: config.threeDEmptySession ? "true" : "false",
+			values: ["true", "false"],
+		});
+
 		// Add borders
 		this.addChild(new DynamicBorder());
 
@@ -999,6 +1011,9 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					case "terminal-progress":
 						callbacks.onShowTerminalProgressChange(newValue === "true");
+						break;
+					case "three-d-empty-session":
+						callbacks.onThreeDEmptySessionChange(newValue === "true");
 						break;
 					case "tui-mode":
 						callbacks.onTuiModeChange(newValue as TuiMode);

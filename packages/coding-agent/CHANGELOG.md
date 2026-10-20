@@ -10,6 +10,7 @@
 
 ### Added
 
+- Added the `threeDEmptySession` setting. When it is on, a new session opens with the spinning 3D pi logo above a centered input box, and the screen gives way to the transcript as soon as the first message is sent
 - Added `/skills` to browse the loaded skills and run one from a picker
 - `/resume` now also answers to `/history` and `/sessions`, and both aliases show up in the command menu
 - `/quit` now also answers to `/exit`

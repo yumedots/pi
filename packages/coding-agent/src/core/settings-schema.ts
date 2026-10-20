@@ -365,6 +365,12 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.nerdFonts,
 			}),
 		),
+		threeDEmptySession: Type.Optional(
+			Type.Boolean({
+				description: "Show the spinning 3D pi logo with a centered input box when a session is empty.",
+				default: SETTINGS_DEFAULTS.threeDEmptySession,
+			}),
+		),
 		autocompleteMaxVisible: Type.Optional(
 			Type.Number({
 				description: "Maximum visible items in the autocomplete dropdown.",

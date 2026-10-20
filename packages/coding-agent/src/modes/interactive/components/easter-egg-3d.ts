@@ -28,7 +28,7 @@ import { formatKeyText } from "./keybinding-hints.ts";
  * half-block bitmap is exactly 2x2 dots, and the header logo (4x2 cells) is 8x8 dots when it lifts off.
  */
 
-type Rgb = readonly [number, number, number];
+export type Rgb = readonly [number, number, number];
 
 interface ScreenCell {
 	text: string;
@@ -1290,5 +1290,115 @@ export class EasterEgg3dAnimation implements Component {
 			this.ansiCache.set(cacheKey, value);
 		}
 		return value;
+	}
+}
+
+// Braille cells the logo occupies in the empty-session screen, and the dots per model pixel.
+const LOGO_CELLS_WIDTH = 32;
+const LOGO_CELLS_HEIGHT = 16;
+const LOGO_SCALE = 9;
+
+const logoAnsiCache = new Map<number, string>();
+
+/** Foreground escape for a color, cached because the logo redraws every frame. */
+function logoColorAnsi(color: Rgb): string {
+	const key = (Math.round(color[0]) << 16) | (Math.round(color[1]) << 8) | Math.round(color[2]);
+	let value = logoAnsiCache.get(key);
+	if (value === undefined) {
+		value = foregroundAnsi(rgbColor((key >> 16) & 255, (key >> 8) & 255, key & 255), theme.getColorMode());
+		logoAnsiCache.set(key, value);
+	}
+	return value;
+}
+
+/**
+ * The pi logo spinning in place, drawn with braille dots. Unlike the easter egg overlay it does not
+ * dissolve the screen: it renders into its own area, so it can sit above the input box.
+ */
+export class PiLogo3d implements Component {
+	private readonly raster: BlockRaster;
+	private readonly model: Model;
+	private readonly tui: TUI;
+	private readonly background: Rgb;
+	private readonly startTime = performance.now();
+	private timer: ReturnType<typeof setInterval> | undefined;
+
+	constructor(tui: TUI, background: Rgb) {
+		this.tui = tui;
+		this.background = background;
+		this.model = piLogoModel({ column: 0, row: 0 });
+		this.raster = new BlockRaster(this.model.cameraDistance);
+	}
+
+	/** Spin the logo, or stop the animation loop when it is not on screen. */
+	setActive(active: boolean): void {
+		if (active) {
+			if (this.timer) return;
+			this.timer = setInterval(() => this.tui.requestRender(), FRAME_MS);
+			this.timer.unref?.();
+			return;
+		}
+		if (this.timer) clearInterval(this.timer);
+		this.timer = undefined;
+	}
+
+	invalidate(): void {}
+
+	render(width: number): string[] {
+		const time = (performance.now() - this.startTime) / 1000;
+		const { columns, rows } = this.model;
+		const boxes: Box[] = this.model.blocks.map((block) => {
+			const x = block.home[0] - columns / 2;
+			const y = block.home[1] - rows / 2;
+			return { min: [x, y, -DEPTH / 2], max: [x + 1, y + 1, DEPTH / 2], color: block.color };
+		});
+		this.raster.render(
+			LOGO_CELLS_WIDTH,
+			LOGO_CELLS_HEIGHT,
+			{
+				centerX: LOGO_CELLS_WIDTH,
+				centerY: LOGO_CELLS_HEIGHT * 2,
+				scale: LOGO_SCALE,
+				yaw: spinAngle(time),
+				pitch: 0.3 * Math.sin(spinPhase(time)),
+				roll: 0.06 * Math.sin(2 * spinPhase(time)),
+			},
+			boxes,
+			this.background,
+			0,
+		);
+
+		const visibleWidth = Math.min(width, LOGO_CELLS_WIDTH);
+		const start = Math.floor((LOGO_CELLS_WIDTH - visibleWidth) / 2);
+		const pad = " ".repeat(Math.max(0, Math.floor((width - LOGO_CELLS_WIDTH) / 2)));
+		const lines: string[] = [];
+		for (let row = 0; row < LOGO_CELLS_HEIGHT; row++) {
+			let line = pad;
+			let currentColor = -1;
+			for (let column = start; column < start + visibleWidth; column++) {
+				const index = row * LOGO_CELLS_WIDTH + column;
+				const dots = this.raster.bits[index]!;
+				if (!dots) {
+					line += " ";
+					continue;
+				}
+				// Quantized like the easter egg, so cells on one face share a color.
+				const step = LOGO_COLOR_STEP * this.raster.counts[index]!;
+				const rgb = this.raster.rgb;
+				const color: Rgb = [
+					Math.round(rgb[index * 3]! / step) * LOGO_COLOR_STEP,
+					Math.round(rgb[index * 3 + 1]! / step) * LOGO_COLOR_STEP,
+					Math.round(rgb[index * 3 + 2]! / step) * LOGO_COLOR_STEP,
+				];
+				const key = (color[0] << 16) | (color[1] << 8) | color[2];
+				if (key !== currentColor) {
+					line += logoColorAnsi(color);
+					currentColor = key;
+				}
+				line += BRAILLE[dots]!;
+			}
+			lines.push(`${line}\x1b[0m`);
+		}
+		return lines;
 	}
 }
