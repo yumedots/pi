@@ -1,11 +1,7 @@
-import {
-	CustomEditor,
-	type ExtensionAPI,
-	type ExtensionContext,
-	type KeybindingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { CustomEditor } from "@earendil-works/pi-client";
+import type { ExtensionAPI, ExtensionContext, KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import type { Component, EditorTheme, TUI } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { SPINNER_FRAMES, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 function fitBorder(
 	left: string,
@@ -73,7 +69,7 @@ export default function (pi: ExtensionAPI) {
 	let spinnerIndex = 0;
 	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
 	let activeTui: TUI | undefined;
-	const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+	const spinnerFrames = [...SPINNER_FRAMES];
 
 	const stopSpinner = () => {
 		if (spinnerTimer) {

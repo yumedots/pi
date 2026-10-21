@@ -17,10 +17,10 @@
  */
 
 import type { ExtensionAPI, ExtensionContext, WorkingIndicatorOptions } from "@earendil-works/pi-coding-agent";
+import { SPINNER_FRAMES } from "@earendil-works/pi-tui";
 
 type WorkingIndicatorMode = "dot" | "none" | "pulse" | "spinner" | "default";
 
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const PASTEL_RAINBOW = [
 	"\x1b[38;2;255;179;186m",
 	"\x1b[38;2;255;223;186m",
