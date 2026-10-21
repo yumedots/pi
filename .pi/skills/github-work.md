@@ -15,7 +15,7 @@ The repo's prompt templates in `.pi/prompts/` (two directories above this skill)
 
 Rules:
 
-- `is.md` analyzes and proposes only. Implement only when the user asks for it, then keep following AGENTS.md (checks, tests, changelog rules).
+- `is.md` analyzes and proposes only. Implement only when the user asks for it, then keep following AGENTS.md.
 - `pr.md` never checks out or switches to the PR branch.
 - Run `wr.md` only when the user asks to wrap up, commit, or push. Post at most one final GitHub comment per session, ending with the exact disclaimer line it specifies.
 - When a request spans several steps, for example "fix issue X and wrap it up", read every template involved before starting.

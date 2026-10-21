@@ -48,10 +48,7 @@ Create a provider file exporting:
 - `src/core/model-resolver.ts`: add default model ID to `defaultModelPerProvider`.
 - `src/core/provider-display-names.ts`: add API-key login display name so `/login` and related UI show the provider for built-in API-key auth.
 - `src/cli/args.ts`: add env var documentation.
-- `README.md`: add provider setup instructions.
-- `docs/providers.md`: add setup instructions, env var, and `auth.json` key.
 
 ## 7. Documentation
 
-- `packages/ai/README.md`: add to providers table, document options/auth, add env vars.
-- `packages/ai/CHANGELOG.md`: add entry under `## [Unreleased]`.
+Only when the user asks for docs: the providers table and the options, auth and env vars of `packages/ai/README.md`, the setup instructions of `packages/coding-agent/README.md`, and `packages/coding-agent/docs/providers.md`. The changelog entry follows the same rule.
