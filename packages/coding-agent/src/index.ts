@@ -247,6 +247,7 @@ export type {
 export { DefaultPackageManager } from "./core/package-manager.ts";
 export type { ResourceCollision, ResourceDiagnostic, ResourceLoader } from "./core/resource-loader.ts";
 export { DefaultResourceLoader, loadProjectContextFiles } from "./core/resource-loader.ts";
+export { buildSessionOptions, createRuntimeFactory, type RuntimeFactoryOptions } from "./core/runtime-factory.ts";
 export { BUILTIN_SLASH_COMMANDS, type BuiltinSlashCommand } from "./core/slash-commands.ts";
 // SDK for programmatic usage
 export {
