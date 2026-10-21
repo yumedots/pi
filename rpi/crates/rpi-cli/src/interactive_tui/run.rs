@@ -708,9 +708,6 @@ pub(super) fn add_assistant_message_blocking(
         msg.set_markdown_transformer(Some(t.clone()));
     }
     msg.update_text(text);
-    // The original's assistant message is a Markdown with a vertical padding of
-    // one, so a blank row precedes it
-    // (`packages/coding-agent/src/modes/interactive/components/assistant-message.ts`).
-    container.add_child(Arc::new(Spacer::new(1)));
+    // The assistant message carries its own padding; no spacer of its own.
     container.add_child(msg);
 }

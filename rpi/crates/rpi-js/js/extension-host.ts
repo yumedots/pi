@@ -644,8 +644,9 @@ const createContext = (state: ExtensionState) => ({
 		custom: async (factory: ComponentFactory) => {
 			hostCall("ui.custom", { component: registerComponent(factory) });
 		},
-		setWorkingIndicator: (options?: unknown) =>
-			hostCall("ui.setWorkingIndicator", { options: options ?? null }),
+		setWorkingIndicator: (options?: unknown) => {
+			hostCall("ui.setWorkingIndicator", { options: options ?? null });
+		},
 		setEditorComponent: (factory?: ComponentFactory) => {
 			hostCall("ui.setEditorComponent", {
 				component: factory ? registerComponent(factory) : null,

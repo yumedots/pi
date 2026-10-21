@@ -13,7 +13,7 @@
 
 use std::any::Any;
 use std::collections::HashSet;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use unicode_segmentation::UnicodeSegmentation;
@@ -285,6 +285,11 @@ impl EasterEgg3dComponent {
     /// True once the effect has run its full timeline, exit animation included.
     pub fn is_finished(&self) -> bool {
         self.elapsed() >= TOTAL_DURATION
+    }
+
+    /// The number of rows in the captured screen.
+    pub fn screen_rows(&self) -> usize {
+        self.screen.len()
     }
 
     /// The number of rows the effect covers.
@@ -784,11 +789,59 @@ struct Hint {
     color: Rgb,
 }
 
+/// Plays a 3D easter egg over the last painted screen.
+///
+/// Only a fullscreen alt screen can show it: the effect dissolves the screen
+/// that was painted, so a TUI that is not an alt screen cannot play it.
+/// Returns false when it cannot play, so the caller can fall back to the
+/// inline version.
+///
+/// The original's `playEasterEgg3d`
+/// (packages/coding-agent/src/modes/interactive/components/easter-egg-3d.lazy.ts:22-34)
+/// shows the effect as an overlay that covers the screen and hides itself when
+/// the animation is over.
+pub fn play_easter_egg_3d(tui: &Arc<dyn crate::tui::TUI>, egg: EasterEgg3d) -> bool {
+    let Some(screen) = tui.alt_screen_lines() else {
+        return false;
+    };
+    if tui.has_overlay() {
+        return true;
+    }
+    let component = Arc::new(EasterEgg3dComponent::new(screen, egg, Instant::now()));
+    tui.show_overlay(
+        component.clone(),
+        Some(crate::tui::OverlayOptions {
+            width: Some(crate::tui::SizeValue::Percent(100.0)),
+            max_height: Some(crate::tui::SizeValue::Percent(100.0)),
+            anchor: crate::tui::OverlayAnchor::TopLeft,
+            ..Default::default()
+        }),
+    );
+    let tui = tui.clone();
+    let handle = component.clone();
+    std::thread::spawn(move || {
+        while !handle.is_finished() {
+            tui.request_render(true);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        tui.hide_overlay();
+    });
+    true
+}
+
+/// Plays the 3D pi logo, lifting off the header logo whose top-left cell is
+/// at `column`, `row`.
+///
+/// The original's `playPiLogo3d`
+/// (packages/coding-agent/src/modes/interactive/components/easter-egg-3d.lazy.ts:38-40).
+pub fn play_pi_logo_3d(tui: &Arc<dyn crate::tui::TUI>, column: usize, row: usize) -> bool {
+    play_easter_egg_3d(tui, EasterEgg3d::PiLogo { column, row })
+}
+
 impl Component for EasterEgg3dComponent {
     fn render(&self, width: usize) -> Vec<String> {
         self.render_at(width, self.elapsed())
     }
-
     fn invalidate(&self) {
         let mut cells = self.cells.lock().unwrap_or_else(|error| error.into_inner());
         *cells = None;
@@ -1266,6 +1319,133 @@ mod tests {
 
     const WIDTH: usize = 24;
     const HEIGHT: usize = 8;
+
+    struct FakeTui {
+        screen: Option<Vec<String>>,
+        overlay_up: Mutex<bool>,
+        shown: Mutex<Vec<Arc<dyn Component>>>,
+    }
+
+    impl FakeTui {
+        fn new(screen: Option<Vec<String>>) -> Arc<Self> {
+            Arc::new(Self {
+                screen,
+                overlay_up: Mutex::new(false),
+                shown: Mutex::new(Vec::new()),
+            })
+        }
+    }
+
+    impl Component for FakeTui {
+        fn render(&self, _width: usize) -> Vec<String> {
+            Vec::new()
+        }
+        fn invalidate(&self) {}
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+    }
+
+    struct FakeHandle;
+    impl crate::tui::OverlayHandle for FakeHandle {
+        fn hide(&self) {}
+        fn set_hidden(&self, _hidden: bool) {}
+        fn is_hidden(&self) -> bool {
+            false
+        }
+        fn focus(&self) {}
+        fn unfocus(&self) {}
+        fn is_focused(&self) -> bool {
+            false
+        }
+        fn get_bounds(&self) -> Option<crate::tui::OverlayBounds> {
+            None
+        }
+    }
+
+    impl crate::tui::TUI for FakeTui {
+        fn mode(&self) -> crate::tui::TuiMode {
+            crate::tui::TuiMode::Fullscreen
+        }
+        fn terminal(&self) -> &dyn crate::terminal::Terminal {
+            unimplemented!()
+        }
+        fn children(&self) -> Vec<Arc<dyn Component>> {
+            Vec::new()
+        }
+        fn add_child(&self, _component: Arc<dyn Component>) {}
+        fn remove_child(&self, _component: &Arc<dyn Component>) {}
+        fn clear(&self) {}
+        fn get_show_hardware_cursor(&self) -> bool {
+            false
+        }
+        fn set_show_hardware_cursor(&self, _enabled: bool) {}
+        fn get_clear_on_shrink(&self) -> bool {
+            false
+        }
+        fn set_clear_on_shrink(&self, _enabled: bool) {}
+        fn set_focus(&self, _component: Option<Arc<dyn Component>>) {}
+        fn get_focus(&self) -> Option<Arc<dyn Component>> {
+            None
+        }
+        fn show_overlay(
+            &self,
+            component: Arc<dyn Component>,
+            _options: Option<crate::tui::OverlayOptions>,
+        ) -> Arc<dyn crate::tui::OverlayHandle> {
+            self.shown.lock().unwrap().push(component);
+            *self.overlay_up.lock().unwrap() = true;
+            Arc::new(FakeHandle)
+        }
+        fn hide_overlay(&self) {
+            *self.overlay_up.lock().unwrap() = false;
+        }
+        fn has_overlay(&self) -> bool {
+            *self.overlay_up.lock().unwrap()
+        }
+        fn start(&self) {}
+        fn stop(&self, _options: crate::tui::TuiStopOptions) {}
+        fn render_now(&self, _force: bool) {}
+        fn request_render(&self, _force: bool) {}
+        fn full_redraws(&self) -> usize {
+            0
+        }
+        fn alt_screen_lines(&self) -> Option<Vec<String>> {
+            self.screen.clone()
+        }
+    }
+
+    #[test]
+    fn the_easter_egg_refuses_a_tui_that_is_not_an_alt_screen() {
+        let tui = FakeTui::new(None);
+        let as_tui: Arc<dyn crate::tui::TUI> = tui.clone();
+        assert!(!play_easter_egg_3d(&as_tui, EasterEgg3d::Armin));
+        assert!(tui.shown.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_easter_egg_does_nothing_while_an_overlay_is_up() {
+        let tui = FakeTui::new(Some(screen()));
+        *tui.overlay_up.lock().unwrap() = true;
+        let as_tui: Arc<dyn crate::tui::TUI> = tui.clone();
+        assert!(play_easter_egg_3d(&as_tui, EasterEgg3d::Armin));
+        assert!(tui.shown.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_easter_egg_hands_the_captured_screen_to_the_component() {
+        let tui = FakeTui::new(Some(screen()));
+        let as_tui: Arc<dyn crate::tui::TUI> = tui.clone();
+        assert!(play_pi_logo_3d(&as_tui, 2, 1));
+        let shown = tui.shown.lock().unwrap();
+        assert_eq!(shown.len(), 1);
+        let component = shown[0]
+            .as_any()
+            .downcast_ref::<EasterEgg3dComponent>()
+            .expect("the easter egg component");
+        assert_eq!(component.egg(), EasterEgg3d::PiLogo { column: 2, row: 1 });
+        assert_eq!(component.screen_rows(), screen().len());
+    }
 
     fn screen() -> Vec<String> {
         (0..HEIGHT).map(|row| format!("row {row} ░▒▓█▀▄")).collect()

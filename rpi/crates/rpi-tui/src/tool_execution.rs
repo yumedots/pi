@@ -66,6 +66,9 @@ pub struct ToolExecutionComponent {
     finished_at: Mutex<Option<Instant>>,
     /// Whether expanded
     expanded: Mutex<bool>,
+    /// The horizontal inset of the panel, the original's `outputPad`
+    /// (packages/coding-agent/src/modes/interactive/components/tool-execution.ts:29).
+    output_pad: Mutex<usize>,
     /// Optional pre-rendered colored diff lines (from `render_diff`). When
     /// present the diff is always shown regardless of `expanded` — the diff
     /// IS the useful content for an `edit` tool.
@@ -119,6 +122,7 @@ impl ToolExecutionComponent {
             started_at: Mutex::new(None),
             finished_at: Mutex::new(None),
             expanded: Mutex::new(false),
+            output_pad: Mutex::new(TOOL_PANEL_PAD),
             diff_lines: Mutex::new(None),
             result_markdown: Mutex::new(false),
             todo_state: Mutex::new(None),
@@ -180,6 +184,15 @@ impl ToolExecutionComponent {
     pub fn set_expanded(&self, expanded: bool) {
         if let Ok(mut e) = self.expanded.lock() {
             *e = expanded;
+        }
+        self.bump();
+    }
+
+    /// Set the panel's horizontal inset, the original's `setOutputPad`
+    /// (packages/coding-agent/src/modes/interactive/components/tool-execution.ts:219-220).
+    pub fn set_output_pad(&self, output_pad: usize) {
+        if let Ok(mut pad) = self.output_pad.lock() {
+            *pad = output_pad;
         }
         self.bump();
     }
@@ -638,7 +651,12 @@ impl ToolExecutionComponent {
             ToolStatus::Failed => colors.tool_error_bg,
             ToolStatus::Completed => colors.tool_success_bg,
         };
-        let Some(panel) = ToolPanel::with_padding(width, TOOL_PANEL_PAD, TOOL_PANEL_PAD, bg) else {
+        let Some(panel) = ToolPanel::with_padding(
+            width,
+            *self.output_pad.lock().unwrap(),
+            TOOL_PANEL_PAD,
+            bg,
+        ) else {
             return Vec::new();
         };
         let content_width = panel.content_width.max(1);
@@ -667,12 +685,7 @@ impl ToolExecutionComponent {
             };
             let mut content = render_block(&renderer.render_call(&ctx, theme), content_width);
             if result.is_some() {
-                let rendered = render_block(&renderer.render_result(&ctx, theme), content_width);
-                if rendered.is_empty() {
-                    content.push(String::new());
-                } else {
-                    content.extend(rendered);
-                }
+                content.extend(render_block(&renderer.render_result(&ctx, theme), content_width));
             }
             content
         };
@@ -1389,7 +1402,7 @@ mod tests {
     }
 
     #[test]
-    fn a_collapsed_read_panel_keeps_the_empty_result_region() {
+    fn a_collapsed_read_panel_draws_the_call_row_and_no_result_text() {
         use super::*;
         let theme = Theme::default();
         let panel = ToolExecutionComponent::new("read", r#"{"path":"tool-input.txt"}"#);
@@ -1401,8 +1414,8 @@ mod tests {
             .collect();
         assert_eq!(
             collapsed,
-            vec!["", "", " read tool-input.txt", "", ""],
-            "the collapsed result region is an empty row, not a missing row"
+            vec!["", "", " read tool-input.txt", ""],
+            "the collapsed read panel is the spacer, the padding, the call row and the bottom padding"
         );
         panel.set_expanded(true);
         let expanded: Vec<String> = panel
@@ -1849,6 +1862,19 @@ mod tests {
     /// result body, the way upstream's `ToolExecutionComponent` does: the
     /// header inside the panel's box, the body below it.
     #[test]
+    fn the_tool_panel_honours_the_output_pad_setting() {
+        let theme = Theme::default();
+        let tool = ToolExecutionComponent::new("read", r#"{"path":"tool-input.txt"}"#);
+        tool.set_result("done", false);
+        let padded = strip_ansi(&tool.render_panel(40, &theme).join("\n"));
+        assert!(padded.contains(" read tool-input.txt"), "{padded}");
+        tool.set_output_pad(0);
+        let unpadded = strip_ansi(&tool.render_panel(40, &theme).join("\n"));
+        assert!(unpadded.contains("read tool-input.txt"), "{unpadded}");
+        assert!(!unpadded.contains(" read tool-input.txt"), "{unpadded}");
+    }
+
+    #[test]
     fn a_tool_with_a_renderer_draws_its_own_call_and_result() {
         let theme = Theme::default();
         let tool = ToolExecutionComponent::new("read", r#"{"path":"tool-input.txt"}"#);
@@ -1858,9 +1884,8 @@ mod tests {
         assert_eq!(plain[0], "", "the spacer in front of the panel");
         assert_eq!(plain[1].trim_end(), "", "the panel's top padding");
         assert_eq!(plain[2].trim_end(), " read tool-input.txt");
-        assert_eq!(plain[3].trim_end(), "", "the empty result region");
-        assert_eq!(plain[4].trim_end(), "", "the panel's bottom padding");
-        assert_eq!(lines.len(), 5);
+        assert_eq!(plain[3].trim_end(), "", "the panel's bottom padding");
+        assert_eq!(lines.len(), 4);
         // A collapsed read result is not drawn at all.
         assert!(!plain.join("\n").contains("hello from the parity fixture"));
 

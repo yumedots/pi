@@ -728,6 +728,18 @@ impl TuiAltScreen {
             .clone()
     }
 
+    /// The last painted screen, one string per row.
+    ///
+    /// The equivalent of the original's `TuiAltScreen.getScreenLines()`
+    /// (packages/tui/src/tui-alt-screen.ts:339-341): an effect that dissolves
+    /// the screen needs the screen that was on it.
+    pub fn screen_lines(&self) -> Vec<String> {
+        self.previous_screen
+            .lock()
+            .map(|screen| screen.clone())
+            .unwrap_or_default()
+    }
+
     /// Get the current terminal column count (cached, refreshed on resize).
     /// Used by callers that need a width for off-layout rendering (e.g.
     /// diff-line width sizing) without re-reading the terminal themselves.
@@ -2080,6 +2092,10 @@ impl TUI for TuiAltScreen {
 
     fn has_overlay(&self) -> bool {
         !self.overlays.get_visible().is_empty()
+    }
+
+    fn alt_screen_lines(&self) -> Option<Vec<String>> {
+        Some(self.screen_lines())
     }
 
     fn start(&self) {

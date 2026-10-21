@@ -6981,7 +6981,7 @@
     return parsed.codepoint === expectedKeycode && parsed.modifier === expectedModifier;
   }
   function isWindowsTerminalSession() {
-    return Boolean(process.env.WT_SESSION) && !process.env.SSH_CONNECTION && !process.env.SSH_CLIENT && !process.env.SSH_TTY;
+    return Boolean(__piProcess.env.WT_SESSION) && !__piProcess.env.SSH_CONNECTION && !__piProcess.env.SSH_CLIENT && !__piProcess.env.SSH_TTY;
   }
   function matchesRawBackspace(data, expectedModifier) {
     if (data === "\x7F") return expectedModifier === 0;
@@ -7408,16 +7408,16 @@
     userInfo: () => userInfo,
     version: () => version
   });
-  var homedir = () => process.env.HOME ?? process.env.USERPROFILE ?? "/";
-  var tmpdir = () => process.env.TMPDIR ?? "/tmp";
-  var platform = () => process.platform;
-  var arch = () => process.arch;
+  var homedir = () => __piProcess.env.HOME ?? __piProcess.env.USERPROFILE ?? "/";
+  var tmpdir = () => __piProcess.env.TMPDIR ?? "/tmp";
+  var platform = () => __piProcess.platform;
+  var arch = () => __piProcess.arch;
   var EOL = "\n";
   var hostname = () => "localhost";
   var userInfo = () => ({
-    username: process.env.USER ?? process.env.LOGNAME ?? "user",
+    username: __piProcess.env.USER ?? __piProcess.env.LOGNAME ?? "user",
     homedir: homedir(),
-    shell: process.env.SHELL ?? "/bin/sh"
+    shell: __piProcess.env.SHELL ?? "/bin/sh"
   });
   var release = () => "";
   var version = () => "";
@@ -13668,7 +13668,8 @@
     version: () => version2,
     versions: () => versions
   });
-  var process2 = globalThis.process;
+  var globals = globalThis;
+  var process2 = globals.__piProcess ?? globals.process;
   var env = process2.env;
   var argv = process2.argv;
   var platform2 = process2.platform;
@@ -14214,13 +14215,13 @@
   var node_zlib_default = { crc32, deflateRawSync, inflateRawSync, gzipSync, gunzipSync };
 
 
-  var globals = globalThis;
+  var globals2 = globalThis;
   var hostCall = (op, args) => {
-    const response = JSON.parse(globals.__piHostCall(op, JSON.stringify(args ?? {})));
+    const response = JSON.parse(globals2.__piHostCall(op, JSON.stringify(args ?? {})));
     if (!response.ok) throw new Error(response.error ?? "the host refused the call");
     return response.value;
   };
-  var nodeModules = () => globals.__piNodeModules;
+  var nodeModules = () => globals2.__piNodeModules;
   var themeTokens;
   var themeTokenMap = () => {
     if (!themeTokens) {
@@ -14525,7 +14526,7 @@
     if (Object.prototype.hasOwnProperty.call(NODE_BUILTINS, specifier)) {
       return NODE_BUILTINS[specifier];
     }
-    const builtins = globals.__piNodeModules;
+    const builtins = globals2.__piNodeModules;
     if (Object.prototype.hasOwnProperty.call(builtins, specifier)) {
       return builtins[specifier];
     }
@@ -14666,7 +14667,9 @@
       custom: async (factory) => {
         hostCall("ui.custom", { component: registerComponent(factory) });
       },
-      setWorkingIndicator: (options) => hostCall("ui.setWorkingIndicator", { options: options ?? null }),
+      setWorkingIndicator: (options) => {
+        hostCall("ui.setWorkingIndicator", { options: options ?? null });
+      },
       setEditorComponent: (factory) => {
         hostCall("ui.setEditorComponent", {
           component: factory ? registerComponent(factory) : null

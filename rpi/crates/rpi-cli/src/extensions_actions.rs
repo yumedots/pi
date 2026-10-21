@@ -696,8 +696,11 @@ impl RuntimeActionHost for HarnessActionHost {
                     "name": schema.name,
                     "description": schema.description,
                     "parameters": schema.parameters.0,
+                    "promptSnippet": serde_json::Value::Null,
                     "promptGuidelines": [],
                     "exposure": "direct",
+                    "namespace": serde_json::Value::Null,
+                    "annotations": serde_json::Value::Null,
                     "sourceInfo": {
                         "path": "",
                         "source": "builtin",

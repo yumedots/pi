@@ -155,7 +155,6 @@ impl TranscriptView {
     pub fn add_user(&self, text: &str) {
         self.chat
             .add_child(Arc::new(UserMessageComponent::new(text.to_string())));
-        self.chat.add_child(Arc::new(Spacer::new(1)));
     }
 
     /// Append a dim one-line notice (retry / error / command feedback).
@@ -322,9 +321,6 @@ impl TranscriptView {
         }
         comp.set_streaming(true);
         comp.update_blocks(blocks);
-        // The original's assistant message is a Markdown with a vertical padding
-        // of one, so a blank row precedes it.
-        self.chat.add_child(Arc::new(rpi_tui::spacer::Spacer::new(1)));
         self.chat.add_child(comp.clone());
         *self.current_assistant.lock().unwrap() = Some(comp);
     }
@@ -343,9 +339,6 @@ impl TranscriptView {
                 comp.set_markdown_transformer(Some(transformer));
             }
             comp.set_streaming(true);
-            // The original's assistant message is a Markdown with a vertical
-            // padding of one, so a blank row precedes it.
-            self.chat.add_child(Arc::new(rpi_tui::spacer::Spacer::new(1)));
             self.chat.add_child(comp.clone());
             *current = Some(comp);
         }

@@ -175,6 +175,15 @@ pub trait TUI: Component + Send + Sync {
     /// Check if there are any overlays.
     fn has_overlay(&self) -> bool;
 
+    /// The last painted screen, when this TUI is a fullscreen alt screen.
+    ///
+    /// The original's `TuiAltScreen.getScreenLines()`
+    /// (packages/tui/src/tui-alt-screen.ts:339-341). A TUI that is not an
+    /// alt screen has no screen to hand over.
+    fn alt_screen_lines(&self) -> Option<Vec<String>> {
+        None
+    }
+
     /// Start the TUI event loop.
     fn start(&self);
 

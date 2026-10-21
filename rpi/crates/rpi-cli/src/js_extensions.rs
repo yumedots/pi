@@ -725,16 +725,24 @@ impl JsHost {
                 .and_then(|session| session.editor_component.read().ok().and_then(|c| c.clone()))
                 .map(Value::String)
                 .unwrap_or(Value::Null)),
-            "ui.getAllThemes" => Ok(self
-                .session()
-                .map(|session| {
+            "ui.getAllThemes" => {
+                let from_session = self.session().and_then(|session| {
                     session
                         .themes
                         .read()
+                        .ok()
                         .map(|themes| Value::Array(themes.clone()))
-                        .unwrap_or(Value::Array(Vec::new()))
-                })
-                .unwrap_or_else(|| theme_list())),
+                });
+                match from_session {
+                    Some(list) if list
+                        .as_array()
+                        .is_some_and(|themes| !themes.is_empty()) =>
+                    {
+                        Ok(list)
+                    }
+                    _ => Ok(theme_list()),
+                }
+            }
             "ui.getTheme" => {
                 let name = args.get("name").and_then(Value::as_str).unwrap_or("");
                 let from_session = self.session().and_then(|session| {
@@ -926,7 +934,10 @@ impl JsHost {
                 // settings merged over the global ones.
                 if let Some(session) = self.session() {
                     if let Ok(settings) = session.settings.read() {
-                        if !settings.is_null() {
+                        let empty = settings
+                            .as_object()
+                            .is_none_or(|settings| settings.is_empty());
+                        if !settings.is_null() && !empty {
                             return Ok(settings.clone());
                         }
                     }

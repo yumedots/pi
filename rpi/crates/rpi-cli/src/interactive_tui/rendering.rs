@@ -567,13 +567,19 @@ pub(super) fn add_user_message(container: &Arc<Container>, text: &str) {
     if container.child_count() > 0 {
         container.add_child(Arc::new(Spacer::new(1)));
     }
-    // The original's user message is a Markdown with a vertical padding of one,
-    // so the blank row below the text is the component's own
-    // (`components/user-message.ts:43-48`); no extra spacer follows it.
+    // The original's echo adds only the leading spacer and the component; the
+    // blank row under the text is the component's own bottom padding
+    // (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:3191-3200`).
     container.add_child(Arc::new(UserMessageComponent::new(text.to_string())));
 }
 
-/// Add an error message to the chat container.
+/// The original's restored transcript adds the user message component only,
+/// with no spacer around it
+/// (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:3798`).
+pub(super) fn add_restored_user_message(container: &Arc<Container>, text: &str) {
+    container.add_child(Arc::new(UserMessageComponent::new(text.to_string())));
+}
+
 /// Collect all rendered lines from the chat container for search.
 pub(super) fn collect_transcript_lines(chat_container: &Arc<Container>) -> Vec<String> {
     let width = 80; // Default width for search; actual width varies by terminal
@@ -619,7 +625,8 @@ pub(super) fn quote_shell_arg(value: &str) -> String {
     }
 }
 
-/// The original's error notice: `Error: <message>` (`interactive-mode.ts:4490`).
+/// The original's error notice: `Error: <message>`
+/// (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:4490`).
 pub(super) fn add_error_message(container: &Arc<Container>, text: &str) {
     let c = current_theme().colors;
     let text = sanitize_error_message(text);

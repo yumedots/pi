@@ -46,54 +46,6 @@ export {
 	isWriteToolResult,
 } from "../../../../packages/coding-agent/src/core/extensions/types.ts";
 export { convertToLlm } from "../../../../packages/coding-agent/src/core/messages.ts";
-export { ModelRegistry } from "../../../../packages/coding-agent/src/core/model-registry.ts";
-export {
-	resolveCliModel,
-	resolveModelScopeWithDiagnostics,
-} from "../../../../packages/coding-agent/src/core/model-resolver.ts";
-export {
-	CredentialSynchronizationError,
-	ModelRuntime,
-} from "../../../../packages/coding-agent/src/core/model-runtime.ts";
-export { DefaultPackageManager } from "../../../../packages/coding-agent/src/core/package-manager.ts";
-export {
-	DefaultResourceLoader,
-	loadProjectContextFiles,
-} from "../../../../packages/coding-agent/src/core/resource-loader.ts";
-export { readStoredCredential } from "../../../../packages/coding-agent/src/core/auth-storage.ts";
-export {
-	calculateContextTokens,
-	compact,
-	DEFAULT_COMPACTION_SETTINGS,
-	estimateTokens,
-	findCutPoint,
-	findTurnStartIndex,
-	generateBranchSummary,
-	generateSummary,
-	generateSummaryWithUsage,
-	getLastAssistantUsage,
-	prepareBranchEntries,
-	serializeConversation,
-	shouldCompact,
-} from "../../../../packages/coding-agent/src/core/compaction/index.ts";
-export {
-	buildContextEntries,
-	buildSessionContext,
-	buildSessionProjection,
-	CURRENT_SESSION_VERSION,
-	getLatestCompactionEntry,
-	migrateSessionEntries,
-	parseSessionEntries,
-	sessionEntryToContextMessages,
-	SessionManager,
-} from "../../../../packages/coding-agent/src/core/session-manager.ts";
-export { SettingsManager } from "../../../../packages/coding-agent/src/core/settings-manager.ts";
-export {
-	formatSkillsForPrompt,
-	loadSkills,
-	loadSkillsFromDir,
-} from "../../../../packages/coding-agent/src/core/skills.ts";
-export { createSyntheticSourceInfo } from "../../../../packages/coding-agent/src/core/source-info.ts";
 export {
 	generateDiffString,
 	generateUnifiedPatch,
@@ -117,44 +69,16 @@ export {
 	withFileMutationQueue,
 } from "../../../../packages/coding-agent/src/core/tools/index.ts";
 export { formatReadLineRange } from "../../../../packages/coding-agent/src/core/tools/render-utils.ts";
-export {
-	hasTrustRequiringProjectResources,
-	ProjectTrustStore,
-} from "../../../../packages/coding-agent/src/core/trust-manager.ts";
-export { VIRTUAL_MODEL_STATE_ENTRY } from "../../../../packages/coding-agent/src/core/virtual-models.ts";
 export { createBashTool } from "../../../../packages/coding-agent/src/core/tools/bash.ts";
-export {
-	createCodingToolDefinitions,
-	createCodingTools,
-	createReadOnlyToolDefinitions,
-	createReadOnlyTools,
-	createTool,
-	createToolDefinition,
-} from "../../../../packages/coding-agent/src/core/tools/index.ts";
-export { createToolSearchExtension } from "../../../../packages/coding-agent/src/extensions/tool-search/index.ts";
-export {
-	AssistantMessageComponent,
-	BashExecutionComponent,
-	BorderedLoader,
-	CustomEditor,
-	CustomMessageComponent,
-	DynamicBorder,
-	ExtensionEditorComponent,
-	ExtensionInputComponent,
-	ExtensionSelectorComponent,
-	FooterComponent,
-	keyHint,
-	keyText,
-	rawKeyHint,
-	renderDiff,
-	SettingsSelectorComponent,
-	ThemeSelectorComponent,
-	ThinkingSelectorComponent,
-	ToolExecutionComponent,
-	truncateToVisualLines,
-	UserMessageComponent,
-	UserMessageSelectorComponent,
-} from "../../../../packages/coding-agent/src/modes/interactive/components/index.ts";
+// The components are imported one by one: the barrel also pulls the
+// components that reach for the session — and with it the network layer,
+// which the embedded host has no use for.
+export { BorderedLoader } from "../../../../packages/coding-agent/src/modes/interactive/components/bordered-loader.ts";
+export { CustomEditor, type CustomEditorOptions } from "../../../../packages/coding-agent/src/modes/interactive/components/custom-editor.ts";
+export { DynamicBorder } from "../../../../packages/coding-agent/src/modes/interactive/components/dynamic-border.ts";
+export { keyHint, keyText, rawKeyHint } from "../../../../packages/coding-agent/src/modes/interactive/components/keybinding-hints.ts";
+export { type RenderDiffOptions, renderDiff } from "../../../../packages/coding-agent/src/modes/interactive/components/diff.ts";
+export { truncateToVisualLines, type VisualTruncateResult } from "../../../../packages/coding-agent/src/modes/interactive/components/visual-truncate.ts";
 export {
 	getLanguageFromPath,
 	getMarkdownTheme,

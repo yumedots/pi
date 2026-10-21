@@ -178,6 +178,10 @@ const result = await build({
 		"import.meta.url": JSON.stringify(
 			`file://${join(crateDir, "js", "extension-host.bundle.js")}`,
 		),
+		// Every `process` in the bundled sources is the host's object: a
+		// CommonJS package in pi's dependency tree replaces the global, and
+		// the replacement has no environment.
+		process: "__piProcess",
 	},
 	target: "es2022",
 	write: false,
