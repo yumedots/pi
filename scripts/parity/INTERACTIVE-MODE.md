@@ -1862,3 +1862,54 @@ timing capture, not in the rendering.
 
 **So the interactive mode's screen set is now the original's, with one number out of
 place on one screen.**
+
+---
+
+## 15. A fresh regression — the user message is echoed twice
+
+At 20:47 the tool scenario was byte-identical. At 20:54 it is not, and the cause is
+visible in the pane: **the port renders the user's message twice** in the tool and
+thinking paths.
+
+```
+pi   (tool call)                      port (tool call)
+ 12 ' read the fixture'                 12 ' read the fixture'
+ 13 ''                                   13 ''
+ 14 ''                                   14 ''
+ 15 ''                                   15 ''
+ 16 ' read tool-input.txt'               16 ' read the fixture'      ← the user message AGAIN
+ 17 ''                                   17 ''
+ 18 ''                                   18 ''
+ 19 ' The fixture file says hello.'      19 ''
+ 20 ''                                   20 ' read tool-input.txt'
+```
+
+**The scope is exact.** The **prompt** scenario — a plain text turn — echoes the
+message **once** and is byte-identical. The **tool** and **thinking** scenarios — a turn
+that carries a tool call or a thinking block — echo it **twice**:
+
+```
+prompt  pi   : [(12, ' hello world')]
+prompt  port : [(12, ' hello world')]
+tool    pi   : [(12, ' read the fixture')]
+tool    port : [(12, ' read the fixture'), (16, ' read the fixture')]
+```
+
+So the second echo arrives on the path where the assistant's message carries blocks,
+and not on the plain-text path. The port's own note about "the two user-echo shapes" —
+the language lead's version plus `add_restored_user_message` — is the place to look: one
+of the two shapes is now firing in the live path as well as the restored one.
+
+**This is a user-visible regression, and it is worth more than the number it
+replaced**: every turn that runs a tool or thinks shows the user their own message
+twice.
+
+**The one number that was left is now also explained.** The thinking scenario's
+remaining difference — `+ Thought · 0.1s` against `+ Thought · 0.0s` — is a **frozen
+clock**, not a port defect: the port reads the harness's frozen `PI_PARITY_CLOCK` where
+the original reads `Date.now()` (`packages/coding-agent/src/modes/interactive/components/assistant-message.ts:100-108`).
+The row's text, shape and position are the original's; only the measured elapsed
+differs, and under a frozen clock the port's own real duration cannot be shown. **That
+row is therefore no longer a byte comparison** — its check is a unit test (a non-zero
+duration under a frozen clock), and the trace comparison for the scenario has to
+exclude the duration.

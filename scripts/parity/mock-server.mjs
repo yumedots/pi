@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { appendFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,6 +7,37 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 const CHUNK_DELAY_MS = 15;
+
+/** Where to append the request log, when the caller asks for one. */
+const LOG_PATH = process.env.PI_PARITY_MOCK_LOG;
+
+/** The parts of a request that say what the agent asked for. */
+function describeRequest(raw, turnIndex, turn) {
+	let parsed = {};
+	try {
+		parsed = JSON.parse(raw);
+	} catch {}
+	const tools = Array.isArray(parsed.tools)
+		? parsed.tools.map((tool) => tool?.function?.name ?? tool?.name ?? "?").filter(Boolean)
+		: [];
+	return {
+		model: parsed.model ?? null,
+		stream: parsed.stream ?? null,
+		messages: Array.isArray(parsed.messages) ? parsed.messages.length : 0,
+		tools,
+		turnIndex,
+		turnType: turn?.type ?? null,
+		turnName: turn?.name ?? null,
+	};
+}
+
+/** Append one request's description to the log, when there is one. */
+function logRequest(entry) {
+	if (!LOG_PATH) return;
+	try {
+		appendFileSync(LOG_PATH, `${JSON.stringify(entry)}\n`);
+	} catch {}
+}
 
 export const MOCK_MODEL_ID = "mock-1";
 export const MOCK_PROVIDER_ID = "mock";
@@ -82,9 +114,12 @@ export function startMockServer(script = {}) {
 		response.on("error", () => {});
 		request.on("data", (chunk) => body.push(chunk));
 		request.on("end", async () => {
-			requests.push({ url: request.url, body: Buffer.concat(body).toString("utf8") });
+			const raw = Buffer.concat(body).toString("utf8");
+			requests.push({ url: request.url, body: raw });
 			const turn = turns[Math.min(calls, turns.length - 1)];
+			const turnIndex = calls;
 			calls += 1;
+			logRequest(describeRequest(raw, turnIndex, turn));
 			response.writeHead(200, {
 				"content-type": "text/event-stream",
 				"cache-control": "no-cache",

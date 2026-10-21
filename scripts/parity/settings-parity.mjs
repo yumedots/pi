@@ -62,17 +62,17 @@ const CASES = [
 		keys: ["/he"],
 		facts: [
 			// The original lists the command names bare — "hotkeys", "theme" —
-			// with no leading slash. The port prefixes every entry with "/".
+			// with no leading slash. The port lists them bare too.
 			{ id: "the autocomplete lists hotkeys", match: /(?:^|\s)hotkeys(?:\s|$)/m, when: "present" },
 		],
-		compare: { type: "order", first: /\/help/, second: /^ > /m },
+		compare: { type: "order", first: /(?:^|\s)hotkeys(?:\s|$)/m, second: /^ > /m },
 	},
 	{
 		id: "autocompletePosition-below",
 		settings: { autocompletePosition: "below" },
 		keys: ["/he"],
 		facts: [{ id: "the autocomplete lists hotkeys", match: /(?:^|\s)hotkeys(?:\s|$)/m, when: "present" }],
-		compare: { type: "order", first: /^ > /m, second: /\/help/ },
+		compare: { type: "order", first: /^ > /m, second: /(?:^|\s)hotkeys(?:\s|$)/m },
 	},
 	{
 		id: "autocompleteMaxVisible-3",
