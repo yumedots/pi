@@ -113,7 +113,8 @@ impl Host for ProcessHost {
 			"fs.readFile" => {
 				let path = string_arg(&args, "path")?;
 				let path = self.resolve(&path)?;
-				let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+				let content = std::fs::read_to_string(&path)
+					.map_err(|e| format!("{}: {e}", path.display()))?;
 				Ok(json!(content))
 			}
 			"fs.writeFile" => {
@@ -265,7 +266,7 @@ impl Host for ProcessHost {
 			"mcp.register" | "mcp.unregister" => Ok(Value::Null),
 			"provider.register" | "provider.unregister" => Ok(Value::Null),
 			"session.getSessionName" => Ok(Value::Null),
-			"session.getBranch" => Ok(json!({ "entries": [] })),
+			"session.getBranch" => Ok(json!([])),
 			"session.getEntries" => Ok(json!([])),
 			"session.getDir" => Ok(Value::Null),
 			"session.getId" => Ok(Value::Null),
@@ -295,6 +296,7 @@ impl Host for ProcessHost {
 			"theme.get" => Ok(crate::theme::tokens()),
 			"footer.getGitBranch" => Ok(Value::Null),
 			"footer.getExtensionStatuses" => Ok(json!({})),
+			"extension.error" => Ok(Value::Null),
 			"ui.notify"
 			| "ui.setStatus"
 			| "ui.setWidget"

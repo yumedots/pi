@@ -490,6 +490,7 @@ mod tests {
             stream_options: Default::default(),
             retry: RetryPolicy::default(),
             compaction: Default::default(),
+            compaction_model_overrides: Default::default(),
             steering_mode: Default::default(),
             follow_up_mode: Default::default(),
             tool_execution: HarnessToolExecution::default(),

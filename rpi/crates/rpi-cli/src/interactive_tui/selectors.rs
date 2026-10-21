@@ -1,6 +1,7 @@
 //! Editor-swapping selectors for models, sessions, themes, thinking, tools, and images.
 
 use super::*;
+use crate::credentials::ProviderAuthType;
 
 // ===========================================================================
 // Selectors — editor-container swap (TS showSelector pattern)
@@ -55,6 +56,34 @@ pub(super) fn open_searchable_selector(
     // `TuiAltScreen::set_focus` only records the focused component; components
     // manage their own focus flag. Without this the search caret never renders
     // (and IME candidate positioning stays on the editor's old caret).
+    searchable.set_focused(true);
+    searchable
+}
+
+/// Open a selector that follows pi's menu framework
+/// (`packages/tui/src/components/menu.ts`): the title, the search field, the
+/// list, the footer and the hint.
+pub(super) fn open_menu_selector(
+    state: &Arc<TuiState>,
+    editor_container: &Arc<Container>,
+    editor: &Arc<Editor>,
+    tui: &Arc<TuiAltScreen>,
+    title: &str,
+    list: Arc<SelectList>,
+    kind: SelectorKind,
+) -> Arc<SearchableSelectList> {
+    let searchable = Arc::new(
+        SearchableSelectList::new(Some(title), None, list).with_menu_layout(),
+    );
+    open_selector_with_view(
+        state,
+        editor_container,
+        editor,
+        tui,
+        SelectorView::Searchable(searchable.clone()),
+        searchable.clone(),
+        kind,
+    );
     searchable.set_focused(true);
     searchable
 }
@@ -147,6 +176,7 @@ pub(super) fn open_model_selector(
     lane_model_id: &str,
     chat: &Arc<Container>,
     initial_search: Option<&str>,
+    has_scoped_models: bool,
 ) -> Option<Arc<SearchableSelectList>> {
     let default_model = crate::settings::load_settings()
         .ok()
@@ -195,16 +225,38 @@ pub(super) fn open_model_selector(
         close_selector(&state_cancel, &ec_cancel, &editor_cancel, &tui_cancel);
     }));
 
-    let searchable = open_searchable_selector(
+    // The line above the list: the scope when scoped models exist, otherwise
+    // the hint about the configured providers
+    // (`components/model-selector.ts:87-95`).
+    let title = if has_scoped_models {
+        "Scope: all | scoped"
+    } else {
+        "Only showing models from configured providers. Use /login to add providers."
+    };
+    let searchable = open_menu_selector(
         state,
         editor_container,
         editor,
         tui,
-        Some("Select model"),
-        Some("Type to filter by name, provider, or id"),
+        title,
         list,
         SelectorKind::Model,
     );
+    // The line under the list: the refresh status
+    // (`components/model-selector.ts:96-108`).
+    searchable.set_footer_text(Some("Model catalogs refreshed.".to_string()));
+    // The hint line (`components/model-selector.ts:110-116`).
+    searchable.set_hint(Some(
+        [
+            format!("{} to select", rpi_tui::key_display_text("tui.select.confirm")),
+            format!(
+                "{} to set as default",
+                rpi_tui::key_display_text("app.models.save")
+            ),
+            format!("{} to cancel", rpi_tui::key_display_text("tui.select.cancel")),
+        ]
+        .join(" · "),
+    ));
     if let Some(term) = initial_search {
         searchable.set_search_text(term);
     }
@@ -333,6 +385,8 @@ pub(super) fn open_session_selector(
         let mut menu = state.session_menu.lock().unwrap();
         menu.dir = dir.clone();
         let entries = session_menu_entries(&dir, &menu);
+        // The titles of the rows the list shows.
+        resolve_entry_titles(&entries, 0..SESSION_MENU_ROWS);
         let items = session_menu_items(&entries, menu.show_path);
         menu.entries = entries;
         items
@@ -477,6 +531,14 @@ pub(super) async fn open_tree_selector(
     let items = {
         let mut menu = state.tree_menu.lock().unwrap();
         menu.entries = menu_entries;
+        // `treeFilterMode`: the filter `/tree` opens with (upstream's
+        // `interactive-mode.ts:5466`).
+        menu.filter = TreeFilter::from_setting(
+            &crate::settings::load_settings()
+                .ok()
+                .map(|settings| settings.tree_filter_mode().to_string())
+                .unwrap_or_else(|| "default".to_string()),
+        );
         tree_menu_items(&menu.entries, menu.filter, menu.show_label_timestamps)
     };
     if items.is_empty() {
@@ -514,44 +576,95 @@ pub(super) async fn open_tree_selector(
     );
 }
 
-/// Build + open the `/theme` selector. Built-in presets and enabled package
-/// themes are shown; selecting applies the theme live and re-renders.
+/// The themes the `/theme` picker offers: the system theme first, then the
+/// presets by name (the original's `getAvailableThemes` order).
+fn theme_selector_names() -> Vec<&'static str> {
+    let mut names = vec!["system"];
+    names.extend(super::settings_menu::available_theme_names());
+    names
+}
+
+/// The rows of the `/theme` picker: the theme names, with the current one
+/// marked (the original's `name === current ? "(current)" : undefined`).
+fn theme_selector_items(current: &str) -> Vec<SelectItem> {
+    theme_selector_names()
+        .into_iter()
+        .map(|name| {
+            let item = SelectItem::new(name, name);
+            if name == current {
+                item.with_description("(current)")
+            } else {
+                item
+            }
+        })
+        .collect()
+}
+
+/// The theme the app runs with, from the saved setting. The system theme is
+/// the default (the original's `getThemeSelection() || SYSTEM_THEME_NAME`).
+fn current_theme_name() -> String {
+    let saved = crate::settings::load_settings()
+        .ok()
+        .and_then(|settings| settings.theme)
+        .unwrap_or_default();
+    if theme_selector_names().contains(&saved.as_str()) {
+        saved
+    } else {
+        "system".to_string()
+    }
+}
+
+/// Apply a theme by name: a preset, or the system theme, which follows the
+/// terminal's light/dark appearance.
+fn apply_theme_by_name(state: &Arc<TuiState>, name: &str) {
+    let preset = match name {
+        "light" => Some(ThemePreset::Light),
+        "monochrome" => Some(ThemePreset::Monochrome),
+        "dark" => Some(ThemePreset::Dark),
+        _ => None,
+    };
+    match preset {
+        Some(preset) => {
+            apply_theme_preset(preset);
+            state.theme_manager.apply_preset(preset);
+        }
+        None => {
+            state.theme_manager.follow_terminal();
+            rpi_tui::global_theme_manager().follow_terminal();
+        }
+    }
+}
+
+/// Build + open the `/theme` selector.
+///
+/// The original's `showThemeSelector` (`interactive-mode.ts:5631-5663`): a
+/// menu titled "Theme" that lists the available themes with the current one
+/// marked, previews the theme under the cursor, saves the choice when it is
+/// confirmed, and restores the previous theme when it is cancelled.
 pub(super) fn open_theme_selector(
     state: &Arc<TuiState>,
     editor_container: &Arc<Container>,
     editor: &Arc<Editor>,
     tui: &Arc<TuiAltScreen>,
 ) {
-    let items = vec![
-        SelectItem::new("dark", "Dark").with_description("Default dark theme"),
-        SelectItem::new("light", "Light").with_description("Light background"),
-        SelectItem::new("monochrome", "Monochrome").with_description("No color accents"),
-    ];
+    let current = current_theme_name();
+    let items = theme_selector_items(&current);
     let list = Arc::new(SelectList::new(items, 10));
+
+    let preview_state = state.clone();
+    list.on_selection_change(Arc::new(move |item: &SelectItem| {
+        apply_theme_by_name(&preview_state, &item.value);
+    }));
 
     let state_sel = state.clone();
     let ec_sel = editor_container.clone();
     let editor_sel = editor.clone();
     let tui_sel = tui.clone();
-    let chat_sel = state.chat_container.clone();
     list.on_select(Arc::new(move |item| {
-        let preset = match item.value.as_str() {
-            "light" => Some(ThemePreset::Light),
-            "monochrome" => Some(ThemePreset::Monochrome),
-            "dark" => Some(ThemePreset::Dark),
-            name => {
-                add_error_message(&chat_sel, &format!("Unknown theme `{name}`."));
-                close_selector(&state_sel, &ec_sel, &editor_sel, &tui_sel);
-                tui_sel.render_now(true);
-                return;
-            }
-        };
-        let Some(preset) = preset else { return };
-        apply_theme_preset(preset);
-        state_sel.theme_manager.apply_preset(preset);
-        // A quick accent note so the user sees the change registered even if
-        // the terminal's own colors mask the preset difference.
-        add_note_message(&chat_sel, &format!("Theme set to {}.", item.label));
+        apply_theme_by_name(&state_sel, &item.value);
+        let mut settings = crate::settings::load_settings().unwrap_or_default();
+        settings.theme = Some(item.value.clone());
+        let _ = crate::settings::save_settings(&settings);
         close_selector(&state_sel, &ec_sel, &editor_sel, &tui_sel);
         tui_sel.render_now(true);
     }));
@@ -560,17 +673,30 @@ pub(super) fn open_theme_selector(
     let editor_cancel = editor.clone();
     let tui_cancel = tui.clone();
     list.on_cancel(Arc::new(move || {
+        // The preview is undone on cancel: the theme that was active when the
+        // picker opened comes back.
+        apply_theme_by_name(&state_cancel, &current);
         close_selector(&state_cancel, &ec_cancel, &editor_cancel, &tui_cancel);
+        tui_cancel.render_now(true);
     }));
 
-    open_selector(
+    let menu = open_menu_selector(
         state,
         editor_container,
         editor,
         tui,
+        "Theme",
         list,
         SelectorKind::Theme,
     );
+    menu.set_hint(Some(
+        [
+            "Type to search".to_string(),
+            format!("{} select", rpi_tui::key_display_text("tui.select.confirm")),
+            format!("{} cancel", rpi_tui::key_display_text("tui.select.cancel")),
+        ]
+        .join(" · "),
+    ));
 }
 
 /// Sentinel value for the "Add new provider" row in the `/provider` picker.
@@ -654,7 +780,157 @@ pub(super) fn open_provider_selector(
     );
 }
 
+/// The `/login` method screen — the first screen pi's `/login` shows.
+///
+/// Mirrors `showLoginAuthTypeSelector`
+/// (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:5878`):
+/// the title, one row per login method, and the Radius row with its status
+/// suffix. `provider_options` narrows the screen to one provider, the way
+/// `/login <provider>` does.
+pub(super) fn open_login_method_selector(
+    state: &Arc<TuiState>,
+    editor_container: &Arc<Container>,
+    editor: &Arc<Editor>,
+    tui: &Arc<TuiAltScreen>,
+    extension_session: &crate::session::ExtensionSessionCell,
+    tx: &mpsc::UnboundedSender<TuiMessage>,
+    provider_options: Option<Vec<LoginProviderOption>>,
+) {
+    let narrowed = provider_options.is_some();
+    let options = match provider_options {
+        Some(options) => options,
+        None => {
+            let manifests = current_provider_manifests(extension_session);
+            let oauth_providers = current_oauth_providers(extension_session);
+            login_provider_options(&manifests, &oauth_providers)
+        }
+    };
+
+    let title = match (narrowed, options.first()) {
+        (true, Some(option)) => format!("Select authentication method for {}:", option.name),
+        _ => "Select authentication method:".to_string(),
+    };
+
+    let mut items: Vec<SelectItem> = Vec::new();
+    if options
+        .iter()
+        .any(|option| option.auth_type == ProviderAuthType::OAuth)
+    {
+        items.push(SelectItem::new(
+            OAUTH_LOGIN_METHOD,
+            "Sign in with an account",
+        ));
+    }
+    if options
+        .iter()
+        .any(|option| option.auth_type == ProviderAuthType::ApiKey)
+    {
+        items.push(SelectItem::new(
+            API_KEY_LOGIN_METHOD,
+            "Sign in with an API key",
+        ));
+    }
+    // The top-level screen offers Radius directly, as its last option.
+    let radius = if narrowed {
+        None
+    } else {
+        options
+            .iter()
+            .find(|option| {
+                option.id == RADIUS_PROVIDER_ID && option.auth_type == ProviderAuthType::OAuth
+            })
+            .cloned()
+    };
+    if let Some(radius) = radius.as_ref() {
+        let label = format!(
+            "Sign in with Radius{}",
+            format_login_provider_status(radius)
+        );
+        items.push(SelectItem::new(RADIUS_LOGIN_METHOD, &label));
+    }
+    if items.is_empty() {
+        add_note_message(&state.chat_container, "No login methods available.");
+        tui.request_render(false);
+        return;
+    }
+
+    let list = Arc::new(SelectList::new(items, 10));
+    let state_sel = state.clone();
+    let ec_sel = editor_container.clone();
+    let editor_sel = editor.clone();
+    let tui_sel = tui.clone();
+    let tx_sel = tx.clone();
+    let extension_session_sel = extension_session.clone();
+    list.on_select(Arc::new(move |item| {
+        close_selector(&state_sel, &ec_sel, &editor_sel, &tui_sel);
+        match item.value.as_str() {
+            OAUTH_LOGIN_METHOD => open_login_provider_selector(
+                &state_sel,
+                &ec_sel,
+                &editor_sel,
+                &tui_sel,
+                &extension_session_sel,
+                &tx_sel,
+                Some(ProviderAuthType::OAuth),
+                None,
+            ),
+            API_KEY_LOGIN_METHOD => open_login_provider_selector(
+                &state_sel,
+                &ec_sel,
+                &editor_sel,
+                &tui_sel,
+                &extension_session_sel,
+                &tx_sel,
+                Some(ProviderAuthType::ApiKey),
+                None,
+            ),
+            _ => begin_provider_login(
+                &state_sel,
+                &ec_sel,
+                &editor_sel,
+                &tui_sel,
+                &tx_sel,
+                &extension_session_sel,
+                RADIUS_PROVIDER_ID,
+            ),
+        }
+    }));
+    let state_cancel = state.clone();
+    let ec_cancel = editor_container.clone();
+    let editor_cancel = editor.clone();
+    let tui_cancel = tui.clone();
+    list.on_cancel(Arc::new(move || {
+        close_selector(&state_cancel, &ec_cancel, &editor_cancel, &tui_cancel);
+    }));
+
+    let menu = open_menu_selector(
+        state,
+        editor_container,
+        editor,
+        tui,
+        &title,
+        list,
+        SelectorKind::Provider,
+    );
+    menu.set_hint_line(Some(
+        "↑↓ navigate  enter select  escape/ctrl+c cancel".to_string(),
+    ));
+}
+
+/// The value of the "Sign in with an account" row.
+const OAUTH_LOGIN_METHOD: &str = "__login_oauth__";
+/// The value of the "Sign in with an API key" row.
+const API_KEY_LOGIN_METHOD: &str = "__login_api_key__";
+/// The value of the "Sign in with Radius" row.
+const RADIUS_LOGIN_METHOD: &str = "__login_radius__";
+/// pi's Radius provider id.
+const RADIUS_PROVIDER_ID: &str = "radius";
+
 /// Pick a provider for `/login`, then run its OAuth or API-key flow.
+///
+/// Mirrors pi's `showLoginProviderSelector`
+/// (`interactive-mode.ts:5949`): the title, the provider rows and the menu
+/// hint.
 pub(super) fn open_login_provider_selector(
     state: &Arc<TuiState>,
     editor_container: &Arc<Container>,
@@ -662,15 +938,20 @@ pub(super) fn open_login_provider_selector(
     tui: &Arc<TuiAltScreen>,
     extension_session: &crate::session::ExtensionSessionCell,
     tx: &mpsc::UnboundedSender<TuiMessage>,
+    auth_type: Option<ProviderAuthType>,
+    initial_search: Option<&str>,
 ) {
     let manifests = current_provider_manifests(extension_session);
     let oauth_providers = current_oauth_providers(extension_session);
-    let items = login_provider_items_with_oauth(&manifests, &oauth_providers);
+    let options = login_provider_options(&manifests, &oauth_providers);
+    let items = login_provider_rows(&options, auth_type);
     if items.is_empty() {
-        add_note_message(
-            &state.chat_container,
-            "No login-capable providers are loaded. Configure a provider or install an extension first.",
-        );
+        let message = match auth_type {
+            Some(ProviderAuthType::OAuth) => "No account providers available.",
+            Some(ProviderAuthType::ApiKey) => "No API key providers available.",
+            None => "No login providers available.",
+        };
+        add_note_message(&state.chat_container, message);
         tui.request_render(false);
         return;
     }
@@ -700,16 +981,26 @@ pub(super) fn open_login_provider_selector(
     list.on_cancel(Arc::new(move || {
         close_selector(&state_cancel, &ec_cancel, &editor_cancel, &tui_cancel);
     }));
-    open_searchable_selector(
+    let menu = open_menu_selector(
         state,
         editor_container,
         editor,
         tui,
-        Some("Log in to provider"),
-        Some("Type to filter providers · Enter selects · Esc cancels"),
+        "Select provider to configure:",
         list,
         SelectorKind::Provider,
     );
+    menu.set_hint(Some(
+        [
+            "Type to search".to_string(),
+            format!("{} select", rpi_tui::key_display_text("tui.select.confirm")),
+            format!("{} cancel", rpi_tui::key_display_text("tui.select.cancel")),
+        ]
+        .join(" · "),
+    ));
+    if let Some(search) = initial_search {
+        menu.set_search_text(search);
+    }
 }
 pub(super) fn open_logout_provider_selector(
     state: &Arc<TuiState>,
@@ -744,16 +1035,23 @@ pub(super) fn open_logout_provider_selector(
     list.on_cancel(Arc::new(move || {
         close_selector(&state_cancel, &ec_cancel, &editor_cancel, &tui_cancel);
     }));
-    open_searchable_selector(
+    let menu = open_menu_selector(
         state,
         editor_container,
         editor,
         tui,
-        Some("Log out provider"),
-        Some("Type to filter providers · Enter removes · Esc cancels"),
+        "Select provider to logout:",
         list,
         SelectorKind::Provider,
     );
+    menu.set_hint(Some(
+        [
+            "Type to search".to_string(),
+            format!("{} select", rpi_tui::key_display_text("tui.select.confirm")),
+            format!("{} cancel", rpi_tui::key_display_text("tui.select.cancel")),
+        ]
+        .join(" · "),
+    ));
 }
 /// Open the "remove provider" picker: lists only the providers defined in
 /// `models.json` (built-ins cannot be removed), and deletes the chosen one.
@@ -943,3 +1241,25 @@ pub(super) fn open_thinking_selector(
     );
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_theme_picker_lists_the_themes_with_the_current_one_marked() {
+        let items = theme_selector_items("light");
+        let names: Vec<&str> = items.iter().map(|item| item.value.as_str()).collect();
+        assert_eq!(names, vec!["system", "dark", "light", "monochrome"]);
+        let current = items
+            .iter()
+            .find(|item| item.value == "light")
+            .expect("the light theme");
+        assert_eq!(current.description.as_deref(), Some("(current)"));
+        let other = items
+            .iter()
+            .find(|item| item.value == "dark")
+            .expect("the dark theme");
+        assert_eq!(other.description, None);
+    }
+}

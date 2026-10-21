@@ -74,6 +74,9 @@ pub async fn run() -> i32 {
     // Startup profiling wrapper: RPI_TIMING=1 records namespace timings and
     // flushes them to stderr once the run completes, regardless of exit path.
     crate::timings::reset(crate::timings::TimingNamespace::Main);
+    // The turn's timestamps are relative to the process's start, so the base
+    // has to be taken here rather than at the first recorded phase.
+    crate::turn_timing::init();
     let code = run_inner().await;
     crate::timings::print_timings();
     code
@@ -155,6 +158,7 @@ async fn run_inner() -> i32 {
         Some("install") => return crate::install::run_async(&argv[1..]).await,
         Some("uninstall") => return crate::install::uninstall(&argv[1..]),
         Some("package") => return crate::packages::run(&argv[1..]),
+        Some("mcp") => return crate::mcp_cli::run(&argv[1..]).await,
         // These historical aliases are intentionally rejected instead of
         // falling through to the prompt path.
         Some(removed @ ("pi-package" | "pi-update" | "install-pi" | "uninstall-pi")) => {

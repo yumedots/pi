@@ -25,6 +25,15 @@ impl<T: Clone> UndoStack<T> {
         }
     }
 
+    /// Create an undo stack that keeps every snapshot. The original's undo
+    /// stack is unbounded (packages/tui/src/undo-stack.ts).
+    pub fn unbounded() -> Self {
+        Self {
+            states: VecDeque::new(),
+            max_size: usize::MAX,
+        }
+    }
+
     /// Create an undo stack with a custom maximum size.
     pub fn with_max_size(max_size: usize) -> Self {
         Self {

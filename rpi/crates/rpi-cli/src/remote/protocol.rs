@@ -116,6 +116,17 @@ pub enum RemoteEvent {
         is_error: bool,
         result: Value,
     },
+    BeforeAgentStart {
+        prompt: Value,
+        #[serde(rename = "systemPrompt")]
+        system_prompt: String,
+    },
+    AgentBeforeSettle {
+        outcome: String,
+    },
+    AgentSettled {
+        aborted: bool,
+    },
 }
 
 impl RemoteEvent {
@@ -135,6 +146,9 @@ impl RemoteEvent {
             RemoteEvent::ToolExecutionStart { .. } => "tool_execution_start",
             RemoteEvent::ToolExecutionUpdate { .. } => "tool_execution_update",
             RemoteEvent::ToolExecutionEnd { .. } => "tool_execution_end",
+            RemoteEvent::BeforeAgentStart { .. } => "before_agent_start",
+            RemoteEvent::AgentBeforeSettle { .. } => "agent_before_settle",
+            RemoteEvent::AgentSettled { .. } => "agent_settled",
         }
     }
 
@@ -243,6 +257,17 @@ impl RemoteEvent {
                 is_error: *is_error,
                 result: tool_result_json(result),
             },
+            AgentEvent::BeforeAgentStart {
+                prompt,
+                system_prompt,
+            } => RemoteEvent::BeforeAgentStart {
+                prompt: serde_json::to_value(prompt).unwrap_or(Value::Null),
+                system_prompt: system_prompt.clone(),
+            },
+            AgentEvent::AgentBeforeSettle { outcome } => RemoteEvent::AgentBeforeSettle {
+                outcome: outcome.as_str().to_string(),
+            },
+            AgentEvent::AgentSettled { aborted } => RemoteEvent::AgentSettled { aborted: *aborted },
         }
     }
 }
@@ -449,6 +474,7 @@ mod tests {
             &AgentEvent::ToolExecutionEnd {
                 tool_call_id: "call-1".into(),
                 tool_name: "read".into(),
+                args: serde_json::json!({}),
                 result: AgentToolResult::text("hello"),
                 is_error: false,
                 duration_ms: None,

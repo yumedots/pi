@@ -7,12 +7,12 @@
 //! Divergence from TS (documented): the TS tool **shells out to `fd`** (with
 //! gitignore-aware walking + `--full-path` rewrites + optional auto-download).
 //! The Rust port implements the walk **in-process** via the `FileSystem` trait
-//! and the `globset` crate, so it works against any `ExecutionEnv`. Trade-offs:
-//! no full `.gitignore` awareness in v1 (only `.git/` directories are skipped;
-//! revisit via the `ignore` crate for an `OsExecutionEnv`-only fast path), no
-//! external binary, and a deterministic sorted BFS walk order rather than fd's
-//! walk. The `**/`-prepend rule for path-containing patterns is ported; the
-//! Windows `[/\\]` separator rewrite is unnecessary (we normalize to posix
+//! and the `globset` crate, so it works against any `ExecutionEnv`. The
+//! `.gitignore` handling is ported as well (`crate::tools::gitignore`): the
+//! ignore files count inside a git repository, as they do for fd. Trade-offs:
+//! no external binary, and a deterministic sorted BFS walk order rather than
+//! fd's walk. The `**/`-prepend rule for path-containing patterns is ported;
+//! the Windows `[/\\]` separator rewrite is unnecessary (we normalize to posix
 //! internally). `relativizeFindResultPath` is ported directly.
 
 use std::collections::VecDeque;
@@ -24,13 +24,13 @@ use rpi_agent::agent_tool::AgentTool;
 use rpi_agent::error::AgentError;
 use rpi_agent::types::{AgentToolResult, TextContentOrImage, ToolResultPartial};
 use rpi_ai::types::Tool;
-use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::env::ExecutionEnv;
 use crate::env::FileKind;
 use crate::path_utils::resolve_read_tool_path;
+use crate::tools::gitignore::IgnoreContext;
 use crate::tools::tool_context::ExecutionToolContext;
 use crate::tools::PromptContribution;
 use crate::truncate::{
@@ -41,7 +41,7 @@ use crate::truncate::{
 const DEFAULT_LIMIT: u32 = 1000;
 
 /// Input for the find tool. Mirrors TS `FindToolInput`.
-#[derive(Debug, Clone, JsonSchema, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct FindInput {
     /// Glob pattern to match files, e.g. `*.ts`, `**/*.json`, `src/**/*.spec.ts`.
     pub pattern: String,
@@ -77,16 +77,32 @@ pub struct FindTool {
 
 impl FindTool {
     fn schema() -> Tool {
-        let params = schemars::schema_for!(FindInput);
         Tool {
             name: "find".to_string(),
             description: format!(
                 "Search for files by glob pattern. Returns matching file paths relative to the \
-                 search directory. Skips `.git/` directories. Output is truncated to {DEFAULT_LIMIT} \
+                 search directory. Respects .gitignore. Output is truncated to {DEFAULT_LIMIT} \
                  results or {kb}KB (whichever is hit first).",
                 kb = DEFAULT_MAX_BYTES / 1024
             ),
-            parameters: rpi_ai::types::Schema::new(serde_json::to_value(params).unwrap_or_default()),
+            parameters: rpi_ai::types::Schema::new(serde_json::json!({
+                "type": "object",
+                "required": ["pattern"],
+                "properties": {
+                    "pattern": {
+                        "type": "string",
+                        "description": "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'"
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Directory to search in (default: current directory)"
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Maximum number of results (default: 1000)"
+                    }
+                }
+            })),
             constrained_sampling: None,
         }
     }
@@ -166,9 +182,10 @@ impl AgentTool for FindTool {
         let mut result_limit_reached = false;
 
         // BFS walk from the search root. Match against the relative posix path.
-        let mut queue: VecDeque<(String, String)> = VecDeque::new();
-        queue.push_back((search_path.clone(), String::new()));
-        while let Some((abs_dir, rel_dir)) = queue.pop_front() {
+        let mut queue: VecDeque<(String, String, IgnoreContext)> = VecDeque::new();
+        let ignore = IgnoreContext::load(&self.env, &search_path, cancel).await;
+        queue.push_back((search_path.clone(), String::new(), ignore));
+        while let Some((abs_dir, rel_dir, ignore)) = queue.pop_front() {
             if collected.len() >= effective_limit {
                 result_limit_reached = true;
                 break;
@@ -184,6 +201,9 @@ impl AgentTool for FindTool {
                     break;
                 }
                 let child_abs = entry.path.to_string_lossy().into_owned();
+                if ignore.is_ignored(&child_abs, entry.kind == FileKind::Directory) {
+                    continue;
+                }
                 let rel = if rel_dir.is_empty() {
                     entry.name.clone()
                 } else {
@@ -196,7 +216,6 @@ impl AgentTool for FindTool {
                         }
                     }
                     FileKind::Directory => {
-                        // Skip `.git/` (v1 has no full .gitignore support).
                         if entry.name == ".git" {
                             continue;
                         }
@@ -209,7 +228,8 @@ impl AgentTool for FindTool {
                             }
                             collected.push(r);
                         }
-                        queue.push_back((child_abs, rel));
+                        let child_ignore = ignore.with_dir(&self.env, &child_abs, cancel).await;
+                        queue.push_back((child_abs, rel, child_ignore));
                     }
                     FileKind::Symlink => {
                         // Skip symlinks during the walk (avoid loops).

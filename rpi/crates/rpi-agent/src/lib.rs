@@ -29,12 +29,12 @@ pub mod types;
 pub use abort::AbortHandle;
 pub use agent::{Agent, AgentBuilder, AgentOptions};
 pub use agent_loop::{
-    run_agent_loop, run_agent_loop_continue, run_agent_loop_from_assistant, LoopOutcome,
-    NewMessages,
+    run_agent_loop, run_agent_loop_continue, run_agent_loop_from_assistant,
+    run_agent_loop_with_announced_prompt, LoopOutcome, NewMessages,
 };
 pub use agent_tool::AgentTool;
 pub use error::AgentError;
-pub use events::{AgentEmitter, AgentEvent, CollectorEmitter};
+pub use events::{AgentActivityOutcome, AgentEmitter, AgentEvent, CollectorEmitter};
 pub use hooks::{
     AfterToolCall, AfterToolResults, AgentLoopConfig, BeforeToolCall, ConvertToLlm, FinishTurn,
     GetApiKey, GetFollowUpMessages, GetSteeringMessages, PrepareNextTurn, PrepareRequest,

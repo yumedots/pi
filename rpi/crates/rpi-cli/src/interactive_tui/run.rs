@@ -58,7 +58,11 @@ pub(super) async fn maybe_add_startup_changelog(
 // Run a single prompt (streaming or blocking)
 // ===========================================================================
 
-pub(super) fn launch_external_editor(draft: String, tx: mpsc::UnboundedSender<TuiMessage>) {
+pub(super) fn launch_external_editor(
+    draft: String,
+    tx: mpsc::UnboundedSender<TuiMessage>,
+    editor: String,
+) {
     std::thread::spawn(move || {
         let file = match tempfile::Builder::new()
             .prefix("rpi-draft-")
@@ -79,21 +83,14 @@ pub(super) fn launch_external_editor(draft: String, tx: mpsc::UnboundedSender<Tu
             ))));
             return;
         }
-        let editor = std::env::var("RPI_EXTERNAL_EDITOR")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| std::env::var("VISUAL").ok())
-            .or_else(|| std::env::var("EDITOR").ok())
-            .unwrap_or_else(|| {
-                if cfg!(windows) {
-                    "notepad".to_string()
-                } else {
-                    "nano".to_string()
-                }
-            });
-        let status = std::process::Command::new(&editor)
-            .arg(file.path())
-            .status();
+        // Upstream splits the command on spaces and passes the file last
+        // (`modes/interactive/external-editor.ts:24`).
+        let mut parts = editor.split_whitespace();
+        let program = parts.next().unwrap_or_default().to_string();
+        let mut command = std::process::Command::new(&program);
+        command.args(parts);
+        command.arg(file.path());
+        let status = command.status();
         let result = match status {
             Ok(status) if status.success() => std::fs::read_to_string(file.path())
                 .map_err(|error| format!("Could not read editor file: {error}")),

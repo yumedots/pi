@@ -162,6 +162,14 @@ impl SlashCommand for ModelCommand {
             &current_id,
             &ctx.chat,
             (!term.is_empty()).then_some(term),
+            // pi's scope line appears when the session has scoped models
+            // (`settings.json#scopedModels`), not when a model was named on the
+            // command line.
+            crate::settings::load_settings()
+                .ok()
+                .and_then(|settings| settings.scoped_models)
+                .map(|models| !models.is_empty())
+                .unwrap_or(false),
         );
     }
 }
@@ -268,19 +276,32 @@ impl SlashCommand for ThemeCommand {
         if !name.is_empty() {
             // /theme <name> — direct apply + persist (matches /settings Theme).
             let preset = match name.as_str() {
-                "light" => ThemePreset::Light,
-                "monochrome" => ThemePreset::Monochrome,
-                "dark" => ThemePreset::Dark,
+                "light" => Some(ThemePreset::Light),
+                "monochrome" => Some(ThemePreset::Monochrome),
+                "dark" => Some(ThemePreset::Dark),
+                // The system theme follows the terminal's light/dark mode.
+                "system" => None,
                 _ => {
                     add_error_message(
                         &ctx.chat,
-                        &format!("Unknown theme \"{name}\". Valid: dark, light, monochrome."),
+                        &format!(
+                            "Unknown theme \"{name}\". Available: system, dark, light, monochrome."
+                        ),
                     );
                     ctx.tui.request_render(false);
                     return;
                 }
             };
-            apply_theme_preset(preset);
+            match preset {
+                Some(preset) => {
+                    apply_theme_preset(preset);
+                    ctx.state.theme_manager.apply_preset(preset);
+                }
+                None => {
+                    ctx.state.theme_manager.follow_terminal();
+                    rpi_tui::global_theme_manager().follow_terminal();
+                }
+            }
             let mut settings = crate::settings::load_settings().unwrap_or_default();
             settings.theme = Some(name.clone());
             let _ = crate::settings::save_settings(&settings);
@@ -409,13 +430,16 @@ impl SlashCommand for LoginCommand {
     fn execute(&self, ctx: &CommandContext, args: &str) {
         let args = args.trim();
         if args.is_empty() {
-            open_login_provider_selector(
+            // pi's `/login` opens the authentication-method screen first
+            // (`interactive-mode.ts:5846`).
+            open_login_method_selector(
                 &ctx.state,
                 &ctx.editor_container,
                 &ctx.editor,
                 &ctx.tui,
                 &ctx.state.extension_session,
                 &ctx.tx,
+                None,
             );
             return;
         }
@@ -460,15 +484,56 @@ impl SlashCommand for LoginCommand {
                 }
             },
             None => {
-                if login_items
+                // pi's `/login <provider>` opens that provider's login
+                // (`interactive-mode.ts:5850`); the port keeps its
+                // `/login <api-key>` shortcut for an unknown name.
+                let options = login_provider_options(&manifests, &oauth_providers);
+                let matching: Vec<LoginProviderOption> = options
                     .iter()
-                    .any(|item| item.value.eq_ignore_ascii_case(first))
-                {
-                    add_error_message(
-                        &ctx.chat,
-                        &format!("Missing API key for provider '{first}'."),
-                    );
-                    ctx.tui.request_render(false);
+                    .filter(|option| {
+                        option.id.eq_ignore_ascii_case(first)
+                            || option.name.eq_ignore_ascii_case(first)
+                    })
+                    .cloned()
+                    .collect();
+                if !matching.is_empty() {
+                    if matching.len() == 1 {
+                        let option = &matching[0];
+                        open_login_provider_selector(
+                            &ctx.state,
+                            &ctx.editor_container,
+                            &ctx.editor,
+                            &ctx.tui,
+                            &ctx.state.extension_session,
+                            &ctx.tx,
+                            Some(option.auth_type),
+                            None,
+                        );
+                    } else if matching
+                        .iter()
+                        .all(|option| option.id == matching[0].id)
+                    {
+                        open_login_method_selector(
+                            &ctx.state,
+                            &ctx.editor_container,
+                            &ctx.editor,
+                            &ctx.tui,
+                            &ctx.state.extension_session,
+                            &ctx.tx,
+                            Some(matching),
+                        );
+                    } else {
+                        open_login_provider_selector(
+                            &ctx.state,
+                            &ctx.editor_container,
+                            &ctx.editor,
+                            &ctx.tui,
+                            &ctx.state.extension_session,
+                            &ctx.tx,
+                            None,
+                            Some(first),
+                        );
+                    }
                     return;
                 }
                 ("anthropic".to_string(), args.to_string())
@@ -544,8 +609,14 @@ impl SlashCommand for TrustCommand {
         "Save project trust decision for future sessions"
     }
     fn execute(&self, ctx: &CommandContext, args: &str) {
-        let value = match args.trim().to_ascii_lowercase().as_str() {
-            "" | "yes" | "y" | "true" => Some(true),
+        let argument = args.trim();
+        if argument.is_empty() {
+            // pi opens the trust screen (`/trust` → `TrustSelectorComponent`).
+            super::trust::open_trust_selector(ctx);
+            return;
+        }
+        let value = match argument.to_ascii_lowercase().as_str() {
+            "yes" | "y" | "true" => Some(true),
             "no" | "n" | "false" => Some(false),
             "clear" | "reset" | "none" => None,
             _ => {
@@ -721,6 +792,23 @@ impl SlashCommand for ReloadCommand {
     }
 }
 
+/// `/mcp` — the MCP manager: the servers, their state, and their tools.
+///
+/// The original's description
+/// (`packages/coding-agent/src/extensions/mcp/index.ts:1262`).
+pub(super) struct McpCommand;
+impl SlashCommand for McpCommand {
+    fn name(&self) -> &'static str {
+        "/mcp"
+    }
+    fn description(&self) -> &'static str {
+        "Manage MCP servers: sign in, reconnect, enable or disable, and change exposure"
+    }
+    fn execute(&self, ctx: &CommandContext, _args: &str) {
+        let _ = ctx.tx.send(TuiMessage::ShowMcpManager);
+    }
+}
+
 /// Build the full command registry.
 ///
 /// The order is the original's own list
@@ -756,6 +844,7 @@ pub(super) fn build_builtin_registry() -> CommandRegistry {
     r.register(Arc::new(CompactCommand));
     r.register(Arc::new(SessionCommand));
     r.register(Arc::new(ReloadCommand));
+    r.register(Arc::new(McpCommand));
     r.register(Arc::new(ExitCommand));
     // The port's own command: it lists the discovered context files, skills and
     // prompt templates, and stays off the `/` list.

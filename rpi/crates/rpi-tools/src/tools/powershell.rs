@@ -9,16 +9,16 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use rpi_agent::agent_tool::AgentTool;
 use rpi_agent::error::AgentError;
 use rpi_agent::types::{AgentToolResult, TextContentOrImage, ToolResultPartial};
-use rpi_ai::types::Tool;
-use schemars::JsonSchema;
+use rpi_ai::types::{ConstrainedSamplingConfig, ConstrainedStrictness, Tool};
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::env::ShellOverride;
 use crate::shell_output::{execute_shell_with_capture, ShellCaptureOptions};
 use crate::tools::tool_context::ExecutionToolContext;
+use crate::tools::PromptContribution;
 
-#[derive(Debug, Clone, JsonSchema, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PowerShellInput {
     pub command: String,
     #[serde(default)]
@@ -28,18 +28,35 @@ pub struct PowerShellInput {
 pub struct PowerShellTool {
     schema: Tool,
     env: Arc<dyn crate::env::ExecutionEnv>,
+    prompt: PromptContribution,
 }
 
 impl PowerShellTool {
     fn schema() -> Tool {
         Tool {
             name: "powershell".into(),
-            description: "Execute a PowerShell command on Windows. Returns stdout and stderr."
+            description: "Execute a PowerShell command in the current working directory. Returns \
+                          stdout and stderr. Output is truncated to last 2000 lines or 50KB \
+                          (whichever is hit first). If truncated, full output is saved to a temp \
+                          file. Optionally provide a timeout in seconds."
                 .into(),
-            parameters: rpi_ai::types::Schema::new(
-                serde_json::to_value(schemars::schema_for!(PowerShellInput)).unwrap_or_default(),
-            ),
-            constrained_sampling: None,
+            parameters: rpi_ai::types::Schema::new(serde_json::json!({
+                "type": "object",
+                "required": ["command"],
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "Shell command to execute"
+                    },
+                    "timeout": {
+                        "type": "number",
+                        "description": "Timeout in seconds (optional, no default timeout)"
+                    }
+                }
+            })),
+            constrained_sampling: Some(ConstrainedSamplingConfig::JsonSchema {
+                strict: ConstrainedStrictness::Prefer,
+            }),
         }
     }
 }
@@ -48,6 +65,10 @@ pub fn create_powershell_tool(context: &ExecutionToolContext) -> Arc<dyn AgentTo
     Arc::new(PowerShellTool {
         schema: PowerShellTool::schema(),
         env: context.env().clone(),
+        prompt: PromptContribution::new(
+            "Execute PowerShell commands",
+            &["You can inspect PI_* environment variables for current model and session details."],
+        ),
     })
 }
 
@@ -60,6 +81,16 @@ impl AgentTool for PowerShellTool {
         "powershell"
     }
 
+    /// Mirrors TS `AgentTool.promptSnippet`.
+    fn prompt_snippet(&self) -> Option<&str> {
+        Some(self.prompt.snippet)
+    }
+
+    /// Mirrors TS `AgentTool.promptGuidelines`.
+    fn prompt_guidelines(&self) -> Option<&[String]> {
+        Some(&self.prompt.guidelines)
+    }
+
     async fn execute(
         &self,
         _tool_call_id: &str,
@@ -69,7 +100,7 @@ impl AgentTool for PowerShellTool {
     ) -> Result<AgentToolResult, AgentError> {
         if !cfg!(windows) {
             return Err(AgentError::Tool(
-                "PowerShell tool is only available on Windows".into(),
+                "The powershell tool is only available on Windows.".into(),
             ));
         }
         let input: PowerShellInput = serde_json::from_value(params)

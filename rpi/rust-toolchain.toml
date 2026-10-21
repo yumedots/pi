@@ -1,0 +1,12 @@
+[toolchain]
+# The build uses the nightly toolchain for one concrete reason: cargo's cache
+# garbage collection (-Z gc) only exists on nightly, and it is the only way to
+# keep the target directory from growing without bound on a machine whose disk
+# is nearly full.
+#
+# The toolchain is not optional: cargo's artifacts carry the cargo version that
+# wrote them, so a nightly-built target directory and a stable-built one
+# invalidate each other. Mixing the two means a full rebuild every time the
+# build switches, which is the multi-gigabyte rebuild that stalls this machine.
+# One toolchain, one cache.
+channel = "nightly"

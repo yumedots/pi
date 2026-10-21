@@ -10,7 +10,7 @@
 //! [OSC 133]: https://terminalguide.namepad.de/seq/osc-133/
 
 use std::any::Any;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use super::component::Component;
@@ -25,7 +25,7 @@ const OSC133_ZONE_FINAL: &str = "\x1b]133;C\x07";
 /// Component that renders a user message with a background and OSC133 markers.
 pub struct UserMessageComponent {
     text: String,
-    output_pad: usize,
+    output_pad: std::sync::atomic::AtomicUsize,
     /// Prebuilt inner box (background `Box` + `Markdown`).
     ///
     /// Upstream builds this **once** in the constructor (`user-message.ts`
@@ -58,10 +58,11 @@ impl UserMessageComponent {
     /// box (mirrors the TS `outputPad`, default 1).
     pub fn new(text: impl Into<String>) -> Self {
         let text = text.into();
-        let inner = build_box(&text, 1);
+        let pad = crate::output_pad::output_pad();
+        let inner = build_box(&text, pad);
         Self {
             text,
-            output_pad: 1,
+            output_pad: AtomicUsize::new(pad),
             inner: Mutex::new(inner),
             built_revision: AtomicU64::new(theme_revision()),
         }
@@ -72,21 +73,34 @@ impl UserMessageComponent {
         let inner = build_box(&self.text, pad);
         Self {
             text: self.text,
-            output_pad: pad,
+            output_pad: AtomicUsize::new(pad),
             inner: Mutex::new(inner),
             built_revision: AtomicU64::new(theme_revision()),
         }
     }
+
+    /// Change the inner padding (upstream's `setOutputPad`).
+    pub fn set_output_pad(&self, pad: usize) {
+        self.output_pad.store(pad, Ordering::Relaxed);
+        if let Ok(mut inner) = self.inner.lock() {
+            *inner = build_box(&self.text, pad);
+        }
+        self.built_revision.store(theme_revision(), Ordering::Release);
+    }
 }
 
 impl Component for UserMessageComponent {
+    fn set_output_pad(&self, pad: usize) {
+        UserMessageComponent::set_output_pad(self, pad);
+    }
+
     fn render(&self, width: usize) -> Vec<String> {
         // The background colour is baked into the inner box; rebuild it when
         // the live theme has changed since it was built.
         let revision = theme_revision();
         if self.built_revision.load(Ordering::Acquire) != revision {
             if let Ok(mut inner) = self.inner.lock() {
-                *inner = build_box(&self.text, self.output_pad);
+                *inner = build_box(&self.text, self.output_pad.load(Ordering::Relaxed));
             }
             self.built_revision.store(revision, Ordering::Release);
         }
@@ -112,7 +126,7 @@ impl Component for UserMessageComponent {
         // Rebuild the inner box so a theme change is picked up by the baked-in
         // background colour, and so the Markdown cache is dropped.
         if let Ok(mut inner) = self.inner.lock() {
-            *inner = build_box(&self.text, self.output_pad);
+            *inner = build_box(&self.text, self.output_pad.load(Ordering::Relaxed));
         }
         self.built_revision
             .store(theme_revision(), Ordering::Release);

@@ -63,9 +63,10 @@ use crate::session::jsonl::types::{JsonlSessionMetadata, SessionFileHeader};
 use crate::session::memory::{stamp_record, Clock};
 use crate::session::state::SessionState;
 use crate::session::types::{
-    provisioned_into_entry, BranchBounds, Entry, EntryQuery, ForkOptions, IdGenerator, LanePointer,
-    LaneRecord, LogItem, LogOptions, OperationStartedRecord, ProvisionedEntry, ProvisionedKind,
-    RecordQuery, SessionMetadata, SessionMutation, SessionStats, SessionStorage,
+    ms_from_iso_timestamp, provisioned_into_entry, BranchBounds, Entry, EntryQuery, ForkOptions,
+    IdGenerator, LanePointer, LaneRecord, LogItem, LogOptions, OperationStartedRecord,
+    ProvisionedEntry, ProvisionedKind, RecordQuery, SessionMetadata, SessionMutation, SessionStats,
+    SessionStorage,
 };
 
 /// Durable file-backed `SessionStorage`. Mirrors TS `JsonlSessionStorage`.
@@ -87,6 +88,11 @@ pub struct JsonlSessionStorage {
     /// Not `&self` across await points, so each mutating op holds it for its
     /// full duration.
     tail: Mutex<()>,
+    /// The header of a session whose file does not exist yet. The original
+    /// creates the file only once the session holds a user or assistant
+    /// message (`packages/coding-agent/src/core/session-manager.ts:1165-1189`),
+    /// so the header is written with the first turn.
+    pending_header: Mutex<Option<SessionFileHeader>>,
 }
 
 impl JsonlSessionStorage {
@@ -105,11 +111,15 @@ impl JsonlSessionStorage {
             clock,
             ids,
             tail: Mutex::new(()),
+            pending_header: Mutex::new(None),
         }
     }
 
-    /// Create a new session file: write the header, then build a storage over
-    /// it. Mirrors TS `JsonlSessionStorage.create`.
+    /// Create a new session: keep the header until the first turn writes it.
+    /// Mirrors TS `JsonlSessionStorage.create`, which does not write the file
+    /// either — the original's `SessionManager.newSession` only names the
+    /// file, and `_persist` creates it with the first user or assistant
+    /// message (`packages/coding-agent/src/core/session-manager.ts:1165-1189`).
     pub async fn create(
         fs: Arc<dyn FileSystem>,
         path: &str,
@@ -117,17 +127,11 @@ impl JsonlSessionStorage {
         clock: Arc<dyn Clock>,
         ids: Arc<dyn IdGenerator>,
     ) -> SessionResult<Self> {
-        file_result(
-            fs.write_file(path, FileContent::Text(encode_header(&header)), None)
-                .await,
-            &format!("Failed to initialize session {path}"),
-        )?;
-        let info = file_result(
-            fs.file_info(path, None).await,
-            &format!("Failed to read session metadata {path}"),
-        )?;
-        let metadata = metadata_from_header(&header, path, info.mtime_ms);
-        Ok(Self::new(fs, metadata, clock, ids))
+        let created_at = ms_from_iso_timestamp(&header.timestamp).unwrap_or_else(|| clock.now_ms());
+        let metadata = metadata_from_header(&header, path, created_at);
+        let storage = Self::new(fs, metadata, clock, ids);
+        *storage.pending_header.lock().await = Some(header);
+        Ok(storage)
     }
 
     /// Load + replay an existing session file, repairing a torn tail if the
@@ -245,7 +249,15 @@ impl JsonlSessionStorage {
             let ids = ids.clone();
             Box::pin(async move {
                 let target =
-                    JsonlSessionStorage::create(fs.clone(), temp_path, header, clock, ids).await?;
+                    JsonlSessionStorage::create(fs.clone(), temp_path, header.clone(), clock, ids)
+                        .await?;
+                // The create keeps the header pending, so the fork writes it
+                // itself: the fork's file holds the entries, not a turn.
+                file_result(
+                    fs.write_file(temp_path, FileContent::Text(encode_header(&header)), None)
+                        .await,
+                    &format!("Failed to initialize session {temp_path}"),
+                )?;
                 for mutation in &mutations {
                     let Some(entry) = mutation_entry(mutation) else {
                         continue;
@@ -295,6 +307,55 @@ impl JsonlSessionStorage {
                 .await,
             &format!("Failed to append session {}", self.metadata.path),
         )
+    }
+
+    /// Write the session file when the first turn arrives.
+    ///
+    /// The original creates the file only once the session holds a user or an
+    /// assistant message (`packages/coding-agent/src/core/session-manager.ts:1165-1189`),
+    /// so opening and closing the agent without chatting leaves no file behind.
+    /// The entries that came before the turn (the system message) ride along in
+    /// the first write, exactly as the original writes them with the header.
+    async fn write_entry(&self, entry: &Entry) -> SessionResult<()> {
+        let pending = self.pending_header.lock().await;
+        let Some(header) = pending.as_ref().cloned() else {
+            drop(pending);
+            return self.append_entry_line(entry).await;
+        };
+        if !is_conversation_entry(entry) {
+            return Ok(());
+        }
+        drop(pending);
+        let earlier = {
+            let state = self.state.lock().await;
+            state.find_entries(&EntryQuery::default())?
+        };
+        let mut content = encode_header(&header);
+        for entry in &earlier {
+            content.push_str(&encode_entry(entry));
+        }
+        content.push_str(&encode_entry(entry));
+        file_result(
+            self.fs
+                .write_file(&self.metadata.path, FileContent::Text(content), None)
+                .await,
+            &format!("Failed to initialize session {}", self.metadata.path),
+        )?;
+        *self.pending_header.lock().await = None;
+        Ok(())
+    }
+}
+
+/// True for the entries the original counts as a conversation: a user or an
+/// assistant message (`packages/coding-agent/src/core/session-manager.ts:1166-1169`).
+fn is_conversation_entry(entry: &Entry) -> bool {
+    match entry {
+        Entry::Message(message) => matches!(
+            message.message,
+            rpi_agent::message::AgentMessage::User(_)
+                | rpi_agent::message::AgentMessage::Assistant(_)
+        ),
+        _ => false,
     }
 }
 
@@ -414,7 +475,7 @@ impl SessionStorage for JsonlSessionStorage {
             entry: full.clone(),
         };
         drop(state);
-        self.append_entry_line(&full).await?;
+        self.write_entry(&full).await?;
         let mut state = self.state.lock().await;
         state.apply_mutation(mutation)?;
         match state.get_entry(full.id()) {
@@ -630,6 +691,16 @@ mod tests {
         rpi_agent::message::AgentMessage::User(rpi_ai::types::UserMessage::new(text, 1))
     }
 
+    fn system_msg(text: &str) -> rpi_agent::message::AgentMessage {
+        rpi_agent::message::AgentMessage::System(Box::new(rpi_ai::types::SystemMessage {
+            role: rpi_ai::types::SystemRole,
+            content: text.into(),
+            sections: None,
+            tools_added: None,
+            timestamp: 1_700_000_000_000,
+        }))
+    }
+
     fn entry_line(id: &str, parent: Option<&str>) -> String {
         let entry = crate::session::types::Entry::Message(
             crate::session::types::MessageEntry {
@@ -654,6 +725,74 @@ mod tests {
             "/cwd".into(),
             None,
         )
+    }
+
+    /// Write the header of a session file. A created session keeps its header
+    /// pending until the first turn, so a test that writes the file itself
+    /// (the load path) has to write the header too.
+    async fn write_header(fs: &Arc<dyn FileSystem>, path: &str) {
+        fs.write_file(path, FileContent::Text(encode_header(&header())), None)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_created_session_writes_no_file_until_the_first_turn() {
+        let env = rpi_tools::InMemoryExecutionEnv::with_cwd("/".into());
+        let fs: Arc<dyn FileSystem> = Arc::new(env);
+        let clock: Arc<dyn Clock> = Arc::new(FakeClock::new());
+        let ids: Arc<dyn IdGenerator> = Arc::new(CounterIdGenerator::new());
+
+        let storage = JsonlSessionStorage::create(
+            fs.clone(),
+            "/s.jsonl",
+            header(),
+            clock.clone(),
+            ids.clone(),
+        )
+        .await
+        .unwrap();
+        // The original creates the file with the first user or assistant
+        // message (`packages/coding-agent/src/core/session-manager.ts:1165-1189`),
+        // so a session that is opened and closed without chatting leaves no
+        // file behind.
+        assert!(!fs.exists("/s.jsonl", None).await.unwrap());
+
+        // A setup entry (the system message) is not a conversation yet.
+        storage
+            .append_entry(
+                ProvisionedEntry {
+                    id: "e0".into(),
+                    kind: ProvisionedKind::Message {
+                        message: system_msg("you are an assistant"),
+                        terminate: None,
+                    },
+                },
+                "main",
+            )
+            .await
+            .unwrap();
+        assert!(!fs.exists("/s.jsonl", None).await.unwrap());
+
+        // The user message creates the file, and the system message rides
+        // along in the first write.
+        storage
+            .append_entry(
+                ProvisionedEntry {
+                    id: "e1".into(),
+                    kind: ProvisionedKind::Message {
+                        message: user_msg("hi"),
+                        terminate: None,
+                    },
+                },
+                "main",
+            )
+            .await
+            .unwrap();
+        let content = fs.read_text_file("/s.jsonl", None).await.unwrap();
+        assert!(content.starts_with("{\"type\":\"session\""));
+        assert!(content.contains("\"id\":\"e0\""));
+        assert!(content.contains("\"id\":\"e1\""));
     }
 
     #[tokio::test]
@@ -717,6 +856,7 @@ mod tests {
         // Manually append a valid entry line + a garbage (torn) last line.
         // The first mutation after the header is seq 1 (the header does not
         // consume a sequence number — see `create_append_reload_roundtrips`).
+        write_header(&fs, "/s.jsonl").await;
         let valid = entry_line("e1", None);
         fs.append_file("/s.jsonl", FileContent::Text(valid), None)
             .await
@@ -752,6 +892,7 @@ mod tests {
         .await
         .unwrap();
         // Garbage on line 2 (NOT last), then a valid line 3.
+        write_header(&fs, "/s.jsonl").await;
         fs.append_file("/s.jsonl", FileContent::Text("{not json\n".into()), None)
             .await
             .unwrap();
@@ -780,6 +921,7 @@ mod tests {
         JsonlSessionStorage::create(fs.clone(), "/s.jsonl", header(), clock.clone(), ids.clone())
             .await
             .unwrap();
+        write_header(&fs, "/s.jsonl").await;
         fs.append_file(
             "/s.jsonl",
             FileContent::Text(

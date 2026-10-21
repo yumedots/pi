@@ -35,6 +35,22 @@ impl FileErrorCode {
             FileErrorCode::Unknown => "unknown",
         }
     }
+
+    /// The name of the system error the code stands for. The original's tools
+    /// put that name in front of the model (`Error code: ENOENT.`), so the
+    /// port speaks the same vocabulary where the text reaches the model.
+    pub fn errno_name(self) -> &'static str {
+        match self {
+            FileErrorCode::Aborted => "ABORT_ERR",
+            FileErrorCode::NotFound => "ENOENT",
+            FileErrorCode::PermissionDenied => "EACCES",
+            FileErrorCode::NotDirectory => "ENOTDIR",
+            FileErrorCode::IsDirectory => "EISDIR",
+            FileErrorCode::Invalid => "EINVAL",
+            FileErrorCode::NotSupported => "ENOTSUP",
+            FileErrorCode::Unknown => "EUNKNOWN",
+        }
+    }
 }
 
 impl fmt::Display for FileErrorCode {

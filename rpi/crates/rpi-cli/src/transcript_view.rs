@@ -310,6 +310,15 @@ impl TranscriptView {
         !self.bash_components.lock().unwrap().is_empty()
     }
 
+    /// Whether a live braille sign is on screen for a streaming thinking run.
+    pub fn has_live_thinking(&self) -> bool {
+        self.current_assistant
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|component| component.has_live_thinking_indicator())
+    }
+
     fn start_assistant(&self, blocks: &[AssistantBlock]) {
         let comp = Arc::new(AssistantMessageComponent::new(
             AssistantMessageOptions::default(),
@@ -354,7 +363,7 @@ impl TranscriptView {
             ) {
                 continue;
             }
-            if call.name == "bash" {
+            if call.name == "bash" || call.name == "bashExecution" {
                 let command = call
                     .args
                     .get("command")
@@ -408,7 +417,7 @@ impl TranscriptView {
         if name.trim().is_empty() {
             return;
         }
-        if name == "bash" {
+        if name == "bash" || name == "bashExecution" {
             let command = args.get("command").and_then(Value::as_str).unwrap_or("");
             // Arguments can still be `{}` when the lifecycle event races streamed
             // arg finalization — defer until the command lands.
@@ -1072,6 +1081,47 @@ mod tests {
                 AssistantBlock::Text("hello".into()),
             ]
         );
+    }
+
+    #[test]
+    fn a_click_on_the_thought_summary_in_the_transcript_expands_it() {
+        use rpi_tui::component::{MouseButton, MouseEvent, MouseEventKind};
+        use rpi_tui::Component;
+
+        let view = view();
+        view.apply(
+            &UiEvent::AssistantStart {
+                blocks: vec![AssistantBlock::Thinking("why".into())],
+            },
+            80,
+        );
+        view.apply(
+            &UiEvent::AssistantUpdate {
+                blocks: vec![
+                    AssistantBlock::Thinking("why".into()),
+                    AssistantBlock::Text("hello".into()),
+                ],
+                tool_calls: vec![],
+            },
+            80,
+        );
+        view.apply(&UiEvent::AssistantEnd { blocks: vec![] }, 80);
+
+        let lines = view.chat.render(80);
+        let joined = lines.join("\n");
+        assert!(joined.contains("+ Thought"), "summary missing: {joined}");
+        assert!(!joined.contains("why"), "thinking leaked: {joined}");
+
+        let row = lines
+            .iter()
+            .position(|line| rpi_tui::ansi::strip_ansi(line).contains("+ Thought"))
+            .expect("the summary row");
+        let click = MouseEvent::new(MouseEventKind::Click, MouseButton::Left, 0, row);
+        let handled = view.chat.handle_mouse(&click).expect("the click is handled");
+        assert!(handled.handled);
+
+        let after = view.chat.render(80).join("\n");
+        assert!(after.contains("why"), "body missing: {after}");
     }
 
     #[test]

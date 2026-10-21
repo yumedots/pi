@@ -1,4 +1,6 @@
 import * as piCodingAgent from "./pi-coding-agent.ts";
+import * as piMcpExtension from "./pi-mcp-extension.ts";
+import * as npmMs from "./packages/ms.ts";
 import * as piAgentCore from "./pi-agent-core.ts";
 import * as piAi from "./pi-ai.ts";
 import * as piTui from "./pi-tui.ts";
@@ -58,6 +60,11 @@ interface ToolDefinition {
 	label?: string;
 	description?: string;
 	parameters?: unknown;
+	promptSnippet?: string;
+	promptGuidelines?: string[];
+	namespace?: { name: string; description?: string };
+	annotations?: Record<string, boolean>;
+	exposure?: string;
 	execute: (
 		toolCallId: string,
 		params: unknown,
@@ -90,6 +97,8 @@ interface HostGlobals {
 interface NodeModules {
 	"node:path": {
 		dirname: (value: string) => string;
+		basename: (value: string, extension?: string) => string;
+		join: (...parts: string[]) => string;
 		resolve: (...parts: string[]) => string;
 	};
 }
@@ -401,6 +410,16 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 
 const moduleCache = new Map<string, { exports: Record<string, unknown> }>();
 
+/// The npm packages the host publishes.
+///
+/// The virtual modules above are pi's own packages, published the way pi
+/// publishes them. These are npm packages: the host has no node_modules, so
+/// a package an extension imports is either here or missing. Only the
+/// packages that are small, pure and dependency-free belong here.
+const NPM_MODULES: Record<string, unknown> = {
+	ms: { default: npmMs.default },
+};
+
 /// The node builtins an extension may import.
 ///
 /// The runtime supplies the file system and the path; the rest are the
@@ -488,8 +507,13 @@ const NODE_BUILTINS: Record<string, unknown> = {
 	worker_threads: shim_worker_threads,
 	"node:zlib": shim_zlib,
 	zlib: shim_zlib,
-	"constants": shim_os.constants,
+	constants: shim_os.constants,
 };
+
+// Node's `Buffer` is a global, not a module. An extension that decodes bytes
+// with it reaches for the name, so the host publishes the same class the
+// `node:buffer` module publishes.
+(globalThis as unknown as Record<string, unknown>).Buffer = shim_buffer.Buffer;
 
 const resolveModule = (specifier: string, referrer: string): Record<string, unknown> => {
 	if (Object.prototype.hasOwnProperty.call(VIRTUAL_MODULES, specifier)) {
@@ -497,6 +521,9 @@ const resolveModule = (specifier: string, referrer: string): Record<string, unkn
 	}
 	if (Object.prototype.hasOwnProperty.call(NODE_BUILTINS, specifier)) {
 		return NODE_BUILTINS[specifier] as Record<string, unknown>;
+	}
+	if (Object.prototype.hasOwnProperty.call(NPM_MODULES, specifier)) {
+		return NPM_MODULES[specifier] as Record<string, unknown>;
 	}
 	const builtins = globals.__piNodeModules;
 	if (Object.prototype.hasOwnProperty.call(builtins, specifier)) {
@@ -507,20 +534,222 @@ const resolveModule = (specifier: string, referrer: string): Record<string, unkn
 		const absolute = specifier.startsWith("/")
 			? specifier
 			: paths.resolve(paths.dirname(referrer), specifier);
-		const loaded = hostCall("module.load", { path: absolute }) as {
+		const file = resolveFile(absolute);
+		if (!file) {
+			throw new Error(`cannot resolve "${specifier}" from "${referrer}"`);
+		}
+		const loaded = hostCall("module.load", { path: file }) as {
 			path: string;
 			code: string;
 		};
 		return loadModule(loaded.path, loaded.code);
 	}
-	// A subpath of one of pi's own packages that the host does not publish is
-	// a gap on this side, not a mistake in the extension: resolving it to an
-	// empty module lets the extension load, and only the names it wanted are
-	// missing. Anything else is a genuine mistake and stays an error.
+	// A package of pi's own family that the host does not publish is a gap on
+	// this side, not a mistake in the extension: resolving it to an empty
+	// module lets the extension load, and only the names it wanted are
+	// missing.
 	if (specifier.startsWith("@earendil-works/") || specifier.startsWith("@mariozechner/")) {
 		return {};
 	}
-	throw new Error(`cannot resolve "${specifier}" from "${referrer}"`);
+	// An npm package the extension installed next to itself. The original
+	// loads an extension through jiti, which resolves the package from the
+	// `node_modules` beside the extension; the embedded host walks the same
+	// directories Node walks.
+	const installed = resolveFromNodeModules(specifier, referrer);
+	if (installed) return installed;
+	// An npm package the host does not publish. The extension still loads:
+	// the import answers, and the name it wanted fails when it is used, with
+	// a message that says what the port cannot do.
+	return missingPackage(specifier);
+};
+
+/// Resolve an npm package from the file system, the way Node does.
+///
+/// The original's loader runs the extension through jiti, and jiti resolves
+/// the package from the `node_modules` beside the extension. The embedded host
+/// has no module loader, so it walks the directories Node walks: from the
+/// referring file's directory upwards, the first `node_modules/<package>` is
+/// the one. A package that is not installed anywhere answers `undefined`, and
+/// the caller falls back to the stub.
+///
+/// The answer is `undefined` when the package is not installed. A package that
+/// is installed but broken throws: that is a real error in the extension's
+/// own dependency, and the extension has to fail with it.
+const resolveFromNodeModules = (
+	specifier: string,
+	referrer: string,
+): Record<string, unknown> | undefined => {
+	const paths = nodeModules()["node:path"];
+	const segments = specifier.split("/");
+	const packageName = specifier.startsWith("@") ? segments.slice(0, 2).join("/") : segments[0];
+	const rest = specifier.slice(packageName.length);
+	const subpath = rest === "" ? "" : `.${rest}`;
+	let directory = paths.dirname(referrer);
+	for (;;) {
+		const root =
+			paths.basename(directory) === "node_modules"
+				? directory
+				: paths.join(directory, "node_modules");
+		const packageDirectory = paths.join(root, packageName);
+		if (hostCall("fs.exists", { path: packageDirectory }) === true) {
+			return loadPackage(packageDirectory, subpath);
+		}
+		const parent = paths.dirname(directory);
+		if (parent === directory) return undefined;
+		directory = parent;
+	}
+};
+
+/// Load one installed package: its manifest names the file, and the file is
+/// loaded like any other module.
+const loadPackage = (
+	packageDirectory: string,
+	subpath: string,
+): Record<string, unknown> | undefined => {
+	const paths = nodeModules()["node:path"];
+	const manifestText = hostCall("fs.readFile", {
+		path: paths.join(packageDirectory, "package.json"),
+	});
+	if (typeof manifestText !== "string") return undefined;
+	let manifest: Record<string, unknown> = {};
+	try {
+		manifest = JSON.parse(manifestText) as Record<string, unknown>;
+	} catch {
+		manifest = {};
+	}
+	const target = packageTarget(manifest, subpath);
+	if (!target) return undefined;
+	const file = packageFile(packageDirectory, target);
+	if (!file) return undefined;
+	const loaded = hostCall("module.load", { path: file }) as {
+		path: string;
+		code: string;
+	};
+	return loadModule(loaded.path, loaded.code);
+};
+
+/// The file a package's target names.
+///
+/// Node adds the extension when the name has none, and falls back to the
+/// directory's index file. The host does the same, so a package that names
+/// `quote` resolves to `quote.js` the way it does there.
+const packageFile = (packageDirectory: string, target: string): string | undefined => {
+	const paths = nodeModules()["node:path"];
+	return resolveFile(paths.resolve(packageDirectory, target));
+};
+
+/// The file a path names, with Node's extension and index fallbacks.
+///
+/// Node resolves `./quote` to `quote.js`, and a directory to its index file.
+/// The host does the same, so a CommonJS dependency that requires a name
+/// without an extension loads the way it does there.
+const resolveFile = (path: string): string | undefined => {
+	const paths = nodeModules()["node:path"];
+	const candidates = [
+		path,
+		`${path}.js`,
+		`${path}.mjs`,
+		`${path}.cjs`,
+		`${path}.json`,
+		paths.join(path, "index.js"),
+		paths.join(path, "index.mjs"),
+	];
+	for (const candidate of candidates) {
+		if (hostCall("fs.exists", { path: candidate }) === true) return candidate;
+	}
+	return undefined;
+};
+
+/// The file a package's subpath names.
+///
+/// The `exports` map is the manifest's own contract: it names the file for
+/// every subpath the package publishes. A package without one falls back to
+/// `module`, then `main`, then `index.js` — the order Node uses.
+const packageTarget = (
+	manifest: Record<string, unknown>,
+	subpath: string,
+): string | undefined => {
+	const exportsField = manifest.exports;
+	if (exportsField && typeof exportsField === "object") {
+		const target = resolveExports(exportsField as Record<string, unknown>, subpath === "" ? "." : subpath);
+		if (target) return target;
+	}
+	if (subpath !== "") return subpath;
+	for (const field of ["module", "main"]) {
+		const value = manifest[field];
+		if (typeof value === "string") return value;
+	}
+	return "index.js";
+};
+
+/// The file the `exports` map names for one subpath.
+const resolveExports = (
+	exportsField: Record<string, unknown>,
+	key: string,
+): string | undefined => {
+	const direct = exportsField[key];
+	if (direct !== undefined) return resolveConditions(direct);
+	const keys = Object.keys(exportsField);
+	if (!keys.some((entry) => entry.startsWith("."))) {
+		// A map of conditions without subpaths is the package's main entry.
+		return key === "." ? resolveConditions(exportsField) : undefined;
+	}
+	for (const entry of keys) {
+		const star = entry.indexOf("*");
+		if (star < 0) continue;
+		const prefix = entry.slice(0, star);
+		const suffix = entry.slice(star + 1);
+		if (!key.startsWith(prefix) || !key.endsWith(suffix)) continue;
+		const middle = key.slice(prefix.length, key.length - suffix.length);
+		const target = resolveConditions(exportsField[entry]);
+		if (!target) continue;
+		return target.replace("*", middle);
+	}
+	return undefined;
+};
+
+/// The file one entry of the `exports` map names: a path, or the path the
+/// first matching condition names.
+const resolveConditions = (value: unknown): string | undefined => {
+	if (typeof value === "string") return value;
+	if (!value || typeof value !== "object") return undefined;
+	const conditions = value as Record<string, unknown>;
+	// The embedded host loads a module the way CommonJS does, so the
+	// `require` condition is the one that matches what the host can run.
+	for (const condition of ["require", "import", "module", "default", "node"]) {
+		if (conditions[condition] === undefined) continue;
+		const target = resolveConditions(conditions[condition]);
+		if (target) return target;
+	}
+	return undefined;
+};
+
+/// A package the host cannot provide.
+///
+/// The import answers so the extension loads, and every name it takes out of
+/// the package fails with a message that says why. A package the host cannot
+/// provide is a gap on this side, not a mistake in the extension, and the
+/// user has to be told which one it is.
+const missingPackage = (specifier: string): Record<string, unknown> => {
+	const message = `the embedded extension host cannot provide the npm package "${specifier}": the host has no node_modules, so the extension's own dependencies are not available on the port`;
+	const fail = (): never => {
+		throw new Error(message);
+	};
+	const describe = (): string =>
+		`[the npm package "${specifier}" is not available in the embedded extension host]`;
+	const stub = new Proxy(function () {} as unknown as Record<string, unknown>, {
+		get: (_target, property) => {
+			if (property === "then") return undefined;
+			if (property === "toString" || property === "valueOf" || property === "toJSON") {
+				return describe;
+			}
+			if (property === Symbol.toPrimitive) return describe;
+			return stub;
+		},
+		apply: fail,
+		construct: fail,
+	});
+	return stub as Record<string, unknown>;
 };
 
 const loadModule = (path: string, code: string): Record<string, unknown> => {
@@ -529,12 +758,14 @@ const loadModule = (path: string, code: string): Record<string, unknown> => {
 	const module = { exports: {} as Record<string, unknown> };
 	moduleCache.set(path, module);
 	const paths = nodeModules()["node:path"];
+	// The module scope carries no `__filename` and no `__dirname`: the
+	// original loads an extension as a module, where a declaration of either
+	// name is the extension's own, and passing them as parameters would make
+	// that declaration a syntax error.
 	const factory = new Function(
 		"exports",
 		"require",
 		"module",
-		"__filename",
-		"__dirname",
 		"__piExports",
 		"__piImportMeta",
 		code,
@@ -543,8 +774,6 @@ const loadModule = (path: string, code: string): Record<string, unknown> => {
 		module.exports,
 		(specifier: string) => resolveModule(specifier, path),
 		module,
-		path,
-		paths.dirname(path),
 		module.exports,
 		{
 			url: `file://${path}`,
@@ -684,7 +913,7 @@ const createContext = (state: ExtensionState) => ({
 		getLeafEntry: () => hostCall("session.getLeafEntry", {}),
 		getEntry: (id: string) => hostCall("session.getEntry", { id }),
 		getLabel: (id: string) => hostCall("session.getLabel", { id }),
-		getBranch: () => hostCall("session.getBranch", {}),
+		getBranch: () => hostCall("session.getBranch", {}) as unknown[],
 		buildContextEntries: () => hostCall("session.buildContextEntries", {}),
 		buildSessionProjection: () => hostCall("session.buildSessionProjection", {}),
 		getHeader: () => hostCall("session.getHeader", {}),
@@ -856,6 +1085,12 @@ const listTools = () =>
 			label: tool.label ?? tool.name,
 			description: tool.description ?? "",
 			parameters: tool.parameters ?? null,
+			promptSnippet: tool.promptSnippet ?? null,
+			promptGuidelines: tool.promptGuidelines ?? [],
+			namespace: tool.namespace ?? null,
+			annotations: tool.annotations ?? null,
+			exposure: tool.exposure ?? "direct",
+			path: state.path,
 		})),
 	);
 
@@ -928,21 +1163,40 @@ const dispatch = async (event: string, payload: unknown) => {
 	for (const state of extensions) {
 		const context = createContext(state);
 		for (const handler of state.handlers.get(event) ?? []) {
-			const value = await handler(payload, context);
+			let value: unknown;
+			try {
+				value = await handler(payload, context);
+			} catch (error) {
+				// The original reports a handler that throws and goes on with
+				// the next one. The report goes to the screen, so the user
+				// sees which extension failed and why.
+				hostCall("extension.error", {
+					path: state.path,
+					event,
+					message: error instanceof Error ? error.message : String(error),
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				continue;
+			}
 			if (value !== undefined && result === undefined) result = value;
 		}
 	}
 	return result === undefined ? null : result;
 };
 
-const emitInput = async (text: string, images: unknown, source: string) => {
+const emitInput = async (
+	text: string,
+	images: unknown,
+	source: string,
+	streamingBehavior: string | null,
+) => {
 	let currentText = text;
 	let currentImages = images;
 	for (const state of extensions) {
 		const context = createContext(state);
 		for (const handler of state.handlers.get("input") ?? []) {
 			const result = (await handler(
-				{ type: "input", text: currentText, images: currentImages, source },
+				{ type: "input", text: currentText, images: currentImages, source, streamingBehavior },
 				context,
 			)) as { action?: string; text?: string; images?: unknown } | undefined;
 			if (result?.action === "handled") return { action: "handled" };
@@ -969,8 +1223,39 @@ const runCommand = async (name: string, args: string) => {
 	throw new Error(`unknown command: ${name}`);
 };
 
+/// The extensions the port ships itself.
+const BUILTIN_EXTENSIONS: Record<string, (api: unknown) => unknown> = {
+	mcp: piMcpExtension.default as (api: unknown) => unknown,
+};
+
+/// Load one of the port's own extensions.
+const loadBuiltin = (name: string) => {
+	const factory = BUILTIN_EXTENSIONS[name];
+	if (!factory) {
+		throw new Error(`the port has no built-in extension named "${name}"`);
+	}
+	const state: ExtensionState = {
+		path: `<builtin>/${name}`,
+		handlers: new Map(),
+		tools: new Map(),
+		commands: new Map(),
+		shortcuts: new Map(),
+		flags: new Map(),
+		messageRenderers: new Map(),
+		entryRenderers: new Map(),
+		markdownTransformers: [],
+		toolRenderers: [],
+		autocompleteProviders: [],
+		terminalInputHandlers: [],
+	};
+	factory(createApi(state));
+	extensions.push(state);
+	return { path: state.path, tools: listTools() };
+};
+
 (globalThis as unknown as Record<string, unknown>).__piExtensionHost = {
 	loadExtension,
+	loadBuiltin,
 	callTool,
 	listTools,
 	listCommands,

@@ -10,76 +10,47 @@ use rpi_tui::{
     TuiAltScreen, TUI,
 };
 
+/// How many session rows the picker shows at once.
+const VISIBLE_ROWS: usize = 12;
+
 /// Select a project session before the main harness is built.
 ///
 /// Returns `Ok(None)` when the user cancels with Esc or Ctrl+C.
 pub async fn select(cwd: &Path) -> Result<Option<String>, String> {
-    let cwd_text = cwd.to_string_lossy().into_owned();
-    let metadata = crate::session::list_session_metadata(&cwd_text)
-        .await
-        .map_err(|e| e.to_string())?;
-    if metadata.is_empty() {
+    let started = std::time::Instant::now();
+    let dir = crate::session::default_session_dir(cwd);
+
+    // The index reads one line per session file (its header). The session
+    // files themselves are read only for the rows the picker shows, so a
+    // directory with thousands of sessions opens as fast as one with ten.
+    let rows = tokio::task::spawn_blocking(move || {
+        crate::session_index::list_session_rows(&dir)
+    })
+    .await
+    .map_err(|e| format!("session index task failed: {e}"))?;
+    if rows.is_empty() {
         return Err(format!(
             "no sessions found in {}",
             crate::session::default_session_dir(cwd).display()
         ));
     }
+    let index_ms = started.elapsed();
 
-    // Each summary opens + reads a (bounded) slice of the session file. That is
-    // blocking file I/O over every saved session, so keep it off the async
-    // runtime the TUI will later run on.
-    let metas_for_summary = metadata.clone();
-    let summaries = tokio::task::spawn_blocking(move || {
-        metas_for_summary
-            .iter()
-            .map(|meta| crate::session::summarize_session_file(Path::new(&meta.path)))
-            .collect::<Vec<_>>()
-    })
-    .await
-    .map_err(|e| format!("session summary task failed: {e}"))?;
+    // The titles of the rows the list shows: the first window.
+    crate::session_index::resolve_titles(&rows, 0..VISIBLE_ROWS);
+    let titles_ms = started.elapsed();
 
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis()
         .min(i64::MAX as u128) as i64;
-    let mut items: Vec<SelectItem> = Vec::new();
-    for (meta, summary) in metadata.iter().zip(summaries.iter()) {
-        // A header-only session has nothing to restore; offering it is how a
-        // resume lands on an empty transcript. Skip them so every listed row is
-        // resumable.
-        if summary.empty {
-            continue;
-        }
-        let file_name = Path::new(&meta.path)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(&meta.id);
-        let label = crate::session::session_display_label(summary);
-        let short_id = crate::session::short_session_id(&meta.id);
-        let description = format!(
-            "{} · {} · {}",
-            format_modified_age(now_ms, meta.modified_at),
-            crate::session::format_session_bytes(summary.bytes),
-            short_id,
-        );
-        items.push(
-            SelectItem::new(&meta.id, &label)
-                .with_description(&description)
-                .with_search_text(&format!("{label} {short_id} {file_name}")),
-        );
-    }
-    if items.is_empty() {
-        return Err(format!(
-            "no resumable sessions with messages in {}",
-            crate::session::default_session_dir(cwd).display()
-        ));
-    }
+    let items = build_items(&rows, now_ms);
 
     // A wide primary column so the name/preview label is not clipped to the
     // 32-column default (which showed only the timestamp prefix of the file
     // name and made sessions indistinguishable).
-    let mut list = SelectList::new(items, 12);
+    let mut list = SelectList::new(items, VISIBLE_ROWS);
     list.set_layout(SelectListLayoutOptions {
         min_primary_column_width: Some(56),
         max_primary_column_width: Some(72),
@@ -104,11 +75,24 @@ pub async fn select(cwd: &Path) -> Result<Option<String>, String> {
         false,
         None,
     ));
+    let tui_new_ms = started.elapsed();
     tui.set_layout_root(Some(root));
     // Short-lived selector, but the same native-pi frame throttle applies: its
     // keystroke bursts coalesce instead of repainting per keypress.
     tui.start_render_scheduler();
+    let scheduler_ms = started.elapsed();
     tui.start_readerless();
+    if std::env::var_os("RPI_SESSION_PICKER_TIMING").is_some() {
+        eprintln!(
+            "session picker: rows={} index_ms={} titles_ms={} tui_new_ms={} scheduler_ms={} ready_ms={}",
+            rows.len(),
+            index_ms.as_millis(),
+            titles_ms.as_millis(),
+            tui_new_ms.as_millis(),
+            scheduler_ms.as_millis(),
+            started.elapsed().as_millis()
+        );
+    }
 
     let input_tui = tui.clone();
     let input_list = list.clone();
@@ -140,6 +124,7 @@ pub async fn select(cwd: &Path) -> Result<Option<String>, String> {
                     };
                     if let Some(code) = code {
                         input_list.handle_key(KeyEvent::new(code, KeyModifiers::NONE));
+                        refresh_titles(&rows, &input_list, &query, now_ms);
                         input_tui.request_render(false);
                     }
                 }
@@ -156,11 +141,9 @@ pub async fn select(cwd: &Path) -> Result<Option<String>, String> {
                         KeyCode::Esc if query.is_empty() => return Ok(None),
                         KeyCode::Esc => {
                             query.clear();
-                            input_list.set_filter("");
                         }
                         KeyCode::Backspace => {
                             query.pop();
-                            input_list.set_filter(&query);
                         }
                         KeyCode::Char(ch)
                             if !key
@@ -168,10 +151,10 @@ pub async fn select(cwd: &Path) -> Result<Option<String>, String> {
                                 .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                         {
                             query.push(ch);
-                            input_list.set_filter(&query);
                         }
                         _ => input_list.handle_key(key),
                     }
+                    refresh_titles(&rows, &input_list, &query, now_ms);
                     input_search.set_text(format!("  Filter: {query}"));
                     input_tui.request_render(false);
                 }
@@ -185,6 +168,58 @@ pub async fn select(cwd: &Path) -> Result<Option<String>, String> {
         .map_err(|e| format!("session picker task failed: {e}"));
     tui.stop(Default::default());
     result?
+}
+
+/// The picker's rows, labelled with the titles that have been read.
+fn build_items(rows: &[Arc<crate::session_index::SessionListRow>], now_ms: i64) -> Vec<SelectItem> {
+    rows.iter()
+        .map(|row| {
+            let label = row
+                .resolved_title()
+                .unwrap_or_else(|| row.id().to_string());
+            let file_name = row
+                .path()
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_else(|| row.id());
+            let short_id = crate::session::short_session_id(row.id());
+            let description = format!(
+                "{} · {} · {}",
+                format_modified_age(now_ms, row.index().modified_at),
+                crate::session::format_session_bytes(row.bytes()),
+                short_id,
+            );
+            SelectItem::new(row.id(), &label)
+                .with_description(&description)
+                .with_search_text(&format!("{label} {short_id} {file_name}"))
+        })
+        .collect()
+}
+
+/// Read the titles of the rows the list shows, and redraw the rows when a
+/// title was read.
+///
+/// A search needs every title, so a query reads them all; browsing reads only
+/// the rows on screen.
+fn refresh_titles(
+    rows: &[Arc<crate::session_index::SessionListRow>],
+    list: &SelectList,
+    query: &str,
+    now_ms: i64,
+) {
+    let changed = if query.is_empty() {
+        let (start, end) = list.visible_range();
+        crate::session_index::resolve_titles(rows, start..end)
+    } else {
+        crate::session_index::resolve_all_titles(rows)
+    };
+    if !changed {
+        return;
+    }
+    let selected = list.selected_index();
+    list.set_items(build_items(rows, now_ms));
+    list.set_filter(query);
+    list.set_selected_index(selected);
 }
 
 fn format_modified_age(now_ms: i64, modified_ms: i64) -> String {

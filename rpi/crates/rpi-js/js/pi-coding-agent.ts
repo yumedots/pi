@@ -59,15 +59,39 @@ export {
 export {
 	createBashToolDefinition,
 	createLocalBashOperations,
+} from "../../../../packages/coding-agent/src/core/tools/bash.ts";
+export {
+	createReadTool,
+	createReadToolDefinition,
+} from "../../../../packages/coding-agent/src/core/tools/read.ts";
+export {
+	createFindTool,
+	createFindToolDefinition,
+} from "../../../../packages/coding-agent/src/core/tools/find.ts";
+export {
+	createGrepTool,
+	createGrepToolDefinition,
+} from "../../../../packages/coding-agent/src/core/tools/grep.ts";
+export {
+	createLsTool,
+	createLsToolDefinition,
+} from "../../../../packages/coding-agent/src/core/tools/ls.ts";
+export {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
 	formatSize,
 	truncateHead,
+	truncateLine,
 	truncateTail,
-} from "../../../../packages/coding-agent/src/core/tools/bash.ts";
-export { createReadToolDefinition } from "../../../../packages/coding-agent/src/core/tools/read.ts";
-export { createWriteToolDefinition } from "../../../../packages/coding-agent/src/core/tools/write.ts";
-export { createEditToolDefinition } from "../../../../packages/coding-agent/src/core/tools/edit.ts";
+} from "../../../../packages/coding-agent/src/core/tools/truncate.ts";
+export {
+	createWriteTool,
+	createWriteToolDefinition,
+} from "../../../../packages/coding-agent/src/core/tools/write.ts";
+export {
+	createEditTool,
+	createEditToolDefinition,
+} from "../../../../packages/coding-agent/src/core/tools/edit.ts";
 export { withFileMutationQueue } from "../../../../packages/coding-agent/src/core/tools/file-mutation-queue.ts";
 export { formatReadLineRange } from "../../../../packages/coding-agent/src/core/tools/render-utils.ts";
 export { createBashTool } from "../../../../packages/coding-agent/src/core/tools/bash.ts";

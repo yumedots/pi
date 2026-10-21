@@ -561,8 +561,14 @@ fn resolve_with_factories(
             };
             // `--thinking` wins over a parsed `:level` suffix; an exact model
             // id containing that suffix does not implicitly set thinking.
+            // `modelThinkingLevels` is the per-model override (upstream's
+            // `getModelThinkingLevel`).
+            let per_model_thinking = settings
+                .model_thinking_level(&model.provider, &model.id)
+                .and_then(|level| parse_thinking_level(&level));
             let thinking_level = cli_thinking
                 .or(pattern_thinking)
+                .or(per_model_thinking)
                 .unwrap_or(DEFAULT_THINKING_LEVEL);
             (Some(model), thinking_level, warning)
         }
@@ -599,7 +605,14 @@ fn resolve_with_factories(
                 saved_provider,
                 settings.default_model.as_deref(),
             );
+            // `modelThinkingLevels` wins over `defaultThinkingLevel` (upstream's
+            // `getModelThinkingLevel` then `getDefaultThinkingLevel`).
+            let per_model_thinking = model
+                .as_ref()
+                .and_then(|model| settings.model_thinking_level(&model.provider, &model.id))
+                .and_then(|level| parse_thinking_level(&level));
             let thinking_level = cli_thinking
+                .or(per_model_thinking)
                 .or(settings_thinking)
                 .unwrap_or(DEFAULT_THINKING_LEVEL);
             (model, thinking_level, None)

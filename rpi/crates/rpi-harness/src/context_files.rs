@@ -143,7 +143,7 @@ pub async fn load_project_context_files(
 /// `<project_instructions path="...">` child per file. Returns `""` when there
 /// are no context files (so a caller can string-interpolate the result without
 /// leaving an empty block).
-pub fn format_project_context(files: &[ContextFile]) -> String {
+pub fn format_project_context(files: &[ContextFile], max_chars: u64) -> String {
     if files.is_empty() {
         return String::new();
     }
@@ -154,11 +154,33 @@ pub fn format_project_context(files: &[ContextFile]) -> String {
         let path = escape_path(&file.path.to_string_lossy());
         out.push_str(&format!(
             "<project_instructions path=\"{path}\">\n{}\n</project_instructions>\n\n",
-            file.content
+            truncate_context(&file.content, max_chars)
         ));
     }
     out.push_str("</project_context>\n");
     out
+}
+
+/// Cuts a context file at the given number of characters.
+///
+/// The cut lands on a line boundary and the marker tells the model that the
+/// rest of the file was left out (upstream's `truncateContext`,
+/// `packages/coding-agent/src/core/system-prompt.ts:103`).
+fn truncate_context(content: &str, max_chars: u64) -> String {
+    if max_chars == 0 {
+        return content.to_string();
+    }
+    let total = content.chars().count() as u64;
+    if total <= max_chars {
+        return content.to_string();
+    }
+    let kept: String = content.chars().take(max_chars as usize).collect();
+    let head = match kept.rfind('\n') {
+        Some(index) if index > 0 => kept[..index].to_string(),
+        _ => kept,
+    };
+    let omitted = total - head.chars().count() as u64;
+    format!("{head}\n[... {omitted} more characters omitted; read the file for the rest ...]")
 }
 
 /// Best-effort canonicalization for dedup. Mirrors pi's `canonicalizePath`
@@ -311,5 +333,50 @@ mod tests {
         assert!(out.contains("<project_instructions path=\"/p/AGENTS.md\">"));
         assert!(out.contains("do x"));
         assert!(out.ends_with("</project_context>\n"));
+    }
+}
+
+#[cfg(test)]
+mod project_context_tests {
+    use super::*;
+
+    fn context_file(content: &str) -> ContextFile {
+        ContextFile {
+            path: PathBuf::from("/proj/AGENTS.md"),
+            content: content.to_string(),
+        }
+    }
+
+    /// `projectContextMaxChars` is off by default: the whole file is kept.
+    #[test]
+    fn the_context_is_kept_whole_without_a_cap() {
+        let files = vec![context_file("line one\nline two\n")];
+        let rendered = format_project_context(&files, 0);
+        assert!(rendered.contains("line one\nline two"), "{rendered}");
+        assert!(!rendered.contains("omitted"), "{rendered}");
+    }
+
+    /// The cut lands on a line boundary and the marker tells the model that
+    /// the rest was left out (upstream's `truncateContext`).
+    #[test]
+    fn the_context_is_cut_at_a_line_boundary() {
+        let content = "alpha\nbravo\ncharlie\n";
+        let files = vec![context_file(content)];
+        let rendered = format_project_context(&files, 12);
+        assert!(rendered.contains("alpha\nbravo"), "{rendered}");
+        assert!(!rendered.contains("charlie"), "{rendered}");
+        assert!(
+            rendered.contains("more characters omitted; read the file for the rest"),
+            "{rendered}"
+        );
+    }
+
+    /// A file that fits is not cut.
+    #[test]
+    fn a_short_context_file_is_not_cut() {
+        let files = vec![context_file("short")];
+        let rendered = format_project_context(&files, 1000);
+        assert!(rendered.contains("short"), "{rendered}");
+        assert!(!rendered.contains("omitted"), "{rendered}");
     }
 }

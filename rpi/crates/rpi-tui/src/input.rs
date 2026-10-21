@@ -63,7 +63,7 @@ enum LastAction {
 pub struct Input {
     state: Mutex<InputState>,
     prompt: String,
-    placeholder: Option<String>,
+    placeholder: Mutex<Option<String>>,
     masked: Mutex<bool>,
     #[allow(dead_code)]
     keybindings: Arc<Keybindings>,
@@ -82,7 +82,7 @@ impl Input {
         Self {
             state: Mutex::new(InputState::default()),
             prompt: "> ".to_string(),
-            placeholder: None,
+            placeholder: Mutex::new(None),
             masked: Mutex::new(false),
             keybindings: Arc::new(Keybindings::new()),
             kill_ring: Mutex::new(KillRing::new()),
@@ -104,8 +104,8 @@ impl Input {
 
     /// Create an input with a placeholder.
     pub fn with_placeholder(placeholder: &str) -> Self {
-        let mut input = Self::new();
-        input.placeholder = Some(placeholder.to_string());
+        let input = Self::new();
+        input.set_placeholder(placeholder);
         input
     }
 
@@ -113,6 +113,13 @@ impl Input {
     pub fn set_masked(&self, masked: bool) {
         if let Ok(mut value) = self.masked.lock() {
             *value = masked;
+        }
+    }
+
+    /// The text shown while the field is empty.
+    pub fn set_placeholder(&self, placeholder: &str) {
+        if let Ok(mut guard) = self.placeholder.lock() {
+            *guard = Some(placeholder.to_string());
         }
     }
 
@@ -294,9 +301,11 @@ impl Input {
             }
             let was_kill = self.get_last_action() == LastAction::Kill;
             let old_cursor = state.cursor;
-            let new_cursor = find_word_backward(&state.value, old_cursor);
-            let start = byte_offset(&state.value, new_cursor);
-            let end = byte_offset(&state.value, old_cursor);
+            let old_byte = byte_offset(&state.value, old_cursor);
+            let new_byte = find_word_backward(&state.value, old_byte);
+            let new_cursor = state.value[..new_byte].chars().count();
+            let start = new_byte;
+            let end = old_byte;
             let deleted = state.value[start..end].to_string();
             if let Ok(mut kill_ring) = self.kill_ring.lock() {
                 use super::kill_ring::PushOptions;
@@ -323,9 +332,10 @@ impl Input {
             }
             let was_kill = self.get_last_action() == LastAction::Kill;
             let old_cursor = state.cursor;
-            let new_cursor = find_word_forward(&state.value, old_cursor);
-            let start = byte_offset(&state.value, old_cursor);
-            let end = byte_offset(&state.value, new_cursor);
+            let old_byte = byte_offset(&state.value, old_cursor);
+            let new_byte = find_word_forward(&state.value, old_byte);
+            let start = old_byte;
+            let end = new_byte;
             let deleted = state.value[start..end].to_string();
             if let Ok(mut kill_ring) = self.kill_ring.lock() {
                 use super::kill_ring::PushOptions;
@@ -438,7 +448,10 @@ impl Input {
     fn move_word_left(&self) {
         self.set_last_action(LastAction::None);
         if let Ok(mut state) = self.state.lock() {
-            state.cursor = find_word_backward(&state.value, state.cursor);
+            // The word navigation works in bytes; the caret is a char index.
+            let byte = byte_offset(&state.value, state.cursor);
+            let target = find_word_backward(&state.value, byte);
+            state.cursor = state.value[..target].chars().count();
         }
     }
 
@@ -446,7 +459,9 @@ impl Input {
     fn move_word_right(&self) {
         self.set_last_action(LastAction::None);
         if let Ok(mut state) = self.state.lock() {
-            state.cursor = find_word_forward(&state.value, state.cursor);
+            let byte = byte_offset(&state.value, state.cursor);
+            let target = find_word_forward(&state.value, byte);
+            state.cursor = state.value[..target].chars().count();
         }
     }
 
@@ -618,7 +633,8 @@ impl Component for Input {
 
         // Show the placeholder when the field is empty, focused or not.
         if value.is_empty() {
-            if let Some(ref placeholder) = self.placeholder {
+            let placeholder = self.placeholder.lock().ok().and_then(|guard| guard.clone());
+            if let Some(ref placeholder) = placeholder {
                 let dimmed = crate::theme::theme().colors.muted.fg(placeholder);
                 return vec![format!("{}{}", self.prompt, dimmed)];
             }

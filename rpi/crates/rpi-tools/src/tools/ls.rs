@@ -19,7 +19,6 @@ use rpi_agent::agent_tool::AgentTool;
 use rpi_agent::error::AgentError;
 use rpi_agent::types::{AgentToolResult, TextContentOrImage, ToolResultPartial};
 use rpi_ai::types::Tool;
-use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
@@ -36,7 +35,7 @@ use crate::truncate::{
 const DEFAULT_LIMIT: u32 = 500;
 
 /// Input for the ls tool. Mirrors TS `LsToolInput`.
-#[derive(Debug, Clone, JsonSchema, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct LsInput {
     /// Directory to list (default: current directory).
     #[serde(default)]
@@ -71,16 +70,27 @@ pub struct LsTool {
 
 impl LsTool {
     fn schema() -> Tool {
-        let params = schemars::schema_for!(LsInput);
         Tool {
             name: "ls".to_string(),
             description: format!(
-                "List directory contents. Returns entries sorted alphabetically, with a '/' suffix \
+                "List directory contents. Returns entries sorted alphabetically, with '/' suffix \
                  for directories. Includes dotfiles. Output is truncated to {DEFAULT_LIMIT} entries \
                  or {kb}KB (whichever is hit first).",
                 kb = DEFAULT_MAX_BYTES / 1024
             ),
-            parameters: rpi_ai::types::Schema::new(serde_json::to_value(params).unwrap_or_default()),
+            parameters: rpi_ai::types::Schema::new(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Directory to list (default: current directory)"
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Maximum number of entries to return (default: 500)"
+                    }
+                }
+            })),
             constrained_sampling: None,
         }
     }

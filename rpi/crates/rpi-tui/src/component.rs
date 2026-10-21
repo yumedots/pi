@@ -136,6 +136,10 @@ pub trait Component: Send + Sync {
         None
     }
 
+    /// Apply the transcript's horizontal padding. The components that draw a
+    /// padded block override it; the rest ignore it (upstream's `setOutputPad`).
+    fn set_output_pad(&self, _pad: usize) {}
+
     /// Invalidate any cached rendering state.
     /// Called when theme changes or when component needs to re-render from scratch.
     fn invalidate(&self);

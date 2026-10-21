@@ -24,13 +24,13 @@
 
 
 
-
 Session tree
 
 Type to filter by entry type, sequence, or id
 
 >
 
-→ message #2                      01a15bef-2ec
-  message #9 (current)            01a15bef-2f2
+→ message #2                      01a15bfb-c18
+  message #3                      01a15bfb-c18
+  message #9 (current)            01a15bfb-c1e
 mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                    /private/tmp/pi-screens/work/session-tree

@@ -200,5 +200,37 @@ as the session write side.
 - `rpi/crates/rpi-harness/src/skills.rs` (unit tests) and
   `rpi/crates/rpi-harness/tests/skills_loader.rs` — the invocation and the
   mentions.
+- `rpi/crates/rpi-harness/src/agent_harness.rs`, `mod system_entry_tests` —
+  the `system` message entry: it is in the session in the original's shape,
+  the context builder skips it, and it emits exactly one
+  `message_start`/`message_end` pair.
 - `node scripts/parity/session-compat.mjs` — the cross-read. It prints
-  `rust -> ts: ok` and `ts -> rust: BROKEN` for the reason in §1.
+  `rust -> ts: ok` and `ts -> rust: BROKEN (the transcript lost: thinking
+  block)` — the import restores the user turn, the assistant reply and the
+  tool call; the thinking block renders collapsed where the original shows
+  the text.
+
+**A caveat for the parity harness and the event probe**: the `system` message
+entry is written to the session file, so **a run with `--no-session` never
+has it** — an ephemeral session has no file and no system entry. A scenario
+that has to see the system message must run with a persisted session.
+
+## The `system` message entry
+
+The original's session file carries a `system` message
+(`packages/coding-agent/src/core/agent-session.ts:1770`): the prompt's
+`content`, its `sections` and the `toolsAdded` list. The port writes one at
+the first run, before the first user message, in the original's shape, and
+emits the `message_start`/`message_end` pair for it, so an extension that
+subscribes to those events sees it the way the original's does.
+
+Two deliberate differences:
+
+- It is written **once**. The original rewrites it when the tool set changes
+  (`agent-session.ts:1795`); the port has no tool-change announcement, so
+  there is nothing to rewrite it for.
+- It is **not** part of the model context. The original's system message *is*
+  the system message (`agent-session.ts:1023`); the port composes the prompt
+  for the provider separately, so the context builder skips the entry
+  (`rpi/crates/rpi-harness/src/session/context.rs`) and the model never
+  receives the prompt twice.

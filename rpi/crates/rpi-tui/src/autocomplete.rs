@@ -387,7 +387,7 @@ impl AutocompleteProvider for SlashCommandAutocompleteProvider {
             let without_slash = cmd.name.strip_prefix('/').unwrap_or(&cmd.name);
             match without_slash.strip_prefix("skill:") {
                 Some(bare) => bare,
-                None => &cmd.name,
+                None => without_slash,
             }
         }
         fn is_skill(cmd: &SlashCommand) -> bool {
@@ -398,10 +398,12 @@ impl AutocompleteProvider for SlashCommandAutocompleteProvider {
         }
         let bare_matches = fuzzy_filter(&self.commands, query, bare_name);
         let bare_matched: Vec<&str> = bare_matches.iter().map(|cmd| cmd.name.as_str()).collect();
-        let full_only: Vec<SlashCommand> = fuzzy_filter(&self.commands, query, |cmd| cmd.name.as_str())
-            .into_iter()
-            .filter(|cmd| is_skill(cmd) && !bare_matched.contains(&cmd.name.as_str()))
-            .collect();
+        let full_only: Vec<SlashCommand> = fuzzy_filter(&self.commands, query, |cmd| {
+            cmd.name.strip_prefix('/').unwrap_or(&cmd.name)
+        })
+        .into_iter()
+        .filter(|cmd| is_skill(cmd) && !bare_matched.contains(&cmd.name.as_str()))
+        .collect();
         let mut ordered = bare_matches;
         ordered.extend(full_only);
         let items: Vec<AutocompleteItem> = ordered

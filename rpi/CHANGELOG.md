@@ -11,8 +11,14 @@ from; the matching [GitHub Release](../../releases) carries the same notes.
 
 ## [Unreleased]
 
+### Added
+
+- *(mcp)* the port has an MCP client: the new `rpi-mcp` crate speaks JSON-RPC 2.0 over stdio and streamable HTTP, reads the original's `mcp.json` (the agent directory and the trusted project's `.pi/mcp.json`), connects the servers when the session starts, and declares their tools to the model as `mcp__<server>__<tool>`; the original's resource tools (`list_mcp_resources`, `list_mcp_resource_templates`, `read_mcp_resource`) reach the servers that offer resources, `/mcp` opens a manager with the servers, their state and their tools, `rpi mcp list|add|remove` configures them outside a session, and `--no-mcp` turns the whole thing off
+
 ### Changed
 
+- *(tools)* the built-in tools' declarations are the original's, byte for byte: every tool's name, description and parameter schema match `packages/coding-agent/src/core/tools/*.ts`, and the `openai-completions` and `openai-responses` providers send the original's strict schema, so the tool the model reads is the same tool the original's model reads (`scripts/parity/TOOLS.md` has the comparison and the token count — 1270 tokens of declarations on both sides, and 748 on the wire for the default loadout, zero difference); the `grep` and `find` tools honour the repository's `.gitignore`, the `powershell` tool is registered on every platform and fails at execution off Windows as the original's does, and the `edit` tool reports a missing file with the original's wording
+- *(prompt)* the system prompt no longer tells the model to use a "todo tool" that is not in the registry; the rule now asks for a short list in the replies
 - *(tools)* the built-in tools report the original's system-prompt contribution (`promptSnippet`/`promptGuidelines`), and the `read` and `bash` tools expose an output schema with the matching structured content
 - *(tools)* the registered tool set is the original's: `read`, `bash`, `edit`, `write`, `grep`, `find` and `ls`; the port-only `docs` tool is gone, and the system prompt's tool list follows the active tool set instead of a fixed string
 - *(agent)* the tool result carries the original's contract: `isError` (a soft failure keeps its details), `structuredContent`, an output schema and the measured `durationMs` on `tool_execution_end` and on the tool-result message
@@ -23,6 +29,7 @@ from; the matching [GitHub Release](../../releases) carries the same notes.
 - *(tui)* render the tool call and the tool result with the per-tool renderers of the original (`read`, `write`, `bash`, `grep`, `find`, `ls`, `edit`); a tool without a renderer keeps the generic name+args panel
 - *(tui)* the fresh-session screen shows the original's startup block: the mark and version, the key hints and the note, and nothing else in that place
 - *(tui)* the first launch asks for a theme in the original's first-time setup dialog instead of printing a welcome banner
+- *(tui)* the braille indicators in the chat run at the original's cadence: the working indicator's spinner and the streaming thinking sign are frame counters that a ticker advances every 80ms — upstream's `Loader` cadence — instead of frames recomputed from the wall clock when the pane is painted, so the animation no longer lags behind the repaints; the elapsed clock next to the spinner keeps its value, its rounding and the moment it first appears
 - *(language)* the user-visible strings are the original's: the startup block (the mark, the version and the key hints), the key hints themselves (the original's lower-case key ids, `escape` and `ctrl+o`, with `option` for `alt` on macOS), the transcript search placeholder, the assistant error lines, the tool and bash overflow hints, the skill card (`@name`), the durations, the select-list and settings-list empty texts, the thinking-level descriptions, the slash-command descriptions, the `/help` listing, the `/hotkeys` table and the `/version` block
 - *(language)* the release note is the original's: the "What's New" note and the `/changelog` listing read the original's changelog, show the original's version and link to the original's repository; a fresh install records the version and shows nothing
 - *(language)* the startup prints the original's tmux warning when tmux cannot deliver modified Enter keys
@@ -34,6 +41,7 @@ from; the matching [GitHub Release](../../releases) carries the same notes.
 - *(cli)* `/name` without an argument warns `Usage: /name <name>`, `/copy` without a reply errors `No agent messages to copy yet.`, and `/logout` without stored credentials explains what it does not touch
 - *(cli)* `/new` starts a new session (the original's command) and `/clear` stays a port-only extra; `/help` is generated from the same registry as the `/` autocomplete list, so the two always agree
 - *(cli)* `/export` takes a path, defaults to HTML, exports the session file on disk and reports `Session exported to: <path>`
+- *(sessions)* the session list scales: the pickers read one header line per session file and the content of a file only when its row is drawn, so a directory with a few thousand sessions opens as fast as one with ten (the port's picker paints its first row in ~95 ms with 2563 sessions, the original's in ~150 ms); the rows carry the same titles and timestamps as a full parse (`bench/harness/RESULTS-rpi.md` has the measurements)
 
 ### Fixed
 

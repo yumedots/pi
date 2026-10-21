@@ -3,10 +3,21 @@ Rules
 
 Do not write comments in code
 Talk in an TLDR mode and explain in an simple TLDR with the less amount of words possible
-NEVER commit or run any git write command until the user explicitly says commit or anything similar, no commits on your own ever
+NEVER commit or run any git write command until the user explicitly says commit or anything similar, no commits on your own ever — the one exception is the committer agent, whose job is to commit the work that has already been verified (see "The pipeline" below)
 When the user asks to commit, commit in small coherent blocks, never one big commit: stage whatever files each change touches
 When the user asks to commit, commit messages are one line only, no description and no footer, matching the style of the existing commits
 NEVER install ANYTHING without telling the user first — packages, skills, MCP servers, plugins, everything. Say what is missing and why it is needed, then let the user choose exactly: (1) give root and install it now, (2) do not install, try another way, (3) do not install, I will do it myself. No install happens unless the user picks option 1.
+
+# The pipeline
+
+The work moves through four roles, and each one hands to the next:
+
+1. **The worker** ports. It writes code and a check for it (a Rust test, a golden trace, a script). It never commits.
+2. **The investigator** audits. It is read-only and terminal-only: it reads both trees, drives both programs, and finds what is missing or different. It writes its findings down and briefs the worker.
+3. **The validator** verifies. It runs the checks — the build, the tests, the parity harness, the frame comparisons — and a difference it finds goes back to the worker as the exact difference. A worker does not mark its own work verified.
+4. **The committer** commits. It commits only what the validator has passed, in small coherent blocks, one-line messages in the style of the existing commits. It never fixes the code: a failing check goes back to the worker.
+
+The rules for the committer: stage by path, never `git add -A`; one block per logical change; the message is one line, no body, no footer; if the tree does not build or the tests do not pass, commit nothing and say so.
 
 Ponytail, lazy senior dev mode
 

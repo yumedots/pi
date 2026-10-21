@@ -24,7 +24,7 @@ const ROOT = join(HERE, "..", "..");
 const OUT = join(HERE, "out");
 
 /** The scenario the suite drives: one prompt, so the transcript and the dock are both on screen. */
-const SCENARIO = "prompt";
+const SCENARIO = "extension";
 
 /**
  * The example extensions that change something.
@@ -90,8 +90,22 @@ function paneOf(trace) {
 	return trace.steps[trace.steps.length - 1]?.pane ?? [];
 }
 
-function errorLines(pane) {
-	return pane.filter((line) => /Extension ".*" error:/.test(line));
+/**
+ * The lines that say an extension did not load.
+ *
+ * Both sides write the same words for a load failure — `Failed to load
+ * extension "<path>": <error>` — and the runtime failures use another
+ * wording, so the two are told apart.
+ */
+function loadErrorLines(pane) {
+	return pane.filter((line) => /Failed to load extension/.test(line));
+}
+
+/** The lines that say an extension failed while it ran. */
+function runtimeErrorLines(pane) {
+	return pane.filter(
+		(line) => /Extension ".*" error:/.test(line) || /Extension error:/.test(line),
+	);
 }
 
 /**
@@ -208,21 +222,25 @@ async function main() {
 			for (const side of ["ts", "rust"]) {
 				panes[side] = paneOf(await runSide({ side, tsRoot, rustBin, clock, extensionPath }));
 			}
-			const tsErrors = errorLines(panes.ts);
-			const rustErrors = errorLines(panes.rust);
+			const tsLoadErrors = loadErrorLines(panes.ts);
+			const rustLoadErrors = loadErrorLines(panes.rust);
+			const tsErrors = runtimeErrorLines(panes.ts);
+			const rustErrors = runtimeErrorLines(panes.rust);
 			const tsDelta = addedLines(baseline.ts, panes.ts);
 			const rustDelta = addedLines(baseline.rust, panes.rust);
 			const tsEffect = tsDelta.length > 0;
 			const rustEffect = rustDelta.length > 0;
 			results.push({
 				name,
+				tsLoadErrors,
+				rustLoadErrors,
 				tsErrors,
 				rustErrors,
 				tsEffect,
 				rustEffect,
 				tsDelta,
 				rustDelta,
-				loads: tsErrors.length === 0 && rustErrors.length === 0,
+				loads: tsLoadErrors.length === 0 && rustLoadErrors.length === 0,
 				matches: normalizePane(tsDelta) === normalizePane(rustDelta),
 				difference: paneDifference(tsDelta, rustDelta),
 			});
@@ -247,25 +265,40 @@ function renderReport(results, meta) {
 	lines.push(`- Rust port: ${meta.repoCommit}`);
 	lines.push(`- Scenario: \`${SCENARIO}\` (one prompt, so the transcript and the dock are on screen)`);
 	lines.push("");
-	lines.push("| extension | loads | takes effect (ts) | takes effect (rust) | panes match |");
-	lines.push("| --- | --- | --- | --- | --- |");
+	const loaded = results.filter((result) => !result.missing && result.loads).length;
+	const total = results.filter((result) => !result.missing).length;
+	const identical = results.filter((result) => !result.missing && result.matches && result.loads).length;
+	lines.push(`- Extensions that load on both sides: **${loaded} of ${total}**`);
+	lines.push(`- Extensions whose panes are identical: **${identical} of ${total}**`);
+	lines.push("");
+	lines.push("| extension | loads (ts) | loads (rust) | takes effect (ts) | takes effect (rust) | panes match |");
+	lines.push("| --- | --- | --- | --- | --- | --- |");
 	for (const result of results) {
 		if (result.missing) {
-			lines.push(`| ${result.name} | missing | - | - | - |`);
+			lines.push(`| ${result.name} | missing | - | - | - | - |`);
 			continue;
 		}
 		lines.push(
-			`| ${result.name} | ${result.loads ? "yes" : "no"} | ${result.tsEffect ? "yes" : "no"} | ${result.rustEffect ? "yes" : "no"} | ${result.matches ? "yes" : "no"} |`,
+			`| ${result.name} | ${result.tsLoadErrors.length === 0 ? "yes" : "no"} | ${result.rustLoadErrors.length === 0 ? "yes" : "no"} | ${result.tsEffect ? "yes" : "no"} | ${result.rustEffect ? "yes" : "no"} | ${result.matches ? "yes" : "no"} |`,
 		);
 	}
 	lines.push("");
 	for (const result of results) {
 		if (result.missing) continue;
-		if (result.matches && result.loads) continue;
+		if (result.matches && result.loads && result.tsErrors.length === 0 && result.rustErrors.length === 0) {
+			continue;
+		}
 		lines.push(`## ${result.name}`);
 		lines.push("");
 		if (!result.loads) {
 			lines.push("The extension does not load:");
+			lines.push("");
+			for (const line of result.tsLoadErrors) lines.push(`- ts: ${line.trim()}`);
+			for (const line of result.rustLoadErrors) lines.push(`- rust: ${line.trim()}`);
+			lines.push("");
+		}
+		if (result.tsErrors.length > 0 || result.rustErrors.length > 0) {
+			lines.push("The extension failed while it ran:");
 			lines.push("");
 			for (const line of result.tsErrors) lines.push(`- ts: ${line.trim()}`);
 			for (const line of result.rustErrors) lines.push(`- rust: ${line.trim()}`);

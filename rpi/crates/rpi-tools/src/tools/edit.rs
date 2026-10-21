@@ -19,7 +19,6 @@ use rpi_agent::agent_tool::AgentTool;
 use rpi_agent::error::AgentError;
 use rpi_agent::types::{AgentToolResult, TextContentOrImage, ToolResultPartial};
 use rpi_ai::types::{ConstrainedSamplingConfig, ConstrainedStrictness, Tool};
-use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
@@ -36,7 +35,7 @@ use crate::tools::tool_context::ExecutionToolContext;
 use crate::tools::PromptContribution;
 
 /// Input for the edit tool. Mirrors TS `EditToolInput`.
-#[derive(Debug, Clone, JsonSchema, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct EditInput {
     /// Path to the file to edit (relative or absolute).
     pub path: String,
@@ -45,10 +44,10 @@ pub struct EditInput {
 }
 
 /// JSON-schema-facing edit shape (camelCase to match the TS wire contract).
-#[derive(Debug, Clone, JsonSchema, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplaceEditJson {
-    /// Exact text for one targeted replacement. Must be unique in the original
+    /// Exact text for one targeted replacement. It must be unique in the original
     /// file and must not overlap with any other edit's `oldText` in the same call.
     pub old_text: String,
     /// Replacement text for this targeted edit.
@@ -73,13 +72,42 @@ pub struct EditTool {
 
 impl EditTool {
     fn schema() -> Tool {
-        let params = schemars::schema_for!(EditInput);
         Tool {
             name: "edit".to_string(),
-            description: "Edit a single file using exact text replacement. Before editing, use read to inspect the current target region and copy oldText from that output, preserving whitespace and excluding display line numbers or truncation markers. If matching fails, read the target region again and rebuild the edit from the current content before retrying. Every edits[].oldText must match a unique, non-overlapping region of the original file. Each edit is matched against the same original file snapshot, not incrementally after earlier edits. Do not include overlapping or nested edits. If two changes affect the same block or nearby lines, merge them into one edit. Choose enough surrounding lines from the read output to make each oldText occur exactly once in the entire file; do not use a repeated statement or short identifier alone. If multiple matches are reported, use their line numbers and context to expand oldText for the intended location before retrying. Use camelCase oldText/newText fields.".to_string(),
-            parameters: rpi_ai::types::Schema::new(
-                serde_json::to_value(params).unwrap_or_default(),
-            ),
+            description: "Edit a single file using exact text replacement. Every edits[].oldText \
+                          must match a unique, non-overlapping region of the original file. If two \
+                          changes affect the same block or nearby lines, merge them into one edit \
+                          instead of emitting overlapping edits. Do not include large unchanged \
+                          regions just to connect distant changes."
+                .to_string(),
+            parameters: rpi_ai::types::Schema::new(serde_json::json!({
+                "type": "object",
+                "required": ["path", "edits"],
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the file to edit (relative or absolute)"
+                    },
+                    "edits": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["oldText", "newText"],
+                            "properties": {
+                                "oldText": {
+                                    "type": "string",
+                                    "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+                                },
+                                "newText": {
+                                    "type": "string",
+                                    "description": "Replacement text for this targeted edit."
+                                }
+                            }
+                        },
+                        "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+                    }
+                }
+            })),
             constrained_sampling: Some(ConstrainedSamplingConfig::JsonSchema {
                 strict: ConstrainedStrictness::Prefer,
             }),
@@ -180,15 +208,32 @@ impl AgentTool for EditTool {
                 let abs_str = abs_for_closure.clone();
                 async move {
                     check_abort(cancel)?;
-                    // FileInfo: must be a file or symlink.
-                    let info = env.as_env().file_info(&abs_str, Some(cancel)).await?;
+                    // FileInfo: must be a file or symlink. The original wraps
+                    // the access failure in "Could not edit file: <path>.
+                    // Error code: <CODE>." — the model reads that text.
+                    let info = match env.as_env().file_info(&abs_str, Some(cancel)).await {
+                        Ok(info) => info,
+                        Err(error) => {
+                            return Err(FileError::new(
+                                error.code,
+                                format!(
+                                    "Could not edit file: {path}. Error code: {}.",
+                                    error.code.errno_name()
+                                ),
+                            ));
+                        }
+                    };
                     if !matches!(
                         info.kind,
                         crate::env::FileKind::File | crate::env::FileKind::Symlink
                     ) {
+                        let code = FileErrorCode::IsDirectory;
                         return Err(FileError::new(
-                            FileErrorCode::Invalid,
-                            format!("Could not edit file: {path}. Path is not a file."),
+                            code,
+                            format!(
+                                "Could not edit file: {path}. Error code: {}.",
+                                code.errno_name()
+                            ),
                         ));
                     }
                     let read = env.as_env().read_text_file(&abs_str, Some(cancel)).await?;

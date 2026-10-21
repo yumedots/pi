@@ -213,3 +213,105 @@ that tripped before the turn, which the TypeScript agent does not send.
   `~/.local/share/pi-models/smollm2-1.7b-instruct-q4_k_m.gguf` was empty); it
   was fetched with the approval of the user during the run, and every number
   above was measured with that file.
+
+## The session picker with 2563 sessions
+
+The user's agent directory holds 2563 sessions, most of them header-only, and
+the session picker was slow with them. This section measures the picker on
+that directory, on the port and on the original.
+
+### The fixture
+
+```bash
+node bench/harness/make-session-fixture.mjs --out /tmp/rpi-session-fixture --count 2563 --cwd /Users/gabriel/pi
+# 2563 session files in /tmp/rpi-session-fixture/sessions/--Users-gabriel-pi-- (2307 header-only)
+```
+
+Every file is small (a header line, plus a model-change and a message line for
+the 256 files that have one), so the numbers below are the *fixed* cost of a
+list of 2563 sessions, not the cost of a list of 2563 large ones.
+
+### The commands
+
+```bash
+# the port's list: the index, the titles of the rows the list shows, and the
+# path the picker used to take (the metadata list plus a full summary of every
+# session file)
+RPI_SESSION_DIR=/tmp/rpi-session-fixture/sessions/--Users-gabriel-pi-- \
+RPI_SESSION_AGENT_DIR=/tmp/rpi-session-fixture RPI_SESSION_CWD=/Users/gabriel/pi \
+RPI_SESSION_DUMP=/tmp/port-rows.tsv \
+  cargo test -p rpi-cli --test session_list_latency -- --ignored --nocapture measure_a_real_session_directory
+
+# the original's list (it parses every session file)
+node bench/harness/measure-session-list-original.mjs --dir /tmp/rpi-session-fixture/sessions/--Users-gabriel-pi--
+bun  bench/harness/measure-session-list-original.mjs --dir /tmp/rpi-session-fixture/sessions/--Users-gabriel-pi--
+
+# the picker itself, in a pty that answers the terminal's capability queries
+python3 bench/harness/measure-picker-terminal.py --label port --marker "fixture prompt" -- \
+  env PI_CODING_AGENT_DIR=/tmp/rpi-session-fixture PI_OFFLINE=1 RPI_SESSION_PICKER_TIMING=1 \
+  rpi/target/debug/rpi -r
+python3 bench/harness/measure-picker-terminal.py --label original --marker "fixture prompt" -- \
+  env PI_CODING_AGENT_DIR=/tmp/rpi-session-fixture bun /Users/gabriel/pi/packages/coding-agent/src/cli.ts -r
+
+# the entries of the two lists, compared
+node bench/harness/compare-session-list.mjs --original /tmp/original-list.json --port /tmp/port-rows.tsv
+```
+
+### The numbers
+
+| Measurement | Port (`rpi`) | Original (node) | Original (bun) |
+| --- | --- | --- | --- |
+| The list of 2563 sessions | **58-99 ms** (one header line per file) | 299-311 ms (every file parsed) | 133-139 ms (every file parsed) |
+| The titles of the rows the list shows | **0.24-0.36 ms** (12 rows) | - | - |
+| The picker paints its first session row | **91-101 ms** | - | 150-154 ms |
+| The first byte the picker writes | **89-99 ms** | - | 137-144 ms |
+| The path the picker used to take | 121-123 ms (metadata list) + 35-37 ms (a full summary of every file) | - | - |
+
+The port's own counters (`RPI_SESSION_PICKER_TIMING=1`) for the three runs
+above: `rows=2563 index_ms=85-87 titles_ms=86-88 ready_ms=89-91`.
+
+The port reads **one header line per session file** and the content of a file
+only when its row is drawn; the other 2551 files are never opened for
+content. The original parses every session file to build its list.
+
+### The entries are the same
+
+`bench/harness/compare-session-list.mjs` compares the port's 2563 rows with the
+original's 2563 rows (id, title, timestamp):
+
+```json
+{
+ "originalFiles": 2563,
+ "portRows": 2563,
+ "missingInPort": 0,
+ "extraInPort": 0,
+ "titleDifferences": 0,
+ "timestampDifferences": 0
+}
+```
+
+Every session of the fixture is in both lists, with the same title (the
+recorded name, else the first user prompt, else the original's "(no messages)")
+and the same timestamp (the header's ISO-8601 creation time).
+
+### What is different between the two measurements
+
+- **The order of the rows.** The port sorts the rows by the session file's
+  modification time, the original by the session's last activity (the message
+  timestamps), which it can only know after parsing the file. The fixture
+  writes every file in the same second and gives every session a different
+  message timestamp, so the two orders differ while the two sets are the
+  same. On a real directory the file's mtime is the session's last write, so
+  the two orders agree.
+- **The port waits for the terminal's answer.** The port's TUI asks the
+  terminal for its capabilities (DA1, the colours) before its first frame. In
+  a pty that never answers, the picker takes 1.9-2.4 s (the port's counter
+  shows `index_ms=87` and `ready_ms=2386`: the delay is in the TUI's setup,
+  not in the listing), while the original does not wait at all. With a
+  terminal that answers — the real case, and what
+  `bench/harness/measure-picker-terminal.py` emulates — the port paints its
+  first row in about 95 ms.
+- **The port's numbers are from a debug build** (`rpi/target/debug/rpi`); a
+  release build of the port takes too long to produce safely on this machine.
+  The listing is file-I/O bound, so the debug build costs the port a few
+  milliseconds here.

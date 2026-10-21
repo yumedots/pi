@@ -13,7 +13,6 @@ use rpi_agent::types::{AgentToolResult, TextContentOrImage, ToolResultPartial};
 use rpi_ai::types::{
     ConstrainedSamplingConfig, ConstrainedStrictness, ImageContent, ImageContentType, Schema, Tool,
 };
-use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
@@ -27,7 +26,7 @@ use crate::truncate::{
     DEFAULT_MAX_LINES,
 };
 /// Input for the read tool. Mirrors TS `ReadToolInput`. `offset` is 1-indexed.
-#[derive(Debug, Clone, JsonSchema, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ReadInput {
     /// Path to the file to read (relative or absolute).
     pub path: String,
@@ -131,7 +130,6 @@ impl ReadTool {
     }
 
     fn schema() -> Tool {
-        let params = schemars::schema_for!(ReadInput);
         Tool {
             name: "read".to_string(),
             description: format!(
@@ -141,7 +139,24 @@ impl ReadTool {
                  the full file, continue with offset until complete.",
                 kb = DEFAULT_MAX_BYTES / 1024
             ),
-            parameters: rpi_ai::types::Schema::new(serde_json::to_value(params).unwrap_or_default()),
+            parameters: Schema::new(serde_json::json!({
+                "type": "object",
+                "required": ["path"],
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the file to read (relative or absolute)"
+                    },
+                    "offset": {
+                        "type": "number",
+                        "description": "Line number to start reading from (1-indexed)"
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Maximum number of lines to read"
+                    }
+                }
+            })),
             constrained_sampling: Some(ConstrainedSamplingConfig::JsonSchema { strict: ConstrainedStrictness::Prefer }),
         }
     }

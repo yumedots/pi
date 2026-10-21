@@ -578,9 +578,6 @@ pub(super) fn test_tui_state() -> Arc<TuiState> {
         current_model_id: std::sync::Mutex::new(String::new()),
         show_images: std::sync::Mutex::new(true),
         cache_miss_notices: std::sync::Mutex::new(false),
-        history: std::sync::Mutex::new(Vec::new()),
-        history_index: std::sync::Mutex::new(-1),
-        history_draft: std::sync::Mutex::new(None),
         cache_tracker: std::sync::Mutex::new(rpi_harness::cache_stats::CacheMissTracker::new()),
         scoped_edit: std::sync::Mutex::new(None),
         markdown_transformer: Arc::new(std::sync::Mutex::new(None)),
@@ -1139,6 +1136,12 @@ fn tui_startup_settings_prefer_rpi_project_fields_over_pi() {
             cache_miss_notices: false,
             three_d_empty_session: false,
             enable_skill_commands: true,
+            show_hardware_cursor: false,
+            fullscreen_scrollbar: "auto",
+            fullscreen_wheel_scroll_lines: None,
+            output_pad: 1,
+            autocomplete_position: "above",
+            tree_filter_mode: "default",
         }
     );
 }
@@ -1187,6 +1190,12 @@ fn tui_startup_settings_use_global_values_without_project_fields() {
             cache_miss_notices: true,
             three_d_empty_session: false,
             enable_skill_commands: true,
+            show_hardware_cursor: false,
+            fullscreen_scrollbar: "auto",
+            fullscreen_wheel_scroll_lines: None,
+            output_pad: 1,
+            autocomplete_position: "above",
+            tree_filter_mode: "default",
         }
     );
 }
@@ -1920,9 +1929,6 @@ fn test_agent_event_mapping_creates_assistant_and_tool() {
         current_model_id: std::sync::Mutex::new(String::new()),
         show_images: std::sync::Mutex::new(true),
         cache_miss_notices: std::sync::Mutex::new(false),
-        history: std::sync::Mutex::new(Vec::new()),
-        history_index: std::sync::Mutex::new(-1),
-        history_draft: std::sync::Mutex::new(None),
         cache_tracker: std::sync::Mutex::new(rpi_harness::cache_stats::CacheMissTracker::new()),
         scoped_edit: std::sync::Mutex::new(None),
         markdown_transformer: Arc::new(std::sync::Mutex::new(None)),
@@ -2661,10 +2667,8 @@ fn login_provider_items_are_provider_scoped_and_exclude_anonymous_packages() {
             .iter()
             .find(|item| item.value == "deepseek")
             .expect("DeepSeek should be login-capable");
-        assert!(deepseek
-            .description
-            .as_deref()
-            .is_some_and(|text| text.contains("RPI_TEST_PROVIDER_COMMAND_KEY")));
+        assert_eq!(deepseek.description.as_deref(), Some(" • not configured"));
+        assert_eq!(deepseek.label, "DeepSeek");
         assert!(!items.iter().any(|item| item.value == "llama-cpp"));
         assert!(items.iter().any(|item| item.value == "anthropic"));
         assert!(items.iter().any(|item| item.value == "openai"));
@@ -2687,10 +2691,8 @@ fn login_provider_items_include_oauth_only_providers_without_anonymous_packages(
             .iter()
             .find(|item| item.value == "acme-oauth")
             .expect("OAuth-only provider should be login-capable");
-        assert!(acme
-            .description
-            .as_deref()
-            .is_some_and(|text| text.contains("OAuth 登录")));
+        assert_eq!(acme.label, "Acme OAuth");
+        assert_eq!(acme.description.as_deref(), Some(" • not configured"));
         assert!(!items.iter().any(|item| item.value == "llama-cpp"));
     });
 }
@@ -3000,9 +3002,6 @@ fn test_autocomplete_slash_suggestions_render() {
         current_model_id: std::sync::Mutex::new(String::new()),
         show_images: std::sync::Mutex::new(true),
         cache_miss_notices: std::sync::Mutex::new(false),
-        history: std::sync::Mutex::new(Vec::new()),
-        history_index: std::sync::Mutex::new(-1),
-        history_draft: std::sync::Mutex::new(None),
         cache_tracker: std::sync::Mutex::new(rpi_harness::cache_stats::CacheMissTracker::new()),
         scoped_edit: std::sync::Mutex::new(None),
         markdown_transformer: Arc::new(std::sync::Mutex::new(None)),
@@ -3106,9 +3105,6 @@ fn test_select_list_swap_restores_editor() {
         current_model_id: std::sync::Mutex::new(String::new()),
         show_images: std::sync::Mutex::new(true),
         cache_miss_notices: std::sync::Mutex::new(false),
-        history: std::sync::Mutex::new(Vec::new()),
-        history_index: std::sync::Mutex::new(-1),
-        history_draft: std::sync::Mutex::new(None),
         cache_tracker: std::sync::Mutex::new(rpi_harness::cache_stats::CacheMissTracker::new()),
         scoped_edit: std::sync::Mutex::new(None),
         markdown_transformer: Arc::new(std::sync::Mutex::new(None)),
@@ -3209,9 +3205,6 @@ fn test_message_history_browse_restores_draft() {
         current_model_id: std::sync::Mutex::new(String::new()),
         show_images: std::sync::Mutex::new(true),
         cache_miss_notices: std::sync::Mutex::new(false),
-        history: std::sync::Mutex::new(Vec::new()),
-        history_index: std::sync::Mutex::new(-1),
-        history_draft: std::sync::Mutex::new(None),
         cache_tracker: std::sync::Mutex::new(rpi_harness::cache_stats::CacheMissTracker::new()),
         scoped_edit: std::sync::Mutex::new(None),
         markdown_transformer: Arc::new(std::sync::Mutex::new(None)),
@@ -3229,38 +3222,37 @@ fn test_message_history_browse_restores_draft() {
         selection_start: std::sync::Mutex::new(None),
         selection_end: std::sync::Mutex::new(None),
     });
-    let editor = Arc::new(Editor::simple());
-
+    // The editor owns the history (the original's editor does).
     push_history(&state, "first message");
     push_history(&state, "second message");
     // Consecutive duplicate is skipped.
     push_history(&state, "second message");
     push_history(&state, "   "); // empty → skipped
-    assert_eq!(state.history.lock().unwrap().len(), 2);
-    assert_eq!(state.history.lock().unwrap()[0], "second message");
+    assert_eq!(state.editor.history().len(), 2);
+    assert_eq!(state.editor.history()[0], "second message");
 
     // User starts typing a fresh prompt.
-    editor.set_text("half-typed");
-    editor.set_cursor(0, 11);
+    state.editor.set_text("half-typed");
+    state.editor.set_cursor(0, 11);
 
     // ↑ → most recent.
-    navigate_history(&state, &editor, -1);
-    assert_eq!(editor.get_text(), "second message");
-    assert_eq!(*state.history_index.lock().unwrap(), 0);
+    state.editor.navigate_history(-1);
+    assert_eq!(state.editor.get_text(), "second message");
+    assert!(state.editor.is_browsing_history());
     // ↑ → older.
-    navigate_history(&state, &editor, -1);
-    assert_eq!(editor.get_text(), "first message");
-    assert_eq!(*state.history_index.lock().unwrap(), 1);
+    state.editor.navigate_history(-1);
+    assert_eq!(state.editor.get_text(), "first message");
     // ↑ past the oldest → stays (no wrap).
-    navigate_history(&state, &editor, -1);
-    assert_eq!(editor.get_text(), "first message");
+    state.editor.navigate_history(-1);
+    assert_eq!(state.editor.get_text(), "first message");
     // ↓ → newer.
-    navigate_history(&state, &editor, 1);
-    assert_eq!(editor.get_text(), "second message");
-    // ↓ past the newest → restores the draft.
-    navigate_history(&state, &editor, 1);
-    assert_eq!(editor.get_text(), "half-typed");
-    assert_eq!(*state.history_index.lock().unwrap(), -1);
+    state.editor.navigate_history(1);
+    assert_eq!(state.editor.get_text(), "second message");
+    // ↓ past the newest → restores the draft, caret included.
+    state.editor.navigate_history(1);
+    assert_eq!(state.editor.get_text(), "half-typed");
+    assert_eq!(state.editor.cursor_position(), (0, 11));
+    assert!(!state.editor.is_browsing_history());
 }
 
 #[test]
@@ -3315,9 +3307,6 @@ fn test_accept_top_suggestion_replaces_prefix() {
         current_model_id: std::sync::Mutex::new(String::new()),
         show_images: std::sync::Mutex::new(true),
         cache_miss_notices: std::sync::Mutex::new(false),
-        history: std::sync::Mutex::new(Vec::new()),
-        history_index: std::sync::Mutex::new(-1),
-        history_draft: std::sync::Mutex::new(None),
         cache_tracker: std::sync::Mutex::new(rpi_harness::cache_stats::CacheMissTracker::new()),
         scoped_edit: std::sync::Mutex::new(None),
         markdown_transformer: Arc::new(std::sync::Mutex::new(None)),
@@ -3515,9 +3504,6 @@ pub(crate) fn autocomplete_test_state(max_visible: usize) -> Arc<TuiState> {
         current_model_id: std::sync::Mutex::new(String::new()),
         show_images: std::sync::Mutex::new(true),
         cache_miss_notices: std::sync::Mutex::new(false),
-        history: std::sync::Mutex::new(Vec::new()),
-        history_index: std::sync::Mutex::new(-1),
-        history_draft: std::sync::Mutex::new(None),
         cache_tracker: std::sync::Mutex::new(rpi_harness::cache_stats::CacheMissTracker::new()),
         scoped_edit: std::sync::Mutex::new(None),
         markdown_transformer: Arc::new(std::sync::Mutex::new(None)),
@@ -4063,4 +4049,94 @@ fn a_bare_alias_is_a_command_and_an_alias_with_text_is_not() {
     assert!(!is_command_token("/sessions", "some text"));
     assert!(is_command_token("/resume", ""));
     assert!(is_command_token("/model", "gpt-4o"));
+}
+
+/// The thinking toggle reaches every rendered assistant message, not only the
+/// one in flight (the original's `updateThinkingBlockVisibility`,
+/// `interactive-mode.ts:4428-4434`).
+#[test]
+fn the_thinking_toggle_reaches_every_assistant_message() {
+    let state = test_tui_state();
+    let message = Arc::new(AssistantMessageComponent::new(AssistantMessageOptions {
+        hide_thinking: true,
+        ..Default::default()
+    }));
+    message.update_blocks(&[AssistantBlock::Thinking("why".to_string())]);
+    state.chat_container.add_child(message.clone());
+
+    let before = state.chat_container.render(80).join("\n");
+    assert!(before.contains("+ Thought"), "summary missing: {before}");
+    assert!(!before.contains("why"), "thinking leaked: {before}");
+
+    state.set_hide_thinking(false);
+
+    let after = state.chat_container.render(80).join("\n");
+    assert!(after.contains("- Thought"), "summary missing: {after}");
+    assert!(after.contains("why"), "body missing: {after}");
+}
+
+/// The startup screen owns the input box, so the suggestion list has to be
+/// painted with it: the original puts the list below the editor while the
+/// empty-session screen is up (`interactive-mode.ts:941-945`).
+#[test]
+fn the_empty_session_screen_shows_the_suggestion_list_under_the_input_box() {
+    let editor_container = Arc::new(Container::new());
+    editor_container.add_child(Arc::new(Editor::simple()));
+    let popup = Arc::new(Container::new());
+    popup.add_child(Arc::new(rpi_tui::Text::new("POPUP", 0, 0)));
+    let block = super::empty_session_input_block(editor_container, popup);
+    let lines: Vec<String> = block.render(100).iter().map(|line| strip_ansi(line)).collect();
+    let editor_row = lines
+        .iter()
+        .position(|line| line.contains('>'))
+        .expect("the input box is on the screen");
+    let popup_row = lines
+        .iter()
+        .position(|line| line.contains("POPUP"))
+        .expect("the suggestion list is on the screen");
+    assert!(
+        popup_row > editor_row,
+        "the list is under the input box: {lines:?}"
+    );
+}
+
+/// The popup lists the original's rows for a command query: the bare command
+/// names, in the original's order, with the original's descriptions.
+#[test]
+fn the_command_popup_lists_the_originals_rows() {
+    let state = autocomplete_test_state(5);
+    state
+        .autocomplete
+        .set_provider(Arc::new(SlashCommandAutocompleteProvider::new(
+            build_builtin_registry().visible_entries(),
+        )));
+    let editor = Arc::new(Editor::simple());
+    editor.set_text("/he");
+    editor.set_cursor(0, 3);
+    refresh_autocomplete(&state, &editor);
+
+    let rows: Vec<String> = state
+        .autocomplete_container
+        .render(72)
+        .iter()
+        .map(|line| strip_ansi(line))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            "→ hotkeys     Show all keyboard shortcuts".to_string(),
+            "  theme       <name> — Change the color theme".to_string(),
+            "  share       Share session via a Radius artifact or a GitHub gist".to_string(),
+            "  changelog   Show changelog entries".to_string(),
+        ]
+    );
+
+    // Enter takes the highlighted row, and a command completion submits it.
+    let outcome = accept_highlighted_suggestion(&state, &editor);
+    assert_eq!(outcome, AcceptOutcome::SlashCommand);
+    assert!(
+        editor.get_text().starts_with("/hotkeys"),
+        "Enter accepts the highlighted row, got {}",
+        editor.get_text()
+    );
 }

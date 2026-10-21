@@ -40,6 +40,7 @@ fn selected_item(view: &SelectorView) -> Option<SelectItem> {
         SelectorView::List(list) => list.get_selected_item(),
         SelectorView::Searchable(searchable) => searchable.list().get_selected_item(),
         SelectorView::Settings(_) => None,
+        SelectorView::Trust(_) => None,
     }
 }
 
@@ -49,6 +50,7 @@ fn refresh_items(view: &SelectorView, items: Vec<SelectItem>) {
         SelectorView::List(list) => list.set_items(items),
         SelectorView::Searchable(searchable) => searchable.set_items(items),
         SelectorView::Settings(_) => {}
+        SelectorView::Trust(_) => {}
     }
 }
 
@@ -73,6 +75,17 @@ fn selected_index(view: &SelectorView) -> usize {
         SelectorView::List(list) => list.selected_index(),
         SelectorView::Searchable(searchable) => searchable.list().selected_index(),
         SelectorView::Settings(_) => 0,
+        SelectorView::Trust(_) => 0,
+    }
+}
+
+/// Move the highlighted row to `index` in the filtered list.
+fn set_selected_index(view: &SelectorView, index: usize) {
+    match view {
+        SelectorView::List(list) => list.set_selected_index(index),
+        SelectorView::Searchable(searchable) => searchable.list().set_selected_index(index),
+        SelectorView::Settings(_) => {}
+        SelectorView::Trust(_) => {}
     }
 }
 
@@ -142,7 +155,7 @@ fn session_menu_key(
             return true;
         };
         state.session_menu.lock().unwrap().renaming = Some(entry.stem.clone());
-        set_search_value(view, entry.name.as_deref().unwrap_or_default());
+        set_search_value(view, entry.row.name().as_deref().unwrap_or_default());
         tui.request_render(false);
         return true;
     }
@@ -292,6 +305,8 @@ fn refresh_session_menu(
     let (entries, items) = {
         let menu = state.session_menu.lock().unwrap();
         let entries = session_menu_entries(&menu.dir, &menu);
+        // The titles of the rows the list shows.
+        resolve_entry_titles(&entries, 0..SESSION_MENU_ROWS);
         let items = session_menu_items(&entries, menu.show_path);
         (entries, items)
     };
@@ -300,41 +315,62 @@ fn refresh_session_menu(
     tui.request_render(false);
 }
 
+/// How many session rows the picker shows at once.
+pub(super) const SESSION_MENU_ROWS: usize = 10;
+
 /// The listed sessions, in display order.
+///
+/// The rows come from the session files' headers; their titles are read when
+/// the rows are drawn, so a directory with thousands of sessions opens as fast
+/// as one with ten.
 pub(super) fn session_menu_entries(dir: &Path, menu: &SessionMenuState) -> Vec<SessionMenuEntry> {
-    let mut files = crate::session::list_session_files_sync(dir);
+    let mut rows = crate::session_index::list_session_rows(dir);
     if menu.sort == SessionSort::Oldest {
-        files.reverse();
+        rows.reverse();
     }
-    let mut entries = Vec::new();
-    for path in files {
-        let summary = crate::session::summarize_session_file(&path);
-        if summary.empty {
-            continue;
-        }
-        let name = summary
-            .name
-            .as_deref()
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .map(str::to_string);
-        if menu.named_only && name.is_none() {
-            continue;
-        }
-        let stem = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("(unnamed)")
-            .to_string();
-        entries.push(SessionMenuEntry {
-            stem,
-            path,
-            label: crate::session::session_display_label(&summary),
-            name,
-            bytes: summary.bytes,
-        });
+    if menu.named_only {
+        // The named filter needs every session's name, and a name is recorded
+        // in the session's body.
+        crate::session_index::resolve_all_titles(&rows);
+        rows.retain(|row| row.name().is_some());
     }
-    entries
+    rows.into_iter()
+        .map(|row| {
+            let stem = row
+                .path()
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or("(unnamed)")
+                .to_string();
+            let path = row.path().to_path_buf();
+            SessionMenuEntry { stem, path, row }
+        })
+        .collect()
+}
+
+/// Read the titles of the rows in `range`, and only those.
+///
+/// Returns `true` when a row had to be read, so the caller knows the rows it
+/// drew changed.
+pub(super) fn resolve_entry_titles(
+    entries: &[SessionMenuEntry],
+    range: std::ops::Range<usize>,
+) -> bool {
+    let end = range.end.min(entries.len());
+    let start = range.start.min(end);
+    let mut resolved = false;
+    for entry in &entries[start..end] {
+        if !entry.row.header_only() && !entry.row.is_resolved() {
+            entry.row.title();
+            resolved = true;
+        }
+    }
+    resolved
+}
+
+/// Read the titles of every row, and only those.
+pub(super) fn resolve_all_entry_titles(entries: &[SessionMenuEntry]) -> bool {
+    resolve_entry_titles(entries, 0..entries.len())
 }
 
 /// The session rows, with the metadata column the toggles switch between.
@@ -353,14 +389,47 @@ pub(super) fn session_menu_items(
             };
             let description = format!(
                 "{} · {}",
-                crate::session::format_session_bytes(entry.bytes),
+                crate::session::format_session_bytes(entry.row.bytes()),
                 metadata
             );
-            SelectItem::new(&entry.stem, &entry.label)
+            let label = entry
+                .row
+                .resolved_title()
+                .unwrap_or_else(|| entry.stem.clone());
+            SelectItem::new(&entry.stem, &label)
                 .with_description(&description)
-                .with_search_text(&format!("{} {}", entry.label, entry.stem))
+                .with_search_text(&format!("{} {}", label, entry.stem))
         })
         .collect()
+}
+
+/// Read the titles of the session rows the list shows, and redraw the rows
+/// when a title was read.
+///
+/// A search needs every title, so a query reads them all; browsing reads only
+/// the rows on screen.
+pub(super) fn refresh_session_menu_titles(
+    state: &Arc<TuiState>,
+    view: &SelectorView,
+    tui: &Arc<TuiAltScreen>,
+) {
+    let query = search_value(view);
+    let (start, end) = view.visible_range();
+    let menu = state.session_menu.lock().unwrap();
+    let changed = if query.is_empty() {
+        resolve_entry_titles(&menu.entries, start..end)
+    } else {
+        resolve_all_entry_titles(&menu.entries)
+    };
+    if !changed {
+        return;
+    }
+    let items = session_menu_items(&menu.entries, menu.show_path);
+    let selected = selected_index(view);
+    drop(menu);
+    refresh_items(view, items);
+    set_selected_index(view, selected);
+    tui.request_render(false);
 }
 
 /// `~/…` for a path under the home directory.
@@ -633,6 +702,7 @@ fn move_tree_selection(view: &SelectorView, delta: i64) {
         SelectorView::List(list) => list.set_selected_index(next),
         SelectorView::Searchable(searchable) => searchable.list().set_selected_index(next),
         SelectorView::Settings(_) => {}
+        SelectorView::Trust(_) => {}
     }
 }
 

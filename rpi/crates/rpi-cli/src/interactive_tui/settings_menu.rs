@@ -491,8 +491,15 @@ fn options_screen(
 
 /// The themes the port can apply.
 pub(super) fn available_theme_names() -> Vec<&'static str> {
-    vec!["dark", "light", "monochrome"]
+    // pi's themes: the system theme (which follows the terminal's appearance)
+    // and the built-in light and dark palettes
+    // (`components/settings-selector.ts:216-231`).
+    vec!["system", "dark", "light"]
 }
+
+/// pi's "automatic" row: the separate light and dark palettes, chosen by the
+/// terminal's appearance (`components/settings-selector.ts:226-233`).
+pub(super) const AUTOMATIC_THEME_VALUE: &str = "automatic";
 
 /// The rows of the `/settings` menu, in pi's order.
 ///
@@ -508,7 +515,10 @@ pub(super) fn settings_menu_rows(
     lane_model_id: &str,
     catalog: &[rpi_ai::Model],
 ) -> Vec<SettingsRow> {
-    let current_theme = settings.theme.clone().unwrap_or_else(|| "dark".to_string());
+    let current_theme = settings
+        .theme
+        .clone()
+        .unwrap_or_else(|| "system".to_string());
     let follow_up_key = rpi_tui::key_text("app.message.followUp");
     let cycle_thinking_key = rpi_tui::key_text("app.thinking.cycle");
     let show_cache_miss = settings.show_cache_miss_notices.unwrap_or(false);
@@ -887,23 +897,47 @@ pub(super) fn settings_menu_rows(
         SettingsSubmenu::Options {
             title: "Theme".to_string(),
             description: "Select a theme, or choose automatic to follow terminal appearance.".to_string(),
-            options: available_theme_names()
-                .into_iter()
-                .map(|name| {
-                    let label = if name == current_theme {
-                        format!("✓ {name}")
-                    } else {
-                        format!("  {name}")
-                    };
-                    SelectItem::new(name, &label)
-                })
-                .collect(),
+            options: theme_submenu_items(&current_theme),
             current: current_theme.clone(),
             searchable: false,
         },
     ));
 
     rows
+}
+
+/// pi's theme rows: the system theme, the automatic mode, then the rest.
+///
+/// The system theme carries the description "Follows the terminal's light or
+/// dark mode" and the automatic row "Use separate themes for light and dark
+/// terminal appearance" (`components/settings-selector.ts:216-233`).
+pub(super) fn theme_submenu_items(current: &str) -> Vec<SelectItem> {
+    let mut items: Vec<SelectItem> = Vec::new();
+    let mut rest: Vec<SelectItem> = Vec::new();
+    for name in available_theme_names() {
+        let label = if name == current {
+            format!("\u{2713} {name}")
+        } else {
+            format!("  {name}")
+        };
+        let item = if name == "system" {
+            SelectItem::new(name, &label)
+                .with_description("Follows the terminal's light or dark mode")
+        } else {
+            SelectItem::new(name, &label)
+        };
+        if name == "system" {
+            items.push(item);
+        } else {
+            rest.push(item);
+        }
+    }
+    items.push(
+        SelectItem::new(AUTOMATIC_THEME_VALUE, "  automatic")
+            .with_description("Use separate themes for light and dark terminal appearance"),
+    );
+    items.extend(rest);
+    items
 }
 
 /// The label pi shows for a project trust value.

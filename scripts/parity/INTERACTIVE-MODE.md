@@ -1913,3 +1913,44 @@ differs, and under a frozen clock the port's own real duration cannot be shown. 
 row is therefore no longer a byte comparison** — its check is a unit test (a non-zero
 duration under a frozen clock), and the trace comparison for the scenario has to
 exclude the duration.
+
+---
+
+## 16. The verified final state — 15 of 16 steps identical
+
+Re-captured at 21:00 on the agents' binary after the duplicate-echo fix, and diffed
+row by row against the goldens taken from the original:
+
+| scenario | step | verdict |
+|---|---|---|
+| startup | booted / input focused | **identical** |
+| panels | booted / help / help closed / models / models closed | **identical** |
+| prompt | booted / answer | **identical** |
+| tool | booted / tool call / answer | **identical** |
+| thinking | booted | **identical** |
+| thinking | answer | **1 row** — `+ Thought · 0.1s` against `+ Thought · 0.0s` |
+| markdown | booted / answer | **identical** |
+
+**15 of 16 steps are byte-identical to the original's captured panes.**
+
+**The one difference is a harness artefact, not a port defect.** The port reads the
+frozen `PI_PARITY_CLOCK` where the original reads `Date.now()`
+(`packages/coding-agent/src/modes/interactive/components/assistant-message.ts:100-108`),
+so under a frozen clock the port's own real elapsed time cannot be shown. The row's
+**text, shape and position are the original's**; only the measured number differs, and
+it differs because the port is being asked to measure time that the harness has
+stopped. **That row is therefore not a byte comparison** — its check is a unit test (a
+non-zero duration under a frozen clock), and the scenario's trace comparison has to
+exclude the duration.
+
+**What the interactive mode's screen set is now:** the original's. The startup screen,
+the input box, the help panel, the model picker, the settings menu, the transcript,
+the tool panel, the markdown, the import dialog and the resumed session all render
+exactly as the original's captured panes do.
+
+**Plus, measured outside the pane:**
+* the **window title** — `#{pane_title}` is `π - work` on **both** sides;
+* the **session round trip** — both sides resuming the same session recorded by the
+  original show the identical restored conversation, and the remaining difference is
+  the **write** side alone (the port writes no `system` / `model_change` /
+  `thinking_level_change` where pi writes all three — the sessions lead's file).

@@ -21,7 +21,7 @@ use super::scroll_view::ScrollView;
 use super::tui::{OverlayBounds, OverlayHandle, OverlayOptions, TuiMode, TuiStopOptions, TUI};
 use crate::ansi::{visible_width, CURSOR_MARKER, FAKE_CURSOR_END, FAKE_CURSOR_START};
 use crate::terminal::{InputEvent, Terminal, TerminalInfo};
-use crate::terminal_colors::request_terminal_colors;
+use crate::terminal_colors::request_terminal_colors_preserving;
 
 /// Symbol for ViewportTUI capability check.
 pub const VIEWPORT_TUI: &[u8] = b"rpi-tui/viewport";
@@ -781,6 +781,12 @@ impl TuiAltScreen {
     /// diff-line width sizing) without re-reading the terminal themselves.
     pub fn width(&self) -> usize {
         self.terminal.lock().map(|t| t.columns()).unwrap_or(80)
+    }
+
+    /// Get the current terminal row count (cached, refreshed on resize).
+    /// The editor needs it for the page size and the height cap.
+    pub fn rows(&self) -> usize {
+        self.terminal.lock().map(|t| t.rows()).unwrap_or(24)
     }
 
     /// Get the row count of the frame being rendered.
@@ -2239,7 +2245,9 @@ impl TUI for TuiAltScreen {
         if let Ok(terminal) = self.terminal.lock() {
             terminal.enter_raw_mode();
         }
-        self.query_terminal_colors();
+        // The readerless path keeps the input the query read; this path's
+        // reader thread owns the terminal's input.
+        let _ = self.query_terminal_colors();
         if let Ok(terminal) = self.terminal.lock() {
             terminal.start(
                 Box::new(move |event: InputEvent| {
@@ -2349,6 +2357,16 @@ impl TuiAltScreen {
     /// for calling `note_resize` on `Event::Resize`, and for running the
     /// `ensure_size` watchdog from a periodic tick.
     pub fn start_readerless(&self) {
+        self.start_readerless_preserving_input();
+    }
+
+    /// The same as [`TuiAltScreen::start_readerless`], but the input the
+    /// terminal's colour query read is kept.
+    ///
+    /// The query reads the terminal's input, so the bytes that are not part
+    /// of the reply are the user's keystrokes. They are returned instead of
+    /// being eaten: the caller replays them into its input loop.
+    pub fn start_readerless_preserving_input(&self) -> Vec<crossterm::event::Event> {
         if let Ok(mut running) = self.running.lock() {
             *running = true;
         }
@@ -2370,29 +2388,33 @@ impl TuiAltScreen {
             }
             terminal.flush();
         }
-        self.query_terminal_colors();
+        let preserved = self.query_terminal_colors();
         self.do_render(false);
+        preserved
     }
 
     /// Ask the terminal for its colors and let the theme follow them.
-    fn query_terminal_colors(&self) {
-        let colors = {
+    ///
+    /// The input the query read is returned: it is the user's, not the
+    /// terminal's.
+    fn query_terminal_colors(&self) -> Vec<crossterm::event::Event> {
+        let (colors, preserved) = {
             let Ok(terminal) = self.terminal.lock() else {
-                return;
+                return Vec::new();
             };
             if !terminal.is_tty() {
-                return;
+                return Vec::new();
             }
-            request_terminal_colors(
+            request_terminal_colors_preserving(
                 terminal.as_ref(),
                 crate::terminal_colors::TERMINAL_COLOR_QUERY_TIMEOUT,
             )
         };
-        if colors == crate::terminal_colors::TerminalColors::default() {
-            return;
+        if colors != crate::terminal_colors::TerminalColors::default() {
+            crate::theme::global_theme_manager().apply_terminal_colors(&colors);
+            self.request_render(false);
         }
-        crate::theme::global_theme_manager().apply_terminal_colors(&colors);
-        self.request_render(false);
+        crate::terminal_colors::bytes_to_key_events(&preserved)
     }
 
     /// Render a frame while reusing scroll-view content. This is appropriate

@@ -858,7 +858,24 @@ mod tests {
             cwd: "/proj".into(),
             metadata: None,
         };
-        let _ = r.create_typed(&opts).await.unwrap();
+        let first = r.create_typed(&opts).await.unwrap();
+        // The id is taken once the session has a file: the original's
+        // duplicate check reads the directory for `_<id>.jsonl`
+        // (`packages/coding-agent/src/core/session-manager.ts:589`), and the
+        // file appears with the first turn.
+        first
+            .append_entry(
+                ProvisionedEntry {
+                    id: "e1".into(),
+                    kind: ProvisionedKind::Message {
+                        message: user_msg("hi"),
+                        terminate: None,
+                    },
+                },
+                "main",
+            )
+            .await
+            .unwrap();
         let err = r.create_typed(&opts).await.err().unwrap();
         assert_eq!(err.code, SessionErrorCode::AlreadyExists);
     }
@@ -870,12 +887,27 @@ mod tests {
         let r = repo(fs);
 
         // Trait create uses the repo's default cwd ("/proj" from env.cwd).
-        let _storage = r
+        let storage = r
             .create(&SessionCreateOptions {
                 id: Some("t-1".into()),
                 parent_session_id: None,
                 metadata: None,
             })
+            .await
+            .unwrap();
+        // A session has no file until its first turn, so the listing only
+        // sees it once it does (the original's `listSessions` scans the files).
+        storage
+            .append_entry(
+                ProvisionedEntry {
+                    id: "e1".into(),
+                    kind: ProvisionedKind::Message {
+                        message: user_msg("hi"),
+                        terminate: None,
+                    },
+                },
+                "main",
+            )
             .await
             .unwrap();
         let listed = r.list().await.unwrap();
@@ -981,13 +1013,27 @@ mod tests {
         meta.insert("title".into(), JsonValue::String("my session".into()));
         meta.insert("count".into(), JsonValue::Number(42.into()));
 
-        let _ = r
+        let storage = r
             .create_typed(&JsonlSessionCreateOptions {
                 id: Some("m-1".into()),
                 parent_session_id: None,
                 cwd: "/proj".into(),
                 metadata: Some(meta.clone()),
             })
+            .await
+            .unwrap();
+        // The listing reads the files, so the session needs its first turn.
+        storage
+            .append_entry(
+                ProvisionedEntry {
+                    id: "e1".into(),
+                    kind: ProvisionedKind::Message {
+                        message: user_msg("hi"),
+                        terminate: None,
+                    },
+                },
+                "main",
+            )
             .await
             .unwrap();
         let listed = r
@@ -1017,13 +1063,27 @@ mod tests {
         );
 
         for n in 0..3 {
-            let _ = r
+            let storage = r
                 .create_typed(&JsonlSessionCreateOptions {
                     id: Some(format!("s{n}")),
                     parent_session_id: None,
                     cwd: "/proj".into(),
                     metadata: None,
                 })
+                .await
+                .unwrap();
+            // The listing reads the files, so the session needs its first turn.
+            storage
+                .append_entry(
+                    ProvisionedEntry {
+                        id: format!("e{n}"),
+                        kind: ProvisionedKind::Message {
+                            message: user_msg("hi"),
+                            terminate: None,
+                        },
+                    },
+                    "main",
+                )
                 .await
                 .unwrap();
         }

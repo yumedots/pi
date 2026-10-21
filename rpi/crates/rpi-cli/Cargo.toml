@@ -22,6 +22,7 @@ categories = [
 rpi-ai = { workspace = true, features = ["providers"] }
 rpi-agent = { workspace = true }
 rpi-tools = { workspace = true }
+rpi-mcp = { workspace = true }
 rpi-harness = { workspace = true }
 rpi-tui = { workspace = true }
 rpi-plugin-sdk = { workspace = true }

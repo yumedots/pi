@@ -4,7 +4,6 @@
 # keys: /settings Enter
 # note: /settings: the settings list.
 
-
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
  Press ctrl+o to show full startup help.
@@ -15,7 +14,7 @@
  Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
  on` to ~/.tmux.conf and restart tmux.
 
-
+────────────────────────────────────────────────────────────────────────────────────────────────────
 >
 
 → Auto-compact                      true
@@ -33,4 +32,5 @@
   Automatically compact context when it gets too large
 
   Type to search · Enter/Space to change · Esc to cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────
 mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                    /private/tmp/pi-screens/work/settings-list

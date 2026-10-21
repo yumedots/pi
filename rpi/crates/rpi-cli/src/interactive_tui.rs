@@ -61,7 +61,12 @@ mod rendering;
 use rendering::*;
 mod header;
 use header::*;
+mod trust;
+use trust::*;
+mod mcp_manager;
 mod empty_session;
+mod input;
+use input::*;
 mod panels;
 mod pet;
 mod progress;
@@ -69,6 +74,9 @@ mod side_questions;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod input_tests;
 
 mod state;
 pub(crate) use state::configured_keybindings;
@@ -465,6 +473,24 @@ fn char_shortcut_name(ch: char) -> Option<String> {
     }
 }
 
+/// Give a key to the editor and refresh the suggestion list.
+///
+/// This is where the interactive mode's key loop ends: a key that no dialog,
+/// selector or shortcut claimed belongs to the editor. The editor maps
+/// unmodified Enter and the encodings a remote client may send for it
+/// (`Char('\n')`/`Char('\r')`, and the raw LF crossterm reports as `Ctrl+J`) to
+/// submit, so a remote Enter sends instead of inserting a newline.
+pub(super) fn dispatch_key_to_editor(
+    state: &Arc<TuiState>,
+    editor: &Arc<Editor>,
+    tui: &Arc<TuiAltScreen>,
+    key: &KeyEvent,
+) {
+    editor.handle_key(*key);
+    refresh_autocomplete(state, editor);
+    tui.request_render_reusing_scroll_content();
+}
+
 /// Route one key event to extension `Input` handlers when the key is claimed as
 /// a shortcut. Returns `true` when the key was claimed (the caller must then
 /// skip normal editor handling).
@@ -650,6 +676,161 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// Install the tools the JavaScript extensions registered into the harness.
+///
+/// The extension's tools must be in the session's tool set or the model cannot
+/// call them. An extension may register its tools in a lifecycle hook that runs
+/// after startup, so the list is refreshed before every run as well.
+async fn install_extension_tools(
+    harness: &AgentHarness,
+    extensions: &crate::js_extensions::JsExtensions,
+) {
+    let mut harness_tools = harness.get_tools().await.unwrap_or_default();
+    let mut active_tools = harness
+        .lane("main")
+        .get_active_tools()
+        .await
+        .unwrap_or_default();
+    for entry in extensions.tools() {
+        let name = entry
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let label = entry
+            .get("label")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(&name)
+            .to_string();
+        let description = entry
+            .get("description")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let parameters = entry
+            .get("parameters")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({ "type": "object" }));
+        let tool = crate::js_tools::JsTool::new(
+            extensions.clone(),
+            &name,
+            &label,
+            &description,
+            parameters,
+        );
+        harness_tools.retain(|slot| slot.tool.schema().name != name);
+        harness_tools.push(rpi_harness::types::HarnessTool::new(Arc::new(tool)));
+        if !active_tools.contains(&name) {
+            active_tools.push(name);
+        }
+    }
+    harness
+        .set_tools(harness_tools, Some(active_tools))
+        .await
+        .ok();
+}
+
+/// Install the MCP servers' tools into the harness.
+///
+/// A server that connects after the session started (an extension registered
+/// it, or it was slow) offers its tools late, so the list is refreshed before
+/// every run: a tool the model cannot see is a tool it cannot call.
+async fn install_mcp_tools(
+    harness: &AgentHarness,
+    manager: &Arc<crate::mcp::McpManager>,
+    args: &crate::args::Args,
+) {
+    let mut harness_tools = harness.get_tools().await.unwrap_or_default();
+    let mut active_tools = harness
+        .lane("main")
+        .get_active_tools()
+        .await
+        .unwrap_or_default();
+    harness_tools.retain(|slot| !crate::mcp::is_mcp_tool_name(&slot.tool.schema().name));
+    active_tools.retain(|name| !crate::mcp::is_mcp_tool_name(name));
+    let mut tools = Vec::new();
+    let mut active = Vec::new();
+    crate::session::merge_mcp_tools(&mut tools, &mut active, manager, args);
+    for tool in tools {
+        harness_tools.push(tool);
+    }
+    for name in active {
+        if !active_tools.contains(&name) {
+            active_tools.push(name);
+        }
+    }
+    harness
+        .set_tools(harness_tools, Some(active_tools))
+        .await
+        .ok();
+}
+
+/// Load the skills and prompt templates an extension's `resources_discover`
+/// answer names and merge them into the session's resources, so the next run's
+/// system prompt lists them.
+///
+/// The answer is pi's `ResourcesDiscoverResult`: `skillPaths`,
+/// `promptPaths` and `themePaths`. The port's themes are built in, so the
+/// theme paths have nothing to load.
+async fn apply_discovered_resources(
+    harness: &AgentHarness,
+    resources: &Arc<Mutex<rpi_harness::types::AgentHarnessResources>>,
+    cwd: &std::path::Path,
+    answer: &serde_json::Value,
+) {
+    let skill_paths = discovered_paths(answer, "skillPaths");
+    let prompt_paths = discovered_paths(answer, "promptPaths");
+    if skill_paths.is_empty() && prompt_paths.is_empty() {
+        return;
+    }
+    let env = Arc::new(rpi_tools::OsExecutionEnv::with_cwd(cwd.to_path_buf()));
+    let env_dyn: Arc<dyn rpi_tools::ExecutionEnv> = env;
+    let mut current = resources.lock().map(|slot| slot.clone()).unwrap_or_default();
+    if !skill_paths.is_empty() {
+        let loaded = crate::resource_dirs::load_skills_with_precedence(&env_dyn, &skill_paths).await;
+        let mut skills = current.skills.clone().unwrap_or_default();
+        for skill in loaded.skills {
+            if !skills.iter().any(|existing| existing.name == skill.name) {
+                skills.push(skill);
+            }
+        }
+        current.skills = Some(skills);
+    }
+    if !prompt_paths.is_empty() {
+        let loaded =
+            crate::resource_dirs::load_prompt_templates_with_precedence(&env_dyn, &prompt_paths).await;
+        let mut templates = current.prompt_templates.clone().unwrap_or_default();
+        for template in loaded.prompt_templates {
+            if !templates.iter().any(|existing| existing.name == template.name) {
+                templates.push(template);
+            }
+        }
+        current.prompt_templates = Some(templates);
+    }
+    if let Ok(mut slot) = resources.lock() {
+        *slot = current.clone();
+    }
+    harness.set_resources(current).await.ok();
+}
+
+/// The paths a `resources_discover` answer names under `key`.
+fn discovered_paths(answer: &serde_json::Value, key: &str) -> Vec<std::path::PathBuf> {
+    answer
+        .get(key)
+        .and_then(serde_json::Value::as_array)
+        .map(|paths| {
+            paths
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(std::path::PathBuf::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Parse a submitted line into a user shell command.
 ///
 /// Mirrors upstream's `text.startsWith("!")` handling
@@ -808,6 +989,8 @@ enum TuiMessage {
     ShowUsage,
     /// Browse and run a skill (from `/skills`).
     ShowSkills,
+    /// Open the MCP manager (from `/mcp`).
+    ShowMcpManager,
     /// Report a bug to the original's developers (from `/bug <description>`).
     ReportBug(String),
     /// Show the session info and stats (from `/stats`).
@@ -943,6 +1126,19 @@ struct TuiStartupSettings {
     /// The terminal buffer the TUI draws into (`tuiMode`). The original
     /// defaults to fullscreen on every platform.
     tui_mode: crate::args::TuiMode,
+    /// Use the terminal's own cursor (`showHardwareCursor`).
+    show_hardware_cursor: bool,
+    /// The fullscreen transcript's scrollbar (`fullscreenScrollbar`).
+    fullscreen_scrollbar: &'static str,
+    /// The lines a wheel event scrolls (`fullscreenWheelScrollLines`); `None`
+    /// is `auto`.
+    fullscreen_wheel_scroll_lines: Option<u32>,
+    /// The transcript's horizontal padding (`outputPad`).
+    output_pad: usize,
+    /// Where the completion list is painted (`autocompletePosition`).
+    autocomplete_position: &'static str,
+    /// The filter `/tree` opens with (`treeFilterMode`).
+    tree_filter_mode: &'static str,
 }
 
 fn preferred_project_setting<T>(
@@ -969,6 +1165,25 @@ static NORMAL_ROOT: LazyLock<Mutex<Option<Arc<dyn Component>>>> =
 /// Whether the 3-D empty-session screen owns the pane.
 static EMPTY_SESSION_ACTIVE: LazyLock<std::sync::atomic::AtomicBool> =
     LazyLock::new(|| std::sync::atomic::AtomicBool::new(false));
+
+/// The empty-session screen's centred input block: the input box with the
+/// suggestion list under it.
+///
+/// The suggestion list belongs to the input box, and the empty-session screen
+/// owns the input box: upstream paints the list below the editor while the
+/// screen is up (`autocompletePosition()` returns "below" there,
+/// `interactive-mode.ts:941-945`), so the popup joins the editor in the same
+/// centred block. The dock's copy of the container is not mounted while this
+/// screen owns the pane.
+fn empty_session_input_block(
+    editor_container: Arc<Container>,
+    autocomplete_container: Arc<Container>,
+) -> Arc<dyn Component> {
+    let block = Arc::new(Container::new());
+    block.add_child(editor_container);
+    block.add_child(autocomplete_container);
+    Arc::new(Centered::new(block, EMPTY_SESSION_EDITOR_WIDTH))
+}
 
 #[derive(Clone)]
 struct EmptySession {
@@ -1034,6 +1249,27 @@ async fn session_has_messages(harness: &AgentHarness) -> bool {
 
 fn should_show_startup_listing(verbose: bool, quiet_startup: bool) -> bool {
     verbose || !quiet_startup
+}
+
+/// Apply the terminal capability overrides the settings file can force.
+/// Upstream's `getTerminalCapabilityOverrides`
+/// (`packages/coding-agent/src/core/settings-manager.ts:1188`): the image
+/// protocol, the colour mode and the OSC 8 hyperlinks.
+fn apply_terminal_capability_overrides(settings: &crate::settings::Settings) {
+    let overrides = settings.terminal_capability_overrides();
+    if let Some(protocol) = overrides.images {
+        let mut capabilities = rpi_tui::get_capabilities();
+        capabilities.protocol = protocol;
+        rpi_tui::set_capabilities(capabilities);
+    }
+    if let Some(true_color) = overrides.true_color {
+        rpi_tui::ansi::set_color_mode(if true_color {
+            rpi_tui::ansi::ColorMode::TrueColor
+        } else {
+            rpi_tui::ansi::ColorMode::Ansi256
+        });
+    }
+    rpi_tui::markdown::set_hyperlinks(overrides.hyperlinks);
 }
 
 /// `project_settings` is ordered by precedence; an explicit `Some`
@@ -1107,6 +1343,66 @@ fn resolve_tui_startup_settings(
     })
     .or(global.enable_skill_commands)
     .unwrap_or(true);
+    let show_hardware_cursor = preferred_project_setting(project_settings, |settings| {
+        settings.show_hardware_cursor
+    })
+    .or(global.show_hardware_cursor)
+    .unwrap_or_else(|| global.show_hardware_cursor());
+    let fullscreen_scrollbar = preferred_project_setting(project_settings, |settings| {
+        settings.fullscreen_scrollbar.clone()
+    })
+    .or(global.fullscreen_scrollbar.clone())
+    .map(|mode| {
+        if mode == "always" {
+            "always"
+        } else if mode == "hidden" {
+            "hidden"
+        } else {
+            "auto"
+        }
+    })
+    .unwrap_or("auto");
+    let fullscreen_wheel_scroll_lines = preferred_project_setting(project_settings, |settings| {
+        settings.fullscreen_wheel_scroll_lines.clone()
+    })
+    .or(global.fullscreen_wheel_scroll_lines.clone())
+    .and_then(|value| match value {
+        serde_json::Value::Number(lines) => {
+            let lines = lines.as_f64().unwrap_or_default().floor();
+            Some(lines.clamp(1.0, 100.0) as u32)
+        }
+        _ => None,
+    });
+    let output_pad = preferred_project_setting(project_settings, |settings| settings.output_pad)
+        .or(global.output_pad)
+        .map(|pad| if pad == 0 { 0 } else { 1 })
+        .unwrap_or(1);
+    let autocomplete_position = preferred_project_setting(project_settings, |settings| {
+        settings.autocomplete_position.clone()
+    })
+    .or(global.autocomplete_position.clone())
+    .map(|position| {
+        if position == "below" {
+            "below"
+        } else {
+            "above"
+        }
+    })
+    .unwrap_or("above");
+    let tree_filter_mode = preferred_project_setting(project_settings, |settings| {
+        settings.tree_filter_mode.clone()
+    })
+    .or(global.tree_filter_mode.clone())
+    .map(|mode| {
+        match mode.as_str() {
+            "no-tools" => "no-tools",
+            "user-only" => "user-only",
+            "labeled-only" => "labeled-only",
+            "all" => "all",
+            _ => "default",
+        }
+    })
+    .unwrap_or("default");
 
     TuiStartupSettings {
         editor_padding_x,
@@ -1120,6 +1416,12 @@ fn resolve_tui_startup_settings(
         three_d_empty_session,
         enable_skill_commands,
         tui_mode,
+        show_hardware_cursor,
+        fullscreen_scrollbar,
+        fullscreen_wheel_scroll_lines,
+        output_pad,
+        autocomplete_position,
+        tree_filter_mode,
     }
 }
 
@@ -1148,6 +1450,49 @@ pub async fn interactive_tui(
     _no_themes: bool,
     reload_context: &crate::session::ReloadContext,
 ) -> i32 {
+    interactive_tui_with(
+        harness,
+        event_rx,
+        args,
+        model_catalog,
+        initial,
+        extra_messages,
+        initial_images,
+        theme,
+        _no_themes,
+        reload_context,
+        Arc::new(Keyboard::terminal()),
+    )
+    .await
+}
+
+/// The interactive mode with its own keyboard.
+///
+/// The keyboard is the mode's input: it exists before the screen is
+/// assembled, so the keystrokes that arrive while the startup is still
+/// running wait in it instead of being lost.
+pub(crate) async fn interactive_tui_with(
+    harness: &AgentHarness,
+    event_rx: Option<broadcast::Receiver<AgentEvent>>,
+    args: &Args,
+    model_catalog: Vec<rpi_ai::Model>,
+    initial: Option<String>,
+    extra_messages: &[String],
+    initial_images: Vec<rpi_ai::types::ImageContent>,
+    theme: Option<&str>,
+    _no_themes: bool,
+    reload_context: &crate::session::ReloadContext,
+    keyboard: Arc<Keyboard>,
+) -> i32 {
+    // The keyboard is live from the first moment: the terminal goes into raw
+    // mode before the screen is assembled, so the keystrokes the user types
+    // while the startup is still running are delivered to the app instead of
+    // waiting in the terminal's line buffer for a newline.
+    //
+    // The original starts its UI before the rest of the startup finishes
+    // (`interactive-mode.ts:1100`), so the text typed during the startup
+    // reaches the editor.
+    let _ = crossterm::terminal::enable_raw_mode();
     let lane: Arc<dyn AgentLane> = harness.lane("main");
     // Reuse the startup snapshot captured before provider/session setup. An
     // extension may mutate the process cwd while loading; that must not change
@@ -1255,7 +1600,11 @@ pub async fn interactive_tui(
 
     // ---- TUI + containers ----
     let terminal = Box::new(ProcessTerminal::new());
-    let tui = Arc::new(TuiAltScreen::new(terminal, true, None));
+    let tui = Arc::new(TuiAltScreen::new(
+        terminal,
+        tui_settings.show_hardware_cursor,
+        None,
+    ));
     // The alternate screen owns the mouse selection, so it copies through the
     // system clipboard instead of an OSC 52 write the terminal may drop.
     tui.set_copy_selection(Arc::new(|text: &str| {
@@ -1267,6 +1616,12 @@ pub async fn interactive_tui(
             .and_then(|settings| settings.fullscreen_copy_on_select)
             .unwrap_or(true),
     );
+    // `fullscreenWheelScrollLines`: the lines one wheel event scrolls.
+    // Upstream's `auto` accelerates a fast spin; the port's accelerator is
+    // the fixed-line kind, so `auto` keeps the port's default.
+    if let Some(lines) = tui_settings.fullscreen_wheel_scroll_lines {
+        tui.set_wheel_scroll_lines(lines as i32);
+    }
     // Plugin `ask_user` prompts (runtime action 17). Attaching marks this
     // session as interactive so a detached/headless host fails loudly instead
     // of returning a fabricated answer. The mailbox is session-scoped (held in
@@ -1280,6 +1635,17 @@ pub async fn interactive_tui(
     tui.set_title(&crate::window_title::window_title(session_name.as_deref(), &cwd));
     // The progress hairline is gated by `terminal.showTerminalProgress`.
     progress::set_progress_enabled(show_terminal_progress);
+    // `outputPad`: the transcript's horizontal padding. The transcript
+    // components read it when they are built, so it is set before the first
+    // one exists (upstream's `interactive-mode.ts:690`).
+    rpi_tui::output_pad::set_output_pad(tui_settings.output_pad);
+    // `markdown.codeBlockIndent`: the prefix every rendered code-block line
+    // gets (upstream's `interactive-mode.ts:1463`).
+    rpi_tui::markdown::set_code_block_indent(saved_settings.code_block_indent());
+    // `terminal.hyperlinks` / `terminal.images` / `terminal.trueColor`: the
+    // capability overrides the settings file can force (upstream's
+    // `getTerminalCapabilityOverrides`, `core/settings-manager.ts:1188`).
+    apply_terminal_capability_overrides(&saved_settings);
 
     let chat_container = Arc::new(Container::new());
     // First-launch gate: the original asks for a theme on a fresh install and
@@ -1289,6 +1655,28 @@ pub async fn interactive_tui(
         Arc::new(std::sync::Mutex::new(None));
     if let Some(dialog) = crate::extras::first_run_dialog(&theme_manager) {
         *first_run.lock().unwrap() = Some(dialog);
+    }
+    // The trust prompt: when the folder holds project resources and no
+    // decision is stored, upstream asks before the resources load
+    // (`core/project-trust.ts:74-85`).
+    let trust_prompt: Arc<std::sync::Mutex<Option<Arc<TrustPrompt>>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    if trust_prompt_needed(&cwd) {
+        let prompt = Arc::new(TrustPrompt::new(&cwd));
+        let slot = trust_prompt.clone();
+        let cwd_prompt = cwd.clone();
+        let chat_prompt = chat_container.clone();
+        prompt.on_select(Arc::new(move |chosen| {
+            if let Some(option) = chosen {
+                apply_trust_choice(&option, &cwd_prompt, &chat_prompt);
+            }
+            *slot.lock().unwrap() = None;
+        }));
+        let slot = trust_prompt.clone();
+        prompt.on_cancel(Arc::new(move || {
+            *slot.lock().unwrap() = None;
+        }));
+        *trust_prompt.lock().unwrap() = Some(prompt);
     }
     // The startup header is a component of its own, so `app.tools.expand` can
     // re-render it expanded and the mark can be clicked (upstream's
@@ -1367,7 +1755,11 @@ pub async fn interactive_tui(
             // upstream keeps transcript chrome out of the way. Our Auto mode
             // has no hide timer yet and therefore became effectively permanent
             // after the first wheel event, unlike the upstream experience.
-            scrollbar: ScrollbarMode::Hidden,
+            scrollbar: match tui_settings.fullscreen_scrollbar {
+                "always" => ScrollbarMode::Always,
+                "hidden" => ScrollbarMode::Hidden,
+                _ => ScrollbarMode::Auto,
+            },
             ..Default::default()
         },
     ));
@@ -1491,6 +1883,7 @@ pub async fn interactive_tui(
                 }
             })),
             project_trusted: std::sync::atomic::AtomicBool::new(reload_context.project_trusted),
+            mcp: reload_context.mcp.clone(),
             ..Default::default()
         };
         let session = Arc::new(session);
@@ -1501,6 +1894,11 @@ pub async fn interactive_tui(
         let sink = crate::js_emitter::JsEventSink::new();
         sink.set_extensions(extensions.clone());
         rpi_extensions::install_event_sink(sink);
+        // The port's own extensions come first: the `/mcp` command is the
+        // original's name for the port's own MCP support.
+        if let Err(error) = extensions.load_builtin("mcp") {
+            add_note_message(&chat_container, &format!("Extension \"mcp\" error: {error}"));
+        }
         for path in &js_extension_paths {
             if let Err(error) = extensions.load(path) {
                 add_note_message(
@@ -1512,52 +1910,12 @@ pub async fn interactive_tui(
         // The extension's tools are declared to the model: a tool the
         // extension registers has to be in the session's tool set, or the
         // model cannot call it.
-        let mut harness_tools = harness.get_tools().await.unwrap_or_default();
-        let mut active_tools = harness
-            .lane("main")
-            .get_active_tools()
-            .await
-            .unwrap_or_default();
-        for entry in extensions.tools() {
-            let name = entry
-                .get("name")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            if name.is_empty() {
-                continue;
-            }
-            let label = entry
-                .get("label")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or(&name)
-                .to_string();
-            let description = entry
-                .get("description")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            let parameters = entry
-                .get("parameters")
-                .cloned()
-                .unwrap_or_else(|| serde_json::json!({ "type": "object" }));
-            let tool = crate::js_tools::JsTool::new(
-                extensions.clone(),
-                &name,
-                &label,
-                &description,
-                parameters,
-            );
-            harness_tools.retain(|slot| slot.tool.schema().name != name);
-            harness_tools.push(rpi_harness::types::HarnessTool::new(Arc::new(tool)));
-            if !active_tools.contains(&name) {
-                active_tools.push(name);
-            }
+        install_extension_tools(&harness, &extensions).await;
+        // The same for the MCP servers an extension registered: their tools
+        // join the model's tool set as `mcp__<server>__<tool>`.
+        if let Some(manager) = reload_context.mcp.clone() {
+            install_mcp_tools(&harness, &manager, args).await;
         }
-        harness
-            .set_tools(harness_tools, Some(active_tools))
-            .await
-            .ok();
 
         // The provider hooks are what publish the events that fire on every
         // LLM call (`before_provider_request`, `before_provider_headers`,
@@ -1615,7 +1973,7 @@ pub async fn interactive_tui(
     }
     let registry = Arc::new(command_registry);
     let mut all_slash_commands = registry.visible_entries();
-    all_slash_commands.extend(template_slash_commands);
+    all_slash_commands.extend(template_slash_commands.iter().cloned());
     let skill_mentions = resources_arc
         .lock()
         .unwrap()
@@ -1641,33 +1999,66 @@ pub async fn interactive_tui(
     };
     // The skill rows join the command list, so `/skill:<name>` is offered next
     // to the built-in commands and the prompt templates.
-    all_slash_commands.extend(skill_slash_commands);
+    all_slash_commands.extend(skill_slash_commands.iter().cloned());
     // The session's commands are what an extension reads with
-    // `pi.getCommands()`; the host answers from the session.
+    // `pi.getCommands()`: the commands the extensions registered, the prompt
+    // templates and the skills — the original's list, which does not carry the
+    // host's own slash commands.
     if let Some(extensions) = js_extensions.as_ref() {
-        extensions.set_commands(
-            all_slash_commands
-                .iter()
-                .map(|entry| {
-                    serde_json::json!({
-                        "name": entry.name,
-                        "description": entry.description,
-                        "source": "extension",
-                        "sourceInfo": {
-                            "path": "",
-                            "source": "auto",
-                            "scope": "user",
-                            "origin": "top-level",
-                        },
-                    })
+        let mut published: Vec<serde_json::Value> = extensions
+            .commands()
+            .iter()
+            .map(|command| {
+                serde_json::json!({
+                    "name": command.name,
+                    "description": command.description,
+                    "source": "extension",
+                    "sourceInfo": {
+                        "path": command.path,
+                        "source": "auto",
+                        "scope": "user",
+                        "origin": "top-level",
+                    },
                 })
-                .collect(),
-        );
+            })
+            .collect();
+        published.extend(template_slash_commands.iter().map(|entry| {
+            serde_json::json!({
+                "name": entry.name,
+                "description": entry.description,
+                "source": "prompt",
+                "sourceInfo": {
+                    "path": "",
+                    "source": "auto",
+                    "scope": "user",
+                    "origin": "top-level",
+                },
+            })
+        }));
+        published.extend(skill_slash_commands.iter().map(|entry| {
+            serde_json::json!({
+                "name": entry.name,
+                "description": entry.description,
+                "source": "skill",
+                "sourceInfo": {
+                    "path": "",
+                    "source": "auto",
+                    "scope": "user",
+                    "origin": "top-level",
+                },
+            })
+        }));
+        extensions.set_commands(published);
     }
     // `session_start` goes out last, and it does not block the TUI: the
     // handler may open a dialog, which the TUI has to present.
     if let Some(extensions) = js_extensions.clone() {
         let chat_for_start = chat_container.clone();
+        let harness_for_discover = harness.clone();
+        let resources_for_discover = resources_arc.clone();
+        let cwd_for_discover = cwd.to_string_lossy().into_owned();
+        let cwd_for_discover_path = cwd.clone();
+        let (discovered_tx, discovered_rx) = tokio::sync::oneshot::channel();
         tokio::task::spawn_blocking(move || {
             if let Err(error) = extensions.dispatch(
                 "session_start",
@@ -1675,6 +2066,30 @@ pub async fn interactive_tui(
             ) {
                 add_note_message(&chat_for_start, &format!("Extension error: {error}"));
             }
+            // pi's `resources_discover` follows `session_start`: the
+            // extensions name the skill, prompt and theme paths the resource
+            // loader reads.
+            let answer = extensions.dispatch(
+                "resources_discover",
+                serde_json::json!({
+                    "type": "resources_discover",
+                    "cwd": cwd_for_discover,
+                    "reason": "startup",
+                }),
+            );
+            let _ = discovered_tx.send(answer);
+        });
+        tokio::spawn(async move {
+            let Ok(Ok(answer)) = discovered_rx.await else {
+                return;
+            };
+            apply_discovered_resources(
+                &harness_for_discover,
+                &resources_for_discover,
+                &cwd_for_discover_path,
+                &answer,
+            )
+            .await;
         });
     }
     // The `/skills` list shows the same skills.
@@ -1763,9 +2178,6 @@ pub async fn interactive_tui(
         current_model_id: std::sync::Mutex::new(lane_model_id.clone()),
         show_images: std::sync::Mutex::new(show_images),
         cache_miss_notices: std::sync::Mutex::new(cache_miss_notices),
-        history: std::sync::Mutex::new(Vec::new()),
-        history_index: std::sync::Mutex::new(-1),
-        history_draft: std::sync::Mutex::new(None),
         cache_tracker: std::sync::Mutex::new(rpi_harness::cache_stats::CacheMissTracker::new()),
         scoped_edit: std::sync::Mutex::new(None),
         markdown_transformer: Arc::new(std::sync::Mutex::new(initial_transformer)),
@@ -1831,7 +2243,10 @@ pub async fn interactive_tui(
     let editor_container = Arc::new(Container::new());
     editor_container.add_child(editor.clone());
 
-    let dock = Arc::new(VStack::from_children(vec![
+    // `autocompletePosition`: the completion list sits above the input by
+    // default and below it when the setting says so (upstream's
+    // `interactive-mode.ts:674`).
+    let mut dock_children = vec![
         StackChild::Entry(StackEntry::new(Arc::new(panels::RegularPanels {
             mailbox: reload_context.ext_status.clone(),
             enabled: matches!(tui_mode, crate::args::TuiMode::Regular),
@@ -1839,7 +2254,11 @@ pub async fn interactive_tui(
         StackChild::Entry(StackEntry::new(state.pending_container().clone())),
         StackChild::Entry(StackEntry::new(state.warning_container.clone())),
         StackChild::Entry(StackEntry::new(status_container.clone())),
-        StackChild::Entry(StackEntry::new(autocomplete_container.clone())),
+    ];
+    if tui_settings.autocomplete_position == "above" {
+        dock_children.push(StackChild::Entry(StackEntry::new(autocomplete_container.clone())));
+    }
+    dock_children.extend([
         StackChild::Entry(StackEntry::new(widget_above.clone())),
         // NOTE: no Spacer here. The scroll content already ends with a blank line
         // (`document_container`), and a second one in the dock stacked into a
@@ -1851,13 +2270,19 @@ pub async fn interactive_tui(
                 .shrink(1)
                 .min_size(3),
         ),
+    ]);
+    if tui_settings.autocomplete_position == "below" {
+        dock_children.push(StackChild::Entry(StackEntry::new(autocomplete_container.clone())));
+    }
+    dock_children.extend([
         StackChild::Entry(StackEntry::new(widget_below.clone())),
         StackChild::Entry(StackEntry::new(state.search_bar.clone())),
         StackChild::Entry(StackEntry::new(footer.clone())),
         StackChild::Entry(StackEntry::new(Arc::new(panels::FooterPanels(
             reload_context.ext_status.clone(),
         )))),
-    ]));
+    ]);
+    let dock = Arc::new(VStack::from_children(dock_children));
 
     let transcript_stack = Arc::new(rpi_tui::HStack::from_entries(vec![StackEntry::new(
         scroll_view.clone(),
@@ -1919,10 +2344,10 @@ pub async fn interactive_tui(
             [0.0, 0.0, 0.0]
         };
         let logo = Arc::new(rpi_tui::logo3d::Logo3d::new(background));
-        let centered_editor = Arc::new(Centered::new(
+        let centered_editor = empty_session_input_block(
             editor_container.clone(),
-            EMPTY_SESSION_EDITOR_WIDTH,
-        ));
+            autocomplete_container.clone(),
+        );
         let empty_session_editor = centered_editor;
         let tui_weak = Arc::downgrade(&tui);
         let height = Arc::new(move || {
@@ -1946,7 +2371,13 @@ pub async fn interactive_tui(
         normal_root: normal_root.clone(),
         active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
-    if empty_session.screen.is_some() {
+    if let Some(prompt) = trust_prompt.lock().unwrap().clone() {
+        // The trust prompt owns the pane, the way the original's startup
+        // prompt does (`core/project-trust.ts:33-40`).
+        let screen = Arc::new(Container::new());
+        screen.add_child(prompt);
+        tui.set_layout_root(Some(screen));
+    } else if empty_session.screen.is_some() {
         empty_session.activate(&tui);
     } else if let Some(dialog) = first_run.lock().unwrap().clone() {
         // The picker gets the pane to itself, like the original's startup
@@ -2039,9 +2470,18 @@ pub async fn interactive_tui(
 
         // The JavaScript extensions see the input before the agent does: one
         // can transform it, or handle it without an agent run.
+        let run_status = *ctx_for_cb.state.status.lock().unwrap();
+        // pi's `input` event says how the input will be delivered while the
+        // agent is streaming: a prompt submitted during a run is steered into
+        // it, an idle one starts a run.
+        let streaming_behavior = if run_status != RunStatus::Idle {
+            Some("steer")
+        } else {
+            None
+        };
         let mut prompt = text.to_string();
         if let Some(extensions) = js_extensions_for_cb.as_ref() {
-            match extensions.emit_input(&prompt) {
+            match extensions.emit_input(&prompt, streaming_behavior) {
                 Ok(value) => {
                     let action = value.get("action").and_then(|action| action.as_str());
                     if action == Some("handled") {
@@ -2080,7 +2520,6 @@ pub async fn interactive_tui(
             return;
         }
 
-        let run_status = *ctx_for_cb.state.status.lock().unwrap();
         if run_status != RunStatus::Idle {
             let images = ctx_for_cb.state.take_pending_images();
             let message = user_message_with_images(text, images.clone());
@@ -2138,6 +2577,7 @@ pub async fn interactive_tui(
         // Remember the message for ↑ recall (slash commands are not part of
         // the replayable message history).
         push_history(&ctx_for_cb.state, text);
+        crate::turn_timing::submit();
         if ctx_for_cb
             .tx
             .send(TuiMessage::UserInput(
@@ -2158,7 +2598,13 @@ pub async fn interactive_tui(
     // long output saturate the terminal (and its GPU compositor). Immediate
     // renders (selectors, the first frame, `render_now(..)`) are unaffected.
     tui.start_render_scheduler();
-    tui.start_readerless();
+    // The terminal's colour query reads the terminal's input, so the bytes
+    // that are not part of the reply are the user's keystrokes. They go back
+    // into the keyboard: the key loop replays them before the terminal's own
+    // events, so the first keystrokes of the session reach the editor.
+    for event in tui.start_readerless_preserving_input() {
+        keyboard.push(event);
+    }
 
     // Consume local self-update results even when network checks are disabled.
     // Check rpi and installed registry packages in the background so startup
@@ -2207,10 +2653,11 @@ pub async fn interactive_tui(
         }
     });
 
-    // ---- Render-tick task (advances the loader spinner while Working) ----
+    // ---- Render-tick task (repaints while Working) ----
     //
-    // The `Loader` only advances its frame on render; without a periodic
-    // `request_render` the spinner visibly freezes between events.
+    // The animated indicators advance their own frame counters on upstream's
+    // 80ms cadence; the tick only *requests a repaint*, so the spinner keeps
+    // moving between events.
     let tui_tick = tui.clone();
     let state_tick = state.clone();
     // The tick, not the key loop, drives the voice-draft auto-send: it must
@@ -2238,13 +2685,10 @@ pub async fn interactive_tui(
     let header_container_tick = header_container.clone();
     let tick_handle = tokio::spawn(async move {
         // 80ms per frame — upstream's `DEFAULT_INTERVAL_MS`, i.e. a full
-        // 10-frame cycle every 800ms. The tick only *requests a repaint*; the
-        // frame is advanced by `Editor::render` (mirroring `Loader::render`),
-        // so streaming output — which schedules a frame per token — spins it
-        // faster, and this interval is the floor when the model is silent.
-        //
-        // Advancing here as well would double-step every tick and make the idle
-        // spinner run at 40ms/frame, twice upstream's rate.
+        // 10-frame cycle every 800ms. The tick only *requests a repaint*: the
+        // indicators advance their own frame counters on the same cadence, so
+        // the spinner moves at upstream's rate whether or not the model is
+        // streaming.
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(
             rpi_tui::loader::SPINNER_FRAME_MS,
         ));
@@ -2340,7 +2784,13 @@ pub async fn interactive_tui(
                     let tools = state_tick.tool_components.lock().unwrap();
                     transcript_has_live_panel(bash_present, &tools)
                 };
-                if has_live_panel {
+                // A live braille sign — a streaming thinking run — draws its
+                // frame from a counter the indicator's own ticker advances, so
+                // the transcript has to be rendered again for the sign to move.
+                // The repaint is differential: only the sign's cells change on
+                // screen.
+                let has_live_sign = state_tick.has_live_thinking_indicator();
+                if has_live_panel || has_live_sign {
                     tui_tick.request_render(false);
                 } else {
                     // Only the dock loader animates. Keep the already-rendered
@@ -2355,6 +2805,9 @@ pub async fn interactive_tui(
     // ---- Key dispatch loop (spawn_blocking crossterm read) ----
     let running = Arc::new(std::sync::Mutex::new(true));
     let running_key = running.clone();
+    // The keyboard is shared with the key loop: the events that arrive
+    // before the loop starts wait in it.
+    let keyboard_for_key = keyboard.clone();
     let tx_for_key = tx.clone();
     let tui_for_key = tui.clone();
     let editor_for_key = editor.clone();
@@ -2365,6 +2818,7 @@ pub async fn interactive_tui(
     let model_catalog_for_key = model_catalog_arc.clone();
     let ask_user_for_key = ask_user_bridge.clone();
     let first_run_for_key = first_run.clone();
+    let trust_prompt_for_key = trust_prompt.clone();
     let normal_root_for_key = normal_root.clone();
     // Ctrl+L routes through the same registry as `/model` (one path, not two),
     // so the key loop needs the same `CommandContext` + registry the submit
@@ -2377,6 +2831,19 @@ pub async fn interactive_tui(
         .and_then(|settings| settings.double_escape_action)
         .unwrap_or_else(|| "tree".to_string())
         .to_ascii_lowercase();
+    // `externalEditor`: the command Ctrl+G opens. Upstream's
+    // `getExternalEditorCommand` puts the setting ahead of `$VISUAL` and
+    // `$EDITOR` (`core/settings-manager.ts:979`).
+    let external_editor_command = crate::settings::load_settings()
+        .ok()
+        .map(|settings| settings.external_editor_command())
+        .unwrap_or_else(|| {
+            if cfg!(windows) {
+                "notepad".to_string()
+            } else {
+                "nano".to_string()
+            }
+        });
 
     let key_handle = tokio::task::spawn_blocking(move || {
         let mut last_escape_time = None;
@@ -2408,17 +2875,20 @@ pub async fn interactive_tui(
             let ev = if let Some(ev) = pending_event.take() {
                 ev
             } else {
-                // `event::read()` blocks indefinitely. Poll first so shutdown can
-                // stop and join this worker even when no further key arrives.
-                match crossterm::event::poll(
+                // The keyboard is the mode's own input: the events that
+                // arrived before the key loop started wait in it, and the
+                // terminal's own events follow. The wait is bounded so
+                // shutdown can stop and join this worker even when no further
+                // key arrives.
+                match keyboard_for_key.next_event(
                     if cfg!(windows) && !windows_paste_run.text.is_empty() {
                         windows_paste_run.grace()
                     } else {
                         std::time::Duration::from_millis(50)
                     },
                 ) {
-                    Ok(true) => {}
-                    Ok(false) => {
+                    KeyInput::Event(ev) => ev,
+                    KeyInput::Idle => {
                         if cfg!(windows) && !windows_paste_run.text.is_empty() {
                             windows_paste_run.flush(&editor_for_key);
                             refresh_autocomplete(&state_for_key, &editor_for_key);
@@ -2426,18 +2896,12 @@ pub async fn interactive_tui(
                         }
                         continue;
                     }
-                    Err(_) => {
+                    KeyInput::Failed => {
                         state_for_key.cancel_js_preparation();
                         let _ = tx_for_key.send(TuiMessage::Exit);
                         break;
                     }
                 }
-                let Ok(ev) = crossterm::event::read() else {
-                    state_for_key.cancel_js_preparation();
-                    let _ = tx_for_key.send(TuiMessage::Exit);
-                    break;
-                };
-                ev
             };
             // `Event::Resize` is delivered as its own event (not a Key). With
             // `start_readerless` there is no competing terminal-reader thread to
@@ -2657,6 +3121,17 @@ pub async fn interactive_tui(
                 continue;
             }
 
+            // The trust prompt owns the input slot until it is answered: the
+            // decision is stored and the project resources are reloaded with
+            // it, the way the original resolves the trust before the
+            // resources load (`core/project-trust.ts:47-85`).
+            let trust_prompt_for_key = trust_prompt_for_key.lock().unwrap().clone();
+            if let Some(prompt) = trust_prompt_for_key {
+                prompt.handle_key(key);
+                tui_for_key.set_layout_root(Some(normal_root_for_key.clone()));
+                tui_for_key.request_render(false);
+                continue;
+            }
             // The first-run theme picker owns the input slot until it is
             // confirmed or skipped: every key goes to it, and the pane goes
             // back to the transcript once it is done.
@@ -2922,13 +3397,18 @@ pub async fn interactive_tui(
                     selector.handle_key(key);
                     continue;
                 }
-                let (selector, _kind) = state_for_key
+                let (selector, kind) = state_for_key
                     .active_selector
                     .lock()
                     .unwrap()
                     .clone()
                     .expect("selector_open guaranteed Some");
                 selector.handle_key(key);
+                // The session menu reads the titles of the rows it shows, so
+                // scrolling to a row that was not read yet reads it now.
+                if matches!(kind, SelectorKind::Session) {
+                    refresh_session_menu_titles(&state_for_key, &selector, &tui_for_key);
+                }
                 tui_for_key.request_render_reusing_scroll_content();
                 continue;
             }
@@ -3042,7 +3522,11 @@ pub async fn interactive_tui(
                 &key,
                 rpi_tui::keybindings::keys::EXTERNAL_EDITOR,
             ) {
-                launch_external_editor(editor_for_key.get_expanded_text(), tx_for_key.clone());
+                launch_external_editor(
+                    editor_for_key.get_expanded_text(),
+                    tx_for_key.clone(),
+                    external_editor_command.clone(),
+                );
                 continue;
             }
 
@@ -3404,30 +3888,6 @@ pub async fn interactive_tui(
                 }
             }
 
-            // 5b. ↑/↓ browse submitted-message history when the editor is
-            //     EMPTY (a fresh prompt) — mirrors TS historyPrevious/Next
-            //     without the surprise of replacing typed text. When the
-            //     editor holds content, ↑/↓ fall through to cursor movement
-            //     (typing "hello", pressing ↑ at the start, must never swap
-            //     the draft for a history entry — reported as "text
-            //     disappeared"). Once browsing, ↓ walks back and restores the
-            //     draft.
-            if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Up {
-                let browsing = *state_for_key.history_index.lock().unwrap() != -1;
-                if editor_for_key.get_text().is_empty() || browsing {
-                    navigate_history(&state_for_key, &editor_for_key, -1);
-                    tui_for_key.request_render_reusing_scroll_content();
-                    continue;
-                }
-            }
-            if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Down {
-                let browsing = *state_for_key.history_index.lock().unwrap() != -1;
-                if editor_for_key.get_text().is_empty() || browsing {
-                    navigate_history(&state_for_key, &editor_for_key, 1);
-                    tui_for_key.request_render_reusing_scroll_content();
-                    continue;
-                }
-            }
 
             // `app.message.dequeue` (Alt+Q on Windows, Alt+Up elsewhere):
             // restore every queued steering/follow-up message into the editor
@@ -3582,9 +4042,7 @@ pub async fn interactive_tui(
             //    may send for it (`Char('\n')`/`Char('\r')`, and the raw LF
             //    crossterm reports as `Ctrl+J`) to submit, so a remote Enter
             //    sends instead of inserting a newline.
-            editor_for_key.handle_key(key);
-            refresh_autocomplete(&state_for_key, &editor_for_key);
-            tui_for_key.request_render_reusing_scroll_content();
+            dispatch_key_to_editor(&state_for_key, &editor_for_key, &tui_for_key, &key);
         }
     });
 
@@ -3695,6 +4153,17 @@ pub async fn interactive_tui(
                 // as a user edit made a hands-free voice session switch itself
                 // off the moment it was started.
                 state.clear_editor_programmatically();
+                // An extension may register its tools in a lifecycle hook that
+                // runs after startup, so the tool list is refreshed before the
+                // run: a tool the model cannot see is a tool it cannot call.
+                if let Some(extensions) = js_extensions.as_ref() {
+                    install_extension_tools(&harness, extensions).await;
+                }
+                // A server that connected after the session started offers its
+                // tools late; the model has to see them.
+                if let Some(manager) = reload_context.mcp.clone() {
+                    install_mcp_tools(&harness, &manager, args).await;
+                }
                 add_image_previews(&chat_container, &prompt_images, state.images_visible());
                 if !prompt_images.is_empty() {
                     add_note_message(
@@ -4226,6 +4695,26 @@ pub async fn interactive_tui(
                     add_note_message(&chat_container, &lines.join("\n"));
                 }
             }
+            Some(TuiMessage::ShowMcpManager) => {
+                match reload_context.mcp.clone() {
+                    Some(manager) => {
+                        mcp_manager::open_mcp_manager(
+                            &state,
+                            &editor_container,
+                            &editor,
+                            &tui,
+                            &chat_container,
+                            manager,
+                        );
+                    }
+                    None => {
+                        add_note_message(
+                            &chat_container,
+                            "MCP support is disabled (--no-mcp).",
+                        );
+                    }
+                }
+            }
             Some(TuiMessage::ReportBug(description)) => {
                 let mut bundle = String::new();
                 bundle.push_str("# rpi bug report\n\n");
@@ -4305,6 +4794,15 @@ pub async fn interactive_tui(
     // redundant — the recv terminates — but cheap + makes shutdown explicit.)
     reload_context.mailbox.clear();
     reload_bridge_handle.abort();
+    // `fullscreenExitOutput`: on leaving the fullscreen mode, either print
+    // the transcript or leave only the resume hint (upstream's
+    // `stopInteractiveTui`, `interactive-mode.ts:988`).
+    if saved_settings.fullscreen_exit_output() == "transcript"
+        && !matches!(tui_mode, crate::args::TuiMode::Regular)
+    {
+        tui.set_main_screen_mode(true);
+        tui.render_now(true);
+    }
     tui.stop(Default::default());
 
     // upstream prints how to resume the session after an interactive exit so

@@ -32,6 +32,16 @@ pub struct SearchableSelectList {
     /// First row of the list inside this widget, tracked at render time so a
     /// mouse event can be routed to the list.
     list_top: Mutex<usize>,
+    /// pi's menu framework (`packages/tui/src/components/menu.ts`): the title,
+    /// the search field, the list, the footer and the hint, with no blank rows
+    /// between them and no description.
+    menu: bool,
+    /// The line under the list (pi's `setFooterText`).
+    footer: Mutex<Option<String>>,
+    /// The line under the footer (pi's `hintLine`).
+    hint: Mutex<Option<String>>,
+    /// The hint line, rendered verbatim (no indent).
+    hint_line: Mutex<Option<String>>,
 }
 
 impl SearchableSelectList {
@@ -52,6 +62,45 @@ impl SearchableSelectList {
             list,
             focused: Mutex::new(false),
             list_top: Mutex::new(0),
+            menu: false,
+            footer: Mutex::new(None),
+            hint: Mutex::new(None),
+            hint_line: Mutex::new(None),
+        }
+    }
+
+    /// Lay the widget out as pi's menu framework: the title, the search field,
+    /// the list, the footer and the hint.
+    pub fn with_menu_layout(mut self) -> Self {
+        self.menu = true;
+        self.description = None;
+        self.input.set_placeholder("Search");
+        self
+    }
+
+    /// The line under the list (pi's `setFooterText`).
+    pub fn set_footer_text(&self, text: Option<String>) {
+        if let Ok(mut footer) = self.footer.lock() {
+            *footer = text;
+        }
+    }
+
+    /// The line under the footer (pi's `hintLine`).
+    pub fn set_hint(&self, text: Option<String>) {
+        if let Ok(mut hint) = self.hint.lock() {
+            *hint = text;
+        }
+    }
+
+    /// The hint line, rendered verbatim.
+    ///
+    /// pi's `MenuComponent.hintLine()` returns the line as it is
+    /// (`packages/coding-agent/src/modes/interactive/components/menu.ts:192`),
+    /// and only the *default* hint carries the two-space indent in its own
+    /// text — the login method screen's hint has none.
+    pub fn set_hint_line(&self, text: Option<String>) {
+        if let Ok(mut hint) = self.hint_line.lock() {
+            *hint = text;
         }
     }
 
@@ -112,6 +161,45 @@ impl Component for SearchableSelectList {
     fn render(&self, width: usize) -> Vec<String> {
         let colors = theme().colors;
         let mut lines: Vec<String> = Vec::new();
+
+        if self.menu {
+            if let Some(title) = &self.title {
+                lines.push(truncate_to_width(
+                    &colors.muted.fg(&format!("  {title}")),
+                    width,
+                    "…",
+                ));
+            }
+            lines.extend(self.input.render(width));
+            if let Ok(mut list_top) = self.list_top.lock() {
+                *list_top = lines.len();
+            }
+            lines.extend(self.list.render(width));
+            if let Ok(footer) = self.footer.lock() {
+                if let Some(text) = footer.as_ref() {
+                    lines.push(truncate_to_width(
+                        &colors.muted.fg(&format!("  {text}")),
+                        width,
+                        "…",
+                    ));
+                }
+            }
+            if let Ok(hint) = self.hint.lock() {
+                if let Some(text) = hint.as_ref() {
+                    lines.push(truncate_to_width(
+                        &colors.dim.fg(&format!("  {text}")),
+                        width,
+                        "…",
+                    ));
+                }
+            }
+            if let Ok(hint) = self.hint_line.lock() {
+                if let Some(text) = hint.as_ref() {
+                    lines.push(truncate_to_width(&colors.dim.fg(text), width, "…"));
+                }
+            }
+            return lines;
+        }
 
         if let Some(title) = &self.title {
             let styled = colors.accent.fg(&bold(title));

@@ -3,19 +3,20 @@
 //! rpi-ai's [`ProviderHooks`] slot, so every provider call fans the live
 //! request/response context out to the subscribed plugins.
 //!
-//! **Observer semantics (v1):** the SDK `EventHandlerFn` returns `i32` (no
-//! result payload), so a handler observes the request/response — it can record
-//! state, rotate an external token store, emit diagnostics — but cannot PATCH
-//! the live `SimpleStreamOptions`. The `before_request` hook therefore returns
-//! `None` (no patch); a future ABI extension (an `out` pointer on the handler)
-//! would unlock the patch path. The harness treats a `None` return as
-//! "leave opts untouched", so the observer path is safe.
+//! **The native ABI observes, the JavaScript host replaces.** The SDK
+//! `EventHandlerFn` returns `i32` (no result payload), so a native handler
+//! observes the request/response — it can record state, rotate an external
+//! token store, emit diagnostics — but cannot patch the live request. The
+//! JavaScript host's event sink answers with the handler's return value, so a
+//! JavaScript `before_provider_request` handler can return the payload it wants
+//! the provider to send, and the port applies it.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use rpi_ai::types::{AssistantMessage, Content, Message, UserContent};
+use rpi_ai::types::{Content, Message, Tool, UserContent};
 use rpi_ai::Context;
-use rpi_ai::{ContextPatch, Model, ProviderHooks, SimpleStreamOptions, SimpleStreamOptionsPatch};
+use rpi_ai::{ContextPatch, Model, ProviderHooks, RequestPatch, SimpleStreamOptions};
 use rpi_plugin_sdk::EventTag;
 
 use crate::loader::ExtensionSession;
@@ -128,16 +129,21 @@ impl ProviderHooks for ExtensionProviderHooks {
     }
 
     /// Fan the planned request out to `BeforeProviderRequest` +
-    /// `BeforeProviderHeaders` subscribers. Returns `None` for the stream options
-    /// — observer-only (the event handler ABI has no result channel); a plugin's
-    /// influence on the *prompt* travels through [`Self::transform_context`]
-    /// instead.
+    /// `BeforeProviderHeaders` subscribers, and let a handler replace the
+    /// request the provider is about to send.
+    ///
+    /// pi's `before_provider_request` handler may return a new payload, and
+    /// that payload is what the provider sends. The port applies the returned
+    /// payload field by field: the messages and the tools it carries become
+    /// the request's, and the token ceiling and the temperature become the
+    /// request's. The model cannot be changed here — the provider call is
+    /// already bound to one.
     fn before_request(
         &self,
         model: &Model,
         ctx: &Context,
         opts: &SimpleStreamOptions,
-    ) -> Option<SimpleStreamOptionsPatch> {
+    ) -> Option<RequestPatch> {
         // (A) pi's `before_agent_start`: observe each NEW user prompt exactly
         // once. The harness persists prompts before the run and calls
         // `run_agent_loop` with an empty prompts vec, so no
@@ -145,12 +151,12 @@ impl ProviderHooks for ExtensionProviderHooks {
         // first place the prompt is visible, so it emits the pi-equivalent
         // event. Dedupe by prompt timestamp: one run can make several provider
         // calls, but `before_agent_start` fires once per prompt.
-        if let Some((timestamp, prompt, image_count)) = latest_user_prompt(&ctx.messages) {
+        if let Some((timestamp, prompt, images)) = latest_user_prompt(&ctx.messages) {
             let mut last = self.last_before_agent_start.lock().unwrap();
             if *last != Some(timestamp) {
                 *last = Some(timestamp);
                 drop(last);
-                let event = before_agent_start_event(&prompt, image_count, ctx);
+                let event = before_agent_start_event(&prompt, &images, ctx);
                 // Synchronous, like the request dispatch below: a subscriber's
                 // `BeforeAgentStart` handler runs before any
                 // `BeforeProviderRequest` of this turn reaches it, so the turn is
@@ -160,16 +166,6 @@ impl ProviderHooks for ExtensionProviderHooks {
                     &self.snapshot,
                     EventTag::BeforeAgentStart,
                     &event.to_string(),
-                );
-                crate::event_sink::emit_event(
-                    "before_agent_start",
-                    &serde_json::json!({
-                        "type": "before_agent_start",
-                        "messageType": event.get("messageType").cloned().unwrap_or(serde_json::json!("user")),
-                        "prompt": event.get("prompt").cloned().unwrap_or(serde_json::Value::Null),
-                        "systemPrompt": event.get("systemPrompt").cloned().unwrap_or(serde_json::Value::Null),
-                        "systemPromptOptions": event.get("systemPromptOptions").cloned().unwrap_or(serde_json::json!({})),
-                    }),
                 );
             }
         }
@@ -202,23 +198,22 @@ impl ProviderHooks for ExtensionProviderHooks {
         // The native handlers keep the internal request above — the native
         // ABI is the port's own contract — but an extension written against
         // pi watches the wire payload.
-        crate::event_sink::emit_event(
-            "before_provider_request",
-            &serde_json::json!({
-                "type": "before_provider_request",
-                "payload": {
-                    "model": model.id,
-                    "messages": ctx.messages,
-                    "tools": ctx.tools,
-                    "stream": true,
-                    "max_completion_tokens": opts.max_tokens,
-                    "prompt_cache_key": serde_json::Value::Null,
-                    "prompt_cache_retention": serde_json::Value::Null,
-                    "store": false,
-                    "stream_options": { "include_usage": true },
-                },
-            }),
-        );
+        let messages = serde_json::to_value(&ctx.messages).unwrap_or(serde_json::Value::Null);
+        let tools = serde_json::to_value(&ctx.tools).unwrap_or(serde_json::Value::Null);
+        let wire = serde_json::json!({
+            "model": model.id,
+            "messages": messages,
+            "tools": tools,
+            "stream": true,
+            "max_completion_tokens": opts.max_tokens,
+            "prompt_cache_key": serde_json::Value::Null,
+            "prompt_cache_retention": serde_json::Value::Null,
+            "store": false,
+            "stream_options": { "include_usage": true },
+        });
+        // pi publishes the headers before the request: the headers are the
+        // last thing the host adds to the request, so the request the
+        // extension sees already carries them.
         let headers = serde_json::json!({ "headers": opts.headers });
         dispatch_data_event(
             &self.snapshot,
@@ -232,27 +227,88 @@ impl ProviderHooks for ExtensionProviderHooks {
                 "headers": opts.headers,
             }),
         );
-        None
+        let answer = crate::event_sink::emit_event(
+            "before_provider_request",
+            &serde_json::json!({
+                "type": "before_provider_request",
+                "payload": wire,
+            }),
+        );
+        let patch = answer
+            .as_ref()
+            .and_then(|answer| request_patch(answer, &messages, &tools));
+        patch
     }
 
-    /// Fan the terminal assistant message out to `AfterProviderResponse`
-    /// subscribers.
-    fn after_response(&self, _model: &Model, message: &AssistantMessage) {
-        let json = serde_json::to_value(message).unwrap_or(serde_json::json!({}));
+    /// pi's `after_provider_response`: the provider's HTTP status and headers,
+    /// published the moment the response arrives.
+    fn on_response(&self, model: &Model, status: u16, headers: &BTreeMap<String, String>) {
+        let event = serde_json::json!({
+            "type": "after_provider_response",
+            "status": status,
+            "headers": headers,
+        });
         dispatch_data_event(
             &self.snapshot,
             EventTag::AfterProviderResponse,
-            &json.to_string(),
+            &event.to_string(),
         );
+        crate::event_sink::emit_event("after_provider_response", &event);
+        let _ = model;
+    }
+
+    /// pi's `provider_stream_event`: every parsed provider stream event,
+    /// before the provider normalizes it.
+    fn on_stream_event(&self, model: &Model, data: &serde_json::Value) {
         crate::event_sink::emit_event(
-            "after_provider_response",
+            "provider_stream_event",
             &serde_json::json!({
-                "type": "after_provider_response",
-                "status": 200,
-                "headers": {},
+                "type": "provider_stream_event",
+                "provider": model.provider,
+                "api": model.api,
+                "model": model.id,
+                "data": data,
             }),
         );
     }
+}
+
+/// The request patch a `before_provider_request` handler's answer describes.
+///
+/// The handler returns the payload it wants the provider to send. The port
+/// applies the fields the request has: the messages, the tools, the token
+/// ceiling and the temperature. A field the handler left exactly as it was
+/// changes nothing, so a handler that only logs the payload leaves the
+/// request alone.
+fn request_patch(
+    answer: &serde_json::Value,
+    sent_messages: &serde_json::Value,
+    sent_tools: &serde_json::Value,
+) -> Option<RequestPatch> {
+    let object = answer.as_object()?;
+    let mut patch = RequestPatch::default();
+    if let Some(messages) = object.get("messages") {
+        if messages != sent_messages {
+            if let Ok(messages) = serde_json::from_value::<Vec<Message>>(messages.clone()) {
+                patch.messages = Some(messages);
+            }
+        }
+    }
+    if let Some(tools) = object.get("tools") {
+        if tools != sent_tools {
+            if let Ok(tools) = serde_json::from_value::<Vec<Tool>>(tools.clone()) {
+                patch.tools = Some(tools);
+            }
+        }
+    }
+    if let Some(max_tokens) = object.get("max_completion_tokens").and_then(serde_json::Value::as_u64)
+    {
+        patch.options.max_tokens = Some(Some(max_tokens));
+    }
+    if let Some(temperature) = object.get("temperature").and_then(serde_json::Value::as_f64) {
+        patch.options.temperature = Some(Some(temperature));
+    }
+    Some(patch)
 }
 
 /// The `before_agent_start` envelope: what the observer event carries and what
@@ -269,10 +325,15 @@ impl ProviderHooks for ExtensionProviderHooks {
 /// `before_agent_start` fires earlier in the run and therefore carries the base
 /// prompt; a plugin that needs the pre-transform value should capture it from
 /// its own transformer's input instead of from this event.
-fn before_agent_start_event(prompt: &str, image_count: usize, ctx: &Context) -> serde_json::Value {
+fn before_agent_start_event(
+    prompt: &str,
+    images: &[serde_json::Value],
+    ctx: &Context,
+) -> serde_json::Value {
     serde_json::json!({
         "prompt": prompt,
-        "imageCount": image_count,
+        "imageCount": images.len(),
+        "images": images,
         "systemPrompt": ctx.system_prompt,
         // The session this process serves. A plugin that traces the run reports
         // it as the session id (nothing else tells an observer which session it
@@ -303,14 +364,14 @@ fn host_identity() -> serde_json::Value {
     })
 }
 
-/// Text/timestamp/image-count of the most recent user message. Mirrors the
+/// Text/timestamp/images of the most recent user message. Mirrors the
 /// `prompt`/`images` fields pi puts on its `before_agent_start` event.
-fn latest_user_prompt(messages: &[Message]) -> Option<(i64, String, usize)> {
+fn latest_user_prompt(messages: &[Message]) -> Option<(i64, String, Vec<serde_json::Value>)> {
     messages.iter().rev().find_map(|message| match message {
         Message::User(user) => Some((
             user.timestamp,
             user_content_text(&user.content),
-            user_content_image_count(&user.content),
+            user_content_images(&user.content),
         )),
         _ => None,
     })
@@ -330,13 +391,16 @@ fn user_content_text(content: &UserContent) -> String {
     }
 }
 
-fn user_content_image_count(content: &UserContent) -> usize {
+fn user_content_images(content: &UserContent) -> Vec<serde_json::Value> {
     match content {
-        UserContent::Text(_) => 0,
+        UserContent::Text(_) => Vec::new(),
         UserContent::Blocks(blocks) => blocks
             .iter()
-            .filter(|block| matches!(block, Content::Image(_)))
-            .count(),
+            .filter_map(|block| match block {
+                Content::Image(image) => serde_json::to_value(image).ok(),
+                _ => None,
+            })
+            .collect(),
     }
 }
 
@@ -804,6 +868,57 @@ mod tests {
             "observers must be shown the prompt the provider will actually get"
         );
     }
+
+    /// The `before_provider_request` answer is the request the provider sends.
+    ///
+    /// A handler that returns the payload unchanged changes nothing; a handler
+    /// that returns a payload with a different token ceiling, temperature or
+    /// message list changes exactly that.
+    #[test]
+    fn the_answer_replaces_the_request() {
+        let sent_messages = serde_json::json!([{
+            "role": "user",
+            "content": "hello",
+            "timestamp": 1,
+        }]);
+        let sent_tools = serde_json::json!([]);
+
+        let unchanged = request_patch(
+            &serde_json::json!({
+                "messages": sent_messages,
+                "tools": sent_tools,
+                "max_completion_tokens": 100,
+            }),
+            &sent_messages,
+            &sent_tools,
+        )
+        .expect("an object answer is a patch");
+        assert!(
+            unchanged.messages.is_none(),
+            "a payload the handler did not change must not replace the messages"
+        );
+        assert_eq!(unchanged.options.max_tokens, Some(Some(100)));
+
+        let replaced = request_patch(
+            &serde_json::json!({
+                "messages": [{
+                    "role": "user",
+                    "content": "rewritten",
+                    "timestamp": 1,
+                }],
+                "tools": sent_tools,
+                "max_completion_tokens": 42,
+                "temperature": 0.0,
+            }),
+            &sent_messages,
+            &sent_tools,
+        )
+        .expect("an object answer is a patch");
+        let messages = replaced.messages.expect("the messages are replaced");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(replaced.options.max_tokens, Some(Some(42)));
+        assert_eq!(replaced.options.temperature, Some(Some(0.0)));
+    }
 }
 
 /// The prompt an extension asked for, if any.
@@ -816,11 +931,11 @@ impl ExtensionProviderHooks {
         // what identifies a turn, and it is stable across the run's provider
         // calls. With no user message (a continuation) there is nothing to key
         // on, so the transform is skipped rather than applied to an unknown turn.
-        let (timestamp, prompt, image_count) = latest_user_prompt(&ctx.messages)?;
+        let (timestamp, prompt, images) = latest_user_prompt(&ctx.messages)?;
 
         let mut cache = self.last_forced_prompt.lock().unwrap();
         if cache.as_ref().map(|(ts, _)| *ts) != Some(timestamp) {
-            let event = before_agent_start_event(&prompt, image_count, ctx);
+            let event = before_agent_start_event(&prompt, &images, ctx);
             let forced = emit_before_agent_start(
                 ctx.system_prompt.as_deref().unwrap_or_default(),
                 &event.to_string(),

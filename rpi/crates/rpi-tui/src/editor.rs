@@ -12,9 +12,11 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use super::component::{Component, Focusable, MouseButton, MouseEvent, MouseEventKind, MouseEventResult};
+use super::keybindings;
 use super::keybindings::Keybindings;
 use crate::ansi::CURSOR_MARKER;
 use crate::kill_ring::{KillRing, PushOptions};
+use crate::loader::SpinnerTicker;
 use crate::undo_stack::UndoStack;
 
 /// Editor style configuration.
@@ -34,7 +36,7 @@ impl Default for EditorStyle {
 }
 
 /// Editor options.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct EditorOptions {
     /// Padding on left and right.
     pub padding_x: usize,
@@ -54,6 +56,22 @@ pub struct EditorOptions {
     pub show_scroll_hints: bool,
 }
 
+impl Default for EditorOptions {
+    fn default() -> Self {
+        Self {
+            padding_x: 0,
+            autocomplete_max_visible: 5,
+            placeholder: None,
+            initial_text: None,
+            content_height: None,
+            max_content_height: None,
+            // The original's editor reports the hidden lines by default
+            // (packages/tui/src/components/editor.ts:455).
+            show_scroll_hints: true,
+        }
+    }
+}
+
 /// Editor state.
 #[derive(Debug, Clone)]
 struct EditorState {
@@ -65,6 +83,10 @@ struct EditorState {
     cursor_col: usize,
     /// Selection anchor (row, col) if any.
     selection_anchor: Option<(usize, usize)>,
+    /// The moving end of the selection (row, col). The span is the two ends,
+    /// so a plain caret move leaves the selection untouched — the original's
+    /// selection belongs to the renderer and survives a caret move.
+    selection_end: Option<(usize, usize)>,
     /// Scroll offset for multi-line.
     #[allow(dead_code)]
     scroll_offset: usize,
@@ -83,6 +105,7 @@ impl Default for EditorState {
             cursor_row: 0,
             cursor_col: 0,
             selection_anchor: None,
+            selection_end: None,
             scroll_offset: 0,
             focused: false,
             history: Vec::new(),
@@ -217,13 +240,25 @@ fn push_graphemes<'a>(text: &'a str, offset: usize, segments: &mut Vec<(usize, &
     }
 }
 
+/// Whether a segment is a folded-paste marker (the original's
+/// `isPasteMarker`, packages/tui/src/components/editor.ts:38).
+fn is_paste_marker_segment(segment: &str) -> bool {
+    segment.len() >= 10
+        && paste_marker_regex()
+            .find(segment)
+            .map(|m| m.start() == 0 && m.end() == segment.len())
+            .unwrap_or(false)
+}
+
 /// Split a logical editor line into terminal-width chunks. The editor keeps
 /// logical lines for editing and cursor movement; wrapping is strictly a
 /// rendering concern so a long draft cannot escape the bordered input box.
 ///
 /// The split happens at word boundaries: a word that does not fit moves whole
 /// to the next row, and only a word wider than the row is broken. A CJK run
-/// may break between two characters.
+/// may break between two characters. An atomic segment wider than the row (a
+/// folded-paste marker in a narrow terminal) is re-wrapped at grapheme
+/// granularity: it stays one unit for the caret, the split is visual only.
 fn wrap_line_ranges(line: &str, max_width: usize) -> Vec<(usize, usize)> {
     if line.is_empty() || max_width == 0 {
         return vec![(0, 0)];
@@ -240,7 +275,8 @@ fn wrap_line_ranges(line: &str, max_width: usize) -> Vec<(usize, usize)> {
 
     for (position, (index, grapheme)) in segments.iter().enumerate() {
         let grapheme_width = crate::ansi::visible_width(grapheme);
-        let is_whitespace = grapheme.chars().any(char::is_whitespace);
+        let is_whitespace = !is_paste_marker_segment(grapheme)
+            && grapheme.chars().any(char::is_whitespace);
 
         if current_width + grapheme_width > max_width {
             let backtrack = wrap_opportunity
@@ -249,7 +285,7 @@ fn wrap_line_ranges(line: &str, max_width: usize) -> Vec<(usize, usize)> {
                 ranges.push((start, opportunity));
                 start = opportunity;
                 current_width -= width;
-            } else if wrap_opportunity.is_none() && start < *index {
+            } else if start < *index {
                 ranges.push((start, *index));
                 start = *index;
                 current_width = 0;
@@ -258,8 +294,19 @@ fn wrap_line_ranges(line: &str, max_width: usize) -> Vec<(usize, usize)> {
         }
 
         if grapheme_width > max_width {
-            ranges.push((start, index + grapheme.len()));
-            start = index + grapheme.len();
+            let mut chunk_start = *index;
+            let mut chunk_width = 0usize;
+            for (offset, piece) in grapheme.grapheme_indices(true) {
+                let piece_width = crate::ansi::visible_width(piece);
+                if chunk_width > 0 && chunk_width + piece_width > max_width {
+                    ranges.push((chunk_start, chunk_start + offset));
+                    chunk_start += offset;
+                    chunk_width = 0;
+                }
+                chunk_width += piece_width;
+            }
+            ranges.push((chunk_start, chunk_start + grapheme.len()));
+            start = chunk_start + grapheme.len();
             current_width = 0;
             wrap_opportunity = None;
             continue;
@@ -371,6 +418,136 @@ struct LayoutChunk {
     cursor: Option<usize>,
 }
 
+/// The number of UTF-16 code units in `text`.
+///
+/// The original measures the caret's column in UTF-16 code units
+/// (packages/tui/src/components/editor.ts:1832); the port stores byte
+/// offsets and converts to code units where the original's arithmetic
+/// (the sticky column, the visual-line map) is in code units.
+fn utf16_len(text: &str) -> usize {
+    text.chars().map(char::len_utf16).sum()
+}
+
+/// The byte offset of the UTF-16 code-unit index `index` in `text`.
+fn byte_offset_at_utf16(text: &str, index: usize) -> usize {
+    let mut units = 0usize;
+    for (offset, ch) in text.char_indices() {
+        if units >= index {
+            return offset;
+        }
+        units += ch.len_utf16();
+    }
+    text.len()
+}
+
+/// One visual (wrapped) line of the text: a byte range inside a logical row,
+/// with its column measured in UTF-16 code units.
+#[derive(Debug, Clone, Copy)]
+struct VisualLine {
+    /// The logical row the visual line belongs to.
+    logical_line: usize,
+    /// The byte offset of the visual line inside its logical row.
+    start: usize,
+    /// The byte offset just past the visual line.
+    end: usize,
+    /// The column of the visual line's start, in UTF-16 code units.
+    start_col: usize,
+    /// The length of the visual line, in UTF-16 code units.
+    len: usize,
+}
+
+/// The visual (wrapped) lines of the text, the original's
+/// `buildVisualLineMap` (packages/tui/src/components/editor.ts:2033).
+fn build_visual_lines(lines: &[String], width: usize) -> Vec<VisualLine> {
+    let mut result: Vec<VisualLine> = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        for (start, end) in wrap_line_ranges(line, width) {
+            result.push(VisualLine {
+                logical_line: index,
+                start,
+                end,
+                start_col: utf16_len(&line[..start]),
+                len: utf16_len(&line[start..end]),
+            });
+        }
+    }
+    result
+}
+
+/// The index of the visual line holding the logical position `(line, col)`,
+/// where `col` is a UTF-16 code-unit column (the original's
+/// `findVisualLineAt`).
+fn find_visual_line_at(lines: &[VisualLine], line: usize, col: usize) -> usize {
+    for (index, visual) in lines.iter().enumerate() {
+        if visual.logical_line != line {
+            continue;
+        }
+        let offset = col.saturating_sub(visual.start_col);
+        let is_last = lines
+            .get(index + 1)
+            .map(|next| next.logical_line != visual.logical_line)
+            .unwrap_or(true);
+        if offset < visual.len || (is_last && offset == visual.len) {
+            return index;
+        }
+    }
+    lines.len().saturating_sub(1)
+}
+
+/// The byte offset of the grapheme boundary before `col`, keeping a folded
+/// paste marker whole (the original steps by grapheme, not by scalar).
+fn prev_grapheme_offset(line: &str, col: usize) -> usize {
+    let mut last_start = 0usize;
+    for (index, segment) in editor_line_segments(line) {
+        if index >= col {
+            break;
+        }
+        last_start = index;
+        if index + segment.len() > col {
+            return index;
+        }
+    }
+    last_start
+}
+
+/// The byte offset just past the grapheme that starts at `col`.
+fn next_grapheme_offset(line: &str, col: usize) -> usize {
+    for (index, segment) in editor_line_segments(line) {
+        if index + segment.len() > col {
+            return index + segment.len();
+        }
+    }
+    line.len()
+}
+
+/// The byte ranges of the folded-paste markers in a line. The markers are
+/// atomic for the word navigation (the original's `isAtomicSegment`).
+fn marker_ranges(line: &str) -> Vec<(usize, usize)> {
+    paste_marker_regex()
+        .find_iter(line)
+        .map(|capture| (capture.start(), capture.end()))
+        .collect()
+}
+
+/// Whether a key event is exactly this code with these modifiers.
+fn matches_key(key: &crossterm::event::KeyEvent, code: KeyCode, modifiers: KeyModifiers) -> bool {
+    key.code == code && key.modifiers == modifiers
+}
+
+/// The printable character a key event carries, if any.
+fn printable_char(key: crossterm::event::KeyEvent) -> Option<char> {
+    match (key.modifiers, key.code) {
+        (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => Some(c),
+        _ => None,
+    }
+}
+
+/// Whether a pasted text starts like a file path (the original's
+/// `/^[/~.]/` test in `handlePaste`).
+fn starts_with_path(text: &str) -> bool {
+    matches!(text.chars().next(), Some('/') | Some('~') | Some('.'))
+}
+
 /// The caret decoration of a chunk: the hardware cursor marker followed by
 /// the fake cursor around the grapheme under the caret. The TUI turns the
 /// fake cursor into reverse video, or drops it when the hardware cursor
@@ -399,7 +576,7 @@ pub struct Editor {
     state: Mutex<EditorState>,
     options: EditorOptions,
     style: EditorStyle,
-    #[allow(dead_code)]
+    /// The keybinding registry every editor key is resolved through.
     keybindings: Arc<Keybindings>,
     on_submit: Mutex<Option<Arc<dyn Fn(&str) + Send + Sync>>>,
     on_change: Mutex<Option<Arc<dyn Fn(&str) + Send + Sync>>>,
@@ -419,7 +596,14 @@ pub struct Editor {
     /// Working indicator text shown on the card's top row. `None` means idle.
     /// When `Some`, the top row renders the spinner + elapsed + message
     /// instead of a blank row (pi's working-inside-input-border style).
-    working: Mutex<Option<WorkingState>>,
+    working: Arc<Mutex<Option<WorkingState>>>,
+    /// The ticker that advances the working indicator's spinner.
+    ///
+    /// The frame is a counter the ticker advances once per
+    /// [`SPINNER_FRAME_MS`](crate::loader::SPINNER_FRAME_MS) — the animation
+    /// runs at its own rate instead of following the paints that happen to
+    /// occur.
+    working_ticker: Mutex<Option<SpinnerTicker>>,
     /// Folded pastes: `id -> content`, referenced by a `[paste #id …]` marker
     /// in `state.lines`. Mirrors upstream's `pastes` map.
     pastes: Mutex<HashMap<u32, PasteEntry>>,
@@ -436,6 +620,25 @@ pub struct Editor {
     /// The width the last render laid the text out at, for the mouse to map
     /// a clicked column back to a caret position.
     rendered_width: Mutex<usize>,
+    /// The prompt history for ↑/↓ recall, newest entry first (the original's
+    /// `history` array, `packages/tui/src/components/editor.ts:407`).
+    history: Mutex<Vec<String>>,
+    /// Browse index while recalling the history: -1 = not browsing, 0 = the
+    /// most recent entry, 1 = the older one, and so on.
+    history_index: Mutex<isize>,
+    /// The editor state cloned when the history browsing starts, so leaving
+    /// the browse mode restores the draft with its caret.
+    history_draft: Mutex<Option<EditorSnapshot>>,
+    /// The sticky column for the vertical cursor movement: the column the
+    /// caret tries to return to after a shorter line clamped it.
+    preferred_visual_col: Mutex<Option<usize>>,
+    /// The pre-snap caret column, kept while the caret sits at the start of
+    /// an atomic segment (a folded-paste marker), so the next vertical move
+    /// can resolve the column it came from.
+    snapped_from_cursor_col: Mutex<Option<usize>>,
+    /// The number of terminal rows, used for the page size. `None` asks the
+    /// terminal for its size.
+    terminal_rows: Mutex<Option<usize>>,
 }
 
 /// State for the working indicator embedded in the editor's top border.
@@ -447,6 +650,16 @@ pub struct WorkingState {
     pub started_at: std::time::Instant,
     /// The message to display (e.g. "Working…").
     pub message: String,
+}
+
+/// Advance the working indicator's spinner by one frame.
+///
+/// The frame is a counter, not a function of the wall clock: the ticker calls
+/// this once per interval, and a paint never does.
+fn advance_working_frame(state: &mut Option<WorkingState>) {
+    if let Some(state) = state.as_mut() {
+        state.frame = state.frame.wrapping_add(1) % crate::loader::SPINNER_FRAMES.len();
+    }
 }
 
 /// A restorable editor state snapshot (text + caret, plus the folded paste
@@ -479,31 +692,68 @@ impl Editor {
             keybindings,
             on_submit: Mutex::new(None),
             on_change: Mutex::new(None),
-            undo_stack: Mutex::new(UndoStack::with_max_size(200)),
+            undo_stack: Mutex::new(UndoStack::unbounded()),
             redo_stack: Mutex::new(Vec::new()),
             kill_ring: Mutex::new(KillRing::new()),
             last_action: Mutex::new(None),
             jump_mode: Mutex::new(None),
-            working: Mutex::new(None),
+            working: Arc::new(Mutex::new(None)),
+            working_ticker: Mutex::new(None),
             pastes: Mutex::new(HashMap::new()),
             paste_counter: Mutex::new(0),
             scroll_offset: Mutex::new(0),
             scroll_pinned: Mutex::new(false),
             rendered_rows: Mutex::new((0, 0)),
             rendered_width: Mutex::new(0),
+            history: Mutex::new(Vec::new()),
+            history_index: Mutex::new(-1),
+            history_draft: Mutex::new(None),
+            preferred_visual_col: Mutex::new(None),
+            snapped_from_cursor_col: Mutex::new(None),
+            terminal_rows: Mutex::new(None),
+        }
+    }
+
+    /// Set the number of terminal rows the editor lays out for (the page
+    /// size is `max(5, 30% of the rows)`).
+    pub fn set_terminal_rows(&self, rows: usize) {
+        if let Ok(mut guard) = self.terminal_rows.lock() {
+            *guard = Some(rows);
         }
     }
 
     /// The number of content rows the box shows.
     ///
     /// A fixed box keeps its height, a capped box grows with the text up to
-    /// the cap, and without either the box grows with the content.
+    /// the cap (itself capped at half the terminal), and without either the
+    /// box shows 30% of the terminal, at least 5 rows — the original's rule
+    /// (packages/tui/src/components/editor.ts:659-668).
     fn height_limit(&self) -> usize {
+        let rows = self.terminal_row_count();
+        let default_max = std::cmp::max(5, (rows as f64 * 0.3).floor() as usize);
+        let capped = self
+            .options
+            .max_content_height
+            .map(|max| std::cmp::min(max, std::cmp::max(5, rows / 2)));
         self.options
             .content_height
-            .or(self.options.max_content_height)
-            .unwrap_or(usize::MAX)
+            .or(capped)
+            .unwrap_or(default_max)
             .max(1)
+    }
+
+    /// The number of terminal rows the editor lays out for.
+    ///
+    /// The rows are handed in by the host ([`Self::set_terminal_rows`]); the
+    /// fallback is the classic 24-row terminal. The editor never asks the
+    /// terminal itself: a query from a component can block, and the host
+    /// already knows the size.
+    fn terminal_row_count(&self) -> usize {
+        let rows = self.terminal_rows.lock().map(|rows| *rows).unwrap_or(None);
+        match rows {
+            Some(rows) if rows > 0 => rows,
+            _ => 24,
+        }
     }
 
     /// Create a new editor with default options.
@@ -522,14 +772,20 @@ impl Editor {
 
     /// Set the text content with the caret at its start.
     ///
-    /// The history recall uses this, so a recalled entry can be edited from
-    /// the beginning (the original's `setTextInternal(text, "start")`).
+    /// The original's `setTextInternal(text, "start")`.
     pub fn set_text_at_start(&self, text: &str) {
         self.set_text_placed(text, true);
     }
 
     fn set_text_placed(&self, text: &str, at_start: bool) {
         let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+        // A programmatic replacement is an undoable change and leaves the
+        // history browsing (the original's `setText`).
+        self.exit_history_browsing();
+        *self.last_action.lock().unwrap() = None;
+        if self.get_text() != normalized {
+            self.push_undo_snapshot();
+        }
         if let Ok(mut state) = self.state.lock() {
             state.lines = if normalized.is_empty() {
                 vec![String::new()]
@@ -667,13 +923,28 @@ impl Editor {
             return;
         }
 
+        // A paste is one undo unit and never coalesces with the typing
+        // around it (the original resets `lastAction` and pushes exactly one
+        // snapshot).
+        self.exit_history_browsing();
+        *self.last_action.lock().unwrap() = None;
+        self.push_undo_snapshot();
+
+        // A pasted path gets a leading space when the caret follows a word
+        // character, so the path does not glue to the word before it (the
+        // original's `handlePaste`).
+        let filtered = if starts_with_path(&filtered) && self.char_before_cursor_is_word() {
+            format!(" {filtered}")
+        } else {
+            filtered
+        };
+
         let line_count = filtered.split('\n').count();
-        let char_count = filtered.chars().count();
+        let char_count = filtered.encode_utf16().count();
+        if self.has_selection() {
+            self.delete_selection_no_undo();
+        }
         if line_count > PASTE_FOLD_LINE_THRESHOLD || char_count > PASTE_FOLD_CHAR_THRESHOLD {
-            self.push_undo("insert");
-            if self.has_selection() {
-                self.delete_selection_no_undo();
-            }
             let (id, by_lines, count) = {
                 let mut counter = self.paste_counter.lock().unwrap();
                 *counter += 1;
@@ -693,10 +964,23 @@ impl Editor {
                 format!("[paste #{id} {count} chars]")
             };
             self.insert_no_undo(&marker);
-            *self.last_action.lock().unwrap() = Some("insert");
         } else {
-            self.insert(&filtered);
+            self.insert_no_undo(&filtered);
         }
+    }
+
+    /// Whether the character before the caret is a word character.
+    fn char_before_cursor_is_word(&self) -> bool {
+        let state = self.state.lock().unwrap();
+        if state.cursor_col == 0 {
+            return false;
+        }
+        let row = state.cursor_row;
+        state.lines[row][..state.cursor_col]
+            .chars()
+            .next_back()
+            .map(|c| c.is_alphanumeric() || c == '_')
+            .unwrap_or(false)
     }
 
     /// Clear the editor.
@@ -706,6 +990,7 @@ impl Editor {
             state.cursor_row = 0;
             state.cursor_col = 0;
             state.selection_anchor = None;
+            state.selection_end = None;
         }
         self.reset_pastes();
         // Upstream's editor notifies change observers for programmatic clears
@@ -787,23 +1072,17 @@ impl Editor {
         self.notify_change();
     }
 
-    /// Record an undo snapshot before a mutation. `action` names the mutation
-    /// kind: consecutive `"insert"` actions coalesce into a single undo entry
-    /// (typing a word undoes as one step, mirroring the TS coalescing); any
-    /// other mutation starts a fresh entry. A new mutation clears the redo
-    /// stack (the classic undo/redo semantics).
-    fn push_undo(&self, action: &'static str) {
-        let coalesce = action == "insert" && *self.last_action.lock().unwrap() == Some("insert");
-        if !coalesce {
-            let snap = self.snapshot_state();
-            if let Ok(mut stack) = self.undo_stack.lock() {
-                stack.push(snap);
-            }
-            if let Ok(mut redo) = self.redo_stack.lock() {
-                redo.clear();
-            }
+    /// Record an undo snapshot before a mutation. The snapshot is taken
+    /// before the mutation, so undo restores the text, the caret, the folded
+    /// pastes and the paste counter.
+    fn push_undo_snapshot(&self) {
+        let snap = self.snapshot_state();
+        if let Ok(mut stack) = self.undo_stack.lock() {
+            stack.push(snap);
         }
-        *self.last_action.lock().unwrap() = Some(action);
+        if let Ok(mut redo) = self.redo_stack.lock() {
+            redo.clear();
+        }
     }
 
     /// Undo the last mutation (Ctrl+-). Restores the prior snapshot; the
@@ -815,6 +1094,7 @@ impl Editor {
         self.redo_stack.lock().unwrap().push(self.snapshot_state());
         self.restore_state(&snap);
         *self.last_action.lock().unwrap() = None;
+        *self.preferred_visual_col.lock().unwrap() = None;
     }
 
     /// Redo the last undone mutation (Ctrl+R).
@@ -824,15 +1104,17 @@ impl Editor {
         self.undo_stack.lock().unwrap().push(self.snapshot_state());
         self.restore_state(&snap);
         *self.last_action.lock().unwrap() = None;
+        *self.preferred_visual_col.lock().unwrap() = None;
     }
 
-    /// Push killed (deleted) text onto the kill ring, accumulating consecutive
-    /// kills into one entry (mirrors the TS kill-ring semantics).
-    fn kill(&self, text: String, prepend: bool) {
+    /// Push killed (deleted) text onto the kill ring. `accumulate` says
+    /// whether the entry joins the previous one: the original accumulates only
+    /// when the **previous** action was a kill, so any other edit breaks the
+    /// chain (packages/tui/src/components/editor.ts:1881).
+    fn kill(&self, text: String, prepend: bool, accumulate: bool) {
         if text.is_empty() {
             return;
         }
-        let accumulate = *self.last_action.lock().unwrap() == Some("kill");
         if let Ok(mut ring) = self.kill_ring.lock() {
             ring.push(
                 &text,
@@ -850,7 +1132,8 @@ impl Editor {
     pub fn yank(&self) {
         let text = self.kill_ring.lock().unwrap().peek().map(str::to_string);
         let Some(text) = text else { return };
-        self.push_undo("yank");
+        self.exit_history_browsing();
+        self.push_undo_snapshot();
         if self.has_selection() {
             self.delete_selection_no_undo();
         }
@@ -858,13 +1141,56 @@ impl Editor {
         *self.last_action.lock().unwrap() = Some("yank");
     }
 
-    /// Yank-pop: rotate the kill ring and yank the next entry (Alt+Y).
+    /// Yank-pop: delete the yanked text, rotate the kill ring and yank the
+    /// next entry (Alt+Y). Only right after a yank, and only with more than
+    /// one entry (the original's `yankPop`).
     pub fn yank_pop(&self) {
+        if *self.last_action.lock().unwrap() != Some("yank") {
+            return;
+        }
         if self.kill_ring.lock().unwrap().len() <= 1 {
             return;
         }
+        self.push_undo_snapshot();
+        self.delete_yanked_text();
         self.kill_ring.lock().unwrap().rotate();
-        self.yank();
+        let text = self.kill_ring.lock().unwrap().peek().map(str::to_string);
+        if let Some(text) = text {
+            self.insert_no_undo(&text);
+        }
+        *self.last_action.lock().unwrap() = Some("yank");
+    }
+
+    /// Delete the text the last yank inserted, so the yank-pop can replace
+    /// it with the next ring entry (the original's `deleteYankedText`).
+    fn delete_yanked_text(&self) {
+        let Some(text) = self.kill_ring.lock().unwrap().peek().map(str::to_string) else {
+            return;
+        };
+        let mut state = self.state.lock().unwrap();
+        let row = state.cursor_row;
+        let lines: Vec<&str> = text.split('\n').collect();
+        if lines.len() == 1 {
+            let len = text.len();
+            if state.cursor_col >= len {
+                let start = state.cursor_col - len;
+                let end = state.cursor_col;
+                let line = &mut state.lines[row];
+                line.replace_range(start..end, "");
+                state.cursor_col = start;
+            }
+            return;
+        }
+        let start_row = row.saturating_sub(lines.len() - 1);
+        let start_col = state.lines[start_row]
+            .len()
+            .saturating_sub(lines[0].len());
+        let after = state.lines[row][state.cursor_col..].to_string();
+        let before = state.lines[start_row][..start_col].to_string();
+        state.lines.drain(start_row..=row);
+        state.lines.insert(start_row, before + &after);
+        state.cursor_row = start_row;
+        state.cursor_col = start_col;
     }
 
     // -------------------------------------------------------------------
@@ -878,10 +1204,13 @@ impl Editor {
 
     /// The ordered selection span `(start_row, start_col, end_row, end_col)`
     /// with start <= end (byte offsets, both on char boundaries).
+    ///
+    /// The span is the two ends of the selection, not the anchor and the
+    /// caret: a plain caret move leaves the selection where it was.
     fn selection_ordered(&self) -> Option<(usize, usize, usize, usize)> {
         let state = self.state.lock().unwrap();
         let (ar, ac) = state.selection_anchor?;
-        let (br, bc) = (state.cursor_row, state.cursor_col);
+        let (br, bc) = state.selection_end?;
         Some(if (ar, ac) <= (br, bc) {
             (ar, ac, br, bc)
         } else {
@@ -912,7 +1241,7 @@ impl Editor {
     /// for render-time highlighting. `None` when the row is outside the span.
     fn selection_span_on_row(&self, state: &EditorState, row: usize) -> Option<(usize, usize)> {
         let (ar, ac) = state.selection_anchor?;
-        let (br, bc) = (state.cursor_row, state.cursor_col);
+        let (br, bc) = state.selection_end?;
         let (sr, sc, er, ec) = if (ar, ac) <= (br, bc) {
             (ar, ac, br, bc)
         } else {
@@ -932,17 +1261,28 @@ impl Editor {
         }
     }
 
-    /// Seed the selection anchor at the current caret (Shift+direction start).
+    /// Seed the selection at the current caret (Shift+direction start).
     fn begin_selection(&self) {
         let mut state = self.state.lock().unwrap();
         if state.selection_anchor.is_none() {
             state.selection_anchor = Some((state.cursor_row, state.cursor_col));
+            state.selection_end = Some((state.cursor_row, state.cursor_col));
         }
     }
 
-    /// Clear the active selection (plain cursor movement / edits).
+    /// Extend the selection to the current caret (Shift+direction).
+    fn extend_selection(&self) {
+        let mut state = self.state.lock().unwrap();
+        if state.selection_anchor.is_some() {
+            state.selection_end = Some((state.cursor_row, state.cursor_col));
+        }
+    }
+
+    /// Clear the active selection (an edit replaces it).
     fn clear_selection(&self) {
-        self.state.lock().unwrap().selection_anchor = None;
+        let mut state = self.state.lock().unwrap();
+        state.selection_anchor = None;
+        state.selection_end = None;
     }
 
     /// Delete the selected span, leaving the caret at its start. Pushes an
@@ -951,7 +1291,7 @@ impl Editor {
         if !self.has_selection() {
             return;
         }
-        self.push_undo("edit");
+        self.push_undo_snapshot();
         self.delete_selection_no_undo();
     }
 
@@ -976,6 +1316,7 @@ impl Editor {
             state.cursor_col = sc;
         }
         state.selection_anchor = None;
+        state.selection_end = None;
         drop(state);
         self.notify_change();
     }
@@ -1006,12 +1347,36 @@ impl Editor {
 
     /// Insert text at cursor position. Replaces an active selection (one undo
     /// step: the snapshot is taken before the selection is deleted).
+    ///
+    /// This is the programmatic insertion (the original's
+    /// `insertTextAtCursor`): it is atomic for undo and never coalesces with
+    /// the typing around it.
     pub fn insert(&self, text: &str) {
-        self.push_undo("insert");
+        self.exit_history_browsing();
+        self.push_undo_snapshot();
+        *self.last_action.lock().unwrap() = None;
         if self.has_selection() {
             self.delete_selection_no_undo();
         }
         self.insert_no_undo(text);
+    }
+
+    /// Insert one typed character, with the original's fish-style undo
+    /// coalescing: a snapshot is taken before a whitespace character and
+    /// before the first character of a word, so "hello world" undoes as
+    /// "hello" + " world" (packages/tui/src/components/editor.ts:1414).
+    fn insert_character(&self, ch: char) {
+        self.exit_history_browsing();
+        let whitespace = ch.is_whitespace();
+        let typing_word = *self.last_action.lock().unwrap() == Some("type-word");
+        if whitespace || !typing_word {
+            self.push_undo_snapshot();
+        }
+        *self.last_action.lock().unwrap() = Some("type-word");
+        if self.has_selection() {
+            self.delete_selection_no_undo();
+        }
+        self.insert_no_undo(&ch.to_string());
     }
 
     /// Insert without an undo snapshot (caller pushed one — yank/replace
@@ -1054,6 +1419,8 @@ impl Editor {
     /// Delete character before cursor (Backspace). With a selection, deletes
     /// the selection instead.
     fn backspace(&self) {
+        self.exit_history_browsing();
+        *self.last_action.lock().unwrap() = None;
         if self.has_selection() {
             self.delete_selection();
             return;
@@ -1071,9 +1438,9 @@ impl Editor {
         };
         if let Some((row, start, len)) = deleted_marker {
             // Snapshot FIRST: `remove_paste` mutates the paste store and
-            // renumbers the surviving markers, so undo must capture the
+            // renumbers the surviving pastes, so undo must capture the
             // pre-deletion state to be able to bring them all back.
-            self.push_undo("edit");
+            self.push_undo_snapshot();
             let id = self.paste_id_at_marker_start(row, start);
             // Delete the marker text BEFORE renumbering, so the renumber pass
             // (which can change a marker's byte length when an id crosses
@@ -1088,23 +1455,18 @@ impl Editor {
             self.notify_change();
             return;
         }
-        self.push_undo("edit");
+        self.push_undo_snapshot();
         if let Ok(mut state) = self.state.lock() {
             if state.cursor_col > 0 {
                 let row = state.cursor_row;
-                // Step back by the byte length of the char immediately
-                // before the cursor, then remove that char. (`remove` takes
-                // a byte index and must land on a boundary.) Compute the
-                // length through a shared borrow first so the mutable borrow
-                // for `remove` is the only outstanding alias.
-                let prev_len = state.lines[row][..state.cursor_col]
-                    .chars()
-                    .last()
-                    .map(|c| c.len_utf8())
-                    .unwrap_or(0);
-                let col = state.cursor_col - prev_len;
-                state.lines[row].remove(col);
-                state.cursor_col = col;
+                // Step back over the grapheme immediately before the cursor
+                // and remove it. (`replace_range` takes byte indices and must
+                // land on a boundary.)
+                let start = prev_grapheme_offset(&state.lines[row], state.cursor_col);
+                let end = state.cursor_col;
+                let line = &mut state.lines[row];
+                line.replace_range(start..end, "");
+                state.cursor_col = start;
             } else if state.cursor_row > 0 {
                 // Join with previous line
                 let row = state.cursor_row;
@@ -1121,17 +1483,20 @@ impl Editor {
     /// Delete character at cursor (Delete). With a selection, deletes the
     /// selection instead.
     fn delete(&self) {
+        self.exit_history_browsing();
+        *self.last_action.lock().unwrap() = None;
         if self.has_selection() {
             self.delete_selection();
             return;
         }
-        self.push_undo("edit");
+        self.push_undo_snapshot();
         if let Ok(mut state) = self.state.lock() {
             let row = state.cursor_row;
             let line_len = state.lines[row].len();
             if state.cursor_col < line_len {
                 let col = state.cursor_col;
-                state.lines[row].remove(col);
+                let end = next_grapheme_offset(&state.lines[row], col);
+                state.lines[row].replace_range(col..end, "");
             } else if row < state.lines.len() - 1 {
                 // Join with next line
                 let next = state.lines.remove(row + 1);
@@ -1141,205 +1506,543 @@ impl Editor {
         self.notify_change();
     }
 
-    /// Move cursor left.
+    /// Move cursor left: one grapheme, or to the end of the previous line.
     fn cursor_left(&self) {
-        if let Ok(mut state) = self.state.lock() {
-            if state.cursor_col > 0 {
-                let row = state.cursor_row;
-                let line = &state.lines[row];
-                // A folded paste marker is atomic: step the whole marker.
-                let marker = paste_marker_len_ending_at(line, state.cursor_col);
-                if marker > 0 {
-                    state.cursor_col -= marker;
-                    return;
-                }
-                // Retrear by the byte length of the preceding char so the
-                // caret stays on a char boundary.
-                let prev_len = line[..state.cursor_col]
-                    .chars()
-                    .last()
-                    .map(|c| c.len_utf8())
-                    .unwrap_or(0);
-                state.cursor_col -= prev_len;
-            } else if state.cursor_row > 0 {
-                state.cursor_row -= 1;
-                state.cursor_col = state.lines[state.cursor_row].len();
-            }
-        }
-    }
-
-    /// Move cursor right.
-    fn cursor_right(&self) {
-        if let Ok(mut state) = self.state.lock() {
+        *self.last_action.lock().unwrap() = None;
+        let mut state = self.state.lock().unwrap();
+        if state.cursor_col > 0 {
             let row = state.cursor_row;
-            let line = &state.lines[row];
-            if state.cursor_col < line.len() {
-                // A folded paste marker is atomic: step the whole marker.
-                for m in paste_marker_regex().find_iter(line) {
-                    if m.start() == state.cursor_col {
-                        state.cursor_col = m.end();
-                        return;
-                    }
-                }
-                // Advance by the byte length of the char at the cursor.
-                let ch_len = line[state.cursor_col..]
-                    .chars()
-                    .next()
-                    .map(|c| c.len_utf8())
-                    .unwrap_or(0);
-                state.cursor_col += ch_len;
-            } else if row < state.lines.len() - 1 {
-                state.cursor_row += 1;
-                state.cursor_col = 0;
-            }
+            let target = prev_grapheme_offset(&state.lines[row], state.cursor_col);
+            self.set_cursor_col(&mut state, target);
+        } else if state.cursor_row > 0 {
+            state.cursor_row -= 1;
+            let col = state.lines[state.cursor_row].len();
+            self.set_cursor_col(&mut state, col);
         }
     }
 
-    /// Move cursor up.
+    /// Move cursor right: one grapheme, or to the start of the next line.
+    fn cursor_right(&self) {
+        *self.last_action.lock().unwrap() = None;
+        let mut state = self.state.lock().unwrap();
+        let row = state.cursor_row;
+        if state.cursor_col < state.lines[row].len() {
+            let target = next_grapheme_offset(&state.lines[row], state.cursor_col);
+            self.set_cursor_col(&mut state, target);
+        } else if row < state.lines.len() - 1 {
+            state.cursor_row += 1;
+            self.set_cursor_col(&mut state, 0);
+        } else {
+            // At the end of the last line: remember the column so the
+            // vertical movement returns to it (the original's
+            // `preferredVisualCol`).
+            let width = self.layout_width();
+            let lines = build_visual_lines(&state.lines, width);
+            let col = utf16_len(&state.lines[row]);
+            let current = find_visual_line_at(&lines, row, col);
+            let start_col = lines[current].start_col;
+            *self.preferred_visual_col.lock().unwrap() = Some(col.saturating_sub(start_col));
+        }
+    }
+
+    /// Move cursor up: the history on the first visual line, the line start
+    /// at the top of a non-empty line, otherwise one visual line up.
     fn cursor_up(&self) {
-        if let Ok(mut state) = self.state.lock() {
-            if state.cursor_row > 0 {
-                state.cursor_row -= 1;
-                let new_row = state.cursor_row;
-                let max = state.lines[new_row].len();
-                // The byte column may fall mid-character in the new (shorter
-                // or differently-encoded) line; snap to a boundary.
-                state.cursor_col = snap_boundary(&state.lines[new_row], state.cursor_col.min(max));
+        if self.is_on_first_visual_line() {
+            let (empty, browsing, col) = {
+                let state = self.state.lock().unwrap();
+                let empty = state.lines.len() == 1 && state.lines[0].is_empty();
+                let browsing = *self.history_index.lock().unwrap() > -1;
+                (empty, browsing, state.cursor_col)
+            };
+            if empty || browsing || col == 0 {
+                self.navigate_history(-1);
+                return;
             }
+            self.move_to_line_start();
+            return;
         }
+        self.move_cursor_vertical(-1);
     }
 
-    /// Move cursor down.
+    /// Move cursor down: the history while browsing on the last visual line,
+    /// the line end at the bottom, otherwise one visual line down.
     fn cursor_down(&self) {
-        if let Ok(mut state) = self.state.lock() {
-            if state.cursor_row < state.lines.len() - 1 {
-                state.cursor_row += 1;
-                let new_row = state.cursor_row;
-                let max = state.lines[new_row].len();
-                state.cursor_col = snap_boundary(&state.lines[new_row], state.cursor_col.min(max));
-            }
+        let browsing = *self.history_index.lock().unwrap() > -1;
+        if browsing && self.is_on_last_visual_line() {
+            self.navigate_history(1);
+            return;
         }
+        if self.is_on_last_visual_line() {
+            self.move_to_line_end();
+            return;
+        }
+        self.move_cursor_vertical(1);
     }
 
     /// Move cursor to start of line.
     fn cursor_home(&self) {
-        if let Ok(mut state) = self.state.lock() {
-            state.cursor_col = 0;
-        }
+        self.move_to_line_start();
     }
 
     /// Move cursor to end of line.
     fn cursor_end(&self) {
-        if let Ok(mut state) = self.state.lock() {
-            let row = state.cursor_row;
-            state.cursor_col = state.lines[row].len();
+        self.move_to_line_end();
+    }
+
+    /// Move the caret to the start of the current logical line.
+    fn move_to_line_start(&self) {
+        *self.last_action.lock().unwrap() = None;
+        let mut state = self.state.lock().unwrap();
+        self.set_cursor_col(&mut state, 0);
+    }
+
+    /// Move the caret to the end of the current logical line.
+    fn move_to_line_end(&self) {
+        *self.last_action.lock().unwrap() = None;
+        let mut state = self.state.lock().unwrap();
+        let row = state.cursor_row;
+        let col = state.lines[row].len();
+        self.set_cursor_col(&mut state, col);
+    }
+
+    /// Set the caret's column, clearing the sticky column and the snapped
+    /// column (the original's `setCursorCol`).
+    fn set_cursor_col(&self, state: &mut EditorState, col: usize) {
+        state.cursor_col = col;
+        *self.preferred_visual_col.lock().unwrap() = None;
+        *self.snapped_from_cursor_col.lock().unwrap() = None;
+    }
+
+    /// The width the text is laid out at: the width of the last render.
+    fn layout_width(&self) -> usize {
+        let width = self.rendered_width.lock().map(|w| *w).unwrap_or(0);
+        if width == 0 {
+            80
+        } else {
+            width
         }
     }
 
-    /// Kill the word before the cursor (Ctrl+W / Alt+Backspace): Emacs
-    /// backward-kill-word — skip the current word, then the intervening
-    /// delimiters, landing on the previous word's start.
+    /// Whether the caret sits on the first visual (wrapped) line.
+    fn is_on_first_visual_line(&self) -> bool {
+        let state = self.state.lock().unwrap();
+        let width = self.layout_width();
+        let lines = build_visual_lines(&state.lines, width);
+        if lines.is_empty() {
+            return true;
+        }
+        let row = state.cursor_row;
+        let col = utf16_len(&state.lines[row][..state.cursor_col]);
+        find_visual_line_at(&lines, row, col) == 0
+    }
+
+    /// Whether the caret sits on the last visual (wrapped) line.
+    fn is_on_last_visual_line(&self) -> bool {
+        let state = self.state.lock().unwrap();
+        let width = self.layout_width();
+        let lines = build_visual_lines(&state.lines, width);
+        if lines.is_empty() {
+            return true;
+        }
+        let row = state.cursor_row;
+        let col = utf16_len(&state.lines[row][..state.cursor_col]);
+        find_visual_line_at(&lines, row, col) == lines.len() - 1
+    }
+
+    /// Move the caret one visual line up or down.
+    fn move_cursor_vertical(&self, direction: i32) {
+        *self.last_action.lock().unwrap() = None;
+        let mut state = self.state.lock().unwrap();
+        let width = self.layout_width();
+        let lines = build_visual_lines(&state.lines, width);
+        if lines.is_empty() {
+            return;
+        }
+        let row = state.cursor_row;
+        let col = utf16_len(&state.lines[row][..state.cursor_col]);
+        let current = find_visual_line_at(&lines, row, col);
+        let target = current as i32 + direction;
+        if target < 0 || target as usize >= lines.len() {
+            return;
+        }
+        self.move_to_visual_line(&mut state, &lines, current, target as usize);
+    }
+
+    /// Move the caret to a visual line, applying the sticky column.
+    ///
+    /// The original's `moveToVisualLine`
+    /// (packages/tui/src/components/editor.ts:1704-1786).
+    fn move_to_visual_line(
+        &self,
+        state: &mut EditorState,
+        lines: &[VisualLine],
+        current: usize,
+        target: usize,
+    ) {
+        let current_line = lines[current];
+        let target_line = lines[target];
+        let snapped = *self.snapped_from_cursor_col.lock().unwrap();
+        let current_visual_col = match snapped {
+            Some(col) => col.saturating_sub(current_line.start_col),
+            None => {
+                let row = state.cursor_row;
+                utf16_len(&state.lines[row][..state.cursor_col])
+                    .saturating_sub(current_line.start_col)
+            }
+        };
+        let source_is_last = current + 1 >= lines.len()
+            || lines[current + 1].logical_line != current_line.logical_line;
+        let source_max = if source_is_last {
+            current_line.len
+        } else {
+            current_line.len.saturating_sub(1)
+        };
+        let target_is_last = target + 1 >= lines.len()
+            || lines[target + 1].logical_line != target_line.logical_line;
+        let target_max = if target_is_last {
+            target_line.len
+        } else {
+            target_line.len.saturating_sub(1)
+        };
+
+        let move_to = self.compute_vertical_move_column(current_visual_col, source_max, target_max);
+
+        state.cursor_row = target_line.logical_line;
+        let logical = &state.lines[target_line.logical_line];
+        let wanted = target_line.start_col + move_to;
+        let clamped = wanted.min(utf16_len(logical));
+        let mut byte = byte_offset_at_utf16(logical, clamped);
+        // The caret never lands inside a folded-paste marker: it snaps to the
+        // marker's start and remembers the column it came from.
+        let mut snapped_to = None;
+        for capture in paste_marker_regex().find_iter(logical) {
+            let start_col = utf16_len(&logical[..capture.start()]);
+            let end_col = utf16_len(&logical[..capture.end()]);
+            if clamped > start_col && clamped < end_col {
+                byte = capture.start();
+                snapped_to = Some(clamped);
+                break;
+            }
+        }
+        state.cursor_col = byte;
+        *self.snapped_from_cursor_col.lock().unwrap() = snapped_to;
+    }
+
+    /// The column a vertical move lands on, and whether the sticky column is
+    /// kept. The original's `computeVerticalMoveColumn`
+    /// (packages/tui/src/components/editor.ts:1795-1830).
+    fn compute_vertical_move_column(
+        &self,
+        current_visual_col: usize,
+        source_max: usize,
+        target_max: usize,
+    ) -> usize {
+        let preferred = *self.preferred_visual_col.lock().unwrap();
+        let cursor_in_middle = current_visual_col < source_max;
+        let target_too_short = target_max < current_visual_col;
+
+        let has_preferred = preferred.is_some() && !cursor_in_middle;
+        if !has_preferred {
+            if target_too_short {
+                *self.preferred_visual_col.lock().unwrap() = Some(current_visual_col);
+                return target_max;
+            }
+            *self.preferred_visual_col.lock().unwrap() = None;
+            return current_visual_col;
+        }
+
+        let preferred = preferred.unwrap_or(0);
+        let target_cant_fit_preferred = target_max < preferred;
+        if target_too_short || target_cant_fit_preferred {
+            return target_max;
+        }
+        *self.preferred_visual_col.lock().unwrap() = None;
+        preferred
+    }
+
+    /// Kill the word before the cursor (Ctrl+W / Alt+Backspace): the
+    /// original's `deleteWordBackwards`
+    /// (packages/tui/src/components/editor.ts:1903-1946).
     fn kill_word_backward(&self) {
-        self.push_undo("kill");
-        let killed = if let Ok(mut state) = self.state.lock() {
-            let row = state.cursor_row;
-            let col = state.cursor_col;
-            let start = crate::word_navigation::find_word_backward(&state.lines[row], col);
-            let dead: String = state.lines[row].drain(start..col).collect();
+        self.exit_history_browsing();
+        let was_kill = *self.last_action.lock().unwrap() == Some("kill");
+        let (row, col, has_previous) = {
+            let state = self.state.lock().unwrap();
+            (state.cursor_row, state.cursor_col, state.cursor_row > 0)
+        };
+        if col == 0 {
+            if !has_previous {
+                return;
+            }
+            self.push_undo_snapshot();
+            let killed = {
+                let mut state = self.state.lock().unwrap();
+                let current = state.lines.remove(row);
+                state.cursor_row -= 1;
+                let previous_row = state.cursor_row;
+                let previous_len = state.lines[previous_row].len();
+                state.lines[previous_row].push_str(&current);
+                state.cursor_col = previous_len;
+                "\n".to_string()
+            };
+            self.kill(killed, true, was_kill);
+            self.notify_change();
+            return;
+        }
+        self.push_undo_snapshot();
+        let killed = {
+            let mut state = self.state.lock().unwrap();
+            let line = &state.lines[row];
+            let markers = marker_ranges(line);
+            let start = crate::word_navigation::find_word_backward_marked(line, col, &markers);
+            let dead: String = line[start..col].to_string();
+            state.lines[row].replace_range(start..col, "");
             state.cursor_col = start;
             dead
-        } else {
-            String::new()
         };
-        self.kill(killed, true);
+        self.kill(killed, true, was_kill);
         self.notify_change();
     }
 
-    /// Kill the word after the cursor (Alt+D / Alt+Delete).
+    /// Kill the word after the cursor (Alt+D / Alt+Delete): the original's
+    /// `deleteWordForward` (packages/tui/src/components/editor.ts:1948-1988).
     fn kill_word_forward(&self) {
-        self.push_undo("kill");
-        let killed = if let Ok(mut state) = self.state.lock() {
-            let row = state.cursor_row;
-            let col = state.cursor_col;
-            // Kill only the current word (not the trailing delimiter) —
-            // `find_word_end` stops at the last word char.
-            let end = crate::word_navigation::find_word_end(&state.lines[row], col);
-            let dead: String = state.lines[row].drain(col..end).collect();
-            dead
-        } else {
-            String::new()
+        self.exit_history_browsing();
+        let was_kill = *self.last_action.lock().unwrap() == Some("kill");
+        let (row, col, line_len, has_next) = {
+            let state = self.state.lock().unwrap();
+            (
+                state.cursor_row,
+                state.cursor_col,
+                state.lines[state.cursor_row].len(),
+                state.cursor_row + 1 < state.lines.len(),
+            )
         };
-        self.kill(killed, false);
+        if col >= line_len {
+            if !has_next {
+                return;
+            }
+            self.push_undo_snapshot();
+            let killed = {
+                let mut state = self.state.lock().unwrap();
+                let next = state.lines.remove(row + 1);
+                state.lines[row].push_str(&next);
+                "\n".to_string()
+            };
+            self.kill(killed, false, was_kill);
+            self.notify_change();
+            return;
+        }
+        self.push_undo_snapshot();
+        let killed = {
+            let mut state = self.state.lock().unwrap();
+            let line = &state.lines[row];
+            let markers = marker_ranges(line);
+            let end = crate::word_navigation::find_word_forward_marked(line, col, &markers);
+            let dead: String = line[col..end].to_string();
+            state.lines[row].replace_range(col..end, "");
+            dead
+        };
+        self.kill(killed, false, was_kill);
         self.notify_change();
     }
 
-    /// Jump to the previous word boundary (Alt+Left).
-    fn cursor_word_left(&self) {
-        if let Ok(mut state) = self.state.lock() {
-            let row = state.cursor_row;
-            state.cursor_col =
-                crate::word_navigation::find_word_backward(&state.lines[row], state.cursor_col);
+    /// Kill to the end of the line (Ctrl+K): the original's
+    /// `deleteToEndOfLine` (packages/tui/src/components/editor.ts:1871-1900).
+    fn delete_to_end_of_line(&self) {
+        self.exit_history_browsing();
+        let was_kill = *self.last_action.lock().unwrap() == Some("kill");
+        let (row, col, line_len, has_next) = {
+            let state = self.state.lock().unwrap();
+            (
+                state.cursor_row,
+                state.cursor_col,
+                state.lines[state.cursor_row].len(),
+                state.cursor_row + 1 < state.lines.len(),
+            )
+        };
+        if col < line_len {
+            self.push_undo_snapshot();
+            let killed = {
+                let mut state = self.state.lock().unwrap();
+                let dead = state.lines[row][col..].to_string();
+                state.lines[row].truncate(col);
+                dead
+            };
+            self.kill(killed, false, was_kill);
+        } else if has_next {
+            self.push_undo_snapshot();
+            let killed = {
+                let mut state = self.state.lock().unwrap();
+                let next = state.lines.remove(row + 1);
+                state.lines[row].push_str(&next);
+                "\n".to_string()
+            };
+            self.kill(killed, false, was_kill);
         }
+        self.notify_change();
     }
 
-    /// Jump to the next word boundary (Alt+Right).
-    fn cursor_word_right(&self) {
-        if let Ok(mut state) = self.state.lock() {
-            let row = state.cursor_row;
-            state.cursor_col =
-                crate::word_navigation::find_word_forward(&state.lines[row], state.cursor_col);
+    /// Kill to the start of the line (Ctrl+U): the original's
+    /// `deleteToStartOfLine` (packages/tui/src/components/editor.ts:1836-1869).
+    fn delete_to_start_of_line(&self) {
+        self.exit_history_browsing();
+        let was_kill = *self.last_action.lock().unwrap() == Some("kill");
+        let (row, col, has_previous) = {
+            let state = self.state.lock().unwrap();
+            (
+                state.cursor_row,
+                state.cursor_col,
+                state.cursor_row > 0,
+            )
+        };
+        if col > 0 {
+            self.push_undo_snapshot();
+            let killed = {
+                let mut state = self.state.lock().unwrap();
+                let dead = state.lines[row][..col].to_string();
+                state.lines[row].replace_range(..col, "");
+                state.cursor_col = 0;
+                dead
+            };
+            self.kill(killed, true, was_kill);
+        } else if has_previous {
+            self.push_undo_snapshot();
+            let killed = {
+                let mut state = self.state.lock().unwrap();
+                let current = state.lines.remove(row);
+                state.cursor_row -= 1;
+                let previous_row = state.cursor_row;
+                let previous_len = state.lines[previous_row].len();
+                state.lines[previous_row].push_str(&current);
+                state.cursor_col = previous_len;
+                "\n".to_string()
+            };
+            self.kill(killed, true, was_kill);
         }
+        self.notify_change();
+    }
+
+    /// Jump to the previous word boundary (Alt+Left). At the start of a line
+    /// the caret moves to the end of the previous one.
+    fn cursor_word_left(&self) {
+        *self.last_action.lock().unwrap() = None;
+        let mut state = self.state.lock().unwrap();
+        let row = state.cursor_row;
+        if state.cursor_col == 0 {
+            if row > 0 {
+                state.cursor_row -= 1;
+                let col = state.lines[state.cursor_row].len();
+                self.set_cursor_col(&mut state, col);
+            }
+            return;
+        }
+        let markers = marker_ranges(&state.lines[row]);
+        let target =
+            crate::word_navigation::find_word_backward_marked(&state.lines[row], state.cursor_col, &markers);
+        self.set_cursor_col(&mut state, target);
+    }
+
+    /// Jump to the next word boundary (Alt+Right). At the end of a line the
+    /// caret moves to the start of the next one.
+    fn cursor_word_right(&self) {
+        *self.last_action.lock().unwrap() = None;
+        let mut state = self.state.lock().unwrap();
+        let row = state.cursor_row;
+        if state.cursor_col >= state.lines[row].len() {
+            if row < state.lines.len() - 1 {
+                state.cursor_row += 1;
+                self.set_cursor_col(&mut state, 0);
+            }
+            return;
+        }
+        let markers = marker_ranges(&state.lines[row]);
+        let target =
+            crate::word_navigation::find_word_forward_marked(&state.lines[row], state.cursor_col, &markers);
+        self.set_cursor_col(&mut state, target);
     }
 
     /// Page-scroll the editor caret up/down by a page (pi `tui.editor.pageUp/
-    /// pageDown`): move the cursor row by a page and clamp the column to the
-    /// target line (page = 10 rows; a terminal-height-aware version would need
-    /// the viewport, which the component doesn't own).
+    /// pageDown`): a page of **visual** lines, `max(5, 30% of the rows)`.
     fn page_scroll(&self, dir: i32) {
-        const PAGE: usize = 10;
-        if let Ok(mut state) = self.state.lock() {
-            let target = if dir > 0 {
-                (state.cursor_row + PAGE).min(state.lines.len().saturating_sub(1))
-            } else {
-                state.cursor_row.saturating_sub(PAGE)
-            };
-            state.cursor_row = target;
-            let max = state.lines[target].len();
-            state.cursor_col = snap_boundary(&state.lines[target], state.cursor_col.min(max));
+        *self.last_action.lock().unwrap() = None;
+        let page = self.page_size();
+        let mut state = self.state.lock().unwrap();
+        let width = self.layout_width();
+        let lines = build_visual_lines(&state.lines, width);
+        if lines.is_empty() {
+            return;
         }
+        let row = state.cursor_row;
+        let col = utf16_len(&state.lines[row][..state.cursor_col]);
+        let current = find_visual_line_at(&lines, row, col);
+        let offset = dir * page as i32;
+        let target = (current as i32 + offset).clamp(0, lines.len() as i32 - 1) as usize;
+        self.move_to_visual_line(&mut state, &lines, current, target);
+    }
+
+    /// The number of visual lines a page covers: `max(5, 30% of the rows)`,
+    /// the original's `pageScroll` (packages/tui/src/components/editor.ts:2172).
+    fn page_size(&self) -> usize {
+        let rows = self.terminal_row_count();
+        std::cmp::max(5, (rows as f64 * 0.3).floor() as usize)
     }
 
     /// Jump the caret to the next/previous occurrence of `target` (pi
     /// `jumpToChar`): scan the current line from after/before the caret, then
-    /// onward/backward line by line. Byte-safe: `find`/`rfind` return char
-    /// boundaries and all search offsets start on one.
+    /// onward/backward line by line.
+    ///
+    /// The original searches in UTF-16 code units: forward it takes the first
+    /// occurrence that starts at or after `cursorCol + 1`, backward the last
+    /// one that starts at or before `cursorCol - 1` (the position is clamped
+    /// at zero). The port keeps the caret in bytes, so the occurrences are
+    /// matched by their byte offset and compared in code units.
     fn jump_to_char(&self, target: char, dir: i32) {
+        *self.last_action.lock().unwrap() = None;
         let forward = dir > 0;
         let mut state = self.state.lock().unwrap();
         let start_row = state.cursor_row;
         let mut row = start_row;
         let step: isize = if forward { 1 } else { -1 };
         loop {
-            let line = &state.lines[row];
-            let search_from = if row == start_row {
+            let line = state.lines[row].clone();
+            let on_start_row = row == start_row;
+            let limit = if on_start_row {
+                let current_col = utf16_len(&line[..state.cursor_col.min(line.len())]);
                 if forward {
-                    (state.cursor_col + target.len_utf8()).min(line.len())
+                    current_col.saturating_add(1)
                 } else {
-                    state.cursor_col.saturating_sub(target.len_utf8())
+                    current_col.saturating_sub(1)
                 }
-            } else if forward {
+            } else {
                 0
-            } else {
-                line.len()
             };
-            let found = if forward {
-                line[search_from..].find(target).map(|i| search_from + i)
-            } else {
-                line[..search_from].rfind(target)
-            };
+            let mut found = None;
+            let mut units = 0usize;
+            for (offset, ch) in line.char_indices() {
+                if ch == target {
+                    let hits = if on_start_row {
+                        if forward {
+                            units >= limit
+                        } else {
+                            units <= limit
+                        }
+                    } else {
+                        true
+                    };
+                    if hits {
+                        found = Some(offset);
+                        if forward {
+                            break;
+                        }
+                    }
+                }
+                units += ch.len_utf16();
+            }
             if let Some(idx) = found {
                 state.cursor_row = row;
-                state.cursor_col = idx;
+                self.set_cursor_col(&mut state, idx);
                 return;
             }
             let next = row as isize + step;
@@ -1352,9 +2055,32 @@ impl Editor {
 
     /// Set the working state. When Some, shows a spinner + elapsed time + message
     /// on the card's top row. When None, the top row is blank.
+    ///
+    /// The spinner keeps its frame when a working state replaces another one:
+    /// the frame is a counter the ticker advances, so a status refresh must
+    /// not restart the animation.
     pub fn set_working(&self, working: Option<WorkingState>) {
-        if let Ok(mut guard) = self.working.lock() {
-            *guard = working;
+        let previous_frame = self
+            .working
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|state| state.frame));
+        match working {
+            Some(mut state) => {
+                if let Some(frame) = previous_frame {
+                    state.frame = frame;
+                }
+                if let Ok(mut guard) = self.working.lock() {
+                    *guard = Some(state);
+                }
+                self.start_working_ticker();
+            }
+            None => {
+                if let Ok(mut guard) = self.working.lock() {
+                    *guard = None;
+                }
+                self.stop_working_ticker();
+            }
         }
     }
 
@@ -1363,27 +2089,181 @@ impl Editor {
         self.working.lock().ok().and_then(|guard| guard.clone())
     }
 
-    /// Submit current text (Enter).
-    fn submit(&self) {
-        // Send the EXPANDED draft: a folded `[paste #id …]` marker must reach
-        // the model as the user's real content, not the placeholder.
-        let text = self.get_expanded_text();
-        if let Ok(mut state) = self.state.lock() {
-            if !text.is_empty() {
-                state.history.push(text.clone());
-                state.history_index = state.history.len();
-            }
+    /// Advance the working indicator's spinner by one frame.
+    ///
+    /// One frame per [`SPINNER_FRAME_MS`](crate::loader::SPINNER_FRAME_MS):
+    /// the ticker calls this, and a paint never does.
+    pub fn advance_working_frame(&self) {
+        if let Ok(mut guard) = self.working.lock() {
+            advance_working_frame(&mut guard);
         }
+    }
+
+    /// Stop the working indicator's animation.
+    ///
+    /// The frame counter stops advancing; the indicator keeps its last frame.
+    pub fn stop_working_animation(&self) {
+        self.stop_working_ticker();
+    }
+
+    /// Run the working indicator's frame ticker, if it is not already running.
+    fn start_working_ticker(&self) {
+        let mut ticker = match self.working_ticker.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        if ticker.is_some() {
+            return;
+        }
+        let working = Arc::clone(&self.working);
+        *ticker = Some(SpinnerTicker::start(
+            crate::loader::SPINNER_FRAME_MS,
+            move || {
+                if let Ok(mut guard) = working.lock() {
+                    advance_working_frame(&mut guard);
+                }
+            },
+        ));
+    }
+
+    /// Stop the working indicator's frame ticker.
+    fn stop_working_ticker(&self) {
+        let mut ticker = match self.working_ticker.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        if let Some(mut running) = ticker.take() {
+            running.stop();
+        }
+    }
+
+    /// Submit current text (Enter).
+    ///
+    /// The draft is expanded (a folded `[paste #id …]` marker must reach the
+    /// model as the user's real content) and trimmed, then the editor is
+    /// reset **before** the callback runs, so the app can keep the submitted
+    /// text (the original's `submitValue`).
+    fn submit(&self) {
+        let text = self.get_expanded_text().trim().to_string();
         // Submitted text is committed — don't let Ctrl+- resurrect it.
         self.undo_stack.lock().unwrap().clear();
         self.redo_stack.lock().unwrap().clear();
         *self.last_action.lock().unwrap() = None;
+        self.exit_history_browsing();
+        self.clear();
         if let Ok(cb) = self.on_submit.lock() {
             if let Some(callback) = cb.as_ref() {
                 callback(&text);
             }
         }
-        self.clear();
+    }
+
+    /// Record a submitted prompt in the history (the original's
+    /// `addToHistory`, packages/tui/src/components/editor.ts:517).
+    ///
+    /// The entry is trimmed, empty and consecutive duplicates are skipped, the
+    /// newest entry comes first and the history holds 100 entries.
+    pub fn add_to_history(&self, text: &str) {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        let mut history = self.history.lock().unwrap();
+        if history.first().map(|entry| entry.as_str()) == Some(trimmed) {
+            return;
+        }
+        history.insert(0, trimmed.to_string());
+        if history.len() > 100 {
+            history.pop();
+        }
+    }
+
+    /// The prompt history, newest entry first.
+    pub fn history(&self) -> Vec<String> {
+        self.history.lock().map(|history| history.clone()).unwrap_or_default()
+    }
+
+    /// Leave the history browsing: the next edit starts from the text the
+    /// user typed (the original's `exitHistoryBrowsing`).
+    fn exit_history_browsing(&self) {
+        *self.history_index.lock().unwrap() = -1;
+        *self.history_draft.lock().unwrap() = None;
+    }
+
+    /// Whether the editor is browsing the prompt history.
+    pub fn is_browsing_history(&self) -> bool {
+        *self.history_index.lock().unwrap() > -1
+    }
+
+    /// Walk the prompt history. `direction` is -1 (↑, older) or 1 (↓, newer).
+    ///
+    /// The original's `navigateHistory`
+    /// (packages/tui/src/components/editor.ts:553): entering the browse mode
+    /// snapshots the editor state, the recalled entry replaces the text (the
+    /// caret at its start for ↑, at its end for ↓) and leaving the browse
+    /// mode restores the draft with its caret.
+    pub fn navigate_history(&self, direction: i32) {
+        *self.last_action.lock().unwrap() = None;
+        let history = self.history.lock().unwrap();
+        if history.is_empty() {
+            return;
+        }
+        let index = *self.history_index.lock().unwrap();
+        let new_index = index - direction as isize;
+        if new_index < -1 || new_index >= history.len() as isize {
+            return;
+        }
+        if index == -1 && new_index >= 0 {
+            // Entering the browse mode: snapshot the editor state, so the
+            // draft (text **and** caret) can be restored.
+            self.push_undo_snapshot();
+            *self.history_draft.lock().unwrap() = Some(self.snapshot_state());
+        }
+        *self.history_index.lock().unwrap() = new_index;
+        if new_index == -1 {
+            let draft = self.history_draft.lock().unwrap().take();
+            match draft {
+                Some(draft) => {
+                    self.restore_state(&draft);
+                    *self.preferred_visual_col.lock().unwrap() = None;
+                    *self.snapped_from_cursor_col.lock().unwrap() = None;
+                    *self.scroll_offset.lock().unwrap() = 0;
+                    *self.scroll_pinned.lock().unwrap() = false;
+                    self.notify_change();
+                }
+                None => self.set_text_internal("", false),
+            }
+            return;
+        }
+        let text = history[new_index as usize].clone();
+        drop(history);
+        self.set_text_internal(&text, direction == -1);
+    }
+
+    /// Replace the text, placing the caret at its start (`at_start`) or at the
+    /// end of the last line (the original's `setTextInternal`).
+    fn set_text_internal(&self, text: &str, at_start: bool) {
+        let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+        if let Ok(mut state) = self.state.lock() {
+            state.lines = if normalized.is_empty() {
+                vec![String::new()]
+            } else {
+                normalized.split('\n').map(|line| line.to_string()).collect()
+            };
+            if state.lines.is_empty() {
+                state.lines.push(String::new());
+            }
+            if at_start {
+                state.cursor_row = 0;
+                state.cursor_col = 0;
+            } else {
+                state.cursor_row = state.lines.len() - 1;
+                state.cursor_col = state.lines[state.cursor_row].len();
+            }
+        }
+        *self.scroll_offset.lock().unwrap() = 0;
+        *self.scroll_pinned.lock().unwrap() = false;
+        self.notify_change();
     }
 
     /// Notify change callback.
@@ -1399,178 +2279,274 @@ impl Editor {
     /// Handle keyboard input.
     pub fn handle_key(&self, key: crossterm::event::KeyEvent) -> bool {
         // A key press moves the caret, so the view follows it again.
-        if let Ok(mut guard) = self.scroll_pinned.lock() {
-            *guard = false;
+        *self.scroll_pinned.lock().unwrap() = false;
+        let kb = self.keybindings.clone();
+
+        let jump_direction = *self.jump_mode.lock().unwrap();
+        if let Some(direction) = jump_direction {
+            if kb.matches(&key, keybindings::keys::JUMP_FORWARD)
+                || kb.matches(&key, keybindings::keys::JUMP_BACKWARD)
+            {
+                *self.jump_mode.lock().unwrap() = None;
+                return true;
+            }
+            if let Some(ch) = printable_char(key) {
+                *self.jump_mode.lock().unwrap() = None;
+                self.jump_to_char(ch, direction);
+                return true;
+            }
+            *self.jump_mode.lock().unwrap() = None;
         }
+
+        // Shift+arrows extend the selection (a port-only feature: the
+        // original's editor has no selection of its own).
         match (key.modifiers, key.code) {
-            // Navigation — plain movement clears any active selection;
-            // Shift+movement extends it.
-            (KeyModifiers::NONE, KeyCode::Left) => {
-                self.clear_selection();
-                self.cursor_left();
-            }
-            (KeyModifiers::NONE, KeyCode::Right) => {
-                self.clear_selection();
-                self.cursor_right();
-            }
-            (KeyModifiers::NONE, KeyCode::Up) => {
-                self.clear_selection();
-                self.cursor_up();
-            }
-            (KeyModifiers::NONE, KeyCode::Down) => {
-                self.clear_selection();
-                self.cursor_down();
-            }
-            (KeyModifiers::NONE, KeyCode::Home) => {
-                self.clear_selection();
-                self.cursor_home();
-            }
-            (KeyModifiers::NONE, KeyCode::End) => {
-                self.clear_selection();
-                self.cursor_end();
-            }
             (KeyModifiers::SHIFT, KeyCode::Left) => {
                 self.begin_selection();
                 self.cursor_left();
+                self.extend_selection();
+                return true;
             }
             (KeyModifiers::SHIFT, KeyCode::Right) => {
                 self.begin_selection();
                 self.cursor_right();
+                self.extend_selection();
+                return true;
             }
             (KeyModifiers::SHIFT, KeyCode::Up) => {
                 self.begin_selection();
                 self.cursor_up();
+                self.extend_selection();
+                return true;
             }
             (KeyModifiers::SHIFT, KeyCode::Down) => {
                 self.begin_selection();
                 self.cursor_down();
+                self.extend_selection();
+                return true;
             }
             (KeyModifiers::SHIFT, KeyCode::Home) => {
                 self.begin_selection();
                 self.cursor_home();
+                self.extend_selection();
+                return true;
             }
             (KeyModifiers::SHIFT, KeyCode::End) => {
                 self.begin_selection();
                 self.cursor_end();
+                self.extend_selection();
+                return true;
             }
+            _ => {}
+        }
 
-            // Editing
-            (KeyModifiers::NONE, KeyCode::Backspace) => self.backspace(),
-            (KeyModifiers::NONE, KeyCode::Delete) => self.delete(),
-            (KeyModifiers::NONE, KeyCode::Enter)
-            | (KeyModifiers::NONE, KeyCode::Char('\n'))
-            | (KeyModifiers::NONE, KeyCode::Char('\r')) => {
-                // Submit on Enter (mirrors TS `tui.input.submit`). The
-                // `Char('\n')`/`Char('\r')` forms cover a client whose terminal
-                // hands us the codepoint directly (e.g. the kitty keyboard
-                // protocol's CSI-u path); they used to fall through to the
-                // generic char arm and insert a literal newline.
-                self.submit();
-            }
-            // Shift+Enter inserts a newline (mirrors `tui.input.newLine`).
-            (KeyModifiers::SHIFT, KeyCode::Enter)
-            | (KeyModifiers::SHIFT, KeyCode::Char('\r'))
-            | (KeyModifiers::SHIFT, KeyCode::Char('\n')) => self.insert("\n"),
+        // Ctrl+C belongs to the parent (the original ignores it in the
+        // editor, so the app can copy the selection).
+        if kb.matches(&key, keybindings::keys::INPUT_COPY) {
+            return true;
+        }
 
-            // Ctrl shortcuts
-            (KeyModifiers::CONTROL, KeyCode::Char('a')) => self.cursor_home(),
-            (KeyModifiers::CONTROL, KeyCode::Char('e')) => self.cursor_end(),
-            (KeyModifiers::CONTROL, KeyCode::Char('k')) => {
-                // Kill to end of line (push the killed text onto the ring).
-                self.push_undo("kill");
-                let killed = if let Ok(mut state) = self.state.lock() {
-                    let row = state.cursor_row;
-                    let col = state.cursor_col;
-                    let dead: String = state.lines[row].drain(col..).collect();
-                    state.lines[row].truncate(col);
-                    dead
-                } else {
-                    String::new()
-                };
-                self.kill(killed, false);
-                self.notify_change();
+        // Undo (the original's `tui.editor.undo`).
+        if kb.matches(&key, keybindings::keys::UNDO) {
+            self.undo();
+            return true;
+        }
+
+        // Deletions.
+        if kb.matches(&key, keybindings::keys::DELETE_TO_LINE_END) {
+            self.delete_to_end_of_line();
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::DELETE_TO_LINE_START) {
+            self.delete_to_start_of_line();
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::DELETE_WORD_BACKWARD) {
+            self.kill_word_backward();
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::DELETE_WORD_FORWARD) {
+            self.kill_word_forward();
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::DELETE_CHAR_BACKWARD)
+            || matches_key(&key, KeyCode::Backspace, KeyModifiers::SHIFT)
+        {
+            self.backspace();
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::DELETE_CHAR_FORWARD)
+            || matches_key(&key, KeyCode::Delete, KeyModifiers::SHIFT)
+        {
+            self.delete();
+            return true;
+        }
+
+        // Kill-ring yank and yank-pop.
+        if kb.matches(&key, keybindings::keys::YANK) {
+            self.yank();
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::YANK_POP) {
+            self.yank_pop();
+            return true;
+        }
+
+        // The dedicated history bindings browse the entries instead of moving
+        // the caret.
+        if kb.matches(&key, keybindings::keys::HISTORY_PREVIOUS) {
+            self.navigate_history(-1);
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::HISTORY_NEXT) {
+            self.navigate_history(1);
+            return true;
+        }
+
+        // Cursor movement.
+        if kb.matches(&key, keybindings::keys::CURSOR_LINE_START) {
+            self.move_to_line_start();
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::CURSOR_WORD_LEFT) {
+            self.cursor_word_left();
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::CURSOR_WORD_RIGHT) {
+            self.cursor_word_right();
+            return true;
+        }
+
+        // A newline (Shift+Enter, Ctrl+J). A bare LF is a newline too: the
+        // original reads "\n" as shift+enter.
+        if kb.matches(&key, keybindings::keys::INPUT_NEW_LINE)
+            || matches_key(&key, KeyCode::Char('\n'), KeyModifiers::NONE)
+            || matches_key(&key, KeyCode::Char('\n'), KeyModifiers::SHIFT)
+            || matches_key(&key, KeyCode::Char('\r'), KeyModifiers::SHIFT)
+        {
+            self.add_new_line();
+            return true;
+        }
+
+        // Submit (Enter). A backslash before the caret turns the submit into
+        // a newline (the original's `shouldSubmitOnBackslashEnter`).
+        if kb.matches(&key, keybindings::keys::INPUT_SUBMIT)
+            || matches_key(&key, KeyCode::Char('\r'), KeyModifiers::NONE)
+        {
+            if self.char_before_cursor_is_backslash() {
+                self.backspace();
+                self.add_new_line();
+                return true;
             }
-            (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
-                // Kill to start of line (killed text prepends to the ring entry
-                // so Ctrl+Y pastes it back in the same order).
-                self.push_undo("kill");
-                let killed = if let Ok(mut state) = self.state.lock() {
-                    let row = state.cursor_row;
-                    let col = state.cursor_col;
-                    let before: String = state.lines[row].drain(..col).collect();
-                    state.cursor_col = 0;
-                    before
-                } else {
-                    String::new()
-                };
-                self.kill(killed, true);
-                self.notify_change();
+            self.submit();
+            return true;
+        }
+
+        // Arrow navigation.
+        if kb.matches(&key, keybindings::keys::CURSOR_UP) {
+            self.cursor_up();
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::CURSOR_DOWN) {
+            self.cursor_down();
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::CURSOR_RIGHT) {
+            self.cursor_right();
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::CURSOR_LEFT) {
+            self.cursor_left();
+            return true;
+        }
+
+        // Page up/down: a page of visual lines.
+        if kb.matches(&key, keybindings::keys::EDITOR_PAGE_UP) {
+            self.page_scroll(-1);
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::EDITOR_PAGE_DOWN) {
+            self.page_scroll(1);
+            return true;
+        }
+
+        // Character jump mode.
+        if kb.matches(&key, keybindings::keys::JUMP_FORWARD) {
+            *self.jump_mode.lock().unwrap() = Some(1);
+            return true;
+        }
+        if kb.matches(&key, keybindings::keys::JUMP_BACKWARD) {
+            *self.jump_mode.lock().unwrap() = Some(-1);
+            return true;
+        }
+
+        // Port-only conveniences the original has no binding for: the line
+        // end, a redo, and the selection's cut and paste.
+        match (key.modifiers, key.code) {
+            (KeyModifiers::NONE, KeyCode::End) => {
+                self.cursor_end();
+                return true;
             }
-            // Undo / redo (pi binds undo to Ctrl+-; Ctrl+R redo is a Rust port
-            // convenience since pi has no redo binding).
-            (KeyModifiers::CONTROL, KeyCode::Char('-')) => self.undo(),
-            (KeyModifiers::CONTROL, KeyCode::Char('r')) => self.redo(),
-            // Selection cut/copy/paste (Ctrl+X / Ctrl+C / Ctrl+V).
+            (KeyModifiers::CONTROL, KeyCode::Char('e')) => {
+                self.cursor_end();
+                return true;
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('r')) => {
+                self.redo();
+                return true;
+            }
             (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
                 self.cut_selection();
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
-                self.copy_selection();
+                return true;
             }
             (KeyModifiers::CONTROL, KeyCode::Char('v')) => {
                 self.yank();
+                return true;
             }
-            // Kill-ring yank (Ctrl+Y) / yank-pop (Alt+Y).
-            (KeyModifiers::CONTROL, KeyCode::Char('y')) => self.yank(),
-            (KeyModifiers::ALT, KeyCode::Char('y')) => self.yank_pop(),
-            // Delete the word before the cursor, killing it (Alt+Backspace).
-            (KeyModifiers::CONTROL, KeyCode::Char('w')) => self.kill_word_backward(),
-            (KeyModifiers::ALT, KeyCode::Backspace) => self.kill_word_backward(),
-            (KeyModifiers::ALT, KeyCode::Char('d')) | (KeyModifiers::ALT, KeyCode::Delete) => {
-                self.kill_word_forward();
-            }
-            // Word navigation (Alt+Left / Alt+Right — pi's word-jump bindings).
-            (KeyModifiers::ALT, KeyCode::Left) => self.cursor_word_left(),
-            (KeyModifiers::ALT, KeyCode::Right) => self.cursor_word_right(),
-            // Ctrl+J inserts a newline (pi tui.input.newLine alongside
-            // Shift+Enter). Ctrl+D deletes the char forward (deleteCharForward).
-            (KeyModifiers::CONTROL, KeyCode::Char('j')) => self.insert_no_undo(
-                "
-",
-            ),
-            (KeyModifiers::CONTROL, KeyCode::Char('d')) => self.delete(),
-            // Editor page scroll (pi tui.editor.pageUp/pageDown — the
-            // unmodified PageUp/Down are the alt-screen transcript scroll).
-            (KeyModifiers::CONTROL, KeyCode::PageUp) => self.page_scroll(-1),
-            (KeyModifiers::CONTROL, KeyCode::PageDown) => self.page_scroll(1),
-            // Character jump mode (pi jumpForward/jumpBackward): Ctrl+] jumps
-            // forward to the next typed char, Ctrl+Alt+] backward. NB: a
-            // CONTROL|ALT pattern in a match arm is an or-pattern (matches
-            // EITHER modifier), so the backward arm uses a guard.
-            (_, KeyCode::Char(']')) if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                // Ctrl+Alt+] jumps backward, Ctrl+] forward. A bare CONTROL
-                // arm wouldn't match the CONTROL|ALT combination.
-                if key.modifiers.contains(KeyModifiers::ALT) {
-                    *self.jump_mode.lock().unwrap() = Some(-1);
-                } else {
-                    *self.jump_mode.lock().unwrap() = Some(1);
-                }
-            }
-
-            // Regular character input — unless a character jump is pending
-            // (Ctrl+] / Ctrl+Alt+] consumed the key as the jump target).
-            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
-                let jump = self.jump_mode.lock().unwrap().take();
-                match jump {
-                    Some(dir) => self.jump_to_char(c, dir),
-                    None => self.insert(&c.to_string()),
-                }
-            }
-
-            _ => return false,
+            _ => {}
         }
-        true
+
+        // Regular character input.
+        if let Some(ch) = printable_char(key) {
+            self.insert_character(ch);
+            return true;
+        }
+
+        false
     }
+
+    /// Split the line at the caret and move the caret to the start of the new
+    /// line (the original's `addNewLine`).
+    fn add_new_line(&self) {
+        self.exit_history_browsing();
+        *self.last_action.lock().unwrap() = None;
+        self.push_undo_snapshot();
+        if let Ok(mut state) = self.state.lock() {
+            let row = state.cursor_row;
+            let col = state.cursor_col;
+            let current_line = &mut state.lines[row];
+            let after = current_line.split_off(col);
+            state.lines.insert(row + 1, after);
+            state.cursor_row += 1;
+            state.cursor_col = 0;
+        }
+        self.notify_change();
+    }
+
+    /// Whether the character right before the caret is a backslash.
+    fn char_before_cursor_is_backslash(&self) -> bool {
+        let state = self.state.lock().unwrap();
+        if state.cursor_col == 0 {
+            return false;
+        }
+        let row = state.cursor_row;
+        state.lines[row][..state.cursor_col]
+            .chars()
+            .next_back()
+            .map(|c| c == '\\')
+            .unwrap_or(false)
+    }
+
 
     /// Scroll the text inside the box with the mouse wheel.
     ///
@@ -1657,7 +2633,6 @@ impl Editor {
             guard.cursor_col = chunk.start + target_index;
             guard.cursor_col =
                 snap_out_of_paste_marker(&guard.lines[chunk.row], guard.cursor_col);
-            guard.selection_anchor = None;
         }
         if let Ok(mut guard) = self.scroll_pinned.lock() {
             *guard = false;
@@ -1861,14 +2836,13 @@ impl Editor {
     }
 
     /// The card's top row: the working indicator, or blank when idle.
+    ///
+    /// The spinner frame is read from the counter the ticker advances — the
+    /// paint does not move the animation. The elapsed clock is read from the
+    /// working state's start instant, so it shows the same value it always
+    /// did: whole seconds, refreshed on every paint.
     fn working_row(&self) -> String {
-        let working_state = self.working.lock().ok().and_then(|mut guard| {
-            guard.as_mut().map(|state| {
-                let snapshot = state.clone();
-                state.frame = state.frame.wrapping_add(1);
-                snapshot
-            })
-        });
+        let working_state = self.working.lock().ok().and_then(|guard| guard.clone());
         let Some(working) = working_state else {
             return String::new();
         };
@@ -2018,7 +2992,7 @@ mod tests {
     }
 
     #[test]
-    fn working_spinner_advances_per_render_not_per_timer() {
+    fn the_working_spinner_advances_by_frame_not_by_render() {
         use crate::component::Component;
         let editor = Editor::simple();
         editor.set_working(Some(WorkingState {
@@ -2026,26 +3000,31 @@ mod tests {
             started_at: std::time::Instant::now(),
             message: "Working…".to_string(),
         }));
+        // The frame is a counter the ticker advances; the test owns it from
+        // here on.
+        editor.stop_working_animation();
+        let base = editor.working().expect("working state").frame;
 
         // The indicator lives in the top border and reports the message.
         let first = crate::strip_ansi(&editor.render(60)[0]);
         assert!(first.contains("Working"), "top border: {first}");
 
-        // Each render steps the frame, so repaints driven by streamed output
-        // visibly advance the spinner; no timer is required for that.
-        let frame_after_first = editor.working().expect("working state").frame;
-        assert_eq!(frame_after_first, 1, "render must advance the frame once");
+        // A paint does not move the animation: the frame comes from the
+        // counter, not from the clock and not from the render.
         let _ = editor.render(60);
-        assert_eq!(editor.working().expect("working state").frame, 2);
+        assert_eq!(
+            editor.working().expect("working state").frame,
+            base,
+            "a paint must not advance the frame"
+        );
 
-        // Two renders of the same state differ on screen (spinner char moves).
-        let a = crate::strip_ansi(&editor.render(60)[0]);
-        let b = crate::strip_ansi(&editor.render(60)[0]);
-        let spinner_of = |line: &str| line.chars().find(|c| "⠋⠘⠹⠸⠼⠴⠦⠧⠇⠏".contains(*c));
-        assert_ne!(
-            spinner_of(&a),
-            spinner_of(&b),
-            "consecutive renders must show different spinner frames: {a:?} vs {b:?}"
+        // One interval moves the spinner exactly one frame.
+        editor.advance_working_frame();
+        assert_eq!(editor.working().expect("working state").frame, base + 1);
+        let after = crate::strip_ansi(&editor.render(60)[0]);
+        assert!(
+            after.contains(crate::loader::SPINNER_FRAMES[(base + 1) % 10]),
+            "the second frame must be on screen: {after}"
         );
 
         // Idle editors have no indicator.
@@ -2055,26 +3034,26 @@ mod tests {
     }
 
     #[test]
-    fn working_spinner_uses_native_pi_frames_and_cadence() {
-        // The editor used to hand-copy the frame list and drifted (`⠘` where
-        // upstream has `⠙`), so the two indicators animated differently. Both
-        // now share `SPINNER_FRAMES`.
+    fn the_working_spinner_follows_the_originals_frame_rule() {
+        // upstream's `Loader`: the frame counter starts at zero when the
+        // indicator starts and advances once per `SPINNER_FRAME_MS`, so the
+        // frame after `k` intervals is the one `spinnerFrame(k * 80)` returns.
+        use crate::component::Component;
         assert_eq!(crate::loader::SPINNER_FRAMES.len(), 10);
         assert_eq!(
             crate::loader::SPINNER_FRAMES.iter().collect::<String>(),
             "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
         );
-        // 10 frames at 80ms = the 800ms full cycle upstream animates at.
         assert_eq!(crate::loader::SPINNER_FRAME_MS, 80);
 
-        // The rendered indicator steps through exactly that list, in order.
-        use crate::component::Component;
         let editor = Editor::simple();
         editor.set_working(Some(WorkingState {
             frame: 0,
             started_at: std::time::Instant::now(),
             message: "Working…".to_string(),
         }));
+        editor.stop_working_animation();
+        let base = editor.working().expect("working").frame;
         let spinner_of = |line: &str| {
             let plain = crate::strip_ansi(line);
             crate::loader::SPINNER_FRAMES
@@ -2082,30 +3061,53 @@ mod tests {
                 .copied()
                 .find(|c| plain.contains(*c))
         };
-        let mut seen = Vec::new();
-        for _ in 0..10 {
-            seen.push(spinner_of(&editor.render(60)[0]).expect("a spinner glyph"));
+        for k in 0..10usize {
+            let elapsed = std::time::Duration::from_millis((base + k) as u64 * 80);
+            assert_eq!(
+                spinner_of(&editor.render(60)[0]),
+                Some(crate::loader::spinner_frame_at(elapsed)),
+                "frame {k} must match the original's rule"
+            );
+            editor.advance_working_frame();
         }
-        // The snapshot is taken before the advance, so the first paint shows
-        // frame 0 — exactly upstream, whose `start()` paints frame 0 and then
-        // steps on each interval. Ten paints therefore cover the whole cycle in
-        // order and wrap back to the start.
-        let expected: Vec<char> = crate::loader::SPINNER_FRAMES.to_vec();
-        assert_eq!(seen, expected);
-        assert_eq!(
-            editor.working().expect("working").frame % crate::loader::SPINNER_FRAMES.len(),
-            0,
-            "ten paints must land back on the first frame"
-        );
+    }
+
+    #[test]
+    fn the_working_indicator_keeps_the_elapsed_clock() {
+        // The clock shows whole seconds from the moment the indicator starts,
+        // and minutes once the run passes a minute.
+        use crate::component::Component;
+        let editor = Editor::simple();
+        editor.set_working(Some(WorkingState {
+            frame: 0,
+            started_at: std::time::Instant::now(),
+            message: "Working…".to_string(),
+        }));
+        editor.stop_working_animation();
+        let row = crate::strip_ansi(&editor.render(60)[0]);
+        assert!(row.contains("0s"), "the clock starts at zero: {row}");
+
+        editor.set_working(Some(WorkingState {
+            frame: 0,
+            started_at: std::time::Instant::now() - std::time::Duration::from_secs(7),
+            message: "Working…".to_string(),
+        }));
+        let row = crate::strip_ansi(&editor.render(60)[0]);
+        assert!(row.contains("7s"), "elapsed clock: {row}");
+
+        editor.set_working(Some(WorkingState {
+            frame: 0,
+            started_at: std::time::Instant::now() - std::time::Duration::from_secs(65),
+            message: "Working…".to_string(),
+        }));
+        let row = crate::strip_ansi(&editor.render(60)[0]);
+        assert!(row.contains("1m5s"), "elapsed clock: {row}");
     }
 
     #[test]
     fn idle_cadence_matches_native_pi() {
-        // One frame per `SPINNER_FRAME_MS` of wall clock when nothing else is
-        // repainting. This is the property the tick task relies on: it only
-        // requests a repaint, and the repaint advances exactly one frame. The
-        // tick used to *also* advance the frame, which made the idle spinner
-        // run at 40ms/frame — twice upstream's rate.
+        // One frame per `SPINNER_FRAME_MS`: ten frames make the 800ms cycle
+        // upstream animates at.
         use crate::component::Component;
         assert_eq!(crate::loader::SPINNER_FRAME_MS, 80);
         assert_eq!(
@@ -2120,10 +3122,14 @@ mod tests {
             started_at: std::time::Instant::now(),
             message: "Working…".to_string(),
         }));
-        // One repaint == one frame, i.e. one tick advances the spinner once.
+        editor.stop_working_animation();
         let before = editor.working().expect("working").frame;
         let _ = editor.render(60);
-        assert_eq!(editor.working().expect("working").frame, before + 1);
+        assert_eq!(
+            editor.working().expect("working").frame,
+            before,
+            "a paint must not advance the frame"
+        );
     }
 
     #[test]
@@ -2207,7 +3213,9 @@ mod tests {
         editor.handle_key(mk(KeyModifiers::NONE, KeyCode::Char('x')));
         assert_eq!(editor.cursor_position(), (0, 11));
 
-        // Page scroll on a multi-line buffer clamps to the last row.
+        // Page scroll on a multi-line buffer clamps to the last row. A page
+        // is `max(5, 30% of the rows)` visual lines.
+        editor.set_terminal_rows(40);
         editor.set_text(
             "l0
 l1
@@ -2285,18 +3293,27 @@ l12",
         }
         assert!(editor.has_selection());
         assert_eq!(editor.selected_text().as_deref(), Some("hello"));
-        // Ctrl+C copies (selection intact), then plain Right clears it.
+        // Ctrl+C belongs to the parent (the original ignores it in the
+        // editor), so the text and the selection are untouched.
         editor.handle_key(crossterm::event::KeyEvent::new(
             crossterm::event::KeyCode::Char('c'),
             crossterm::event::KeyModifiers::CONTROL,
         ));
         assert_eq!(editor.get_text(), "hello world");
+        assert!(editor.has_selection(), "ctrl+c does not touch the selection");
+        // A plain caret move does not end the selection either.
         editor.handle_key(crossterm::event::KeyEvent::new(
             crossterm::event::KeyCode::Right,
             crossterm::event::KeyModifiers::NONE,
         ));
-        assert!(!editor.has_selection(), "plain movement clears selection");
-        // Move to the end and yank the copied text.
+        assert!(editor.has_selection(), "plain movement keeps the selection");
+        // Ctrl+X cuts the selection (a port-only command) and kills it.
+        editor.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('x'),
+            crossterm::event::KeyModifiers::CONTROL,
+        ));
+        assert_eq!(editor.get_text(), " world");
+        // Ctrl+V yanks the killed text back.
         editor.handle_key(crossterm::event::KeyEvent::new(
             crossterm::event::KeyCode::End,
             crossterm::event::KeyModifiers::NONE,
@@ -2305,7 +3322,7 @@ l12",
             crossterm::event::KeyCode::Char('v'),
             crossterm::event::KeyModifiers::CONTROL,
         ));
-        assert_eq!(editor.get_text(), "hello worldhello");
+        assert_eq!(editor.get_text(), " worldhello");
     }
 
     #[test]
@@ -2361,18 +3378,28 @@ l12",
         let editor = Editor::simple();
         editor.insert("hello");
         editor.insert(" world");
-        // Consecutive inserts coalesce: one undo restores the empty state.
+        // A programmatic insertion is atomic: one undo restores the state
+        // before it.
         assert_eq!(editor.get_text(), "hello world");
         editor.undo();
-        assert_eq!(editor.get_text(), "", "coalesced inserts undo as one step");
+        assert_eq!(editor.get_text(), "hello");
+        editor.undo();
+        assert_eq!(editor.get_text(), "");
         // Redo restores everything.
+        editor.redo();
+        assert_eq!(editor.get_text(), "hello");
         editor.redo();
         assert_eq!(editor.get_text(), "hello world");
         // A fresh edit after undo clears redo.
         editor.undo();
         editor.insert("hi");
+        let after_edit = editor.get_text();
         editor.redo();
-        assert_eq!(editor.get_text(), "hi", "new edit clears the redo stack");
+        assert_eq!(
+            editor.get_text(),
+            after_edit,
+            "new edit clears the redo stack"
+        );
     }
 
     #[test]
@@ -2437,32 +3464,34 @@ l12",
         );
     }
 
-    /// Regression: a remote/mobile client (SSH, soft keyboard) that encodes
-    /// its Enter key as LF (0x0A) or CR (0x0D) sends it as a bare character
-    /// event in raw mode. Those used to fall through to the generic char arm
-    /// and insert a literal newline — "回车变成了换行，无法发送内容". They must
-    /// submit just like `KeyCode::Enter`.
+    /// The original reads a bare CR as the Enter key and a bare LF as
+    /// shift+enter (packages/tui/src/keys.ts:1337): CR submits, LF inserts a
+    /// newline. The port follows the original.
     #[test]
-    fn test_remote_lf_cr_enter_submits() {
+    fn a_bare_cr_submits_and_a_bare_lf_is_a_newline() {
         use std::sync::atomic::{AtomicUsize, Ordering};
-        for code in [
-            crossterm::event::KeyCode::Char('\n'),
+        let editor = Editor::simple();
+        let submits = Arc::new(AtomicUsize::new(0));
+        let submits_for_cb = submits.clone();
+        editor.on_submit(Arc::new(move |_text: &str| {
+            submits_for_cb.fetch_add(1, Ordering::SeqCst);
+        }));
+        editor.insert("hello");
+        editor.handle_key(crossterm::event::KeyEvent::new(
             crossterm::event::KeyCode::Char('\r'),
-        ] {
-            let editor = Editor::simple();
-            let submits = Arc::new(AtomicUsize::new(0));
-            let submits_for_cb = submits.clone();
-            editor.on_submit(Arc::new(move |_text: &str| {
-                submits_for_cb.fetch_add(1, Ordering::SeqCst);
-            }));
-            editor.insert("hello");
-            editor.handle_key(crossterm::event::KeyEvent::new(
-                code,
-                crossterm::event::KeyModifiers::NONE,
-            ));
-            assert_eq!(submits.load(Ordering::SeqCst), 1, "{code:?} must submit");
-            assert_eq!(editor.get_text(), "", "editor cleared after submit");
-        }
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        assert_eq!(submits.load(Ordering::SeqCst), 1, "CR submits");
+        assert_eq!(editor.get_text(), "", "editor cleared after submit");
+
+        let editor = Editor::simple();
+        editor.on_submit(Arc::new(|_| panic!("a bare LF must not submit")));
+        editor.insert("hello");
+        editor.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('\n'),
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        assert_eq!(editor.get_text(), "hello\n", "a bare LF inserts a newline");
     }
     #[test]
     fn test_editor_text() {
@@ -2603,6 +3632,308 @@ l12",
         let editor = Editor::simple();
         editor.set_text_at_start("ab");
         assert_eq!(editor.cursor_position(), (0, 0));
+    }
+
+    // ------------------------------------------------------------------
+    // The parity tests: one per behaviour cluster, each pinned to the
+    // original's rule (packages/tui/src/components/editor.ts).
+    // ------------------------------------------------------------------
+
+    /// A key event with the given modifiers and code.
+    fn key(m: KeyModifiers, c: KeyCode) -> crossterm::event::KeyEvent {
+        crossterm::event::KeyEvent::new(c, m)
+    }
+
+    #[test]
+    fn the_editor_resolves_its_keys_through_the_keybinding_registry() {
+        use crate::keybindings::KeyCombo;
+        let mut keybindings = Keybindings::new();
+        // Rebind the line start to ctrl+h and drop the default keys.
+        keybindings.set(
+            keybindings::keys::CURSOR_LINE_START,
+            vec![KeyCombo::new(KeyCode::Char('h'), KeyModifiers::CONTROL)],
+        );
+        let editor = Editor::new(
+            EditorOptions::default(),
+            EditorStyle::default(),
+            Arc::new(keybindings),
+        );
+        editor.insert("hello");
+        editor.handle_key(key(KeyModifiers::CONTROL, KeyCode::Char('h')));
+        assert_eq!(editor.cursor_position(), (0, 0), "the rebind moves the caret");
+        // The default binding (Home) is gone with the rebind.
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::End));
+        assert_eq!(editor.cursor_position(), (0, 5));
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Home));
+        assert_eq!(editor.cursor_position(), (0, 5), "the default binding is gone");
+    }
+
+    #[test]
+    fn the_arrows_step_by_grapheme() {
+        let editor = Editor::simple();
+        editor.insert("a\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}b");
+        let end = editor.get_text().len();
+        editor.set_cursor(0, end);
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Left));
+        assert_eq!(editor.cursor_position(), (0, end - 1), "one grapheme back");
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Left));
+        assert_eq!(
+            editor.cursor_position().1,
+            1,
+            "the whole emoji is one step"
+        );
+    }
+
+    #[test]
+    fn the_vertical_movement_walks_visual_lines() {
+        let editor = Editor::simple();
+        editor.set_text("aaaa bbbb cccc dddd eeee ffff gggg");
+        // The card is 20 cells wide: the text is laid out at 17 cells, so the
+        // line wraps into three visual lines.
+        editor.render(20);
+        editor.set_cursor(0, 0);
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Down));
+        assert_eq!(
+            editor.cursor_position(),
+            (0, 15),
+            "↓ moves one visual line, not one logical line"
+        );
+    }
+
+    #[test]
+    fn the_vertical_movement_keeps_the_sticky_column() {
+        let editor = Editor::simple();
+        editor.set_text("abcdefghij\nab\nabcdefghij");
+        editor.set_cursor(0, 8);
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Down));
+        assert_eq!(editor.cursor_position(), (1, 2), "the short line clamps");
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Down));
+        assert_eq!(
+            editor.cursor_position(),
+            (2, 8),
+            "the sticky column is restored on the way back"
+        );
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Up));
+        assert_eq!(editor.cursor_position(), (1, 2), "the short line clamps again");
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Up));
+        assert_eq!(editor.cursor_position(), (0, 8), "the column is back where it was");
+    }
+
+    #[test]
+    fn up_on_the_first_line_goes_to_the_line_start_and_down_on_the_last_to_the_end() {
+        let editor = Editor::simple();
+        editor.set_text("hello");
+        editor.set_cursor(0, 3);
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Up));
+        assert_eq!(editor.cursor_position(), (0, 0), "↑ goes to the line start");
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Down));
+        assert_eq!(editor.cursor_position(), (0, 5), "↓ goes to the line end");
+    }
+
+    #[test]
+    fn the_history_recall_lives_in_the_editor() {
+        let editor = Editor::simple();
+        editor.add_to_history("first");
+        editor.add_to_history("second");
+        editor.add_to_history("second");
+        editor.add_to_history("   ");
+        assert_eq!(editor.history(), vec!["second", "first"], "duplicates skipped");
+
+        // ↑ recalls the newest entry with the caret at its start.
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Up));
+        assert_eq!(editor.get_text(), "second");
+        assert_eq!(editor.cursor_position(), (0, 0));
+        assert!(editor.is_browsing_history());
+
+        // ↓ restores the draft, caret included.
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Down));
+        assert_eq!(editor.get_text(), "");
+        assert!(!editor.is_browsing_history());
+    }
+
+    #[test]
+    fn the_history_recall_works_over_a_typed_draft_at_the_line_start() {
+        let editor = Editor::simple();
+        editor.add_to_history("older");
+        editor.insert("draft");
+        // The caret is not at the line start yet: ↑ goes to the line start.
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Up));
+        assert_eq!(editor.get_text(), "draft");
+        assert_eq!(editor.cursor_position(), (0, 0));
+        // Now ↑ recalls the history over the typed draft.
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Up));
+        assert_eq!(editor.get_text(), "older");
+        // ↓ restores the draft with its caret.
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Down));
+        assert_eq!(editor.get_text(), "draft");
+        assert_eq!(editor.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn editing_while_browsing_leaves_the_browse_mode() {
+        let editor = Editor::simple();
+        editor.add_to_history("older");
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Up));
+        assert!(editor.is_browsing_history());
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Char('x')));
+        assert!(!editor.is_browsing_history(), "the edit leaves the browse mode");
+        // The recalled entry is placed with the caret at its start, so the
+        // edit lands in front of it (the original's `setTextInternal`,
+        // packages/tui/src/components/editor.ts:573).
+        assert_eq!(editor.get_text(), "xolder");
+        assert_eq!(editor.cursor_position(), (0, 1));
+    }
+
+    #[test]
+    fn the_undo_coalesces_fish_style() {
+        let editor = Editor::simple();
+        for ch in "hello world".chars() {
+            editor.handle_key(key(KeyModifiers::NONE, KeyCode::Char(ch)));
+        }
+        assert_eq!(editor.get_text(), "hello world");
+        editor.undo();
+        assert_eq!(editor.get_text(), "hello", "the word undoes as one step");
+        editor.undo();
+        assert_eq!(editor.get_text(), "");
+    }
+
+    #[test]
+    fn a_paste_is_one_undo_unit_and_never_coalesces_with_the_typing() {
+        let editor = Editor::simple();
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Char('a')));
+        editor.handle_paste("b");
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Char('c')));
+        assert_eq!(editor.get_text(), "abc");
+        editor.undo();
+        assert_eq!(editor.get_text(), "ab", "the paste is its own undo unit");
+        editor.undo();
+        assert_eq!(editor.get_text(), "a");
+        editor.undo();
+        assert_eq!(editor.get_text(), "");
+    }
+
+    #[test]
+    fn the_kill_accumulation_follows_the_previous_action() {
+        let editor = Editor::simple();
+        editor.set_text("one two");
+        editor.set_cursor(0, 4);
+        editor.handle_key(key(KeyModifiers::CONTROL, KeyCode::Char('k')));
+        assert_eq!(editor.get_text(), "one ");
+        // An edit breaks the accumulation chain.
+        editor.set_cursor(0, 0);
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Char('x')));
+        editor.handle_key(key(KeyModifiers::CONTROL, KeyCode::Char('k')));
+        assert_eq!(editor.get_text(), "x");
+        editor.handle_key(key(KeyModifiers::CONTROL, KeyCode::Char('y')));
+        assert_eq!(
+            editor.get_text(),
+            "xone ",
+            "the kill after an edit starts a new ring entry"
+        );
+    }
+
+    #[test]
+    fn the_kill_to_the_line_end_joins_the_next_line() {
+        let editor = Editor::simple();
+        editor.set_text("ab\ncd");
+        editor.set_cursor(0, 2);
+        editor.handle_key(key(KeyModifiers::CONTROL, KeyCode::Char('k')));
+        assert_eq!(editor.get_text(), "abcd", "ctrl+k at the EOL joins the lines");
+        assert_eq!(editor.cursor_position(), (0, 2), "the caret stays where it was");
+        // ctrl+u at the line start kills the whole line.
+        editor.handle_key(key(KeyModifiers::CONTROL, KeyCode::Char('u')));
+        assert_eq!(editor.get_text(), "cd", "ctrl+u kills to the line start");
+        assert_eq!(editor.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn the_kill_to_the_line_start_joins_the_previous_line() {
+        let editor = Editor::simple();
+        editor.set_text("ab\ncd");
+        editor.set_cursor(1, 0);
+        editor.handle_key(key(KeyModifiers::CONTROL, KeyCode::Char('u')));
+        assert_eq!(editor.get_text(), "abcd", "ctrl+u at the BOL joins the lines");
+        assert_eq!(editor.cursor_position(), (0, 2), "the caret lands at the join");
+    }
+
+    #[test]
+    fn the_kill_word_back_at_the_line_start_joins_the_previous_line() {
+        let editor = Editor::simple();
+        editor.set_text("ab\ncd");
+        editor.set_cursor(1, 0);
+        editor.handle_key(key(KeyModifiers::CONTROL, KeyCode::Char('w')));
+        assert_eq!(editor.get_text(), "abcd", "ctrl+w at the BOL joins the lines");
+        assert_eq!(editor.cursor_position(), (0, 2), "the caret lands at the join");
+    }
+
+    #[test]
+    fn the_yank_pop_replaces_the_yanked_text() {
+        let editor = Editor::simple();
+        editor.set_text("abc");
+        editor.set_cursor(0, 2);
+        editor.handle_key(key(KeyModifiers::CONTROL, KeyCode::Char('u')));
+        assert_eq!(editor.get_text(), "c");
+        // An edit breaks the kill chain, so the next kill is a new entry.
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Char('z')));
+        editor.set_cursor(0, 1);
+        editor.handle_key(key(KeyModifiers::CONTROL, KeyCode::Char('k')));
+        assert_eq!(editor.get_text(), "z");
+        editor.handle_key(key(KeyModifiers::CONTROL, KeyCode::Char('y')));
+        assert_eq!(editor.get_text(), "zc");
+        editor.handle_key(key(KeyModifiers::ALT, KeyCode::Char('y')));
+        assert_eq!(
+            editor.get_text(),
+            "zab",
+            "the yank-pop replaces the yanked text, it does not duplicate it"
+        );
+    }
+
+    #[test]
+    fn the_selection_survives_a_plain_caret_move() {
+        let editor = Editor::simple();
+        editor.insert("hello world");
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Home));
+        for _ in 0..5 {
+            editor.handle_key(key(KeyModifiers::SHIFT, KeyCode::Right));
+        }
+        assert_eq!(editor.selected_text().as_deref(), Some("hello"));
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Right));
+        assert!(
+            editor.has_selection(),
+            "a plain caret move does not end the selection"
+        );
+        assert_eq!(editor.selected_text().as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn a_pasted_path_gets_a_leading_space() {
+        let editor = Editor::simple();
+        editor.insert("foo");
+        editor.handle_paste("/tmp/x");
+        assert_eq!(editor.get_text(), "foo /tmp/x");
+    }
+
+    #[test]
+    fn a_backslash_before_the_caret_turns_the_submit_into_a_newline() {
+        let editor = Editor::simple();
+        editor.on_submit(Arc::new(|_| panic!("the backslash swallows the submit")));
+        editor.insert("a\\");
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Enter));
+        assert_eq!(editor.get_text(), "a\n");
+    }
+
+    #[test]
+    fn the_submit_sends_the_trimmed_text_and_clears_the_editor_first() {
+        let editor = Editor::simple();
+        let seen = Arc::new(std::sync::Mutex::new(String::new()));
+        let seen_for_cb = seen.clone();
+        editor.on_submit(Arc::new(move |text: &str| {
+            *seen_for_cb.lock().unwrap() = text.to_string();
+        }));
+        editor.insert("  hello  ");
+        editor.handle_key(key(KeyModifiers::NONE, KeyCode::Enter));
+        assert_eq!(seen.lock().unwrap().clone(), "hello", "the text is trimmed");
+        assert_eq!(editor.get_text(), "", "the editor is cleared");
     }
 
     fn wrapped_chunks(line: &str, width: usize) -> Vec<String> {
@@ -2773,7 +4104,7 @@ l12",
     }
 
     #[test]
-    fn moving_the_cursor_ends_the_selection() {
+    fn an_edit_ends_the_selection() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let editor = Editor::simple();
         editor.set_text("one\ntwo\nthree");
@@ -2781,11 +4112,32 @@ l12",
         // Shift+Up extends the selection up.
         editor.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
         assert!(editor.has_selection(), "shift+up selects");
-        // A plain Up moves the cursor and ends the selection: the selection
-        // and the cursor are two separate things.
+        // A plain Up moves the cursor but leaves the selection: the span is
+        // the two ends of the selection, not the anchor and the caret.
         editor.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-        assert!(!editor.has_selection(), "the selection ends with the cursor move");
+        assert!(editor.has_selection(), "a plain move leaves the selection");
         assert_eq!(editor.cursor_position().0, 0);
+        // An edit ends it.
+        editor.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert!(!editor.has_selection(), "an edit ends the selection");
+    }
+
+    #[test]
+    fn the_word_moves_land_on_character_boundaries() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let editor = Editor::simple();
+        editor.insert("héllo wörld");
+        editor.set_cursor(0, 0);
+        // "héllo" is six bytes: the caret is a byte offset, so a word move has
+        // to land on a character boundary.
+        editor.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::ALT));
+        assert_eq!(editor.cursor_position(), (0, 6));
+        editor.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::ALT));
+        assert_eq!(editor.cursor_position(), (0, 13));
+        editor.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::ALT));
+        assert_eq!(editor.cursor_position(), (0, 7));
+        editor.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL));
+        assert_eq!(editor.cursor_position(), (0, 0));
     }
 
     #[test]
@@ -3074,5 +4426,288 @@ l12",
         editor.handle_paste(&"\x1b[104;5u".repeat(1200));
         assert_eq!(editor.get_text(), "");
         assert_eq!(editor.get_expanded_text(), "");
+    }
+
+    /// One step of a recorded editor session.
+    enum Step {
+        /// Set the text and walk the caret to `(line, col)`.
+        Goto(&'static str, usize, usize),
+        /// Add a history entry.
+        History(&'static str),
+        /// Type a literal string, one character at a time.
+        Type(&'static str),
+        /// Insert a literal string at the caret in one go.
+        Insert(&'static str),
+        /// Press a key.
+        Key(KeyModifiers, KeyCode),
+        /// Record the text and the caret.
+        Check(&'static str, &'static str, (usize, usize)),
+    }
+
+    /// The editor sessions measured on the original's TypeScript editor
+    /// (`packages/tui/src/components/editor.ts`), one row per cluster: the
+    /// vertical movement, the history, the undo, the kill ring, the keybinding
+    /// registry and the submit. The port must land on the same text and the
+    /// same caret for every row.
+    const ORIGINAL_SESSIONS: &[(&str, &[Step])] = &[
+        (
+            "the vertical movement keeps the sticky column",
+            &[
+                Step::Goto("abcdefghij\nab\nabcdefghij", 0, 8),
+                Step::Check("start", "abcdefghij\nab\nabcdefghij", (0, 8)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Down),
+                Step::Check("down1", "abcdefghij\nab\nabcdefghij", (1, 2)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Down),
+                Step::Check("down2", "abcdefghij\nab\nabcdefghij", (2, 8)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Up),
+                Step::Check("up1", "abcdefghij\nab\nabcdefghij", (1, 2)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Up),
+                Step::Check("up2", "abcdefghij\nab\nabcdefghij", (0, 8)),
+            ],
+        ),
+        (
+            "the vertical movement clamps on a short line",
+            &[
+                Step::Goto("abcdefghij\nab\nabcdefghij", 2, 8),
+                Step::Key(KeyModifiers::NONE, KeyCode::Up),
+                Step::Check("up1", "abcdefghij\nab\nabcdefghij", (1, 2)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Up),
+                Step::Check("up2", "abcdefghij\nab\nabcdefghij", (0, 8)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Down),
+                Step::Check("down1", "abcdefghij\nab\nabcdefghij", (1, 2)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Down),
+                Step::Check("down2", "abcdefghij\nab\nabcdefghij", (2, 8)),
+            ],
+        ),
+        (
+            "up on the first line goes to the line start",
+            &[
+                Step::Goto("hello", 0, 2),
+                Step::Key(KeyModifiers::NONE, KeyCode::Up),
+                Step::Check("up", "hello", (0, 0)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Down),
+                Step::Check("down", "hello", (0, 5)),
+            ],
+        ),
+        (
+            "the history recalls the entries newest first",
+            &[
+                Step::History("first"),
+                Step::History("second"),
+                Step::History("second"),
+                Step::History("   "),
+                Step::Key(KeyModifiers::NONE, KeyCode::Up),
+                Step::Check("up", "second", (0, 0)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Up),
+                Step::Check("up2", "first", (0, 0)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Down),
+                Step::Check("down", "second", (0, 6)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Down),
+                Step::Check("down2", "", (0, 0)),
+            ],
+        ),
+        (
+            "the history recalls over a typed draft",
+            &[
+                Step::History("first"),
+                Step::History("second"),
+                Step::Type("dr"),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('a')),
+                Step::Check("draft", "dr", (0, 0)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Up),
+                Step::Check("up", "second", (0, 0)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Down),
+                Step::Check("down", "dr", (0, 0)),
+            ],
+        ),
+        (
+            "the undo coalesces fish style",
+            &[
+                Step::Type("hello world"),
+                Step::Check("typed", "hello world", (0, 11)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('-')),
+                Step::Check("undo1", "hello", (0, 5)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('-')),
+                Step::Check("undo2", "", (0, 0)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('-')),
+                Step::Check("undo3", "", (0, 0)),
+            ],
+        ),
+        (
+            "ctrl+k at the line end joins the next line",
+            &[
+                Step::Goto("ab\ncd", 0, 2),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('k')),
+                Step::Check("eol", "abcd", (0, 2)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('u')),
+                Step::Check("bol", "cd", (0, 0)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('y')),
+                Step::Check("yank", "ab\ncd", (1, 0)),
+            ],
+        ),
+        (
+            "ctrl+u at the line start joins the previous line",
+            &[
+                Step::Goto("ab\ncd", 1, 0),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('u')),
+                Step::Check("join", "abcd", (0, 2)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('y')),
+                Step::Check("yank", "ab\ncd", (1, 0)),
+            ],
+        ),
+        (
+            "ctrl+w at the line start joins the previous line",
+            &[
+                Step::Goto("ab\ncd", 1, 0),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('w')),
+                Step::Check("join", "abcd", (0, 2)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('y')),
+                Step::Check("yank", "ab\ncd", (1, 0)),
+            ],
+        ),
+        (
+            "alt+d at the line end joins the next line",
+            &[
+                Step::Goto("ab\ncd", 0, 2),
+                Step::Key(KeyModifiers::ALT, KeyCode::Char('d')),
+                Step::Check("altd", "abcd", (0, 2)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('y')),
+                Step::Check("yank", "ab\ncd", (1, 0)),
+            ],
+        ),
+        (
+            "the kill ring accumulates over consecutive kills",
+            &[
+                Step::Goto("alpha beta", 0, 10),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('w')),
+                Step::Check("w1", "alpha ", (0, 6)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('w')),
+                Step::Check("w2", "", (0, 0)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('y')),
+                Step::Check("yank", "alpha beta", (0, 10)),
+            ],
+        ),
+        (
+            "an edit breaks the kill ring's accumulation",
+            &[
+                Step::Goto("alpha beta", 0, 10),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('w')),
+                Step::Insert("z"),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('k')),
+                Step::Check("kill", "alpha z", (0, 7)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('y')),
+                Step::Check("yank", "alpha zbeta", (0, 11)),
+            ],
+        ),
+        (
+            "the keybinding registry resolves the editor's keys",
+            &[
+                Step::Goto("abc", 0, 3),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('a')),
+                Step::Check("ctrla", "abc", (0, 0)),
+                Step::Key(KeyModifiers::NONE, KeyCode::Right),
+                Step::Key(KeyModifiers::NONE, KeyCode::Right),
+                Step::Key(KeyModifiers::NONE, KeyCode::Right),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('b')),
+                Step::Check("ctrlb", "abc", (0, 2)),
+                Step::Key(KeyModifiers::CONTROL, KeyCode::Char('f')),
+                Step::Check("ctrlf", "abc", (0, 3)),
+            ],
+        ),
+        (
+            "the word moves land where the original puts them",
+            &[
+                Step::Goto("alpha beta gamma", 0, 0),
+                Step::Key(KeyModifiers::ALT, KeyCode::Left),
+                Step::Check("altleft", "alpha beta gamma", (0, 0)),
+                Step::Key(KeyModifiers::ALT, KeyCode::Right),
+                Step::Check("altright", "alpha beta gamma", (0, 5)),
+                Step::Key(KeyModifiers::ALT, KeyCode::Right),
+                Step::Check("altright2", "alpha beta gamma", (0, 10)),
+            ],
+        ),
+        (
+            "a word move crosses the line boundary",
+            &[
+                Step::Goto("alpha\nbeta", 1, 0),
+                Step::Key(KeyModifiers::ALT, KeyCode::Left),
+                Step::Check("wordleft", "alpha\nbeta", (0, 5)),
+                Step::Goto("alpha\nbeta", 0, 5),
+                Step::Key(KeyModifiers::ALT, KeyCode::Right),
+                Step::Check("wordright", "alpha\nbeta", (1, 0)),
+            ],
+        ),
+        (
+            "enter submits and clears the editor",
+            &[
+                Step::Type("hi"),
+                Step::Key(KeyModifiers::NONE, KeyCode::Enter),
+                Step::Check("enter", "", (0, 0)),
+            ],
+        ),
+        (
+            "a backslash before the caret turns the submit into a newline",
+            &[
+                Step::Type("hi\\"),
+                Step::Key(KeyModifiers::NONE, KeyCode::Enter),
+                Step::Check("backslash", "hi\n", (1, 0)),
+            ],
+        ),
+    ];
+
+    #[test]
+    fn the_editor_matches_the_originals_measured_sessions() {
+        for (name, steps) in ORIGINAL_SESSIONS {
+            let editor = Editor::simple();
+            for step in steps.iter() {
+                match step {
+                    Step::Goto(text, line, col) => {
+                        editor.set_text(text);
+                        let total = editor.get_text().lines().count().max(1);
+                        for _ in 0..total.saturating_sub(1 + line) {
+                            editor.handle_key(crossterm::event::KeyEvent::new(
+                                KeyCode::Up,
+                                KeyModifiers::NONE,
+                            ));
+                        }
+                        editor.handle_key(crossterm::event::KeyEvent::new(
+                            KeyCode::Char('a'),
+                            KeyModifiers::CONTROL,
+                        ));
+                        for _ in 0..*col {
+                            editor.handle_key(crossterm::event::KeyEvent::new(
+                                KeyCode::Right,
+                                KeyModifiers::NONE,
+                            ));
+                        }
+                    }
+                    Step::History(text) => editor.add_to_history(text),
+                    Step::Type(text) => {
+                        for ch in text.chars() {
+                            editor.handle_key(crossterm::event::KeyEvent::new(
+                                KeyCode::Char(ch),
+                                KeyModifiers::NONE,
+                            ));
+                        }
+                    }
+                    Step::Insert(text) => editor.insert(text),
+                    Step::Key(mods, code) => {
+                        editor.handle_key(crossterm::event::KeyEvent::new(*code, *mods));
+                    }
+                    Step::Check(label, expected_text, expected_cursor) => {
+                        assert_eq!(
+                            &editor.get_text(),
+                            expected_text,
+                            "{name}: {label} text"
+                        );
+                        assert_eq!(
+                            editor.cursor_position(),
+                            *expected_cursor,
+                            "{name}: {label} caret"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

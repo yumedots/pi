@@ -181,6 +181,8 @@ pub struct AgentHarnessStreamOptions {
     pub headers: Option<BTreeMap<String, String>>,
     pub metadata: Option<BTreeMap<String, String>>,
     pub cache_retention: Option<CacheRetention>,
+    /// Per-level reasoning token budgets (upstream's `thinkingBudgets`).
+    pub thinking_budgets: Option<rpi_ai::types::ThinkingBudgets>,
 }
 
 /// The harness's pinned subset folded into a real [`SimpleStreamOptions`] per
@@ -217,6 +219,9 @@ impl AgentHarnessStreamOptions {
         if let Some(c) = self.cache_retention {
             base.cache_retention = c;
         }
+        if let Some(budgets) = &self.thinking_budgets {
+            base.thinking_budgets = Some(budgets.clone());
+        }
         base
     }
 }
@@ -233,12 +238,17 @@ pub struct AgentHarnessStreamOptionsPatch {
     pub headers: Option<BTreeMap<String, Option<String>>>,
     pub metadata: Option<BTreeMap<String, Option<serde_json::Value>>>,
     pub cache_retention: Option<Option<CacheRetention>>,
+    /// `None` = leave; `Some(budgets)` replaces the per-level budgets.
+    pub thinking_budgets: Option<Option<rpi_ai::types::ThinkingBudgets>>,
 }
 
 impl AgentHarnessStreamOptionsPatch {
     /// Apply this patch to `opts` in place. Mirrors the TS apply semantics:
     /// `undefined` value deletes a key, explicit empty patch clears nothing.
     pub fn apply(&self, opts: &mut AgentHarnessStreamOptions) {
+        if let Some(v) = self.thinking_budgets {
+            opts.thinking_budgets = v;
+        }
         if let Some(v) = self.timeout {
             opts.timeout = v;
         }
@@ -392,6 +402,9 @@ pub struct AgentHarnessOptions {
     pub stream_options: AgentHarnessStreamOptions,
     pub retry: RetryPolicy,
     pub compaction: CompactionSettings,
+    /// Per-model compaction overrides, keyed by `provider/modelId`
+    /// (upstream's `compaction.modelOverrides`).
+    pub compaction_model_overrides: std::collections::HashMap<String, CompactionSettings>,
     pub steering_mode: QueueMode,
     pub follow_up_mode: QueueMode,
     pub tool_execution: HarnessToolExecution,
@@ -505,6 +518,7 @@ impl Default for AgentHarnessOptions {
             stream_options: AgentHarnessStreamOptions::default(),
             retry: RetryPolicy::default(),
             compaction: CompactionSettings::default(),
+            compaction_model_overrides: std::collections::HashMap::new(),
             steering_mode: QueueMode::default(),
             follow_up_mode: QueueMode::default(),
             tool_execution: HarnessToolExecution::default(),

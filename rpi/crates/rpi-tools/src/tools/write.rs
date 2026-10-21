@@ -45,15 +45,25 @@ pub struct WriteTool {
 
 impl WriteTool {
     fn schema() -> Tool {
-        let params = schemars::schema_for!(WriteInput);
         Tool {
             name: "write".to_string(),
             description: "Write content to a file. Creates the file if it doesn't exist, \
                           overwrites if it does. Automatically creates parent directories."
                 .to_string(),
-            parameters: rpi_ai::types::Schema::new(
-                serde_json::to_value(params).unwrap_or_default(),
-            ),
+            parameters: rpi_ai::types::Schema::new(serde_json::json!({
+                "type": "object",
+                "required": ["path", "content"],
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the file to write (relative or absolute)"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Content to write to the file"
+                    }
+                }
+            })),
             constrained_sampling: Some(ConstrainedSamplingConfig::JsonSchema {
                 strict: ConstrainedStrictness::Prefer,
             }),

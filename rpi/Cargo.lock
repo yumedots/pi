@@ -3167,6 +3167,7 @@ dependencies = [
  "rpi-extensions",
  "rpi-harness",
  "rpi-js",
+ "rpi-mcp",
  "rpi-plugin-sdk",
  "rpi-tools",
  "rpi-tui",
@@ -3239,6 +3240,22 @@ dependencies = [
  "serde_json",
  "tempfile",
  "v8",
+]
+
+[[package]]
+name = "rpi-mcp"
+version = "0.6.3"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]

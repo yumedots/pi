@@ -51,6 +51,7 @@ pub mod markdown;
 pub mod mermaid;
 pub mod mouse;
 pub mod overlay;
+pub mod output_pad;
 pub mod render;
 pub mod scroll_view;
 pub mod search_bar;
@@ -133,8 +134,8 @@ pub use layout_node::{
 };
 pub use list_hover::{apply_hover, HoverableList};
 pub use loader::{
-    CancellableLoader, Loader, LoaderIndicatorOptions, ProgressLoader, SPINNER_FRAMES,
-    SPINNER_FRAME_MS,
+    spinner_frame_at, spinner_frame_index, CancellableLoader, Loader, LoaderIndicatorOptions,
+    ProgressLoader, SpinnerCounter, SpinnerTicker, SPINNER_FRAMES, SPINNER_FRAME_MS,
 };
 pub use markdown::{Markdown, MarkdownOptions};
 pub use mermaid::Mermaid;

@@ -56,12 +56,8 @@ pub(super) struct SessionMenuEntry {
     pub(super) stem: String,
     /// The session file path.
     pub(super) path: std::path::PathBuf,
-    /// The display label (the session name, or its first prompt).
-    pub(super) label: String,
-    /// The recorded session name, when it has one.
-    pub(super) name: Option<String>,
-    /// The session file's size in bytes.
-    pub(super) bytes: u64,
+    /// The session's header facts and its title, read on demand.
+    pub(super) row: std::sync::Arc<crate::session_index::SessionListRow>,
 }
 
 /// The session picker's rows and display options (upstream's session menu).
@@ -119,6 +115,18 @@ impl TreeFilter {
     pub(super) fn cycle_backward(self) -> TreeFilter {
         let index = Self::CYCLE.iter().position(|f| *f == self).unwrap_or(0);
         Self::CYCLE[(index + Self::CYCLE.len() - 1) % Self::CYCLE.len()]
+    }
+
+    /// The filter the `treeFilterMode` setting names (upstream's
+    /// `getTreeFilterMode`).
+    pub(super) fn from_setting(mode: &str) -> TreeFilter {
+        match mode {
+            "no-tools" => TreeFilter::NoTools,
+            "user-only" => TreeFilter::UserOnly,
+            "labeled-only" => TreeFilter::LabeledOnly,
+            "all" => TreeFilter::All,
+            _ => TreeFilter::Default,
+        }
     }
 }
 
@@ -185,6 +193,10 @@ pub(super) enum SelectorKind {
     Tree,
     /// Extension-provided selector; uses the same keyboard contract.
     Extension,
+    /// `/trust` — the project trust choices.
+    Trust,
+    /// `/mcp` — the MCP servers, their state, and their tools.
+    Mcp,
 }
 
 /// The component receiving keys while a selector is open.
@@ -202,6 +214,8 @@ pub(super) enum SelectorView {
     /// The `/settings` menu: value rows cycle in place, submenu rows open a
     /// nested selector.
     Settings(Arc<SettingsList>),
+    /// The `/trust` screen: the trust choices for the current folder.
+    Trust(Arc<super::trust::TrustSelector>),
 }
 
 impl SelectorView {
@@ -211,6 +225,17 @@ impl SelectorView {
             Self::List(list) => list.handle_key(key),
             Self::Searchable(searchable) => searchable.handle_key(key),
             Self::Settings(settings) => settings.handle_key(key),
+            Self::Trust(trust) => trust.handle_key(key),
+        }
+    }
+
+    /// The rows the list shows, as a half-open range.
+    pub(super) fn visible_range(&self) -> (usize, usize) {
+        match self {
+            Self::List(list) => list.visible_range(),
+            Self::Searchable(searchable) => searchable.list().visible_range(),
+            Self::Settings(_) => (0, 0),
+            Self::Trust(_) => (0, 0),
         }
     }
 }
@@ -417,15 +442,6 @@ pub(super) struct TuiState {
     /// Transcript notices for prompt-cache costs and provider recovery
     /// diagnostics (upstream `showCacheMissNotices`, default `false`).
     pub(super) cache_miss_notices: std::sync::Mutex<bool>,
-    /// Submitted-message history for ↑/↓ recall, most recent first (mirrors
-    /// the TS editor `history` array). Bounded at [`HISTORY_LIMIT`].
-    pub(super) history: std::sync::Mutex<Vec<String>>,
-    /// Browse index while recalling history: -1 = not browsing, 0 = most
-    /// recent, 1 = older, … Reset to -1 on every submit.
-    pub(super) history_index: std::sync::Mutex<isize>,
-    /// The editor text captured when entering browse mode, restored when the
-    /// user navigates back past the newest entry (TS `historyDraft`).
-    pub(super) history_draft: std::sync::Mutex<Option<String>>,
     /// Full cache-waste tracker (pi `detectCacheMiss`/`cache-stats.ts`):
     /// counts and prices prompt-cache misses across turns using the same
     /// noise floor, idle-gap, and model-change logic as the batch scan.
@@ -839,22 +855,13 @@ pub(super) fn format_tokens(n: i64) -> String {
     }
 }
 
-/// Record a submitted message for ↑ recall (mirrors TS `addToHistory`):
-/// trims, skips empty + consecutive duplicates, caps at [`HISTORY_LIMIT`], and
-/// resets the browse state so a fresh prompt never resumes mid-history.
+/// Record a submitted message for ↑ recall (mirrors TS `addToHistory`).
+///
+/// The history lives in the editor (the original's editor owns it), so the
+/// entry is recorded there: trimmed, empty and consecutive duplicates
+/// skipped, the newest entry first, capped at 100.
 pub(super) fn push_history(state: &Arc<TuiState>, text: &str) {
-    let trimmed = text.trim().to_string();
-    if trimmed.is_empty() {
-        return;
-    }
-    let mut history = state.history.lock().unwrap();
-    if history.first() == Some(&trimmed) {
-        return;
-    }
-    history.insert(0, trimmed);
-    history.truncate(HISTORY_LIMIT);
-    *state.history_index.lock().unwrap() = -1;
-    *state.history_draft.lock().unwrap() = None;
+    state.editor.add_to_history(text);
 }
 
 /// Submit a draft as a user prompt through the *same* path the Enter key takes:
@@ -930,38 +937,6 @@ pub(super) fn poll_auto_send(
                 false
             }
         }
-    }
-}
-
-/// Navigate message history. `direction` is -1 (↑, older) or 1 (↓, newer).
-/// Mirrors TS `navigateHistory`: the first entry into browse mode stashes the
-/// current editor text as the draft; navigating back past the newest entry
-/// restores that draft.
-pub(super) fn navigate_history(state: &Arc<TuiState>, editor: &Arc<Editor>, direction: i32) {
-    let history = state.history.lock().unwrap();
-    if history.is_empty() {
-        return;
-    }
-    let mut index = state.history_index.lock().unwrap();
-    let new_index = *index - direction as isize;
-    if new_index < -1 || new_index >= history.len() as isize {
-        return;
-    }
-    if *index == -1 && new_index >= 0 {
-        // Entering browse mode: stash the current input.
-        *state.history_draft.lock().unwrap() = Some(editor.get_text());
-    }
-    *index = new_index;
-    if new_index == -1 {
-        // Exited browse mode: restore the draft (or clear if there was none).
-        let draft = state.history_draft.lock().unwrap().take();
-        match draft {
-            Some(d) => editor.set_text_at_start(&d),
-            None => editor.set_text(""),
-        }
-    } else {
-        let text = history[new_index as usize].clone();
-        editor.set_text_at_start(&text);
     }
 }
 
@@ -1399,8 +1374,13 @@ impl TuiState {
 
     pub(super) fn set_hide_thinking(&self, hide: bool) {
         *self.hide_thinking.lock().unwrap() = hide;
-        if let Some(comp) = self.current_assistant.lock().unwrap().as_ref() {
-            comp.set_hide_thinking(hide);
+        // Every rendered assistant message follows the preference, not only the
+        // one in flight (the original's `updateThinkingBlockVisibility`,
+        // `interactive-mode.ts:4428-4434`).
+        for child in self.chat_container.get_children() {
+            if let Some(component) = child.as_any().downcast_ref::<AssistantMessageComponent>() {
+                component.set_hide_thinking(hide);
+            }
         }
     }
 
@@ -1484,6 +1464,13 @@ impl TuiState {
             self.markdown_transformer.clone(),
         )
         .with_show_images(self.images_visible())
+    }
+
+    /// Whether the transcript shows a live braille sign — a streaming thinking
+    /// run drawn as the thinking indicator. Its frame comes from a counter, so
+    /// the transcript has to be rendered again for the sign to move.
+    pub(super) fn has_live_thinking_indicator(&self) -> bool {
+        self.transcript_view().has_live_thinking()
     }
 
     /// B5e: swap the live transformer. Used at startup (install the first

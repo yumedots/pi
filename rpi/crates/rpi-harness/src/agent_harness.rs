@@ -41,9 +41,10 @@ use tokio_util::sync::CancellationToken;
 
 use rpi_agent::message::AgentMessage;
 use rpi_agent::{
-    run_agent_loop, run_agent_loop_from_assistant, AfterToolCall, AfterToolResults, AgentContext,
-    AgentEmitter, AgentEvent, AgentLoopConfig, AgentTool, BeforeToolCall, ConvertToLlm, QueueMode,
-    ShouldStopAfterTurnContext, StreamFn, TransformContext,
+    run_agent_loop, run_agent_loop_from_assistant, run_agent_loop_with_announced_prompt,
+    AfterToolCall, AfterToolResults, AgentContext, AgentEmitter, AgentEvent, AgentLoopConfig,
+    AgentTool, BeforeToolCall, ConvertToLlm, QueueMode, ShouldStopAfterTurnContext, StreamFn,
+    TransformContext,
 };
 use rpi_ai::types::{
     AssistantMessage, Content, DeferredHandle, StopReason, ThinkingLevel, Usage, UserContent,
@@ -610,6 +611,7 @@ struct HarnessInner {
     stream_options: AgentHarnessStreamOptions,
     retry: RetryPolicy,
     compaction: CompactionSettings,
+    compaction_model_overrides: std::collections::HashMap<String, CompactionSettings>,
     /// v1 leaves the harness in `Automatic` driving mode; the field is kept so
     /// the contract mirrors TS `AgentHarnessOptions.drive`.
     #[allow(dead_code)]
@@ -771,6 +773,7 @@ impl AgentHarness {
             stream_options: options.stream_options,
             retry: options.retry,
             compaction: options.compaction,
+            compaction_model_overrides: options.compaction_model_overrides.clone(),
             driving: options.drive,
             tool_execution: options.tool_execution,
             system_prompt: options.system_prompt,
@@ -3001,9 +3004,15 @@ impl AgentHarness {
                                 patch.apply(&mut ctx);
                             }
                             if let Some(patch) = hooks.before_request(&model, &ctx, &opts) {
-                                patch.apply(&mut opts);
+                                patch.apply(&mut ctx, &mut opts);
                             }
                         }
+                        // The provider hands the hooks the HTTP response and
+                        // every parsed stream event, so the host can publish
+                        // the provider events pi publishes.
+                        opts.hooks = provider_hooks
+                            .clone()
+                            .map(rpi_ai::ProviderHooksHandle::new);
                         tokio::task::block_in_place(|| {
                             Handle::current()
                                 .block_on(async move { p.stream_simple(&model, &ctx, &opts).await })
@@ -3106,6 +3115,7 @@ impl AgentHarness {
             stream_options: inner.stream_options.clone(),
             retry: inner.retry.clone(),
             compaction: inner.compaction,
+            compaction_model_overrides: inner.compaction_model_overrides.clone(),
             tool_execution: inner.tool_execution,
             driving: inner.driving,
             models: inner.models.clone(),
@@ -3196,9 +3206,15 @@ impl AgentHarness {
             timestamp: now_ms(),
         }));
         self.view()
-            .append_message(message)
+            .append_message(message.clone())
             .await
             .map_err(session_to_harness_err)?;
+        // The system message is part of the session's message list, so it gets
+        // the same `message_start`/`message_end` pair the other messages get —
+        // the original emits the pair for the messages the loop processes
+        // (`packages/agent/src/agent-loop.ts:110-115`), and an extension that
+        // subscribes to it must see the system message too.
+        self.emit_appended_messages(vec![message]).await;
         Ok(())
     }
 
@@ -3799,12 +3815,13 @@ impl AgentHarness {
         let build_opts = Self::build_opts(&snap.entry_projectors, &snap.entry_transforms);
 
         // Pre-run compaction evaluation.
-        if snap.compaction.enabled && snap.model.context_window > 0 {
+        let compaction_settings = snap.compaction_for_model();
+        if compaction_settings.enabled && snap.model.context_window > 0 {
             let ctx = build_session_context(&path, &build_opts);
             let ctx_tokens = estimate_context_tokens(&ctx.messages).tokens;
             let window = snap.model.context_window as i64;
-            if should_compact(ctx_tokens, window, &snap.compaction) {
-                if let Ok(Some(prep)) = prepare_compaction(&path, snap.compaction) {
+            if should_compact(ctx_tokens, window, &compaction_settings) {
+                if let Ok(Some(prep)) = prepare_compaction(&path, compaction_settings) {
                     let compaction_provider = Self::resolve_provider(&snap.models, &snap.model)
                         .or_else(|_| {
                             // Fall back to first provider if the model's
@@ -3970,8 +3987,8 @@ impl AgentHarness {
         // turn that produced tool results.
         let compaction_hook: Option<AfterToolResults> = {
             let harness = self.clone();
-            let enabled = snap.compaction.enabled;
-            let settings = snap.compaction;
+            let enabled = snap.compaction_for_model().enabled;
+            let settings = snap.compaction_for_model();
             let model = snap.model.clone();
             let provider = snap
                 .models
@@ -4127,30 +4144,42 @@ impl AgentHarness {
             Arc::clone(&settle_state),
             self.clone(),
         ));
-        // The original's loop emits the `message_start`/`message_end` pair for
-        // the messages it is given (`packages/agent/src/agent-loop.ts:110-115`).
-        // The harness runs the loop with an empty prompt vector — the prompts
-        // are persisted and already in the context via the branch-path build —
-        // so the pair is emitted here, once, before the loop starts.
+        // pi's `before_agent_start`: the original fires it while it prepares
+        // the run, before the agent loop starts. The harness fires it here so
+        // the extensions see it in the original's order.
         if !from_assistant {
-            for message in &prompts {
+            if let Some(prompt) = prompts.last() {
                 emitter
-                    .emit(AgentEvent::MessageStart {
-                        message: message.clone(),
-                    })
-                    .await;
-                emitter
-                    .emit(AgentEvent::MessageEnd {
-                        message: message.clone(),
+                    .emit(AgentEvent::BeforeAgentStart {
+                        prompt: prompt.clone(),
+                        system_prompt: agent_context.system_prompt.clone(),
                     })
                     .await;
             }
         }
+        // The original's loop emits the `message_start`/`message_end` pair for
+        // the messages it is given (`packages/agent/src/agent-loop.ts:110-115`),
+        // and it does so after `agent_start` and `turn_start`. The harness runs
+        // the loop with an empty prompt vector — the prompts are persisted and
+        // already in the context via the branch-path build — so the first
+        // attempt announces them through the loop entry point that keeps the
+        // original's order. A retry does not announce them again.
+        let mut prompt_announced = false;
         let result = loop {
             // Entering from an assistant runs that message's tools as its very
             // first action, which is exactly why it is never retried (see below).
             let attempt_result = if from_assistant {
                 run_agent_loop_from_assistant(
+                    agent_context.clone(),
+                    config.clone(),
+                    Arc::clone(&emitter),
+                    Arc::clone(&stream_fn),
+                )
+                .await
+            } else if !prompt_announced {
+                prompt_announced = true;
+                run_agent_loop_with_announced_prompt(
+                    prompts.clone(),
                     agent_context.clone(),
                     config.clone(),
                     Arc::clone(&emitter),
@@ -4312,6 +4341,15 @@ impl AgentHarness {
             agent_context.messages = build_session_context(&path, &build_opts).messages;
         };
 
+        // pi's `agent_before_settle`: the run's automatic work is done (the
+        // retry loop and the overflow recovery are behind us), and the run is
+        // about to settle.
+        emitter
+            .emit(AgentEvent::AgentBeforeSettle {
+                outcome: activity_outcome(&result),
+            })
+            .await;
+
         if let Some(error) = context_write_error.lock().unwrap().take() {
             // Keep the operation's recovery frames and context enqueue intact.
             return Err(HarnessError::io(error));
@@ -4467,6 +4505,14 @@ impl AgentHarness {
             }
         }
 
+        // pi's `agent_settled`: the run has fully settled and no automatic
+        // retry, compaction or queued continuation will run.
+        emitter
+            .emit(AgentEvent::AgentSettled {
+                aborted: signal.is_cancelled(),
+            })
+            .await;
+
         Ok(RunResult { run_id, outcome })
     }
 
@@ -4483,11 +4529,12 @@ impl AgentHarness {
         snap: &ConfigSnapshot,
         signal: &CancellationToken,
     ) -> HarnessResult<bool> {
-        if !snap.compaction.enabled {
+        let compaction_settings = snap.compaction_for_model();
+        if !compaction_settings.enabled {
             return Ok(false);
         }
         let path = self.branch_path_oldest_first().await?;
-        let Ok(Some(prep)) = prepare_compaction(&path, snap.compaction) else {
+        let Ok(Some(prep)) = prepare_compaction(&path, compaction_settings) else {
             return Ok(false);
         };
         let provider = match Self::resolve_provider(&snap.models, &snap.model) {
@@ -4708,6 +4755,7 @@ struct ConfigSnapshot {
     stream_options: AgentHarnessStreamOptions,
     retry: RetryPolicy,
     compaction: CompactionSettings,
+    compaction_model_overrides: std::collections::HashMap<String, CompactionSettings>,
     tool_execution: HarnessToolExecution,
     driving: DrivingMode,
     models: Vec<Arc<dyn AiProvider>>,
@@ -4723,6 +4771,19 @@ struct ConfigSnapshot {
     provider_hooks: Option<Arc<dyn rpi_ai::ProviderHooks>>,
     steering_queue: SharedMessageQueue,
     follow_up_queue: SharedMessageQueue,
+}
+
+impl ConfigSnapshot {
+    /// The compaction settings that apply to the snapshot's model: the
+    /// per-model override when the settings file names one, the plain
+    /// `compaction.*` values otherwise (upstream's `getCompactionSettings`).
+    fn compaction_for_model(&self) -> CompactionSettings {
+        let key = format!("{}/{}", self.model.provider, self.model.id);
+        self.compaction_model_overrides
+            .get(&key)
+            .copied()
+            .unwrap_or(self.compaction)
+    }
 }
 
 // ===========================================================================
@@ -5833,6 +5894,29 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// How a run ended, as pi's `agent_before_settle` reports it: the last
+/// assistant message's stop reason decides.
+fn activity_outcome(
+    result: &Result<Vec<AgentMessage>, rpi_agent::AgentError>,
+) -> rpi_agent::AgentActivityOutcome {
+    use rpi_agent::AgentActivityOutcome;
+    let Ok(messages) = result else {
+        return AgentActivityOutcome::Error;
+    };
+    messages
+        .iter()
+        .rev()
+        .find_map(|message| match message {
+            AgentMessage::Assistant(assistant) => Some(match assistant.stop_reason {
+                StopReason::Aborted => AgentActivityOutcome::Aborted,
+                StopReason::Error => AgentActivityOutcome::Error,
+                _ => AgentActivityOutcome::Completed,
+            }),
+            _ => None,
+        })
+        .unwrap_or(AgentActivityOutcome::Completed)
+}
+
 /// Expand a skill command and a prompt template in the submitted text.
 ///
 /// Mirrors the original's `AgentSession.prompt`: the skill expansion runs
@@ -6131,8 +6215,32 @@ mod system_entry_tests {
     /// shape, and the entry never reaches the model context.
     #[tokio::test]
     async fn the_session_carries_the_system_message_entry() {
-        let harness = AgentHarness::create(opts()).await.unwrap();
+        let (emitter, events) = rpi_agent::events::CollectorEmitter::new();
+        let mut options = opts();
+        options.agent_emitter = Some(Arc::new(emitter));
+        let harness = AgentHarness::create(options).await.unwrap();
         harness.ensure_system_entry().await.unwrap();
+
+        // The system message is part of the session's message list, so the
+        // `message_start`/`message_end` pair fires for it — an extension that
+        // subscribes to it must see the system message.
+        let events = events.lock().unwrap().clone();
+        let starts = events
+            .iter()
+            .filter(|event| {
+                matches!(event, rpi_agent::events::AgentEvent::MessageStart { message }
+                    if matches!(message, AgentMessage::System(_)))
+            })
+            .count();
+        let ends = events
+            .iter()
+            .filter(|event| {
+                matches!(event, rpi_agent::events::AgentEvent::MessageEnd { message }
+                    if matches!(message, AgentMessage::System(_)))
+            })
+            .count();
+        assert_eq!(starts, 1, "the system message emits message_start");
+        assert_eq!(ends, 1, "the system message emits message_end");
 
         let entries = harness
             .session()

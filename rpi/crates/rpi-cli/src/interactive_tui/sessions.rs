@@ -382,10 +382,9 @@ pub(super) async fn render_session_history(
                     chat.add_child(Arc::new(Spacer::new(1)));
                     rendered_any = true;
                 }
-                AgentMessage::System(system) => {
-                    add_note_message(chat, &system.content);
-                    rendered_any = true;
-                }
+                // The system message is the session's system prompt: the
+                // original applies it silently, it is not a transcript entry.
+                AgentMessage::System(_) => {}
                 AgentMessage::Custom(custom) => {
                     if let Some(session) = &extension_session {
                         if let Some(component) = extension_message_component(
@@ -479,13 +478,9 @@ pub(super) async fn render_session_history(
             // the original applies them silently and the resumed transcript
             // shows only the user's turn and the assistant's reply.
             Entry::ModelChange(_) | Entry::ThinkingLevel(_) => {}
-            Entry::ActiveTools(change) => {
-                add_note_message(
-                    chat,
-                    &format!("Active tools: {}", change.active_tool_names.join(", ")),
-                );
-                rendered_any = true;
-            }
+            // The active-tool set is state, not a transcript entry: the
+            // original applies it silently.
+            Entry::ActiveTools(_) => {}
             Entry::CustomMessage(custom) => {
                 if custom.display {
                     let text = match &custom.content {

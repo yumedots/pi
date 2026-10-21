@@ -5,6 +5,9 @@
 # note: The doom overlay example extension (/doom-overlay).
 
 
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+
+
  Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
  on` to ~/.tmux.conf and restart tmux.
  Failed to load extension
@@ -19,9 +22,6 @@
      at loadExtension (eval at globalThis.__piRun (unknown source), <anonymous>:44394:21)
      at globalThis.__piCall (eval at globalThis.__piRun (unknown source), <anonymous>:270:24)
 
-
-
- /doom-overlay
 
 
  /doom-overlay

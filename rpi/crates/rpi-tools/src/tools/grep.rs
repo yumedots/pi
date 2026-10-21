@@ -8,9 +8,9 @@
 //! (ripgrep), parsing its `--json` stream, and re-reads files only for context
 //! blocks. The Rust port implements search **in-process** via the `FileSystem`
 //! trait + the `regex` crate, so the tool works against any `ExecutionEnv`
-//! (including `InMemoryExecutionEnv`, which has no shell). Trade-offs: no
-//! `.gitignore` awareness in v1 (only `.git/` directories are skipped; revisit
-//! via the `ignore` crate for an `OsExecutionEnv`-only fast path), no
+//! (including `InMemoryExecutionEnv`, which has no shell). The `.gitignore`
+//! handling is ported as well (`crate::tools::gitignore`): the ignore files
+//! count inside a git repository, as they do for ripgrep. Trade-offs: no
 //! auto-download of a binary, and traversal order is a deterministic sorted BFS
 //! rather than rg's walk order. Output shape, match/context line formats,
 //! per-line + byte truncation, and the match-limit semantics match TS exactly.
@@ -24,13 +24,13 @@ use rpi_agent::agent_tool::AgentTool;
 use rpi_agent::error::AgentError;
 use rpi_agent::types::{AgentToolResult, TextContentOrImage, ToolResultPartial};
 use rpi_ai::types::Tool;
-use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::env::ExecutionEnv;
 use crate::env::FileKind;
 use crate::path_utils::resolve_read_tool_path;
+use crate::tools::gitignore::IgnoreContext;
 use crate::tools::tool_context::ExecutionToolContext;
 use crate::tools::PromptContribution;
 use crate::truncate::{
@@ -44,7 +44,7 @@ const DEFAULT_LIMIT: u32 = 100;
 /// Input for the grep tool. Mirrors TS `GrepToolInput`. `camelCase` field names
 /// match the TS wire schema (so `ignoreCase`/`ignore_case` deserialization lines
 /// up with what the model emits).
-#[derive(Debug, Clone, JsonSchema, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GrepInput {
     /// Search pattern (regex or literal string).
@@ -95,19 +95,49 @@ pub struct GrepTool {
 
 impl GrepTool {
     fn schema() -> Tool {
-        let params = schemars::schema_for!(GrepInput);
         Tool {
             name: "grep".to_string(),
             description: format!(
                 "Search file contents for a pattern. Returns matching lines with file paths and \
-                 line numbers. Skips `.git/` directories. Output is truncated to {DEFAULT_LIMIT} \
+                 line numbers. Respects .gitignore. Output is truncated to {DEFAULT_LIMIT} \
                  matches or {kb}KB (whichever is hit first). Long lines are truncated to \
                  {GREP_MAX_LINE_LENGTH} chars.",
                 kb = DEFAULT_MAX_BYTES / 1024
             ),
-            parameters: rpi_ai::types::Schema::new(
-                serde_json::to_value(params).unwrap_or_default(),
-            ),
+            parameters: rpi_ai::types::Schema::new(serde_json::json!({
+                "type": "object",
+                "required": ["pattern"],
+                "properties": {
+                    "pattern": {
+                        "type": "string",
+                        "description": "Search pattern (regex or literal string)"
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Directory or file to search (default: current directory)"
+                    },
+                    "glob": {
+                        "type": "string",
+                        "description": "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'"
+                    },
+                    "ignoreCase": {
+                        "type": "boolean",
+                        "description": "Case-insensitive search (default: false)"
+                    },
+                    "literal": {
+                        "type": "boolean",
+                        "description": "Treat pattern as literal string instead of regex (default: false)"
+                    },
+                    "context": {
+                        "type": "number",
+                        "description": "Number of lines to show before and after each match (default: 0)"
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Maximum number of matches to return (default: 100)"
+                    }
+                }
+            })),
             constrained_sampling: None,
         }
     }
@@ -216,9 +246,10 @@ impl AgentTool for GrepTool {
         if root_kind == FileKind::Directory {
             // Iterative BFS walk (avoids async-recursion boxing). Sorted entries
             // for deterministic output order.
-            let mut queue: VecDeque<(String, String)> = VecDeque::new();
-            queue.push_back((search_path.clone(), String::new()));
-            while let Some((abs_dir, rel_dir)) = queue.pop_front() {
+            let mut queue: VecDeque<(String, String, IgnoreContext)> = VecDeque::new();
+            let ignore = IgnoreContext::load(&self.env, &search_path, cancel).await;
+            queue.push_back((search_path.clone(), String::new(), ignore));
+            while let Some((abs_dir, rel_dir, ignore)) = queue.pop_front() {
                 if matches >= effective_limit {
                     break;
                 }
@@ -233,9 +264,11 @@ impl AgentTool for GrepTool {
                         break;
                     }
                     let child_abs = entry.path.to_string_lossy().into_owned();
+                    if ignore.is_ignored(&child_abs, entry.kind == FileKind::Directory) {
+                        continue;
+                    }
                     match entry.kind {
                         FileKind::Directory => {
-                            // Skip `.git/` (v1 has no full .gitignore support).
                             if entry.name == ".git" {
                                 continue;
                             }
@@ -244,7 +277,8 @@ impl AgentTool for GrepTool {
                             } else {
                                 format!("{rel_dir}/{}", entry.name)
                             };
-                            queue.push_back((child_abs, rel));
+                            let child_ignore = ignore.with_dir(&self.env, &child_abs, cancel).await;
+                            queue.push_back((child_abs, rel, child_ignore));
                         }
                         FileKind::File => {
                             let rel = if rel_dir.is_empty() {

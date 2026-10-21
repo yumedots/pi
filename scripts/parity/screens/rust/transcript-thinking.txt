@@ -19,7 +19,7 @@
  hello world
 
 
- + Thought · 0.0s
+ + Thought · 0.1s
 
  Hello from the parity mock.
 

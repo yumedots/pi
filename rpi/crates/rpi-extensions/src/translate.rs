@@ -40,6 +40,9 @@ pub fn event_tag_for(event: &AgentEvent) -> Option<EventTag> {
         AgentEvent::ToolExecutionStart { .. } => Some(EventTag::ToolExecutionStart),
         AgentEvent::ToolExecutionUpdate { .. } => Some(EventTag::ToolExecutionUpdate),
         AgentEvent::ToolExecutionEnd { .. } => Some(EventTag::ToolExecutionEnd),
+        AgentEvent::AgentSettled { .. } => Some(EventTag::AgentSettled),
+        AgentEvent::BeforeAgentStart { .. } => None,
+        AgentEvent::AgentBeforeSettle { .. } => None,
     }
 }
 
@@ -132,9 +135,12 @@ pub fn translate(event: &AgentEvent) -> Option<StablePluginEvent> {
         AgentEvent::AgentStart
         | AgentEvent::TurnStart
         | AgentEvent::AgentEnd { .. }
-        | AgentEvent::TurnEnd { .. } => Some(StablePluginEvent::empty(tag)),
+        | AgentEvent::TurnEnd { .. }
+        | AgentEvent::AgentSettled { .. } => Some(StablePluginEvent::empty(tag)),
 
-        AgentEvent::RetryScheduled { .. } => None,
+        AgentEvent::RetryScheduled { .. }
+        | AgentEvent::BeforeAgentStart { .. }
+        | AgentEvent::AgentBeforeSettle { .. } => None,
     }
 }
 
@@ -275,6 +281,8 @@ pub fn agent_tool_result_to_json(result: &rpi_agent::types::AgentToolResult) -> 
     txt.push_str(&serde_json::to_string(&result.details).unwrap_or_else(|_| "null".into()));
     txt.push_str(",\"terminate\":");
     txt.push_str(if result.terminate { "true" } else { "false" });
+    txt.push_str(",\"usage\":");
+    txt.push_str(&serde_json::to_string(&result.usage).unwrap_or_else(|_| "null".into()));
     txt.push_str(",\"addedToolNames\":");
     txt.push_str(&serde_json::to_string(&result.added_tool_names).unwrap_or_else(|_| "[]".into()));
     txt.push('}');
@@ -1064,6 +1072,7 @@ mod tests {
             AgentEvent::ToolExecutionEnd {
                 tool_call_id: "c1".into(),
                 tool_name: "echo".into(),
+                args: serde_json::json!({}),
                 result: AgentToolResult::text("done"),
                 is_error: false,
                 duration_ms: None,

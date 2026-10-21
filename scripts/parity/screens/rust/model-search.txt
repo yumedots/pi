@@ -26,11 +26,11 @@
 
 
 
-Select model
 
-Type to filter by name, provider, or id
 
+  Scope: all | scoped
 > mock
-
 → ✓ mock-1                        [mock]
+  Model catalogs refreshed.
+  Enter to select · Ctrl+S to set as default · Escape/Ctrl+C to cancel
 mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                     /private/tmp/pi-screens/work/model-search

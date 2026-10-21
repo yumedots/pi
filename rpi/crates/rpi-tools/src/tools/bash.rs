@@ -22,7 +22,6 @@ use rpi_agent::agent_tool::AgentTool;
 use rpi_agent::error::AgentError;
 use rpi_agent::types::{AgentToolResult, TextContentOrImage, ToolResultPartial};
 use rpi_ai::types::{ConstrainedSamplingConfig, ConstrainedStrictness, Schema, Tool};
-use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -44,9 +43,9 @@ const BASH_UPDATE_THROTTLE_MS: u64 = 2_000;
 const STRUCTURED_OUTPUT_MAX_BYTES: usize = 1024 * 1024;
 
 /// Input for the bash tool. Mirrors TS `BashToolInput`. `timeout` is in seconds.
-#[derive(Debug, Clone, JsonSchema, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct BashInput {
-    /// Bash command to execute.
+    /// Shell command to execute.
     pub command: String,
     /// Timeout in seconds (optional, no default timeout).
     #[serde(default)]
@@ -124,19 +123,29 @@ impl BashTool {
     }
 
     fn schema() -> Tool {
-        let params = schemars::schema_for!(BashInput);
         Tool {
             name: "bash".to_string(),
             description: format!(
-                "Execute a Bash command in the current working directory using Bash/POSIX syntax, even on Windows. PowerShell cmdlets (Get-ChildItem, Select-Object, Select-String) are not valid here; use ls, find, rg, and POSIX pipelines instead. Returns stdout and \
+                "Execute a bash command in the current working directory. Returns stdout and \
                  stderr. Output is truncated to last {DEFAULT_MAX_LINES} lines or {kb}KB \
                  (whichever is hit first). If truncated, full output is saved to a temp file. \
                  Optionally provide a timeout in seconds.",
                 kb = DEFAULT_MAX_BYTES / 1024
             ),
-            parameters: rpi_ai::types::Schema::new(
-                serde_json::to_value(params).unwrap_or_default(),
-            ),
+            parameters: Schema::new(serde_json::json!({
+                "type": "object",
+                "required": ["command"],
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "Shell command to execute"
+                    },
+                    "timeout": {
+                        "type": "number",
+                        "description": "Timeout in seconds (optional, no default timeout)"
+                    }
+                }
+            })),
             constrained_sampling: Some(ConstrainedSamplingConfig::JsonSchema {
                 strict: ConstrainedStrictness::Prefer,
             }),

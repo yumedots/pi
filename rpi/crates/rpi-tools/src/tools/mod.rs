@@ -7,6 +7,7 @@ pub mod bash;
 pub mod edit;
 pub mod edit_diff;
 pub mod find;
+pub mod gitignore;
 pub mod grep;
 pub mod image;
 pub mod ls;

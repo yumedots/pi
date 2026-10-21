@@ -7,8 +7,9 @@
 
 use std::collections::VecDeque;
 
-/// Maximum number of entries in the kill ring.
-const MAX_KILL_RING_SIZE: usize = 64;
+/// The default maximum number of entries in the kill ring. The original's
+/// ring is unbounded (packages/tui/src/kill-ring.ts:13).
+const MAX_KILL_RING_SIZE: usize = usize::MAX;
 
 /// Options for pushing to the kill ring.
 #[derive(Debug, Clone)]
@@ -41,7 +42,7 @@ impl KillRing {
     /// Create a new kill ring.
     pub fn new() -> Self {
         Self {
-            entries: VecDeque::with_capacity(MAX_KILL_RING_SIZE),
+            entries: VecDeque::with_capacity(16),
             max_size: MAX_KILL_RING_SIZE,
         }
     }
@@ -70,15 +71,12 @@ impl KillRing {
                 *front = format!("{}{}", front, text);
             }
         } else {
-            // Add as a new entry
-            // Check if the text is already at the front (don't duplicate)
-            if self.entries.front() != Some(&text.to_string()) {
-                self.entries.push_front(text.to_string());
+            // Add as a new entry. The original keeps duplicates.
+            self.entries.push_front(text.to_string());
 
-                // Trim if over capacity
-                while self.entries.len() > self.max_size {
-                    self.entries.pop_back();
-                }
+            // Trim if over capacity
+            while self.entries.len() > self.max_size {
+                self.entries.pop_back();
             }
         }
     }
@@ -195,11 +193,11 @@ mod tests {
     }
 
     #[test]
-    fn test_no_duplicate() {
+    fn test_duplicates_are_kept() {
         let mut ring = KillRing::new();
         ring.push("hello", PushOptions::default());
         ring.push("hello", PushOptions::default());
-        assert_eq!(ring.len(), 1);
+        assert_eq!(ring.len(), 2, "the original's ring keeps duplicates");
     }
 
     #[test]

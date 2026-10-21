@@ -172,7 +172,15 @@ impl Component for StartupHeader {
         if event.kind == MouseEventKind::Click {
             let handler = self.on_logo_click.lock().ok().and_then(|slot| slot.clone());
             if let Some(handler) = handler {
-                handler(event.screen_x - event.x + 1, event.screen_y - event.y);
+                // The mark's top-left cell, the way the original's
+                // `BuiltInHeader` reports it (`interactive-mode.ts:264`).
+                let column = event.screen_x.saturating_sub(event.x) + 1;
+                let row = event.screen_y.saturating_sub(event.y);
+                // The animation renders a full screen per frame, and the
+                // input thread shares the renderer's frame lock: running it
+                // here would block every key until the effect is over. It
+                // starts on its own thread instead.
+                std::thread::spawn(move || handler(column, row));
             }
         }
         Some(MouseEventResult::handled())
@@ -275,7 +283,9 @@ mod tests {
         let seen = Arc::new(Mutex::new(None));
         let sink = seen.clone();
         header.set_logo_click(Some(Arc::new(move |column, row| {
-            *sink.lock().unwrap() = Some((column, row));
+            if let Ok(mut guard) = sink.lock() {
+                *guard = Some((column, row));
+            }
         })));
         let event = MouseEvent {
             kind: MouseEventKind::Click,
@@ -286,6 +296,11 @@ mod tests {
             ..MouseEvent::new(MouseEventKind::Click, rpi_tui::component::MouseButton::Left, 12, 40)
         };
         assert!(header.handle_mouse(&event).is_some());
+        // The animation starts on its own thread, so the cell arrives there.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while seen.lock().unwrap().is_none() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         assert_eq!(*seen.lock().unwrap(), Some((11, 40)));
     }
 
@@ -299,5 +314,39 @@ mod tests {
             ..MouseEvent::new(MouseEventKind::Click, rpi_tui::component::MouseButton::Left, 2, 2)
         };
         assert!(header.handle_mouse(&event).is_none());
+    }
+
+    #[test]
+    fn the_click_does_not_block_the_input_thread() {
+        // The animation paints a full screen per frame and the input thread
+        // shares the renderer's frame lock, so the click has to return at once
+        // — otherwise every key waits for the effect to be over.
+        let header = header();
+        let started = Arc::new(Mutex::new(None));
+        let sink = started.clone();
+        header.set_logo_click(Some(Arc::new(move |_, _| {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            *sink.lock().unwrap() = Some(std::time::Instant::now());
+        })));
+        let event = MouseEvent {
+            kind: MouseEventKind::Click,
+            x: 2,
+            y: 0,
+            screen_x: 12,
+            screen_y: 40,
+            ..MouseEvent::new(MouseEventKind::Click, rpi_tui::component::MouseButton::Left, 12, 40)
+        };
+        let before = std::time::Instant::now();
+        assert!(header.handle_mouse(&event).is_some());
+        assert!(
+            before.elapsed() < std::time::Duration::from_millis(100),
+            "the click must not wait for the animation"
+        );
+        // The animation still runs, on its own thread.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while started.lock().unwrap().is_none() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(started.lock().unwrap().is_some(), "the animation never ran");
     }
 }

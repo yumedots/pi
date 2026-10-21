@@ -14,7 +14,6 @@
 
  Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
  on` to ~/.tmux.conf and restart tmux.
- Thinking blocks shown.
 
 
 
@@ -24,7 +23,7 @@
 
 
 
-
+────────────────────────────────────────────────────────────────────────────────────────────────────
 > thinking
 
 → Hide thinking                     false
@@ -33,4 +32,5 @@
   Hide thinking blocks in assistant responses
 
   Type to search · Enter/Space to change · Esc to cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────
 mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens        /private/tmp/pi-screens/work/settings-submenu-thinking

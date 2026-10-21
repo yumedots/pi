@@ -526,6 +526,12 @@ impl Provider for FauxProvider {
             };
             message = with_usage_estimate(message, &ctx, &opts);
 
+            if let Some(hooks) = opts.hooks.as_ref() {
+                hooks
+                    .hooks()
+                    .on_response(&model, 200, &std::collections::BTreeMap::new());
+            }
+
             // Cancellation: honor the caller's signal, and (optionally) an
             // internal abort-after timer. A detached timer task cancels the
             // child token after `abort_after`; firing after completion is a

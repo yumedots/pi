@@ -227,6 +227,18 @@ pub struct ThinkingBudgetsSettings {
     pub high: Option<f64>,
 }
 
+/// The terminal capability overrides the settings file can force. Mirrors
+/// upstream's `getTerminalCapabilityOverrides` (`core/settings-manager.ts:1188`).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TerminalCapabilityOverrides {
+    /// The inline-image protocol; `None` leaves the detection alone.
+    pub images: Option<rpi_tui::ImageProtocol>,
+    /// Whether the terminal is 24-bit colour; `None` leaves the detection alone.
+    pub true_color: Option<bool>,
+    /// Whether OSC 8 hyperlinks are emitted; `None` leaves the detection alone.
+    pub hyperlinks: Option<bool>,
+}
+
 /// `steeringMode` / `followUpMode` — upstream's queue drain modes.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -620,23 +632,26 @@ impl Settings {
     /// changes only what it names.
     pub fn provider_retry_options(&self) -> rpi_harness::types::AgentHarnessStreamOptions {
         let mut options = rpi_harness::types::AgentHarnessStreamOptions::default();
-        let Some(provider) = self.retry.as_ref().and_then(|retry| retry.provider.as_ref()) else {
+        let Some(retry) = &self.retry else {
             options.max_retry_delay = Some(std::time::Duration::from_millis(
                 defaults::RETRY_PROVIDER_MAX_RETRY_DELAY_MS,
             ));
             return options;
         };
-        if let Some(timeout_ms) = provider.timeout_ms {
+        let provider = retry.provider.as_ref();
+        if let Some(timeout_ms) = provider.and_then(|provider| provider.timeout_ms) {
             options.timeout = Some(std::time::Duration::from_millis(timeout_ms as u64));
         }
-        if let Some(max_retries) = provider.max_retries {
+        if let Some(max_retries) = provider.and_then(|provider| provider.max_retries) {
             options.max_retries = Some(max_retries as u32);
         }
-        options.max_retry_delay = Some(std::time::Duration::from_millis(
-            provider
-                .max_retry_delay_ms
-                .unwrap_or(defaults::RETRY_PROVIDER_MAX_RETRY_DELAY_MS),
-        ));
+        // Upstream's legacy `retry.maxDelayMs` seeds
+        // `retry.provider.maxRetryDelayMs` (`core/settings-manager.ts:445`).
+        let max_retry_delay = provider
+            .and_then(|provider| provider.max_retry_delay_ms)
+            .or(retry.max_delay_ms)
+            .unwrap_or(defaults::RETRY_PROVIDER_MAX_RETRY_DELAY_MS);
+        options.max_retry_delay = Some(std::time::Duration::from_millis(max_retry_delay));
         options
     }
 
@@ -662,6 +677,32 @@ impl Settings {
         settings
     }
 
+    /// The per-model compaction overrides, keyed by `provider/modelId`.
+    /// upstream's `compaction.modelOverrides`.
+    pub fn compaction_model_overrides(
+        &self,
+    ) -> std::collections::HashMap<String, rpi_harness::types::CompactionSettings> {
+        let mut map = std::collections::HashMap::new();
+        let Some(overrides) = self
+            .compaction
+            .as_ref()
+            .and_then(|compaction| compaction.model_overrides.as_ref())
+        else {
+            return map;
+        };
+        for (key, entry) in overrides {
+            let mut settings = self.compaction_settings();
+            if let Some(reserve_tokens) = entry.reserve_tokens {
+                settings.reserve_tokens = reserve_tokens;
+            }
+            if let Some(keep_recent_tokens) = entry.keep_recent_tokens {
+                settings.keep_recent_tokens = keep_recent_tokens;
+            }
+            map.insert(key.clone(), settings);
+        }
+        map
+    }
+
     /// Tokens reserved for a branch summary's prompt + output.
     ///
     /// Not consumed yet: `AgentLane::navigate_tree` ignores `summarize`, so no
@@ -683,10 +724,42 @@ impl Settings {
     }
 
     /// Default steering-queue drain mode (upstream default: one-at-a-time).
+    ///
+    /// Upstream's `queueMode` is the legacy spelling: it seeds `steeringMode`
+    /// when the modern key is absent (`core/settings-manager.ts:398`).
     pub fn steering_mode(&self) -> rpi_agent::QueueMode {
-        self.steering_mode
-            .map(Into::into)
-            .unwrap_or(rpi_agent::QueueMode::OneAtATime)
+        let mode = self.steering_mode.or_else(|| {
+            self.queue_mode.as_deref().and_then(|mode| match mode {
+                "all" => Some(QueueModeSetting::All),
+                "one-at-a-time" => Some(QueueModeSetting::OneAtATime),
+                _ => None,
+            })
+        });
+        mode.map(Into::into).unwrap_or(rpi_agent::QueueMode::OneAtATime)
+    }
+
+    /// The provider transport. Upstream's `websockets` is the legacy spelling:
+    /// it seeds `transport` when the modern key is absent
+    /// (`core/settings-manager.ts:404`).
+    pub fn transport(&self) -> String {
+        self.transport
+            .clone()
+            .filter(|transport| {
+                matches!(
+                    transport.as_str(),
+                    "auto" | "sse" | "websocket" | "websocket-cached"
+                )
+            })
+            .or_else(|| {
+                self.websockets.map(|enabled| {
+                    if enabled {
+                        "websocket".to_string()
+                    } else {
+                        "sse".to_string()
+                    }
+                })
+            })
+            .unwrap_or_else(|| defaults::TRANSPORT.to_string())
     }
 
     /// Default follow-up-queue drain mode (upstream default: one-at-a-time).
@@ -721,6 +794,204 @@ impl Settings {
     /// messages. upstream's `getThreeDEmptySession`, default `false`.
     pub fn three_d_empty_session(&self) -> Option<bool> {
         self.three_d_empty_session
+    }
+
+    /// The transcript's horizontal padding. upstream's `getOutputPad`: only an
+    /// explicit `0` turns the padding off.
+    pub fn output_pad(&self) -> usize {
+        match self.output_pad {
+            Some(0) => 0,
+            _ => defaults::OUTPUT_PAD as usize,
+        }
+    }
+
+    /// Whether the terminal's own cursor is used. upstream's
+    /// `getShowHardwareCursor`, with the same `PI_HARDWARE_CURSOR` fallback.
+    pub fn show_hardware_cursor(&self) -> bool {
+        self.show_hardware_cursor
+            .unwrap_or_else(|| std::env::var("PI_HARDWARE_CURSOR").as_deref() == Ok("1"))
+    }
+
+    /// The fullscreen transcript's scrollbar mode. upstream's
+    /// `getFullscreenScrollbar`: `auto`, `always` or `hidden`.
+    pub fn fullscreen_scrollbar(&self) -> &'static str {
+        match self.fullscreen_scrollbar.as_deref() {
+            Some("always") => "always",
+            Some("hidden") => "hidden",
+            _ => defaults::FULLSCREEN_SCROLLBAR,
+        }
+    }
+
+    /// Where the completion list is painted. upstream's
+    /// `getAutocompletePosition`: `above` or `below`.
+    pub fn autocomplete_position(&self) -> &'static str {
+        match self.autocomplete_position.as_deref() {
+            Some("below") => "below",
+            _ => defaults::AUTOCOMPLETE_POSITION,
+        }
+    }
+
+    /// The filter `/tree` opens with. upstream's `getTreeFilterMode`.
+    pub fn tree_filter_mode(&self) -> &'static str {
+        match self.tree_filter_mode.as_deref() {
+            Some("no-tools") => "no-tools",
+            Some("user-only") => "user-only",
+            Some("labeled-only") => "labeled-only",
+            Some("all") => "all",
+            _ => defaults::TREE_FILTER_MODE,
+        }
+    }
+
+    /// The command that opens the external editor. upstream's
+    /// `getExternalEditorCommand`: the setting, then `$VISUAL`, then
+    /// `$EDITOR`, then the platform default.
+    pub fn external_editor_command(&self) -> String {
+        if let Some(command) = self
+            .external_editor
+            .as_deref()
+            .map(str::trim)
+            .filter(|command| !command.is_empty())
+        {
+            return command.to_string();
+        }
+        std::env::var("RPI_EXTERNAL_EDITOR")
+            .ok()
+            .filter(|command| !command.trim().is_empty())
+            .or_else(|| std::env::var("VISUAL").ok().filter(|v| !v.trim().is_empty()))
+            .or_else(|| std::env::var("EDITOR").ok().filter(|v| !v.trim().is_empty()))
+            .unwrap_or_else(|| {
+                if cfg!(windows) {
+                    "notepad".to_string()
+                } else {
+                    "nano".to_string()
+                }
+            })
+    }
+
+    /// The per-level thinking budgets. upstream's `getThinkingBudgets`.
+    pub fn thinking_budgets(&self) -> Option<rpi_ai::types::ThinkingBudgets> {
+        let budgets = self.thinking_budgets.as_ref()?;
+        Some(rpi_ai::types::ThinkingBudgets {
+            minimal: budgets.minimal.map(|value| value.max(0.0) as u64),
+            low: budgets.low.map(|value| value.max(0.0) as u64),
+            medium: budgets.medium.map(|value| value.max(0.0) as u64),
+            high: budgets.high.map(|value| value.max(0.0) as u64),
+        })
+    }
+
+    /// The cap on the project context in the system prompt. upstream's
+    /// `getProjectContextMaxChars`; `0` keeps the whole context.
+    pub fn project_context_max_chars(&self) -> u64 {
+        self.project_context_max_chars
+            .unwrap_or(defaults::PROJECT_CONTEXT_MAX_CHARS)
+    }
+
+    /// The compaction token settings for one model. upstream's
+    /// `getCompactionSettings`: the per-model override wins over the plain
+    /// `compaction.*` values, which win over the defaults.
+    pub fn compaction_settings_for(&self, model_key: Option<&str>) -> rpi_harness::types::CompactionSettings {
+        let mut settings = self.compaction_settings();
+        let Some(overrides) = self
+            .compaction
+            .as_ref()
+            .and_then(|compaction| compaction.model_overrides.as_ref())
+        else {
+            return settings;
+        };
+        let Some(override_entry) = model_key.and_then(|key| overrides.get(key)) else {
+            return settings;
+        };
+        if let Some(reserve_tokens) = override_entry.reserve_tokens {
+            settings.reserve_tokens = reserve_tokens;
+        }
+        if let Some(keep_recent_tokens) = override_entry.keep_recent_tokens {
+            settings.keep_recent_tokens = keep_recent_tokens;
+        }
+        settings
+    }
+
+    /// The shell the bash tool runs. upstream's `getShellPath`.
+    pub fn shell_path(&self) -> Option<String> {
+        self.shell_path.clone().filter(|path| !path.is_empty())
+    }
+
+    /// The argv used for every npm invocation. upstream's `getNpmCommand`.
+    pub fn npm_command(&self) -> Option<Vec<String>> {
+        self.npm_command
+            .clone()
+            .filter(|command| !command.is_empty() && command[0].trim() != "")
+    }
+
+    /// The installed device id. upstream's `getOrCreateDeviceId`.
+    pub fn device_id(&self) -> Option<String> {
+        self.device_id.clone().filter(|id| !id.is_empty())
+    }
+
+    /// The indent every rendered code-block line gets. upstream's
+    /// `getCodeBlockIndent`.
+    pub fn code_block_indent(&self) -> String {
+        self.markdown
+            .as_ref()
+            .and_then(|markdown| markdown.code_block_indent.clone())
+            .unwrap_or_else(|| defaults::MARKDOWN_CODE_BLOCK_INDENT.to_string())
+    }
+
+    /// What the fullscreen mode prints when it exits. upstream's
+    /// `getFullscreenExitOutput`: `transcript` or `resume-hint`.
+    pub fn fullscreen_exit_output(&self) -> &'static str {
+        match self.fullscreen_exit_output.as_deref() {
+            Some("transcript") => "transcript",
+            _ => defaults::FULLSCREEN_EXIT_OUTPUT,
+        }
+    }
+
+    /// The lines a mouse-wheel event scrolls. upstream's
+    /// `getFullscreenWheelScrollLines`: `None` means `auto`.
+    pub fn fullscreen_wheel_scroll_lines(&self) -> Option<u32> {
+        match self.fullscreen_wheel_scroll_lines.as_ref() {
+            Some(serde_json::Value::Number(lines)) => {
+                let lines = lines.as_f64().unwrap_or_default().floor();
+                Some(lines.clamp(1.0, 100.0) as u32)
+            }
+            _ => None,
+        }
+    }
+
+    /// The thinking level override for one model. upstream's
+    /// `getModelThinkingLevel`, keyed by `provider/modelId`.
+    pub fn model_thinking_level(&self, provider: &str, model_id: &str) -> Option<String> {
+        self.model_thinking_levels
+            .as_ref()?
+            .get(&format!("{provider}/{model_id}"))
+            .cloned()
+    }
+
+    /// The terminal capability overrides. upstream's
+    /// `getTerminalCapabilityOverrides`: only the boolean arms of
+    /// `terminal.trueColor` / `terminal.hyperlinks` and the named image
+    /// protocols override the detection.
+    pub fn terminal_capability_overrides(&self) -> TerminalCapabilityOverrides {
+        let terminal = self.terminal.as_ref();
+        let images = match terminal.and_then(|t| t.images.as_ref()) {
+            Some(serde_json::Value::String(protocol)) => match protocol.as_str() {
+                "kitty" => Some(rpi_tui::ImageProtocol::Kitty),
+                "iterm2" => Some(rpi_tui::ImageProtocol::ITerm2),
+                _ => None,
+            },
+            Some(serde_json::Value::Bool(false)) => Some(rpi_tui::ImageProtocol::None),
+            _ => None,
+        };
+        let boolean = |value: Option<&serde_json::Value>| -> Option<bool> {
+            match value {
+                Some(serde_json::Value::Bool(flag)) => Some(*flag),
+                _ => None,
+            }
+        };
+        TerminalCapabilityOverrides {
+            images,
+            true_color: boolean(terminal.and_then(|t| t.true_color.as_ref())),
+            hyperlinks: boolean(terminal.and_then(|t| t.hyperlinks.as_ref())),
+        }
     }
 
     /// The effective value of every setting that has a default: the file's
@@ -2336,6 +2607,185 @@ mod scoped_tests {
         match prev {
             Some(value) => std::env::set_var(config::CONFIG_DIR_ENV, value),
             None => std::env::remove_var(config::CONFIG_DIR_ENV),
+        }
+        drop(guard);
+    }
+}
+
+/// The settings keys that used to be parsed, written and never read back.
+///
+/// Every key here is read again when the port starts: the test writes a
+/// `settings.json`, loads it the way the port does, and asserts the value the
+/// running port will use.
+#[cfg(test)]
+mod settings_keys_tests {
+    use super::*;
+    use crate::config::test_support::env_lock;
+
+    fn with_temp_env() -> (tempfile::TempDir, std::sync::MutexGuard<'static, ()>) {
+        let guard = env_lock().lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::env::set_var(config::CONFIG_DIR_ENV, tmp.path());
+        (tmp, guard)
+    }
+
+    /// The round trip: a written file is read back with the values the port
+    /// acts on.
+    #[test]
+    fn the_settings_keys_are_read_back_on_the_next_run() {
+        let (_tmp, guard) = with_temp_env();
+        let path = config::settings_path().unwrap();
+        std::fs::write(
+            &path,
+            r#"{
+                "outputPad": 0,
+                "showHardwareCursor": true,
+                "fullscreenScrollbar": "always",
+                "autocompletePosition": "below",
+                "treeFilterMode": "user-only",
+                "externalEditor": "my-editor --wait",
+                "thinkingBudgets": {"minimal": 100, "low": 200, "medium": 300, "high": 400},
+                "projectContextMaxChars": 4096,
+                "shellPath": "/bin/zsh",
+                "markdown": {"codeBlockIndent": "    "},
+                "fullscreenExitOutput": "transcript",
+                "fullscreenWheelScrollLines": 7,
+                "modelThinkingLevels": {"anthropic/claude-sonnet-5": "low"},
+                "terminal": {"hyperlinks": false, "images": "kitty", "trueColor": true},
+                "compaction": {
+                    "modelOverrides": {
+                        "anthropic/claude-sonnet-5": {"reserveTokens": 111, "keepRecentTokens": 222}
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let settings = load_settings().unwrap();
+
+        assert_eq!(settings.output_pad(), 0);
+        assert!(settings.show_hardware_cursor());
+        assert_eq!(settings.fullscreen_scrollbar(), "always");
+        assert_eq!(settings.autocomplete_position(), "below");
+        assert_eq!(settings.tree_filter_mode(), "user-only");
+        assert_eq!(settings.external_editor_command(), "my-editor --wait");
+        assert_eq!(settings.project_context_max_chars(), 4096);
+        assert_eq!(settings.shell_path().as_deref(), Some("/bin/zsh"));
+        assert_eq!(settings.code_block_indent(), "    ");
+        assert_eq!(settings.fullscreen_exit_output(), "transcript");
+        assert_eq!(settings.fullscreen_wheel_scroll_lines(), Some(7));
+        assert_eq!(
+            settings.model_thinking_level("anthropic", "claude-sonnet-5"),
+            Some("low".to_string())
+        );
+
+        let budgets = settings.thinking_budgets().expect("budgets are read");
+        assert_eq!(budgets.minimal, Some(100));
+        assert_eq!(budgets.low, Some(200));
+        assert_eq!(budgets.medium, Some(300));
+        assert_eq!(budgets.high, Some(400));
+
+        let overrides = settings.terminal_capability_overrides();
+        assert_eq!(overrides.hyperlinks, Some(false));
+        assert_eq!(overrides.true_color, Some(true));
+        assert_eq!(overrides.images, Some(rpi_tui::ImageProtocol::Kitty));
+
+        let compaction = settings.compaction_settings_for(Some("anthropic/claude-sonnet-5"));
+        assert_eq!(compaction.reserve_tokens, 111);
+        assert_eq!(compaction.keep_recent_tokens, 222);
+        let other = settings.compaction_settings_for(Some("anthropic/other"));
+        assert_eq!(
+            other.reserve_tokens,
+            defaults::COMPACTION_RESERVE_TOKENS,
+            "a model without an override keeps the plain value"
+        );
+
+        drop(guard);
+    }
+
+    /// An absent key keeps upstream's default, and an unknown value falls back
+    /// to it too.
+    #[test]
+    fn absent_keys_keep_the_defaults() {
+        let settings = Settings::default();
+        assert_eq!(settings.output_pad(), defaults::OUTPUT_PAD as usize);
+        assert_eq!(settings.fullscreen_scrollbar(), defaults::FULLSCREEN_SCROLLBAR);
+        assert_eq!(settings.autocomplete_position(), defaults::AUTOCOMPLETE_POSITION);
+        assert_eq!(settings.tree_filter_mode(), defaults::TREE_FILTER_MODE);
+        assert_eq!(settings.fullscreen_exit_output(), defaults::FULLSCREEN_EXIT_OUTPUT);
+        assert_eq!(settings.fullscreen_wheel_scroll_lines(), None);
+        assert_eq!(settings.project_context_max_chars(), 0);
+        assert!(settings.thinking_budgets().is_none());
+
+        let odd: Settings =
+            serde_json::from_str(r#"{"outputPad": 5, "autocompletePosition": "sideways"}"#).unwrap();
+        assert_eq!(odd.output_pad(), defaults::OUTPUT_PAD as usize);
+        assert_eq!(odd.autocomplete_position(), defaults::AUTOCOMPLETE_POSITION);
+    }
+
+    /// The legacy keys seed their modern counterparts.
+    #[test]
+    fn the_legacy_keys_seed_their_modern_counterparts() {
+        let legacy: Settings =
+            serde_json::from_str(r#"{"queueMode": "all", "websockets": true}"#).unwrap();
+        assert_eq!(legacy.steering_mode(), rpi_agent::QueueMode::All);
+        assert_eq!(legacy.transport(), "websocket");
+
+        let legacy_off: Settings = serde_json::from_str(r#"{"websockets": false}"#).unwrap();
+        assert_eq!(legacy_off.transport(), "sse");
+
+        let legacy_retry: Settings =
+            serde_json::from_str(r#"{"retry": {"maxDelayMs": 9000}}"#).unwrap();
+        let options = legacy_retry.provider_retry_options();
+        assert_eq!(
+            options.max_retry_delay,
+            Some(std::time::Duration::from_millis(9000)),
+            "upstream's `retry.maxDelayMs` seeds `retry.provider.maxRetryDelayMs`"
+        );
+
+        let modern: Settings =
+            serde_json::from_str(r#"{"steeringMode": "one-at-a-time", "websockets": true}"#).unwrap();
+        assert_eq!(
+            modern.steering_mode(),
+            rpi_agent::QueueMode::OneAtATime,
+            "the modern key wins over the legacy one"
+        );
+    }
+
+    /// The external editor: the setting, then `$VISUAL`, then `$EDITOR`.
+    #[test]
+    fn the_external_editor_follows_the_documented_order() {
+        let (_tmp, guard) = with_temp_env();
+        let previous_visual = std::env::var("VISUAL").ok();
+        let previous_editor = std::env::var("EDITOR").ok();
+        std::env::remove_var("RPI_EXTERNAL_EDITOR");
+
+        std::env::set_var("VISUAL", "visual-editor");
+        std::env::set_var("EDITOR", "editor-editor");
+        assert_eq!(
+            Settings::default().external_editor_command(),
+            "visual-editor",
+            "upstream reads VISUAL before EDITOR"
+        );
+
+        let configured: Settings =
+            serde_json::from_str(r#"{"externalEditor": "configured-editor"}"#).unwrap();
+        assert_eq!(
+            configured.external_editor_command(),
+            "configured-editor",
+            "the setting wins over the environment"
+        );
+
+        std::env::remove_var("VISUAL");
+        assert_eq!(Settings::default().external_editor_command(), "editor-editor");
+
+        match previous_visual {
+            Some(value) => std::env::set_var("VISUAL", value),
+            None => std::env::remove_var("VISUAL"),
+        }
+        match previous_editor {
+            Some(value) => std::env::set_var("EDITOR", value),
+            None => std::env::remove_var("EDITOR"),
         }
         drop(guard);
     }

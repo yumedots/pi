@@ -122,7 +122,7 @@ impl ToolExecutionComponent {
             started_at: Mutex::new(None),
             finished_at: Mutex::new(None),
             expanded: Mutex::new(false),
-            output_pad: Mutex::new(TOOL_PANEL_PAD),
+            output_pad: Mutex::new(crate::output_pad::output_pad()),
             diff_lines: Mutex::new(None),
             result_markdown: Mutex::new(false),
             todo_state: Mutex::new(None),
@@ -775,6 +775,10 @@ fn render_diff_rows(
 }
 
 impl Component for ToolExecutionComponent {
+    fn set_output_pad(&self, pad: usize) {
+        ToolExecutionComponent::set_output_pad(self, pad);
+    }
+
     fn render(&self, width: usize) -> Vec<String> {
         let status = *self.status.lock().unwrap();
         let revision = self.revision.load(Ordering::Acquire);

@@ -76,6 +76,22 @@ export const SCREENS = [
 		steps: [{ name: "capture", keys: [], settle: 2500 }],
 	},
 	{
+		name: "startup-3d-autocomplete",
+		note: "Empty session, threeDEmptySession on, with the autocomplete open.",
+		settings: { threeDEmptySession: true },
+		steps: [{ name: "capture", keys: ["/he"], settle: 2000 }],
+	},
+	{
+		name: "startup-3d-autocomplete-enter",
+		note: "Empty session, threeDEmptySession on: Enter accepts the highlighted autocomplete row.",
+		settings: { threeDEmptySession: true },
+		steps: [
+			{ name: "typed", keys: ["/he"], settle: 1500 },
+			{ name: "capture", keys: ["Enter"], settle: 2000 },
+		],
+		capture: "capture",
+	},
+	{
 		name: "first-run",
 		note: "First run: the theme picker (PI_EXPERIMENTAL=1, no agent dir override, no settings.json).",
 		noAgentDir: true,
@@ -101,24 +117,17 @@ export const SCREENS = [
 	{
 		name: "login-providers-oauth",
 		note: "/login: the OAuth provider list (Sign in with an account).",
-		rustUnreachable: "The port has no OAuth providers: its /login lists every provider with its API key, and the OAuth providers come from extension manifests (none is installed).",
 		steps: [{ name: "capture", keys: ["/login", "Enter", "Enter"], settle: 2500 }],
 	},
 	{
 		name: "login-providers-api-key",
 		note: "/login: the API key provider list (Sign in with an API key).",
 		steps: [{ name: "capture", keys: ["/login", "Enter", "Down", "Enter"], settle: 2500 }],
-		stepsBySide: {
-			rust: [{ name: "capture", keys: ["/login", "Enter"], settle: 2500 }],
-		},
 	},
 	{
 		name: "login-api-key-entry",
 		note: "/login: the API key entry field (Anthropic).",
 		steps: [{ name: "capture", keys: ["/login", "Enter", "Down", "Enter", "Down", "Down", "Enter"], settle: 2500 }],
-		stepsBySide: {
-			rust: [{ name: "capture", keys: ["/login", "Enter", "Down", "Enter"], settle: 2500 }],
-		},
 	},
 	{
 		name: "login-oauth-methods",
@@ -195,6 +204,11 @@ export const SCREENS = [
 		name: "scoped-models",
 		note: "/scoped-models: the scoped model selector.",
 		steps: [{ name: "capture", keys: ["/scoped-models", "Enter"], settle: 3000 }],
+	},
+	{
+		name: "theme-picker",
+		note: "/theme: the theme picker (the original's Theme menu).",
+		steps: [{ name: "capture", keys: ["/theme", "Enter"], settle: 3000 }],
 	},
 	{
 		name: "settings-list",

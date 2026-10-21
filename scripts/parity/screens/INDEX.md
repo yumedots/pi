@@ -22,7 +22,7 @@ Every screen of the TypeScript original and of the Rust port, captured as exact 
 - The port's panes were captured against the binary below; the original's
   against the TypeScript tree in `packages/coding-agent/src/cli.ts`.
 
-  - port: `/Users/gabriel/pi-native/rpi/target-agents/debug/rpi (mtime 2026-10-21T00:54:02.977Z)`
+  - port: `/Users/gabriel/pi-native/rpi/target-agents/debug/rpi (mtime 2026-10-21T01:04:43.207Z)`
   - original: `/Users/gabriel/pi/packages/coding-agent/src/cli.ts` (run with bun)
 
   The port's tree is edited in place, so re-run
@@ -32,7 +32,7 @@ Every screen of the TypeScript original and of the Rust port, captured as exact 
 | Screen | Keys (ts) | Keys (rust) | Match | First differing line | Port file |
 |---|---|---|---|---|---|
 | `startup` |  |  | match |  | rpi-cli/src/interactive_tui/rendering.rs (add_welcome_message), rpi-tui/src/editor.rs (render_card), rpi-tui/src/footer.rs |
-| `startup-3d` |  |  | differs | line 2: ts "" vs rust "(missing)" | rpi-tui/src/empty_session.rs (EmptySessionScreen), rpi-tui/src/logo3d.rs (Logo3d) |
+| `startup-3d` |  |  | match |  | rpi-tui/src/empty_session.rs (EmptySessionScreen), rpi-tui/src/logo3d.rs (Logo3d) |
 | `first-run` |  |  | match |  | rpi-tui/src/first_run.rs (FirstRunDialog) |
 | `trust-prompt` |  |  | differs | line 1: ts "  Trust project folder?" vs rust " ▀▀█  v1.3.0" | not implemented - rpi-cli/src/config.rs (the port does not gate project resources behind trust, so there is no prompt) |
 | `trust-selector` | /trust Enter | /trust Enter | differs | line 10: ts "" vs rust " Current project marked trusted." | not implemented as a selector - rpi-cli/src/interactive_tui/commands.rs (TrustCommand only writes a note) |
@@ -74,10 +74,10 @@ Every screen of the TypeScript original and of the Rust port, captured as exact 
 | `transcript-error` | hello world Enter | hello world Enter | differs | line 14: ts "" vs rust " Error: http transport error: error sending request for url" | rpi-cli/src/interactive_tui/rendering.rs (add_error_message) |
 | `input-empty` |  |  | match |  | rpi-tui/src/editor.rs (Editor::render, render_card) |
 | `input-text` | hello world | hello world | match |  | rpi-tui/src/editor.rs (Editor::render, render_card) |
-| `input-autocomplete` | / | / | differs | line 25: ts "  (1/31)" vs rust "  (1/29)" | rpi-cli/src/interactive_tui/autocomplete.rs (render_autocomplete), rpi-tui/src/autocomplete.rs |
-| `input-history` | hello world Enter Up | hello world Enter Up | differs | line 15: ts " Hello from the parity mock." vs rust " hello world" | rpi-tui/src/editor.rs (EditorState.history, Editor::handle_key) |
+| `input-autocomplete` | / | / | differs | line 25: ts "  (1/31)" vs rust "  (1/29)" | rpi-cli/src/interactive_tui/autocomplete.rs (render_autocomplete), rpi-tui/src/autocomplete.rs; the port lists 29 commands against the original's 31 - the original's built-in extensions add /llama and /mcp. Deliberate divergence (command surface port): the port has no llama.cpp router and no MCP management, so the two commands would be empty stubs; landing them is a feature task |
+| `input-history` | hello world Enter Up | hello world Enter Up | match |  | rpi-tui/src/editor.rs (EditorState.history, Editor::handle_key) |
 | `overlay-animation` | /overlay-animation Enter | /overlay-animation Enter | differs | line 7: ts "                         ╭────────────────────────────────────────────────╮" vs rust "" | rpi-tui/src/overlay.rs (OverlayManager); rpi-cli/src/js_extensions.rs (ui.custom installs an editor component, not a real overlay) |
-| `overlay-doom` | /doom-overlay Enter | /doom-overlay Enter | differs | line 1: ts " ▀▀█  v1.3.0" vs rust " Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys" | rpi-tui/src/overlay.rs (OverlayManager); rpi-cli/src/js_extensions.rs (ui.custom installs an editor component, not a real overlay) |
+| `overlay-doom` | /doom-overlay Enter | /doom-overlay Enter | differs | line 1: ts " ▀▀█  v1.3.0" vs rust " Pi can explain its own features and look up its docs. Ask it how to use or extend Pi." | rpi-tui/src/overlay.rs (OverlayManager); rpi-cli/src/js_extensions.rs (ui.custom installs an editor component, not a real overlay) |
 
-12 match, 27 differ, 8 not reachable.
+14 match, 25 differ, 8 not reachable.
 

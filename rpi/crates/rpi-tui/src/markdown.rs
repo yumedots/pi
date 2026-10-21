@@ -21,7 +21,7 @@ use crate::utils::visible_width;
 #[derive(Debug, Clone)]
 pub struct MarkdownOptions {
     /// Indentation for code blocks.
-    pub code_block_indent: usize,
+    pub code_block_indent: String,
     /// Maximum width for wrapping (None = use the render width passed in).
     pub max_width: Option<usize>,
     /// Base SGR sequence applied to every rendered line (e.g. the dim italic
@@ -42,7 +42,7 @@ pub struct MarkdownOptions {
 impl Default for MarkdownOptions {
     fn default() -> Self {
         Self {
-            code_block_indent: 2,
+            code_block_indent: code_block_indent(),
             max_width: None,
             base_style: String::new(),
             preserve_ordered_list_markers: false,
@@ -301,7 +301,7 @@ impl Markdown {
                     let component = Mermaid::new(text.clone());
                     out.extend(component.render(width));
                 } else {
-                    let indent = " ".repeat(self.options.code_block_indent);
+                    let indent = self.options.code_block_indent.clone();
                     out.push(colors.md_code_block_border.fg(&format!("```{lang}")));
                     let mut highlighter = crate::syntax_highlight::Highlighter::new(lang);
                     for line in text.split('\n') {
@@ -2019,8 +2019,47 @@ fn break_long_token(token: &str, width: usize, tracker: &mut AnsiState) -> Vec<S
 
 /// True when the terminal supports OSC 8 hyperlinks.
 fn hyperlinks_supported() -> bool {
+    match HYPERLINKS_OVERRIDE.load(std::sync::atomic::Ordering::Acquire) {
+        1 => return true,
+        2 => return false,
+        _ => {}
+    }
     static SUPPORTED: LazyLock<bool> = LazyLock::new(detect_hyperlinks);
     *SUPPORTED
+}
+
+/// Force OSC 8 hyperlinks on or off. `None` leaves the detection alone
+/// (upstream's `terminal.hyperlinks`).
+pub fn set_hyperlinks(enabled: Option<bool>) {
+    HYPERLINKS_OVERRIDE.store(
+        match enabled {
+            Some(true) => 1,
+            Some(false) => 2,
+            None => 0,
+        },
+        std::sync::atomic::Ordering::Release,
+    );
+}
+
+/// `0` = detect, `1` = on, `2` = off.
+static HYPERLINKS_OVERRIDE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+static CODE_BLOCK_INDENT: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("  ".to_string()));
+
+/// The indent every rendered code-block line gets.
+pub fn code_block_indent() -> String {
+    CODE_BLOCK_INDENT
+        .lock()
+        .map(|indent| indent.clone())
+        .unwrap_or_default()
+}
+
+/// Set the indent every rendered code-block line gets (upstream's
+/// `markdown.codeBlockIndent`).
+pub fn set_code_block_indent(indent: String) {
+    if let Ok(mut current) = CODE_BLOCK_INDENT.lock() {
+        *current = indent;
+    }
 }
 
 /// Detect hyperlink support the way the TypeScript original does.
@@ -2321,5 +2360,55 @@ mod tests {
     fn padding_applies_to_every_line() {
         let lines = Markdown::new("# Title", 1, 0).render(80);
         assert_eq!(crate::ansi::strip_ansi(&lines[0]), " Title");
+    }
+}
+
+#[cfg(test)]
+mod code_block_indent_tests {
+    use super::*;
+
+    /// The code-block indent is the prefix every rendered code-block line
+    /// gets (upstream's `markdown.codeBlockIndent`).
+    #[test]
+    fn the_code_block_indent_is_the_setting_value() {
+        set_code_block_indent("    ".to_string());
+        assert_eq!(code_block_indent(), "    ");
+        set_code_block_indent("  ".to_string());
+        assert_eq!(code_block_indent(), "  ");
+    }
+
+    /// The rendered code block carries the indent.
+    #[test]
+    fn a_code_block_is_rendered_with_the_indent() {
+        set_code_block_indent("..".to_string());
+        let markdown = Markdown::new("```rs\nlet x = 1;\n```", 0, 0);
+        let lines = markdown.render(40);
+        assert!(
+            lines
+                .iter()
+                .any(|line| crate::ansi::strip_ansi(line).starts_with("..let")),
+            "{lines:?}"
+        );
+        set_code_block_indent("  ".to_string());
+    }
+
+    /// `terminal.hyperlinks` forces the OSC 8 links on or off.
+    #[test]
+    fn the_hyperlink_override_is_honoured() {
+        set_hyperlinks(Some(false));
+        let markdown = Markdown::new("[pi](https://example.com)", 0, 0);
+        let lines = markdown.render(40);
+        assert!(
+            !lines.iter().any(|line| line.contains("\x1b]8;;")),
+            "the link must not be an OSC 8 link: {lines:?}"
+        );
+        set_hyperlinks(Some(true));
+        let markdown = Markdown::new("[pi](https://example.com)", 0, 0);
+        let lines = markdown.render(40);
+        assert!(
+            lines.iter().any(|line| line.contains("\x1b]8;;")),
+            "the link must be an OSC 8 link: {lines:?}"
+        );
+        set_hyperlinks(None);
     }
 }

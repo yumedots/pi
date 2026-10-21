@@ -183,13 +183,36 @@ pub fn get_message_from_entry(entry: &Entry) -> Option<AgentMessage> {
     }
 }
 
-/// `getMessageFromEntryForCompaction` — compaction entries are not summarized
-/// (they ARE the summary), so skip them.
+/// `getMessagesFromProjectedEntryForCompaction` — the messages an entry
+/// contributes to a compaction. Compaction entries are not summarized (they
+/// ARE the summary), and a `system` entry is prompt state, not conversation:
+/// the session's `system` record is the system prompt, which is composed for
+/// the provider separately, so summarizing it would compact an empty
+/// conversation.
+///
+/// Mirrors TS `packages/coding-agent/src/core/compaction/compaction.ts:98-102`:
+/// ```ts
+/// function getMessagesFromProjectedEntryForCompaction(entry: ProjectedSessionEntry): AgentMessage[] {
+/// 	if (entry.sourceEntry.type === "compaction") return [];
+/// 	// System messages are prompt state, not conversation; the compaction entry carries their replay.
+/// 	return entry.messages.filter((message) => message.role !== "system");
+/// }
+/// ```
+///
+/// Skipping the system entry is what keeps a first turn from compacting: with
+/// the system entry in the candidate set, `prepare_compaction` finds one
+/// message to summarize on an otherwise empty conversation, so the agent sends
+/// a second ("context summarization assistant") request and replaces the
+/// conversation with a model-generated summary the original never sends.
 pub fn get_message_from_entry_for_compaction(entry: &Entry) -> Option<AgentMessage> {
     if matches!(entry, Entry::Compaction(_)) {
         return None;
     }
-    get_message_from_entry(entry)
+    let message = get_message_from_entry(entry)?;
+    if matches!(message, AgentMessage::System(_)) {
+        return None;
+    }
+    Some(message)
 }
 
 /// The timestamp carried by an `AgentMessage` (each variant stores one).
@@ -761,10 +784,101 @@ mod tests {
         })
     }
 
+    /// The session's `system` record: the system prompt the session was
+    /// started with. The original writes it as the first entry of the path
+    /// (`packages/coding-agent/src/core/agent-session.ts`).
+    fn system_msg(text: &str, seq: u64) -> Entry {
+        Entry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("e{seq}"),
+                seq,
+                parent_id: None,
+                timestamp: seq as i64,
+            },
+            message: AgentMessage::System(Box::new(rpi_ai::types::SystemMessage {
+                role: rpi_ai::types::SystemRole,
+                content: text.into(),
+                sections: None,
+                tools_added: None,
+                timestamp: seq as i64,
+            })),
+            terminate: None,
+        })
+    }
+
     #[test]
     fn prepare_compaction_empty_is_none() {
         let r = prepare_compaction(&[], CompactionSettings::default()).unwrap();
         assert!(r.is_none());
+    }
+
+    /// The session's `system` entry is prompt state, not conversation, so it is
+    /// never a compaction candidate. The original filters it out
+    /// (`packages/coding-agent/src/core/compaction/compaction.ts:100-101`).
+    #[test]
+    fn the_system_entry_is_not_a_compaction_candidate() {
+        assert!(
+            get_message_from_entry_for_compaction(&system_msg("You are helpful.", 1)).is_none(),
+            "the system entry must not be summarized"
+        );
+    }
+
+    /// The regression this guards: the session writes its `system` record as
+    /// the first entry of the path, and the first turn's path is
+    /// `[system, user]`. With the system entry in the candidate set, the
+    /// cut point lands on the user message and the "history to summarize" is
+    /// the system entry — so the agent compacts an empty conversation: it
+    /// sends a second ("context summarization assistant") request and replaces
+    /// the conversation with a model-generated summary the original never
+    /// sends. The original finds nothing to summarize and does not compact.
+    #[test]
+    fn a_first_turn_does_not_compact() {
+        let entries = vec![system_msg("You are helpful.", 1), user_msg("hi", 2)];
+        let r = prepare_compaction(&entries, CompactionSettings::default()).unwrap();
+        assert!(
+            r.is_none(),
+            "a first turn must not compact: the only candidate was the system entry"
+        );
+    }
+
+    /// A real conversation still compacts: the system entry is skipped, the
+    /// user and assistant messages are the history.
+    #[test]
+    fn a_real_conversation_still_compacts() {
+        let mut assistant = rpi_ai::types::AssistantMessage::empty(
+            rpi_ai::types::Api::OpenaiCompletions,
+            "p",
+            "m",
+            3,
+        );
+        assistant.content = vec![rpi_ai::types::Content::Text(rpi_ai::types::TextContent {
+            kind: Default::default(),
+            text: "hello".into(),
+            text_signature: None,
+        })];
+        assistant.stop_reason = rpi_ai::types::StopReason::Stop;
+        let entries = vec![
+            system_msg("You are helpful.", 1),
+            user_msg("hi", 2),
+            Entry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "e3".into(),
+                    seq: 3,
+                    parent_id: None,
+                    timestamp: 3,
+                },
+                message: AgentMessage::Assistant(Box::new(assistant)),
+                terminate: None,
+            }),
+            user_msg("more", 4),
+        ];
+        let r = prepare_compaction(&entries, CompactionSettings::default()).unwrap();
+        assert!(
+            r.is_some(),
+            "a conversation with history must still be compactable"
+        );
     }
 
     #[test]

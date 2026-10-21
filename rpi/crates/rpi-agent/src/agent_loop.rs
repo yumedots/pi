@@ -118,6 +118,54 @@ pub async fn run_agent_loop(
     Ok(new_messages)
 }
 
+/// Run an agent loop whose prompt is already in the context.
+///
+/// The original's loop announces the messages it is given after `agent_start`
+/// and `turn_start` (`packages/agent/src/agent-loop.ts:110-115`). The harness
+/// persists the prompt before the run and puts it in the context itself, so it
+/// announces the prompt here: the announcement keeps the original's order, and
+/// the prompt is not added to the context twice.
+pub async fn run_agent_loop_with_announced_prompt(
+    prompt: Vec<AgentMessage>,
+    context: AgentContext,
+    config: AgentLoopConfig,
+    emit: Arc<dyn AgentEmitter>,
+    stream_fn: StreamFn,
+) -> Result<NewMessages, AgentError> {
+    let mut new_messages: Vec<AgentMessage> = Vec::new();
+    let mut current_context = context;
+
+    emit_event(&emit, AgentEvent::AgentStart).await;
+    emit_event(&emit, AgentEvent::TurnStart).await;
+    for message in &prompt {
+        emit_event(
+            &emit,
+            AgentEvent::MessageStart {
+                message: message.clone(),
+            },
+        )
+        .await;
+        emit_event(
+            &emit,
+            AgentEvent::MessageEnd {
+                message: message.clone(),
+            },
+        )
+        .await;
+    }
+
+    run_loop(
+        &mut current_context,
+        &mut new_messages,
+        &config,
+        &emit,
+        &stream_fn,
+        None,
+    )
+    .await?;
+    Ok(new_messages)
+}
+
 /// Continue an agent loop from the existing context (no new prompt). Mirrors
 /// TS `runAgentLoopContinue`. Errors if the context is empty or its last
 /// message is an assistant message (the provider would reject that).
@@ -684,6 +732,7 @@ async fn fail_tool_calls_from_truncated_message(
             AgentEvent::ToolExecutionEnd {
                 tool_call_id: tool_call.id.clone(),
                 tool_name: tool_call.name.clone(),
+                args: tool_call.arguments.clone(),
                 result: result.clone(),
                 is_error: true,
                 duration_ms: None,
@@ -1304,6 +1353,7 @@ async fn emit_tool_execution_end(emit: &Arc<dyn AgentEmitter>, finalized: &Final
         AgentEvent::ToolExecutionEnd {
             tool_call_id: finalized.tool_call.id.clone(),
             tool_name: finalized.tool_call.name.clone(),
+            args: finalized.tool_call.arguments.clone(),
             result: finalized.result.clone(),
             is_error: finalized.is_error,
             duration_ms: finalized.duration_ms,

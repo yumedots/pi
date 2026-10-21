@@ -268,6 +268,9 @@ impl RemoteSession {
                 ));
             }
             RemoteEvent::TurnStart | RemoteEvent::TurnEnd { .. } => {}
+            RemoteEvent::BeforeAgentStart { .. }
+            | RemoteEvent::AgentBeforeSettle { .. }
+            | RemoteEvent::AgentSettled { .. } => {}
             RemoteEvent::MessageStart { message } => {
                 match message_role(message) {
                     "assistant" => {

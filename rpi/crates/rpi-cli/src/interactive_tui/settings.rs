@@ -1,6 +1,7 @@
 //! Settings selectors, model catalog filtering, and setting changes.
 
 use super::*;
+use crate::credentials::{ProviderAuthSource, ProviderAuthStatus, ProviderAuthType};
 
 pub(super) fn scoped_catalog(
     catalog: &[rpi_ai::Model],
@@ -89,14 +90,7 @@ pub(super) fn open_settings_selector(
                             let chat = chat_menu.clone();
                             let tui = tui_menu.clone();
                             move |key: &str, value: &str| {
-                                let mut settings = crate::settings::load_settings().unwrap_or_default();
-                                let applied = apply_setting_change(&state, key, value, &mut settings);
-                                let saved = crate::settings::save_settings(&settings);
-                                if let Some(note) = applied {
-                                    let suffix = if saved.is_ok() { "" } else { " (not saved)" };
-                                    add_note_message(&chat, &format!("{note}{suffix}"));
-                                }
-                                tui.request_render(false);
+                                report_setting_change(&state, key, value, &chat, &tui);
                             }
                         }),
                     },
@@ -141,14 +135,7 @@ pub(super) fn open_settings_selector(
     let chat_change = chat.clone();
     let tui_change = tui.clone();
     list.on_change(Arc::new(move |key, value| {
-        let mut settings = crate::settings::load_settings().unwrap_or_default();
-        let applied = apply_setting_change(&state_change, key, value, &mut settings);
-        let saved = crate::settings::save_settings(&settings);
-        if let Some(note) = applied {
-            let suffix = if saved.is_ok() { "" } else { " (not saved)" };
-            add_note_message(&chat_change, &format!("{note}{suffix}"));
-        }
-        tui_change.request_render(false);
+        report_setting_change(&state_change, key, value, &chat_change, &tui_change);
     }));
 
     let state_cancel = state.clone();
@@ -165,9 +152,68 @@ pub(super) fn open_settings_selector(
         editor,
         tui,
         SelectorView::Settings(list.clone()),
-        list,
+        list.clone(),
         SelectorKind::Settings,
     );
+
+    // pi's `SettingsSelectorComponent` frames the list with a `DynamicBorder`
+    // above and below it (`components/settings-selector.ts:906`, `:1036`).
+    // The border rows are siblings of the list, so the list's own row
+    // accounting (the search field, the items) is unchanged.
+    editor_container.clear();
+    editor_container.add_child(Arc::new(DynamicBorder::new()));
+    editor_container.add_child(list);
+    editor_container.add_child(Arc::new(DynamicBorder::new()));
+}
+
+/// Apply a settings change, persist it, and report it the way pi does.
+///
+/// pi shows a status line only for the rows that report one
+/// (`interactive-mode.ts:4904-4909`); every other row shows the new value in
+/// the list itself, so a note would be a difference.
+fn report_setting_change(
+    state: &Arc<TuiState>,
+    key: &str,
+    value: &str,
+    chat: &Arc<Container>,
+    tui: &Arc<TuiAltScreen>,
+) {
+    let mut settings = crate::settings::load_settings().unwrap_or_default();
+    let applied = apply_setting_change(state, key, value, &mut settings);
+    let saved = crate::settings::save_settings(&settings);
+    if let Some(note) = applied {
+        add_note_message(chat, &note);
+    }
+    if saved.is_err() {
+        add_note_message(chat, "Could not save the settings.");
+    }
+    apply_live_setting_effect(key, value, chat, tui);
+    tui.request_render(false);
+}
+
+/// Apply the effect a settings row has on the running TUI.
+///
+/// Upstream applies the change as it happens (`interactive-mode.ts:4954`),
+/// so the row does not need a restart to take effect.
+fn apply_live_setting_effect(
+    key: &str,
+    value: &str,
+    chat: &Arc<Container>,
+    tui: &Arc<TuiAltScreen>,
+) {
+    match key {
+        "show-hardware-cursor" => {
+            tui.set_show_hardware_cursor(value == "true");
+        }
+        "output-padding" => {
+            let pad = value.parse::<usize>().unwrap_or(1);
+            rpi_tui::output_pad::set_output_pad(pad);
+            for child in chat.get_children() {
+                child.set_output_pad(pad);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Apply the per-model thinking override the stepped submenu chose.
@@ -229,10 +275,9 @@ pub(super) fn apply_setting_change(
         "hide-thinking" => {
             state.set_hide_thinking(as_bool());
             settings.hide_thinking_block = Some(as_bool());
-            Some(format!(
-                "Thinking blocks {}.",
-                if as_bool() { "hidden" } else { "shown" }
-            ))
+            // pi reports nothing for this row (`interactive-mode.ts:4927`):
+            // the list shows the new value.
+            None
         }
         // Live: the image flag is consulted when images would be rendered.
         "show-images" => {
@@ -240,10 +285,7 @@ pub(super) fn apply_setting_change(
             let terminal = settings.terminal.get_or_insert_with(Default::default);
             terminal.show_images = Some(as_bool());
             settings.show_images = Some(as_bool());
-            Some(format!(
-                "Inline images {}.",
-                if as_bool() { "enabled" } else { "disabled" }
-            ))
+            None
         }
         // Live: read from `state` once per cache-miss notice.
         "cache-miss-notices" => {
@@ -251,18 +293,12 @@ pub(super) fn apply_setting_change(
                 *guard = as_bool();
             }
             settings.show_cache_miss_notices = Some(as_bool());
-            Some(format!(
-                "Cache miss notices {}.",
-                if as_bool() { "enabled" } else { "disabled" }
-            ))
+            None
         }
         // Live: read from settings on each selection mouse-up.
         "fullscreen-copy-on-select" => {
             settings.fullscreen_copy_on_select = Some(as_bool());
-            Some(format!(
-                "Copy on select {}.",
-                if as_bool() { "enabled" } else { "disabled" }
-            ))
+            None
         }
         // Live: the theme is applied to the running TUI.
         "theme" => {
@@ -270,15 +306,23 @@ pub(super) fn apply_setting_change(
                 "light" => Some(ThemePreset::Light),
                 "monochrome" => Some(ThemePreset::Monochrome),
                 "dark" => Some(ThemePreset::Dark),
-                _ => None,
+                // "system" and "automatic" follow the terminal's appearance,
+                // the way pi's system theme does.
+                "system" | "automatic" => None,
+                _ => return Some(format!("Unknown theme `{value}`.")),
             };
-            let Some(preset) = preset else {
-                return Some(format!("Unknown theme `{value}`."));
-            };
-            apply_theme_preset(preset);
-            state.theme_manager.apply_preset(preset);
+            match preset {
+                Some(preset) => {
+                    apply_theme_preset(preset);
+                    state.theme_manager.apply_preset(preset);
+                }
+                None => {
+                    rpi_tui::global_theme_manager().follow_terminal();
+                    state.theme_manager.follow_terminal();
+                }
+            }
             settings.theme = Some(value.to_string());
-            Some(format!("Theme set to {value}."))
+            None
         }
         // Persisted only: resolved once at startup.
         "autocompact" => {
@@ -373,11 +417,16 @@ pub(super) fn apply_setting_change(
                 Some(ms) => serde_json::json!(ms),
                 None => serde_json::json!(300_000),
             });
-            None
+            // pi reports this one (`interactive-mode.ts:4904`).
+            Some(format!(
+                "HTTP idle timeout: {}",
+                format_http_idle_timeout(timeout)
+            ))
         }
         "cache-warming-mode" => {
             settings.cache_warming = Some(value.to_string());
-            None
+            // pi reports this one (`interactive-mode.ts:4908`).
+            Some(format!("Cache warming: {value}"))
         }
         "mermaid-rendering" => {
             let markdown = settings.markdown.get_or_insert_with(Default::default);
@@ -607,6 +656,266 @@ pub(super) fn provider_selector_items(
         .collect()
 }
 
+/// One row of the login provider list, in pi's shape.
+///
+/// Mirrors `AuthSelectorProvider`
+/// (`packages/coding-agent/src/modes/interactive/components/oauth-selector.ts:7`).
+#[derive(Debug, Clone)]
+pub(super) struct LoginProviderOption {
+    /// The provider id.
+    pub id: String,
+    /// The provider's display name.
+    pub name: String,
+    /// Whether the row logs in with an API key or with OAuth.
+    pub auth_type: ProviderAuthType,
+    /// Whether the provider's OAuth sign-in is backed by a subscription.
+    pub subscription: bool,
+    /// The credential status, absent when the provider has no credential.
+    pub status: Option<ProviderAuthStatus>,
+}
+
+/// The auth-type label pi shows next to a provider row.
+///
+/// Mirrors `formatAuthSelectorProviderType` (`oauth-selector.ts:21`).
+fn auth_type_label(auth_type: ProviderAuthType, subscription: bool) -> &'static str {
+    match auth_type {
+        ProviderAuthType::ApiKey => "API key",
+        ProviderAuthType::OAuth => {
+            if subscription {
+                "subscription"
+            } else {
+                "account"
+            }
+        }
+    }
+}
+
+/// The suffix pi shows after a provider row: whether the provider is
+/// configured, and with what.
+///
+/// Mirrors `formatAuthSelectorProviderStatus` (`oauth-selector.ts:30`).
+pub(super) fn format_login_provider_status(option: &LoginProviderOption) -> String {
+    let Some(status) = option.status.as_ref() else {
+        return " • not configured".to_string();
+    };
+    let stored_type = match status.label.as_deref() {
+        Some("OAuth") => ProviderAuthType::OAuth,
+        _ => ProviderAuthType::ApiKey,
+    };
+    if stored_type != option.auth_type {
+        return format!(
+            " • {} configured",
+            auth_type_label(stored_type, option.subscription)
+        );
+    }
+    let source = match status.label.clone() {
+        Some(label) => label,
+        None => status
+            .source
+            .map(|source| provider_auth_source_label(source).to_string())
+            .unwrap_or_default(),
+    };
+    if source.is_empty() || source == "OAuth" || source == "stored credential" {
+        return " ✓ configured".to_string();
+    }
+    if is_env_name_list(&source) {
+        return format!(" ✓ env: {source}");
+    }
+    format!(" ✓ {source}")
+}
+
+/// pi's source string for a credential source
+/// (`packages/coding-agent/src/core/model-runtime.ts:681`).
+fn provider_auth_source_label(source: ProviderAuthSource) -> &'static str {
+    match source {
+        ProviderAuthSource::Runtime => "runtime",
+        ProviderAuthSource::Stored => "stored",
+        ProviderAuthSource::Environment => "environment",
+        ProviderAuthSource::ModelsJsonKey => "models_json_key",
+        ProviderAuthSource::ModelsJsonCommand => "models_json_command",
+        ProviderAuthSource::Fallback => "fallback",
+    }
+}
+
+/// Whether the text is a comma-separated list of environment variable names.
+///
+/// Mirrors the test in `formatAuthSelectorProviderStatus` (`oauth-selector.ts:43`).
+fn is_env_name_list(text: &str) -> bool {
+    !text.is_empty()
+        && text.split(", ").all(|name| {
+            let mut chars = name.chars();
+            match chars.next() {
+                Some(first) if first.is_ascii_uppercase() => {}
+                _ => return false,
+            }
+            chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        })
+}
+
+/// The credential status of a provider, absent when it has no credential.
+fn login_provider_status(provider_id: &str) -> Option<ProviderAuthStatus> {
+    let status = crate::credentials::provider_auth_status(provider_id);
+    if status.configured {
+        Some(status)
+    } else {
+        None
+    }
+}
+
+/// The rows the `/login` picker shows, one per provider and auth type.
+///
+/// Mirrors pi's `getLoginProviderOptions`
+/// (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:5781`): a
+/// provider that offers an API key gets an API-key row, a provider that offers
+/// an OAuth login gets an OAuth row, and the rows are sorted by the provider's
+/// display name.
+pub(super) fn login_provider_options(
+    manifests: &[rpi_extensions::ProviderManifest],
+    oauth_providers: &[rpi_extensions::OAuthProviderInfo],
+) -> Vec<LoginProviderOption> {
+    let mut options: Vec<LoginProviderOption> = Vec::new();
+
+    for provider in rpi_ai::providers::catalog::BUILTIN_PROVIDERS {
+        let status = login_provider_status(provider.id);
+        // A built-in without an API-key environment variable still has an
+        // API-key login when it offers no OAuth login (Amazon Bedrock).
+        if provider.api_key_env.is_some() || provider.oauth_name.is_none() {
+            options.push(LoginProviderOption {
+                id: provider.id.to_string(),
+                name: provider.name.to_string(),
+                auth_type: ProviderAuthType::ApiKey,
+                subscription: false,
+                status: status.clone(),
+            });
+        }
+        if provider.oauth_name.is_some() {
+            options.push(LoginProviderOption {
+                id: provider.id.to_string(),
+                name: provider.name.to_string(),
+                auth_type: ProviderAuthType::OAuth,
+                subscription: provider.oauth_subscription,
+                status,
+            });
+        }
+    }
+
+    let models_cfg = crate::config::load_models_config().unwrap_or_default();
+    for manifest in manifests {
+        let oauth = oauth_providers.iter().find(|oauth| oauth.id == manifest.id);
+        if oauth.is_none() && (manifest.api_key_env.is_some() || manifest.requires_auth) {
+            options.push(LoginProviderOption {
+                id: manifest.id.clone(),
+                name: manifest.id.clone(),
+                auth_type: ProviderAuthType::ApiKey,
+                subscription: false,
+                status: login_provider_status(&manifest.id),
+            });
+        }
+    }
+    for oauth in oauth_providers {
+        if options
+            .iter()
+            .any(|option| option.id == oauth.id && option.auth_type == ProviderAuthType::OAuth)
+        {
+            continue;
+        }
+        options.push(LoginProviderOption {
+            id: oauth.id.clone(),
+            name: oauth_display_name(oauth),
+            auth_type: ProviderAuthType::OAuth,
+            subscription: false,
+            status: login_provider_status(&oauth.id),
+        });
+    }
+    for (id, provider) in &models_cfg.providers {
+        if options
+            .iter()
+            .any(|option| option.id == *id && option.auth_type == ProviderAuthType::ApiKey)
+        {
+            continue;
+        }
+        options.push(LoginProviderOption {
+            id: id.clone(),
+            name: provider
+                .name
+                .clone()
+                .unwrap_or_else(|| provider_display_name(id)),
+            auth_type: ProviderAuthType::ApiKey,
+            subscription: false,
+            status: login_provider_status(id),
+        });
+    }
+
+    options.sort_by(|a, b| compare_display_names(&a.name, &b.name));
+    options
+}
+
+/// Order two provider names the way pi's `localeCompare` does.
+///
+/// pi sorts the provider rows by their display name with
+/// `a.name.localeCompare(b.name)` (`interactive-mode.ts:5813`), which ignores
+/// case: "xAI" comes before "Xiaomi" and "Z.AI".
+fn compare_display_names(left: &str, right: &str) -> std::cmp::Ordering {
+    left.to_lowercase()
+        .cmp(&right.to_lowercase())
+        .then_with(|| left.cmp(right))
+}
+
+/// The display name an extension's OAuth manifest publishes.
+fn oauth_display_name(oauth: &rpi_extensions::OAuthProviderInfo) -> String {
+    oauth
+        .manifest
+        .get("displayName")
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| oauth.id.clone())
+}
+
+/// The provider rows of the `/login` picker.
+///
+/// `auth_type` narrows the list to one login method, the way pi's
+/// `showLoginProviderSelector(authType)` does.
+pub(super) fn login_provider_rows(
+    options: &[LoginProviderOption],
+    auth_type: Option<ProviderAuthType>,
+) -> Vec<SelectItem> {
+    let rows: Vec<&LoginProviderOption> = options
+        .iter()
+        .filter(|option| auth_type.is_none_or(|kind| option.auth_type == kind))
+        .collect();
+    // pi labels the auth type only when the list mixes the two kinds
+    // (`oauth-selector.ts:64`).
+    let mut kinds = rows.iter().map(|option| option.auth_type);
+    let show_auth_type = kinds.next().is_some_and(|first| kinds.any(|kind| kind != first));
+    rows.into_iter()
+        .map(|option| {
+            let description = login_provider_description(option, show_auth_type);
+            SelectItem::new(&option.id, &option.name)
+                .with_description(&description)
+                .with_search_text(&format!(
+                    "{} {} {} {} login",
+                    option.name,
+                    option.id,
+                    auth_type_label(option.auth_type, option.subscription),
+                    description
+                ))
+        })
+        .collect()
+}
+
+/// The row description: the optional auth-type label plus the status suffix.
+pub(super) fn login_provider_description(
+    option: &LoginProviderOption,
+    show_auth_type: bool,
+) -> String {
+    let label = if show_auth_type {
+        format!(" [{}]", auth_type_label(option.auth_type, option.subscription))
+    } else {
+        String::new()
+    };
+    format!("{label}{}", format_login_provider_status(option))
+}
+
 /// Build the provider rows shown by `/login`. Anonymous package providers are
 /// intentionally omitted; built-in and configured providers remain available
 /// even when they currently have no credential.
@@ -614,97 +923,16 @@ pub(super) fn provider_selector_items(
 pub(super) fn login_provider_items(
     manifests: &[rpi_extensions::ProviderManifest],
 ) -> Vec<SelectItem> {
-    login_provider_items_with_oauth(manifests, &[])
+    let options = login_provider_options(manifests, &[]);
+    login_provider_rows(&options, None)
 }
 
 pub(super) fn login_provider_items_with_oauth(
     manifests: &[rpi_extensions::ProviderManifest],
     oauth_providers: &[rpi_extensions::OAuthProviderInfo],
 ) -> Vec<SelectItem> {
-    let catalog = crate::provider::catalog_with_manifests(manifests).unwrap_or_default();
-    let models_cfg = crate::config::load_models_config().unwrap_or_default();
-    let auth = crate::config::read_auth().unwrap_or_default();
-    let mut ids = Vec::new();
-    for model in &catalog {
-        if !ids.iter().any(|id: &String| id == &model.provider) {
-            ids.push(model.provider.clone());
-        }
-    }
-    for id in models_cfg.providers.keys() {
-        if !ids.iter().any(|known| known == id) {
-            ids.push(id.clone());
-        }
-    }
-    for manifest in manifests {
-        if !ids.iter().any(|known| known == &manifest.id) {
-            ids.push(manifest.id.clone());
-        }
-    }
-    for oauth in oauth_providers {
-        if !ids.iter().any(|known| known == &oauth.id) {
-            ids.push(oauth.id.clone());
-        }
-    }
-
-    ids.into_iter()
-        .filter_map(|id| {
-            let manifest = manifests.iter().find(|manifest| manifest.id == id);
-            let oauth = oauth_providers.iter().find(|oauth| oauth.id == id);
-            let configured = models_cfg.providers.get(&id);
-            let requires_auth = oauth.is_some()
-                || manifest.map_or_else(
-                    || {
-                        crate::credentials::builtin_api_key_env(&id).is_some()
-                            || configured.is_some_and(|provider| {
-                                provider.api_key.is_some() || provider.auth_header.is_some()
-                            })
-                    },
-                    |manifest| manifest.requires_auth,
-                );
-            if !requires_auth {
-                return None;
-            }
-            let credential = crate::credentials::resolve(&id, configured, &auth, manifest);
-            let source = credential.source;
-            let env = manifest
-                .and_then(|manifest| manifest.api_key_env.as_deref())
-                .or_else(|| crate::credentials::builtin_api_key_env(&id));
-            let description = if oauth.is_some() {
-                match source {
-                    crate::credentials::CredentialSource::Missing => {
-                        "Not configured · sign in with OAuth".to_string()
-                    }
-                    crate::credentials::CredentialSource::StoredOauth => {
-                        "Configured · OAuth".to_string()
-                    }
-                    crate::credentials::CredentialSource::Environment(name) => {
-                        format!("Environment variable {name} · sign in again")
-                    }
-                    _ => "Configured · API key / OAuth".to_string(),
-                }
-            } else {
-                let status = match source {
-                    crate::credentials::CredentialSource::Missing => "Not configured".to_string(),
-                    crate::credentials::CredentialSource::Environment(name) => {
-                        format!("Environment variable {name} · sign in again")
-                    }
-                    _ => "Configured".to_string(),
-                };
-                match env {
-                    Some(env) => format!("{status} · API key / {env}"),
-                    None => format!("{status} · API key"),
-                }
-            };
-            Some(
-                SelectItem::new(&id, &provider_display_name(&id))
-                    .with_description(&description)
-                    .with_search_text(&format!(
-                        "{} {id} {description} login oauth",
-                        provider_display_name(&id)
-                    )),
-            )
-        })
-        .collect()
+    let options = login_provider_options(manifests, oauth_providers);
+    login_provider_rows(&options, None)
 }
 
 /// Dispatch without holding the input-slot lock: submit and escape callbacks
@@ -749,17 +977,13 @@ fn begin_api_key_login(
     provider_id: &str,
 ) {
     let provider_id = provider_id.to_string();
-    let input = Arc::new(Input::with_placeholder("Paste API key, then press Enter"));
-    input.set_masked(true);
+    // pi's API-key input is plain text, not a masked field
+    // (`packages/tui/src/components/input.ts` has no mask option).
+    let input = Arc::new(Input::new());
     input.set_focused(true);
-    let title = format!("Login · {provider_id}");
-    let question = format!("API key for {provider_id}");
-    let frame = provider_form_frame(
-        &title,
-        &question,
-        input.clone(),
-        "Enter saves to auth.json · Esc cancels",
-    );
+    let title = format!("Login to {}", provider_display_name(&provider_id));
+    let prompt = format!("Enter {}", api_key_prompt_name(&provider_id));
+    let frame = login_dialog_frame(&title, &prompt, input.clone());
     editor.set_focused(false);
     editor_container.clear();
     editor_container.add_child(frame);
@@ -811,9 +1035,49 @@ fn begin_api_key_login(
     let tui_cancel = tui.clone();
     input.on_escape(Arc::new(move || {
         finish_provider_login(&state_cancel, &ec_cancel, &editor_cancel, &tui_cancel);
-        add_note_message(&state_cancel.chat_container, "Provider login cancelled.");
     }));
     tui.request_render(false);
+}
+
+/// The login dialog's frame, in pi's shape.
+///
+/// Mirrors `LoginDialogComponent`
+/// (`packages/coding-agent/src/modes/interactive/components/login-dialog.ts:45`):
+/// a rule, the title, a blank row, the prompt, the input, the hint and a rule.
+fn login_dialog_frame(title: &str, prompt: &str, input: Arc<Input>) -> Arc<Container> {
+    let frame = Arc::new(Container::new());
+    frame.add_child(Arc::new(DynamicBorder::new()));
+    frame.add_child(Arc::new(Text::new(title, 1, 0)));
+    frame.add_child(Arc::new(Spacer::new(1)));
+    frame.add_child(Arc::new(Text::new(prompt, 1, 0)));
+    frame.add_child(input);
+    frame.add_child(Arc::new(Text::new(
+        "(escape/ctrl+c to cancel, enter to submit)",
+        1,
+        0,
+    )));
+    frame.add_child(Arc::new(DynamicBorder::new()));
+    frame
+}
+
+/// The name pi's API-key prompt uses for a provider.
+///
+/// pi's prompt is `Enter ${name}` where `name` is the auth method's name
+/// (`packages/ai/src/auth/helpers.ts:14`); most providers name it after
+/// themselves.
+fn api_key_prompt_name(provider_id: &str) -> String {
+    let name = match provider_id {
+        "amazon-bedrock" => "AWS credentials or bearer token".to_string(),
+        "azure" => "Azure OpenAI API key".to_string(),
+        "cloudflare-ai-gateway" | "cloudflare-workers-ai" => "Cloudflare API key".to_string(),
+        "github-copilot" => "GitHub Copilot token".to_string(),
+        "google" => "Gemini API key".to_string(),
+        "google-vertex" => "Google Cloud credentials".to_string(),
+        "huggingface" => "Hugging Face token".to_string(),
+        "meta" => "Meta Model API key".to_string(),
+        _ => format!("{} API key", provider_display_name(provider_id)),
+    };
+    name
 }
 
 fn begin_provider_oauth_login(
@@ -1109,23 +1373,34 @@ pub(super) fn finish_provider_login(
     tui.set_focus(Some(editor.clone()));
     tui.request_render(false);
 }
+/// The providers with a stored credential, in pi's logout shape.
+///
+/// pi's logout rows are the provider name plus the status suffix
+/// (`interactive-mode.ts:5816`): a stored credential is ` ✓ configured`.
 pub(super) fn stored_credential_items() -> Vec<SelectItem> {
-    crate::config::read_auth()
+    let mut options: Vec<LoginProviderOption> = crate::config::read_auth()
         .unwrap_or_default()
         .into_iter()
         .map(|(id, credential)| {
-            let kind = match credential {
-                crate::config::Credential::ApiKey { .. } => "API key",
-                crate::config::Credential::Oauth { .. } => "OAuth",
+            let auth_type = match credential {
+                crate::config::Credential::ApiKey { .. } => ProviderAuthType::ApiKey,
+                crate::config::Credential::Oauth { .. } => ProviderAuthType::OAuth,
             };
-            SelectItem::new(&id, &provider_display_name(&id))
-                .with_description(&format!("{kind} · remove saved credentials"))
-                .with_search_text(&format!(
-                    "{} {id} {kind} logout",
-                    provider_display_name(&id)
-                ))
+            LoginProviderOption {
+                name: provider_display_name(&id),
+                id,
+                auth_type,
+                subscription: false,
+                status: Some(ProviderAuthStatus {
+                    configured: true,
+                    source: Some(ProviderAuthSource::Stored),
+                    label: Some("stored credential".to_string()),
+                }),
+            }
         })
-        .collect()
+        .collect();
+    options.sort_by(|a, b| compare_display_names(&a.name, &b.name));
+    login_provider_rows(&options, None)
 }
 /// The providers that can be removed: everything defined in `models.json`
 /// (built-ins are compiled in and cannot be deleted).
@@ -1646,14 +1921,13 @@ pub(super) fn save_provider_from_form(form: &ProviderFormState) -> Result<String
 }
 
 /// Human-friendly label for a provider id.
+///
+/// Mirrors pi's provider names (`packages/ai/src/providers/*.ts`); a provider
+/// the port does not know keeps its id.
 fn provider_display_name(id: &str) -> String {
-    match id.to_ascii_lowercase().as_str() {
-        "anthropic" => "Anthropic".to_string(),
-        "openai" => "OpenAI".to_string(),
-        "openai-completions" => "OpenAI Completions".to_string(),
-        "openai-responses" => "OpenAI Responses".to_string(),
-        _ => id.to_string(),
-    }
+    rpi_ai::providers::catalog::builtin_provider(id)
+        .map(|provider| provider.name.to_string())
+        .unwrap_or_else(|| id.to_string())
 }
 
 /// Resolve a `/provider <id>` input against the catalog's provider ids: exact
@@ -1778,4 +2052,129 @@ pub(super) fn open_scoped_models_selector(
         list,
         SelectorKind::ScopedModels,
     );
+}
+
+#[cfg(test)]
+mod login_text_tests {
+    use super::*;
+
+    fn option(auth_type: ProviderAuthType, status: Option<ProviderAuthStatus>) -> LoginProviderOption {
+        LoginProviderOption {
+            id: "anthropic".to_string(),
+            name: "Anthropic".to_string(),
+            auth_type,
+            subscription: true,
+            status,
+        }
+    }
+
+    /// The status suffixes are pi's, byte for byte
+    /// (`packages/coding-agent/src/modes/interactive/components/oauth-selector.ts:30`).
+    #[test]
+    fn login_status_suffixes_match_pi() {
+        assert_eq!(
+            login_provider_description(&option(ProviderAuthType::ApiKey, None), false),
+            " • not configured"
+        );
+        assert_eq!(
+            login_provider_description(&option(ProviderAuthType::ApiKey, None), true),
+            " [API key] • not configured"
+        );
+        assert_eq!(
+            login_provider_description(
+                &option(
+                    ProviderAuthType::ApiKey,
+                    Some(ProviderAuthStatus {
+                        configured: true,
+                        source: Some(ProviderAuthSource::Environment),
+                        label: Some("ANTHROPIC_API_KEY".to_string()),
+                    })
+                ),
+                false
+            ),
+            " ✓ env: ANTHROPIC_API_KEY"
+        );
+        assert_eq!(
+            login_provider_description(
+                &option(
+                    ProviderAuthType::ApiKey,
+                    Some(ProviderAuthStatus {
+                        configured: true,
+                        source: Some(ProviderAuthSource::Stored),
+                        label: Some("stored credential".to_string()),
+                    })
+                ),
+                false
+            ),
+            " ✓ configured"
+        );
+        assert_eq!(
+            login_provider_description(
+                &option(
+                    ProviderAuthType::ApiKey,
+                    Some(ProviderAuthStatus {
+                        configured: true,
+                        source: Some(ProviderAuthSource::Stored),
+                        label: Some("OAuth".to_string()),
+                    })
+                ),
+                false
+            ),
+            " • subscription configured"
+        );
+        assert_eq!(
+            login_provider_description(
+                &option(
+                    ProviderAuthType::OAuth,
+                    Some(ProviderAuthStatus {
+                        configured: true,
+                        source: Some(ProviderAuthSource::Stored),
+                        label: Some("OAuth".to_string()),
+                    })
+                ),
+                true
+            ),
+            " [subscription] ✓ configured"
+        );
+    }
+
+    /// The provider list holds pi's providers, sorted by display name.
+    #[test]
+    fn login_provider_list_matches_pi() {
+        let _guard = crate::config::test_support::env_lock().lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let previous = std::env::var_os(crate::config::CONFIG_DIR_ENV);
+        std::env::set_var(crate::config::CONFIG_DIR_ENV, tmp.path());
+        let options = login_provider_options(&[], &[]);
+        match previous {
+            Some(value) => std::env::set_var(crate::config::CONFIG_DIR_ENV, value),
+            None => std::env::remove_var(crate::config::CONFIG_DIR_ENV),
+        }
+
+        let api_key: Vec<&LoginProviderOption> = options
+            .iter()
+            .filter(|option| option.auth_type == ProviderAuthType::ApiKey)
+            .collect();
+        let oauth: Vec<&LoginProviderOption> = options
+            .iter()
+            .filter(|option| option.auth_type == ProviderAuthType::OAuth)
+            .collect();
+        assert_eq!(api_key.len(), 42, "pi's API-key providers");
+        assert_eq!(oauth.len(), 9, "pi's OAuth providers");
+        assert!(api_key
+            .iter()
+            .any(|option| option.name == "Amazon Bedrock"));
+        assert!(!api_key
+            .iter()
+            .any(|option| option.id == "openai-codex"));
+        assert!(oauth.iter().any(|option| option.id == "anthropic"));
+        assert!(oauth.iter().any(|option| option.id == "radius"));
+        let names: Vec<&str> = api_key.iter().map(|option| option.name.as_str()).collect();
+        let mut sorted = names.clone();
+        sorted.sort_by(|a, b| compare_display_names(a, b));
+        assert_eq!(names, sorted, "the rows are sorted by display name");
+        let oauth_names: Vec<&str> = oauth.iter().map(|option| option.name.as_str()).collect();
+        assert_eq!(oauth_names.first(), Some(&"Anthropic"));
+        assert_eq!(oauth_names.last(), Some(&"xAI"));
+    }
 }

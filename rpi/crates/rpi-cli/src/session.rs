@@ -46,12 +46,10 @@ use rpi_harness::types::{
     AgentHarnessOptions, AgentHarnessResources, DrivingMode, HarnessTool, HarnessToolExecution,
     ToolReplay,
 };
-#[cfg(windows)]
-use rpi_tools::create_powershell_tool;
 use rpi_tools::{
     create_bash_tool, create_edit_tool, create_find_tool, create_grep_tool, create_ls_tool,
-    create_read_tool, create_write_tool, ExecutionToolContext, MutationQueueRegistry,
-    OsExecutionEnv,
+    create_powershell_tool, create_read_tool, create_write_tool, ExecutionToolContext,
+    MutationQueueRegistry, OsExecutionEnv,
 };
 
 use crate::args::Args;
@@ -91,7 +89,7 @@ pub fn default_system_prompt(
     // again, and claiming otherwise makes it re-derive and restate the plan
     // every turn — the re-plan symptom in `docs/llm-repetition-forensics.md`.
     let working_state_rule = if prior_reasoning_replayed {
-        "- Keep a SHORT working plan visible (a few bullets, or the todo tool) and update it as you go.
+        "- Keep a SHORT working plan visible (a few bullets) and update it as you go.
   Your own reasoning is carried back to you on the next turn, so do not re-derive it or restate
   the whole plan: continue from the last unfinished step, and when a step lands, say which one.
   Re-listing the same plan without acting on it is a bug, not progress."
@@ -161,9 +159,9 @@ Guidelines:
 - Show file paths clearly when working with files
 - Prefer the smallest change that solves the problem
 {working_state_rule}
-- Track multi-step work with the todo tool instead of re-listing the plan in prose: add the
-  steps once, then mark them done as you go. Re-stating the same plan without acting on it is
-  a bug, not progress.
+- Track multi-step work with a short list in your replies instead of re-listing the plan in prose:
+  add the steps once, then mark them done as you go. Re-stating the same plan without acting on it
+  is a bug, not progress.
 - Read only what you need. If a file or search result was already shown earlier in this
   conversation, use it instead of fetching it again.
 - When unsure about rpi commands, extensions, Pi package compatibility, or .rpi configuration, consult the project documentation before guessing
@@ -254,6 +252,9 @@ pub struct PreparedExtensions {
     ext_status_mailbox: rpi_extensions::ExtensionStatusMailbox,
     editor_text_mailbox: rpi_extensions::EditorTextMailbox,
     action_bridge: Arc<rpi_extensions::ActionBridge>,
+    /// The MCP client the session runs: the servers from `mcp.json` and the
+    /// ones the extensions register. `None` when `--no-mcp` is set.
+    pub mcp: Option<Arc<crate::mcp::McpManager>>,
 }
 
 pub fn prepare_extensions(
@@ -344,6 +345,20 @@ pub fn prepare_extensions(
         }
         report_deferred_renderers(&extension_session);
     }
+    // The MCP client lives for the whole session: the servers from `mcp.json`
+    // connect here, and the extensions register theirs into the same manager.
+    let mcp = if args.no_mcp {
+        None
+    } else {
+        let agent_dir = crate::config::agent_dir().unwrap_or_else(|_| cwd.to_path_buf());
+        let manager = Arc::new(crate::mcp::McpManager::new(
+            cwd.to_path_buf(),
+            agent_dir,
+        ));
+        manager.set_runtime(runtime.clone());
+        manager.load_config(project_trusted);
+        Some(manager)
+    };
     Ok(PreparedExtensions {
         runtime,
         tool_context,
@@ -355,6 +370,7 @@ pub fn prepare_extensions(
         editor_text_mailbox,
         action_bridge,
         extension_session,
+        mcp,
     })
 }
 
@@ -422,12 +438,21 @@ pub async fn build_prepared(
         editor_text_mailbox,
         action_bridge,
         extension_session,
+        mcp,
     } = prepared;
     let catalog = crate::provider::authenticated_catalog(resolved);
     action_host.set_catalog(catalog.clone());
 
     // ---- Execution env + tools ----
-    let env = Arc::new(OsExecutionEnv::with_cwd(cwd.to_path_buf()));
+    // `shellPath`: the shell the bash tool runs (upstream's `getShellPath`).
+    let shell_path = crate::settings::load_settings()
+        .ok()
+        .and_then(|settings| settings.shell_path())
+        .map(std::path::PathBuf::from);
+    let env = Arc::new(match shell_path {
+        Some(path) => OsExecutionEnv::with_cwd(cwd.to_path_buf()).with_shell_path(path),
+        None => OsExecutionEnv::with_cwd(cwd.to_path_buf()),
+    });
     let env_dyn: Arc<dyn rpi_tools::ExecutionEnv> = env.clone();
     let mut_env: Arc<dyn rpi_tools::MutatingEnv> = env.clone();
     let _registry = Arc::new(MutationQueueRegistry::new());
@@ -445,7 +470,17 @@ pub async fn build_prepared(
     // the harness lifetime via the returned session guard. `--no-extensions`
     // skips discovery entirely (no dirs scanned, no plugins loaded).
     merge_extension_tools(&mut tools, &extension_session, args, &tool_context);
-    let active = filter_active_tool_names(active_tool_names(&tools, args), args);
+    let mut active = filter_active_tool_names(active_tool_names(&tools, args), args);
+
+    // ---- MCP ----
+    // The servers from `mcp.json` (and the ones the extensions registered)
+    // connect here, and their tools join the model's tool set as
+    // `mcp__<server>__<tool>`. The port has no codemode tool, so every
+    // exposure but `hidden` is declared to the model.
+    if let Some(manager) = mcp.clone() {
+        manager.connect_all().await;
+        merge_mcp_tools(&mut tools, &mut active, &manager, args);
+    }
 
     // ---- Session storage ----
     let selection = select_session(args, cwd);
@@ -618,7 +653,13 @@ pub async fn build_prepared(
                 .iter()
                 .map(|file| file.path.to_string_lossy().into_owned()),
         );
-        format_project_context(&files)
+        // `projectContextMaxChars`: the cap on each context file's size in
+        // the system prompt (upstream's `getProjectContextMaxChars`).
+        let max_chars = crate::settings::load_settings()
+            .ok()
+            .map(|settings| settings.project_context_max_chars())
+            .unwrap_or(0);
+        format_project_context(&files, max_chars)
     };
 
     // Surface resource-discovery diagnostics as startup warnings (verbose-only).
@@ -840,6 +881,9 @@ pub async fn build_prepared(
             if args.timeout.is_some() {
                 provider_retry.timeout = args.timeout;
             }
+            // `thinkingBudgets`: the per-level reasoning token budgets the
+            // provider sends (upstream's `getThinkingBudgets`).
+            provider_retry.thinking_budgets = saved_settings.thinking_budgets();
             provider_retry
         },
         // Settings-backed harness options: upstream lets users tune retry,
@@ -848,6 +892,7 @@ pub async fn build_prepared(
         // this file are read.
         retry: saved_settings.retry_policy(),
         compaction: saved_settings.compaction_settings(),
+        compaction_model_overrides: saved_settings.compaction_model_overrides(),
         steering_mode: saved_settings.steering_mode(),
         follow_up_mode: saved_settings.follow_up_mode(),
         tool_execution: HarnessToolExecution::default(),
@@ -953,6 +998,7 @@ pub async fn build_prepared(
         providers: Arc::new(std::sync::RwLock::new(resolved.providers.clone())),
         runtime: runtime.clone(),
         cwd: cwd.to_path_buf(),
+        mcp: mcp.clone(),
         project_trusted,
         args: args.clone(),
         resolved_model: resolved.model.clone(),
@@ -1128,6 +1174,8 @@ pub struct ReloadContext {
     pub runtime: tokio::runtime::Handle,
     /// The cwd (for static resource-dir resolution + context-file walk).
     pub cwd: PathBuf,
+    /// The MCP client the session runs. `None` when `--no-mcp` is set.
+    pub mcp: Option<Arc<crate::mcp::McpManager>>,
     /// The project-trust decision captured before provider and session setup.
     /// Startup consumers reuse this value so extension code cannot change the
     /// effective policy by mutating the process cwd while it is loading.
@@ -1568,7 +1616,11 @@ where
         let agent_dir_path = agent_dir.unwrap_or_else(|| ctx.cwd.clone());
         load_project_context_files(&env_dyn, &ctx.cwd, &agent_dir_path).await
     };
-    let context_block = format_project_context(&context_files);
+    let max_chars = crate::settings::load_settings()
+        .ok()
+        .map(|settings| settings.project_context_max_chars())
+        .unwrap_or(0);
+    let context_block = format_project_context(&context_files, max_chars);
 
     let mut details: Vec<String> = Vec::new();
     if !skill_diags.is_empty() || !prompt_diags.is_empty() || !resource_diags.is_empty() {
@@ -1760,6 +1812,11 @@ where
     );
     let mut active = active_tool_names(&tools, &effective_args);
     active = filter_active_tool_names(active, &effective_args);
+    // The MCP servers' tools are part of the session's tool set too; a reload
+    // rebuilds the set, so they are merged back in.
+    if let Some(manager) = ctx.mcp.clone() {
+        merge_mcp_tools(&mut tools, &mut active, &manager, &effective_args);
+    }
     let _ = harness.set_tools(tools, Some(active)).await;
 
     let summary = format!(
@@ -2071,6 +2128,49 @@ fn load_extensions_from_dirs(
     rpi_extensions::load_session_mixed(dirs, &native, diagnostics, action_bridge)
 }
 
+/// Merge the MCP servers' tools into the tool set.
+///
+/// The tools are declared to the model like any other tool, named
+/// `mcp__<server>__<tool>`. The port has no codemode tool, so every exposure
+/// but `hidden` reaches the model. The resource tools join the set when a
+/// connected server offers resources.
+pub fn merge_mcp_tools(
+    tools: &mut Vec<HarnessTool>,
+    active: &mut Vec<String>,
+    manager: &Arc<crate::mcp::McpManager>,
+    args: &Args,
+) {
+    for binding in manager.tools() {
+        if !tool_name_allowed(&binding.name, args) {
+            continue;
+        }
+        let name = binding.name.clone();
+        let tool = HarnessTool::new(Arc::new(crate::mcp::McpToolAdapter::new(
+            Arc::clone(manager),
+            &binding,
+        )));
+        tools.retain(|slot| slot.tool.schema().name != name);
+        tools.push(tool);
+        if !active.contains(&name) {
+            active.push(name);
+        }
+    }
+    if manager.servers_with_resources().is_empty() {
+        return;
+    }
+    for tool in crate::mcp::resource_tools(Arc::clone(manager)) {
+        let name = tool.schema().name.clone();
+        if !tool_name_allowed(&name, args) {
+            continue;
+        }
+        tools.retain(|slot| slot.tool.schema().name != name);
+        tools.push(HarnessTool::new(tool));
+        if !active.contains(&name) {
+            active.push(name);
+        }
+    }
+}
+
 /// Merge the loaded extension tools into the built-in set. An extension tool
 /// overrides a same-named built-in; first-extension-wins across plugins is
 /// already guaranteed by the registry (`register_tool` keeps the prior). The
@@ -2171,8 +2271,9 @@ fn build_tools(ctx: &ExecutionToolContext, args: &Args) -> Vec<HarnessTool> {
         ),
     ];
 
-    // Add PowerShell tool on Windows
-    #[cfg(target_os = "windows")]
+    // The PowerShell tool is registered on every platform, like the
+    // original's: it fails at execution time off Windows ("The powershell
+    // tool is only available on Windows."), not at registration time.
     all.push(("powershell", HarnessTool::new(create_powershell_tool(ctx))));
 
     // Apply default_tools from settings (if no CLI override)
@@ -2241,21 +2342,23 @@ pub(crate) fn tool_name_allowed(name: &str, args: &Args) -> bool {
     if args.no_tools {
         return false;
     }
-    if args
-        .tools
-        .as_ref()
-        .is_some_and(|allow| !allow.iter().any(|value| value == name))
-    {
-        return false;
+    if let Some(deny) = &args.exclude_tools {
+        let matcher = rpi_mcp::config::create_tool_name_matcher(deny);
+        if matcher(name) {
+            return false;
+        }
     }
-    if args
-        .exclude_tools
-        .as_ref()
-        .is_some_and(|deny| deny.iter().any(|value| value == name))
-    {
-        return false;
+    let Some(allow) = &args.tools else {
+        return true;
+    };
+    let matcher = rpi_mcp::config::create_tool_name_matcher(allow);
+    if matcher(name) {
+        return true;
     }
-    true
+    // An allowlist that names no MCP tool keeps the MCP tools; one that names
+    // one (`mcp__…`) filters them like any other tool.
+    let filters_mcp = allow.is_empty() || allow.iter().any(|entry| entry.starts_with("mcp__"));
+    !filters_mcp && crate::mcp::is_mcp_tool_name(name)
 }
 
 pub(crate) fn filter_active_tool_names<I>(names: I, args: &Args) -> Vec<String>
@@ -2550,7 +2653,7 @@ pub fn summarize_session_file(path: &Path) -> SessionSummary {
             // Drop the possibly-partial first line of the window.
             tail_lines.next();
             for line in tail_lines {
-                if let Some(name) = name_from_line(line) {
+                if let Some(name) = session_info_name(line) {
                     summary.name = name;
                 }
             }
@@ -2559,57 +2662,74 @@ pub fn summarize_session_file(path: &Path) -> SessionSummary {
     summary
 }
 
-/// Extract the name from a `{"kind":"fact","fact":"name","name":…}` line.
-/// Returns `Some(None)` for an explicit `name: null` (the fact was cleared).
-fn name_from_line(line: &str) -> Option<Option<String>> {
-    let value: serde_json::Value = serde_json::from_str(line).ok()?;
-    if value.get("kind").and_then(|v| v.as_str()) != Some("fact") {
+/// Extract the name from a `{"type":"session_info","name":…}` line.
+/// Returns `Some(None)` when the line clears the name (pi: an empty name
+/// unsets it). Returns `None` when the line carries no name at all.
+fn session_info_name(line: &str) -> Option<Option<String>> {
+    if !line.contains("session_info") {
         return None;
     }
-    if value.get("fact").and_then(|v| v.as_str()) != Some("name") {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    if value.get("type").and_then(|v| v.as_str()) != Some("session_info") {
         return None;
     }
     Some(match value.get("name") {
-        Some(serde_json::Value::String(name)) => Some(name.clone()),
+        Some(serde_json::Value::String(name)) => {
+            let trimmed = name.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
         _ => None,
     })
 }
 
-/// Fold one JSONL line into `summary`: record a name fact, or capture the first
-/// user prompt as the preview.
-fn apply_summary_line(line: &str, summary: &mut SessionSummary) {
-    if let Some(name) = name_from_line(line) {
-        summary.name = name;
-        return;
+/// True when the line can carry a user message, found by a byte scan so the
+/// JSON parse only runs for the few lines that can change the summary.
+fn mentions_user_role(line: &str) -> bool {
+    let mut rest = line;
+    while let Some(pos) = rest.find("\"role\"") {
+        let after = rest[pos + "\"role\"".len()..].trim_start();
+        if let Some(value) = after.strip_prefix(':') {
+            if value.trim_start().starts_with("\"user\"") {
+                return true;
+            }
+        }
+        rest = &rest[pos + "\"role\"".len()..];
     }
-    if summary.preview.is_some() {
-        return;
+    false
+}
+
+/// The text of a user message line, if the line is one.
+fn user_message_text(line: &str) -> Option<String> {
+    if !mentions_user_role(line) {
+        return None;
     }
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
-        return;
-    };
-    if value.get("kind").and_then(|v| v.as_str()) != Some("entry") {
-        return;
-    }
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
     if value.get("type").and_then(|v| v.as_str()) != Some("message") {
-        return;
+        return None;
     }
-    let Some(message) = value.get("message") else {
-        return;
-    };
+    let message = value.get("message")?;
     if message.get("role").and_then(|v| v.as_str()) != Some("user") {
-        return;
+        return None;
     }
     let text = match message.get("content") {
-        Some(serde_json::Value::String(text)) => Some(text.as_str()),
-        Some(serde_json::Value::Array(blocks)) => blocks.iter().find_map(|block| {
-            (block.get("type").and_then(|v| v.as_str()) == Some("text"))
-                .then(|| block.get("text").and_then(|v| v.as_str()))
-                .flatten()
-        }),
-        _ => None,
+        Some(serde_json::Value::String(text)) => text.clone(),
+        Some(serde_json::Value::Array(blocks)) => {
+            let parts: Vec<&str> = blocks
+                .iter()
+                .filter(|block| block.get("type").and_then(|v| v.as_str()) == Some("text"))
+                .filter_map(|block| block.get("text").and_then(|v| v.as_str()))
+                .collect();
+            if parts.is_empty() {
+                return None;
+            }
+            parts.join(" ")
+        }
+        _ => return None,
     };
-    let Some(text) = text else { return };
     let collapsed = text
         .lines()
         .map(str::trim)
@@ -2617,9 +2737,24 @@ fn apply_summary_line(line: &str, summary: &mut SessionSummary) {
         .collect::<Vec<_>>()
         .join(" ");
     if collapsed.is_empty() {
+        return None;
+    }
+    Some(collapsed.chars().take(SUMMARY_PREVIEW_CHARS).collect())
+}
+
+/// Fold one JSONL line into `summary`: record a name, or capture the first
+/// user prompt as the preview.
+fn apply_summary_line(line: &str, summary: &mut SessionSummary) {
+    if let Some(name) = session_info_name(line) {
+        summary.name = name;
         return;
     }
-    summary.preview = Some(collapsed.chars().take(SUMMARY_PREVIEW_CHARS).collect());
+    if summary.preview.is_some() {
+        return;
+    }
+    if let Some(text) = user_message_text(line) {
+        summary.preview = Some(text);
+    }
 }
 
 /// The human label for a session row: its recorded name, else the first user
@@ -2696,13 +2831,25 @@ pub fn list_session_files_sync(dir: &Path) -> Vec<PathBuf> {
 /// content (a header-only session resumes to an empty transcript). Falls back to
 /// the newest overall when every session is empty, and `None` only when the
 /// list is empty.
+///
+/// The "has content" test reads the session's header line only, so a directory
+/// with a thousand header-only sessions does not cost a thousand file reads.
 fn first_resumable_session<'a>(
     metas: &'a [rpi_harness::session::jsonl::JsonlSessionMetadata],
 ) -> Option<&'a rpi_harness::session::jsonl::JsonlSessionMetadata> {
     metas
         .iter()
-        .find(|meta| !summarize_session_file(Path::new(&meta.path)).empty)
+        .find(|meta| !session_file_is_header_only(Path::new(&meta.path)))
         .or_else(|| metas.first())
+}
+
+/// Whether a session file holds nothing but its header: no messages and no
+/// name. The header's length decides it, so the file is not read past its
+/// first line.
+pub fn session_file_is_header_only(path: &Path) -> bool {
+    crate::session_index::read_session_index_entry(path)
+        .map(|entry| entry.header_only)
+        .unwrap_or(false)
 }
 
 /// Open a session whose id matches exactly or by file-name containment
@@ -2714,18 +2861,19 @@ pub async fn open_session_by_id(id: &str, cwd: &str) -> Result<Session, OpenErro
 }
 
 async fn open_session_by_id_in_dir(id: &str, cwd: &str, dir: &Path) -> Result<Session, OpenError> {
-    let metas = list_session_metadata_in_dir(cwd, dir)
-        .await
-        .map_err(|e| OpenError::Other(e.to_string()))?;
-    let Some(meta) = metas
-        .iter()
-        .find(|m| m.id == id || m.path.contains(id) || id.contains(&m.id))
-    else {
+    // The index carries every session's id in its header, so the session to
+    // open is found without reading the session files themselves.
+    let index = crate::session_index::list_session_index(dir);
+    let Some(entry) = index.iter().find(|entry| {
+        let path = entry.path.to_string_lossy();
+        entry.id == id || path.contains(id) || id.contains(&entry.id)
+    }) else {
         return Err(OpenError::NotFound {
             requested: format!("session {id}"),
         });
     };
-    open_session(meta, cwd).await.map_err(|e| {
+    let meta = entry.metadata();
+    open_session(&meta, cwd).await.map_err(|e| {
         OpenError::Other(match e {
             // `open_session` renders as "Could not open the saved session:
             // <reason>" via `BuildError`. Carry the bare reason so it is not
@@ -2819,15 +2967,14 @@ pub(crate) async fn fork_session_storage(
     // The fork needs the rich JSONL metadata (with the on-disk path); resolve
     // it from the session list by the current session's id.
     let id = harness.session().storage().metadata().id.clone();
-    let metas = list_session_metadata(cwd)
-        .await
-        .map_err(|e| e.to_string())?;
-    let Some(source) = metas.iter().find(|m| m.id == id) else {
+    let index = crate::session_index::list_session_index(&default_session_dir(Path::new(cwd)));
+    let Some(source) = index.iter().find(|entry| entry.id == id) else {
         return Err(format!("current session {id} not found on disk"));
     };
+    let source = source.metadata();
     let fork_storage = repo
         .fork_typed(
-            source,
+            &source,
             &rpi_harness::session::jsonl::JsonlSessionCreateOptions {
                 id: None,
                 parent_session_id: Some(source.id.clone()),
@@ -3347,7 +3494,7 @@ mod tests {
         let path = scratch("empty");
         std::fs::write(
             &path,
-            "{\"kind\":\"header\",\"version\":4,\"id\":\"abc\",\"createdAt\":1,\"cwd\":\"x\"}\n",
+            "{\"type\":\"session\",\"version\":3,\"id\":\"abc\",\"timestamp\":\"2026-01-01T00:00:00.000Z\",\"cwd\":\"x\"}\n",
         )
         .unwrap();
         let summary = summarize_session_file(&path);
@@ -3361,11 +3508,11 @@ mod tests {
     fn summary_reads_the_first_user_prompt_and_name() {
         let path = scratch("content");
         let body = concat!(
-            "{\"kind\":\"header\",\"version\":4,\"id\":\"abc\",\"createdAt\":1,\"cwd\":\"x\"}\n",
-            "{\"kind\":\"fact\",\"seq\":1,\"fact\":\"name\",\"name\":\"fix resume picker\"}\n",
-            "{\"kind\":\"record\",\"type\":\"operation_started\",\"id\":\"r1\"}\n",
-            "{\"kind\":\"entry\",\"lane\":\"main\",\"type\":\"message\",\"id\":\"e1\",\"message\":{\"kind\":\"user\",\"role\":\"user\",\"content\":\"read the rpi -r picker\"}}\n",
-            "{\"kind\":\"entry\",\"lane\":\"main\",\"type\":\"message\",\"id\":\"e2\",\"message\":{\"kind\":\"assistant\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"second\"}]}}\n",
+            "{\"type\":\"session\",\"version\":3,\"id\":\"abc\",\"timestamp\":\"2026-01-01T00:00:00.000Z\",\"cwd\":\"x\"}\n",
+            "{\"type\":\"session_info\",\"id\":\"s1\",\"parentId\":null,\"timestamp\":\"2026-01-01T00:00:01.000Z\",\"name\":\"fix resume picker\"}\n",
+            "{\"type\":\"model_change\",\"id\":\"m1\",\"parentId\":null,\"timestamp\":\"2026-01-01T00:00:02.000Z\",\"provider\":\"p\",\"modelId\":\"m\"}\n",
+            "{\"type\":\"message\",\"id\":\"e1\",\"parentId\":\"m1\",\"timestamp\":\"2026-01-01T00:00:03.000Z\",\"message\":{\"role\":\"user\",\"content\":\"read the rpi -r picker\"}}\n",
+            "{\"type\":\"message\",\"id\":\"e2\",\"parentId\":\"e1\",\"timestamp\":\"2026-01-01T00:00:04.000Z\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"second\"}]}}\n",
         );
         std::fs::write(&path, body).unwrap();
         let summary = summarize_session_file(&path);
@@ -3379,8 +3526,8 @@ mod tests {
     fn summary_extracts_a_block_style_user_prompt() {
         let path = scratch("blocks");
         let body = concat!(
-            "{\"kind\":\"header\",\"version\":4,\"id\":\"abc\",\"createdAt\":1,\"cwd\":\"x\"}\n",
-            "{\"kind\":\"entry\",\"type\":\"message\",\"id\":\"e1\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"line one\\nline two\"}]}}\n",
+            "{\"type\":\"session\",\"version\":3,\"id\":\"abc\",\"timestamp\":\"2026-01-01T00:00:00.000Z\",\"cwd\":\"x\"}\n",
+            "{\"type\":\"message\",\"id\":\"e1\",\"parentId\":null,\"timestamp\":\"2026-01-01T00:00:01.000Z\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"line one\\nline two\"}]}}\n",
         );
         std::fs::write(&path, body).unwrap();
         let summary = summarize_session_file(&path);
@@ -3527,10 +3674,12 @@ mod tests {
             lower.contains("reasoning is not") && lower.contains("carried into your next turn"),
             "the prompt must explain that reasoning does not survive the turn: {p}"
         );
-        // …and the remedy: keep state visible, use the todo tool.
+        // …and the remedy: keep the state visible. The prompt must not name a
+        // tool the registry does not have — pi's prompt names none.
         assert!(
-            lower.contains("visible") && lower.contains("todo tool"),
-            "the prompt must point at visible text and the todo tool: {p}"
+            lower.contains("visible") && !lower.contains("todo tool"),
+            "the prompt must point at visible text and must not name a tool that is not \
+             registered: {p}"
         );
         // …plus the anti-repetition rule itself.
         assert!(
@@ -3616,8 +3765,8 @@ mod tests {
         }
     }
 
-    /// The registered tool set is pi's exactly: the same built-ins, and no
-    /// port-only `docs` tool. Mirrors pi's `allToolNames`
+    /// The registered tool set is pi's exactly: the same eight built-ins, and
+    /// no port-only `docs` tool. Mirrors pi's `allToolNames`
     /// (`packages/coding-agent/src/core/tools/index.ts:95-105`).
     #[test]
     fn the_default_tool_set_is_pis() {
@@ -3630,12 +3779,26 @@ mod tests {
             .map(|tool| tool.tool.schema().name.clone())
             .collect();
 
-        for expected in ["read", "bash", "edit", "write", "grep", "find", "ls"] {
+        for expected in [
+            "read",
+            "bash",
+            "powershell",
+            "edit",
+            "write",
+            "grep",
+            "find",
+            "ls",
+        ] {
             assert!(
                 names.contains(&expected.to_string()),
                 "{expected} must be registered by default"
             );
         }
+        assert_eq!(
+            names.len(),
+            8,
+            "pi registers exactly eight built-ins, the port must not add one"
+        );
         assert!(
             !names.contains(&"docs".to_string()),
             "pi has no docs tool; the port must not invent one"

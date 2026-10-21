@@ -31,23 +31,21 @@
 -  ↑/↓ move · ←/→ page · option+←/→ branch · ctrl+x copy · shift+l label · shift+t label time
 +
 -  filters ctrl+d/t/u/l/a · cycle ctrl+o/shift+ctrl+o
-+
--  Type to search:
 +Session tree
--────────────────────────────────────────────────────────────────────────────────────────────────────
+-  Type to search:
 +
--
+-────────────────────────────────────────────────────────────────────────────────────────────────────
 +Type to filter by entry type, sequence, or id
 -  • [system]
-+
--  • user: hello world
 +>
--› • assistant: Hello from the parity mock.
+-  • user: hello world
 +
+-› • assistant: Hello from the parity mock.
++→ message #2                      01a15bfb-c18
 -  (3/3)
-+→ message #2                      01a15bef-2ec
++  message #3                      01a15bfb-c18
 -
-+  message #9 (current)            01a15bef-2f2
++  message #9 (current)            01a15bfb-c1e
 -────────────────────────────────────────────────────────────────────────────────────────────────────
 +mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens                    /private/tmp/pi-screens/work/session-tree
 -mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens                    /private/tmp/pi-screens/work/session-tree

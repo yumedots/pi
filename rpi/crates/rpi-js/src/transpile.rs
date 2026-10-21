@@ -100,13 +100,23 @@ fn utf8_width(byte: u8) -> usize {
 }
 
 fn strip_types(source: &str, path: &Path) -> Result<String, String> {
-	let allocator = Allocator::default();
-	let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
-	let parsed = Parser::new(&allocator, source, source_type).parse();
-	if !parsed.diagnostics.is_empty() {
-		return Err(diagnostics(&parsed.diagnostics));
-	}
-	let mut program = parsed.program;
+    let allocator = Allocator::default();
+    let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
+    let parsed = Parser::new(&allocator, source, source_type).parse();
+    let parsed = if parsed.diagnostics.is_empty() {
+        parsed
+    } else {
+        // A `.js` file can hold module syntax: the path alone cannot say so,
+        // because whether it does depends on the package's `type` field. When
+        // the file does not parse as a script, it is parsed as a module.
+        let module_type = SourceType::mjs();
+        let fallback = Parser::new(&allocator, source, module_type).parse();
+        if !fallback.diagnostics.is_empty() {
+            return Err(diagnostics(&parsed.diagnostics));
+        }
+        fallback
+    };
+    let mut program = parsed.program;
 	let semantic = SemanticBuilder::new().build(&program);
 	if !semantic.diagnostics.is_empty() {
 		return Err(diagnostics(&semantic.diagnostics));

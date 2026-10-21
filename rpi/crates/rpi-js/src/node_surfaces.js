@@ -201,6 +201,57 @@
 		debug: log("debug"),
 	};
 
+	// ---- base64 -----------------------------------------------------------
+	//
+	// `atob` and `btoa` are Node globals. An extension that decodes a base64
+	// secret while it loads needs them, and the embedded host has no `Buffer`
+	// to lean on, so the two are implemented here.
+	const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+	globalThis.atob = (data) => {
+		const text = String(data).replace(/[\t\n\f\r ]/g, "");
+		let length = text.length;
+		while (length > 0 && text[length - 1] === "=") length--;
+		if (length % 4 === 1) throw new Error("Invalid character");
+		const bytes = [];
+		let buffer = 0;
+		let bits = 0;
+		for (let index = 0; index < length; index++) {
+			const character = text[index];
+			const value = BASE64_ALPHABET.indexOf(character);
+			if (value < 0) throw new Error(`Invalid character: ${character}`);
+			buffer = (buffer << 6) | value;
+			bits += 6;
+			if (bits >= 8) {
+				bits -= 8;
+				bytes.push((buffer >> bits) & 0xff);
+			}
+		}
+		let out = "";
+		for (const byte of bytes) out += String.fromCharCode(byte);
+		return out;
+	};
+
+	globalThis.btoa = (data) => {
+		const text = String(data);
+		let out = "";
+		for (let index = 0; index < text.length; index += 3) {
+			const first = text.charCodeAt(index);
+			const second = index + 1 < text.length ? text.charCodeAt(index + 1) : Number.NaN;
+			const third = index + 2 < text.length ? text.charCodeAt(index + 2) : Number.NaN;
+			if (first > 0xff || second > 0xff || third > 0xff) {
+				throw new Error("Invalid character");
+			}
+			const triple =
+				(first << 16) | ((Number.isNaN(second) ? 0 : second) << 8) | (Number.isNaN(third) ? 0 : third);
+			out += BASE64_ALPHABET[(triple >> 18) & 0x3f];
+			out += BASE64_ALPHABET[(triple >> 12) & 0x3f];
+			out += Number.isNaN(second) ? "=" : BASE64_ALPHABET[(triple >> 6) & 0x3f];
+			out += Number.isNaN(third) ? "=" : BASE64_ALPHABET[triple & 0x3f];
+		}
+		return out;
+	};
+
 	// ---- timers -----------------------------------------------------------
 	//
 	// The embedded host has no event loop: a timer is a deadline on a virtual

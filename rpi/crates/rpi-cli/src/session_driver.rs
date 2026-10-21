@@ -155,6 +155,7 @@ pub fn map_agent_event(event: &AgentEvent) -> Option<UiEvent> {
         AgentEvent::ToolExecutionEnd {
             tool_call_id,
             tool_name,
+            args: _,
             result,
             is_error,
             duration_ms: _,
@@ -164,6 +165,9 @@ pub fn map_agent_event(event: &AgentEvent) -> Option<UiEvent> {
             result: crate::remote::protocol::tool_result_json(result),
             is_error: *is_error,
         }),
+        AgentEvent::BeforeAgentStart { .. }
+        | AgentEvent::AgentBeforeSettle { .. }
+        | AgentEvent::AgentSettled { .. } => None,
     }
 }
 
@@ -359,6 +363,7 @@ pub fn map_remote_event(event: &RemoteEvent) -> Option<UiEvent> {
 
     match event {
         RemoteEvent::UiDialogRequest { .. } | RemoteEvent::UiDialogClosed { .. } => None,
+        RemoteEvent::BeforeAgentStart { .. } => None,
         RemoteEvent::AgentStart => Some(UiEvent::AgentStart),
         RemoteEvent::AgentEnd { .. } => Some(UiEvent::AgentEnd),
         RemoteEvent::RetryScheduled {
@@ -428,6 +433,7 @@ pub fn map_remote_event(event: &RemoteEvent) -> Option<UiEvent> {
             result: result.clone(),
             is_error: *is_error,
         }),
+        RemoteEvent::AgentBeforeSettle { .. } | RemoteEvent::AgentSettled { .. } => None,
         RemoteEvent::TurnStart | RemoteEvent::TurnEnd { .. } => None,
     }
 }

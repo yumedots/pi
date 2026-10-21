@@ -1,0 +1,466 @@
+[
+ {
+  "category": "session_start",
+  "keys": [
+   "reason",
+   "type"
+  ]
+ },
+ {
+  "category": "resources_discover",
+  "keys": [
+   "cwd",
+   "reason",
+   "type"
+  ]
+ },
+ {
+  "category": "input",
+  "keys": [
+   "images",
+   "source",
+   "streamingBehavior",
+   "text",
+   "type"
+  ]
+ },
+ {
+  "category": "before_agent_start",
+  "keys": [
+   "images",
+   "messageType",
+   "prompt",
+   "systemPrompt",
+   "systemPromptOptions",
+   "type"
+  ]
+ },
+ {
+  "category": "agent_start",
+  "keys": [
+   "type"
+  ]
+ },
+ {
+  "category": "turn_start",
+  "keys": [
+   "timestamp",
+   "turnIndex",
+   "type"
+  ]
+ },
+ {
+  "category": "message_start",
+  "keys": [
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "message_end",
+  "keys": [
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "message_start",
+  "keys": [
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "message_end",
+  "keys": [
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "context",
+  "keys": [
+   "messages",
+   "type"
+  ]
+ },
+ {
+  "category": "context_with_system",
+  "keys": [
+   "messages",
+   "type"
+  ]
+ },
+ {
+  "category": "before_provider_headers",
+  "keys": [
+   "headers",
+   "type"
+  ]
+ },
+ {
+  "category": "before_provider_request",
+  "keys": [
+   "payload",
+   "type"
+  ]
+ },
+ {
+  "category": "after_provider_response",
+  "keys": [
+   "headers",
+   "status",
+   "type"
+  ]
+ },
+ {
+  "category": "provider_stream_event",
+  "keys": [
+   "api",
+   "data",
+   "model",
+   "provider",
+   "type"
+  ]
+ },
+ {
+  "category": "message_start",
+  "keys": [
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "message_update",
+  "keys": [
+   "assistantMessageEvent",
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "message_update",
+  "keys": [
+   "assistantMessageEvent",
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "provider_stream_event",
+  "keys": [
+   "api",
+   "data",
+   "model",
+   "provider",
+   "type"
+  ]
+ },
+ {
+  "category": "message_update",
+  "keys": [
+   "assistantMessageEvent",
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "message_end",
+  "keys": [
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "tool_execution_start",
+  "keys": [
+   "args",
+   "toolCallId",
+   "toolName",
+   "type"
+  ]
+ },
+ {
+  "category": "tool_call",
+  "keys": [
+   "input",
+   "toolCallId",
+   "toolName",
+   "type"
+  ]
+ },
+ {
+  "category": "tool_result",
+  "keys": [
+   "content",
+   "details",
+   "input",
+   "isError",
+   "structuredContent",
+   "toolCallId",
+   "toolName",
+   "type",
+   "usage"
+  ]
+ },
+ {
+  "category": "tool_execution_end",
+  "keys": [
+   "durationMs",
+   "isError",
+   "result",
+   "toolCallId",
+   "toolName",
+   "type"
+  ]
+ },
+ {
+  "category": "message_start",
+  "keys": [
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "message_end",
+  "keys": [
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "turn_end",
+  "keys": [
+   "context",
+   "continue",
+   "entries",
+   "message",
+   "messageEntryId",
+   "outcome",
+   "toolResultEntryIds",
+   "toolResults",
+   "turnIndex",
+   "type"
+  ]
+ },
+ {
+  "category": "turn_start",
+  "keys": [
+   "timestamp",
+   "turnIndex",
+   "type"
+  ]
+ },
+ {
+  "category": "context",
+  "keys": [
+   "messages",
+   "type"
+  ]
+ },
+ {
+  "category": "context_with_system",
+  "keys": [
+   "messages",
+   "type"
+  ]
+ },
+ {
+  "category": "before_provider_headers",
+  "keys": [
+   "headers",
+   "type"
+  ]
+ },
+ {
+  "category": "before_provider_request",
+  "keys": [
+   "payload",
+   "type"
+  ]
+ },
+ {
+  "category": "after_provider_response",
+  "keys": [
+   "headers",
+   "status",
+   "type"
+  ]
+ },
+ {
+  "category": "provider_stream_event",
+  "keys": [
+   "api",
+   "data",
+   "model",
+   "provider",
+   "type"
+  ]
+ },
+ {
+  "category": "message_start",
+  "keys": [
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "message_update",
+  "keys": [
+   "assistantMessageEvent",
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "message_update",
+  "keys": [
+   "assistantMessageEvent",
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "provider_stream_event",
+  "keys": [
+   "api",
+   "data",
+   "model",
+   "provider",
+   "type"
+  ]
+ },
+ {
+  "category": "message_update",
+  "keys": [
+   "assistantMessageEvent",
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "provider_stream_event",
+  "keys": [
+   "api",
+   "data",
+   "model",
+   "provider",
+   "type"
+  ]
+ },
+ {
+  "category": "message_update",
+  "keys": [
+   "assistantMessageEvent",
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "provider_stream_event",
+  "keys": [
+   "api",
+   "data",
+   "model",
+   "provider",
+   "type"
+  ]
+ },
+ {
+  "category": "message_update",
+  "keys": [
+   "assistantMessageEvent",
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "provider_stream_event",
+  "keys": [
+   "api",
+   "data",
+   "model",
+   "provider",
+   "type"
+  ]
+ },
+ {
+  "category": "message_update",
+  "keys": [
+   "assistantMessageEvent",
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "provider_stream_event",
+  "keys": [
+   "api",
+   "data",
+   "model",
+   "provider",
+   "type"
+  ]
+ },
+ {
+  "category": "message_update",
+  "keys": [
+   "assistantMessageEvent",
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "message_end",
+  "keys": [
+   "message",
+   "type"
+  ]
+ },
+ {
+  "category": "turn_end",
+  "keys": [
+   "context",
+   "continue",
+   "entries",
+   "message",
+   "messageEntryId",
+   "outcome",
+   "toolResultEntryIds",
+   "toolResults",
+   "turnIndex",
+   "type"
+  ]
+ },
+ {
+  "category": "agent_end",
+  "keys": [
+   "messages",
+   "type"
+  ]
+ },
+ {
+  "category": "agent_before_settle",
+  "keys": [
+   "context",
+   "continue",
+   "entries",
+   "outcome",
+   "type"
+  ]
+ },
+ {
+  "category": "agent_settled",
+  "keys": [
+   "aborted",
+   "type"
+  ]
+ },
+ {
+  "category": "session_shutdown",
+  "keys": [
+   "reason",
+   "type"
+  ]
+ }
+]

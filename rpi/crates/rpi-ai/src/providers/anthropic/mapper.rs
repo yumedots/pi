@@ -18,6 +18,8 @@
 
 use crate::error::AiError;
 use crate::event_stream::AssistantMessageEventStreamProducer;
+use crate::model::Model;
+use crate::provider::ProviderHooksHandle;
 use crate::providers::anthropic::json_parse::parse_streaming_json;
 use crate::providers::anthropic::sse::{AnthropicEvent, SseEventStream};
 use crate::providers::{DELTA_FLUSH_BYTES, DELTA_FLUSH_INTERVAL};
@@ -720,6 +722,7 @@ pub async fn run_mapper<F>(
     prod: &mut AssistantMessageEventStreamProducer,
     state: &mut MapperState,
     cost_fn: F,
+    observer: Option<(&Model, &ProviderHooksHandle)>,
 ) where
     F: Fn(&Usage) -> UsageCost,
 {
@@ -735,6 +738,9 @@ pub async fn run_mapper<F>(
                             return;
                         }
                     };
+                if let (Some((model, hooks)), crate::providers::anthropic::sse::AnthropicEvent::Message { payload, .. }) = (observer, &event) {
+                    hooks.hooks().on_stream_event(model, payload);
+                }
                 if let Err(err) = state.apply(&event, prod) {
                     emit_terminal_error(prod, state, err.to_string(), false);
                     return;

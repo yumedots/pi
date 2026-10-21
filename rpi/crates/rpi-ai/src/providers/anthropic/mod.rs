@@ -331,6 +331,18 @@ async fn run_anthropic_stream(
         }
     };
 
+    if let Some(hooks) = opts.hooks.as_ref() {
+        let status = response.status().as_u16();
+        let mut response_headers = std::collections::BTreeMap::new();
+        for (name, value) in response.headers() {
+            response_headers.insert(
+                name.to_string(),
+                value.to_str().unwrap_or_default().to_string(),
+            );
+        }
+        hooks.hooks().on_response(model, status, &response_headers);
+    }
+
     if non_stream {
         let response_body = match tokio::select! {
             biased;
@@ -438,7 +450,8 @@ async fn run_anthropic_stream(
     let mut sse = SseEventStream::new(response, opts.signal.clone());
     let cost_model = model.cost.clone();
     let cost_fn = move |usage: &Usage| calculate_cost(&cost_model, usage);
-    run_mapper(&mut sse, prod, &mut state, cost_fn).await;
+    let observer = opts.hooks.as_ref().map(|hooks| (model, hooks));
+    run_mapper(&mut sse, prod, &mut state, cost_fn, observer).await;
 }
 
 fn strip_cache_control(value: &mut serde_json::Value) {

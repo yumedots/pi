@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
 use rpi_agent::events::{AgentEmitter, AgentEvent};
+use rpi_agent::message::AgentMessage;
 use serde_json::{json, Value};
 
 use crate::js_extensions::JsExtensions;
@@ -62,7 +63,15 @@ impl rpi_extensions::EventSink for JsEventSink {
             }
             return None;
         }
-        extensions.dispatch(name, payload.clone()).ok()
+        match extensions.dispatch(name, payload.clone()) {
+            Ok(answer) => Some(answer),
+            Err(error) => {
+                // A handler that throws must not vanish: the error is the
+                // extension author's only sign that something is wrong.
+                tracing::warn!(event = name, %error, "the extension handler failed");
+                None
+            }
+        }
     }
 }
 
@@ -212,30 +221,76 @@ impl AgentEmitter for JsEmitter {
             AgentEvent::ToolExecutionEnd {
                 tool_call_id,
                 tool_name,
+                args,
                 result,
                 is_error,
-                ..
+                duration_ms,
             } => {
-                self.fire(
-                    "tool_execution_end",
-                    json!({
-                        "type": "tool_execution_end",
-                        "toolCallId": tool_call_id,
-                        "toolName": tool_name,
-                        "result": rpi_extensions::agent_tool_result_json(result),
-                        "isError": is_error,
-                    }),
-                );
+                let result_json = rpi_extensions::agent_tool_result_json(result);
+                let mut end = json!({
+                    "type": "tool_execution_end",
+                    "toolCallId": tool_call_id,
+                    "toolName": tool_name,
+                    "result": result_json,
+                    "isError": is_error,
+                });
+                if let Some(duration_ms) = duration_ms {
+                    end["durationMs"] = json!(duration_ms);
+                }
+                self.fire("tool_execution_end", end);
                 self.fire(
                     "tool_result",
                     json!({
                         "type": "tool_result",
                         "toolCallId": tool_call_id,
                         "toolName": tool_name,
-                        "input": Value::Null,
-                        "content": rpi_extensions::agent_tool_result_json(result),
+                        "input": args,
+                        "content": result_json.get("content").cloned().unwrap_or(Value::Array(Vec::new())),
+                        "details": result_json.get("details").cloned().unwrap_or(Value::Null),
+                        "structuredContent": result.structured_content.clone(),
                         "isError": is_error,
+                        "usage": result_json.get("usage").cloned().unwrap_or(Value::Null),
                     }),
+                );
+            }
+            AgentEvent::BeforeAgentStart {
+                prompt,
+                system_prompt,
+            } => {
+                let (text, images) = prompt_text_and_images(prompt);
+                self.fire(
+                    "before_agent_start",
+                    json!({
+                        "type": "before_agent_start",
+                        "messageType": "user",
+                        "prompt": text,
+                        "images": images,
+                        "systemPrompt": system_prompt,
+                        "systemPromptOptions": json!({}),
+                    }),
+                );
+            }
+            AgentEvent::AgentBeforeSettle { outcome } => {
+                let outcome = match outcome {
+                    rpi_agent::events::AgentActivityOutcome::Completed => "completed",
+                    rpi_agent::events::AgentActivityOutcome::Aborted => "aborted",
+                    rpi_agent::events::AgentActivityOutcome::Error => "error",
+                };
+                self.fire(
+                    "agent_before_settle",
+                    json!({
+                        "type": "agent_before_settle",
+                        "outcome": outcome,
+                        "entries": [],
+                        "continue": true,
+                        "context": empty_context(),
+                    }),
+                );
+            }
+            AgentEvent::AgentSettled { aborted } => {
+                self.fire(
+                    "agent_settled",
+                    json!({ "type": "agent_settled", "aborted": aborted }),
                 );
             }
             AgentEvent::RetryScheduled { .. } => {}
@@ -254,6 +309,35 @@ fn empty_context() -> Value {
         "pendingMessages": [],
         "canContinue": true,
     })
+}
+
+/// The text and the images of the prompt that starts a run.
+///
+/// pi's `before_agent_start` carries the prompt's text and its images, so a
+/// handler sees what the user sent.
+fn prompt_text_and_images(prompt: &AgentMessage) -> (String, Vec<Value>) {
+    let AgentMessage::User(user) = prompt else {
+        return (String::new(), Vec::new());
+    };
+    match &user.content {
+        rpi_ai::types::UserContent::Text(text) => (text.clone(), Vec::new()),
+        rpi_ai::types::UserContent::Blocks(blocks) => {
+            let mut text = String::new();
+            let mut images = Vec::new();
+            for block in blocks {
+                match block {
+                    rpi_ai::types::Content::Text(block) => text.push_str(&block.text),
+                    rpi_ai::types::Content::Image(block) => {
+                        images.push(
+                            serde_json::to_value(block).unwrap_or(Value::Null),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            (text, images)
+        }
+    }
 }
 
 /// The wall-clock milliseconds a `turn_start` carries.

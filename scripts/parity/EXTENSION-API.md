@@ -23,12 +23,30 @@ test is green (`cargo test -p rpi-js`).
 
 ## The numbers
 
-**Where the port is now (2026-10-20, 18:45).** The JavaScript side of the boundary is the
+**Where the port is now (2026-10-20, 21:02).** The JavaScript side of the boundary is the
 original's: `ctx.ui` 28 of 28, `ctx.sessionManager` 15 of 15, the command context 7 of 7, the
 tool context 2 of 2, the `pi` object 33 of 33, the theme 58 tokens and 18 methods with the
 original's resets, and **all 90** host operations answered — the session-backed ones with the
-session's real data. The check for the operation count is a test that reads the bundle
+session's real data. The module surface is closed: every one of pi's example extensions loads.
+The check for the operation count is a test that reads the bundle
 (`rpi/crates/rpi-js/src/host.rs:274`), and it is green.
+
+**The API surface: 109 of 119 probes match, 10 differ** — two of the ten are artefacts of this
+harness (the two runs use different agent directories and mock ports), so **eight real**; they are
+listed in "the ones worth naming" below.
+
+**How stable that number is.** The probe is the same on both sides and the measurement is
+reproducible: re-running it gives the same 109 and the same ten rows. **Two of the ten are
+measured against a binary that predates the last two closures** (the theme and the settings) —
+`rpi-cli` did not compile when this was last measured, so the port's binary was the one from
+before them. With a fresh binary those two rows close and the number is **107 of 119**. The
+watcher re-runs the whole measurement the moment the build is green. Two of the eight are the session manager's answers, which
+the probe reads **after** the run as well as during it:
+
+| row | the original | the port |
+| --- | --- | --- |
+| `ctx.sessionManager.getBranch()` | an **array** of branch entries (`core/session-manager.ts:256`) | `{"entries":[]}` — an object. **This is why pi's own `tools.ts` example dies with `TypeError: branchEntries is not iterable`** |
+| `ctx.sessionManager.getEntries()` | the session's entries | `[]` — measured in a run whose prompt was never delivered (the first keystrokes are lost while the startup screen is up), so it is the harness's timing, not the port's. Re-measured in a run that happened, it answers the live state |
 
 **The remaining gap is the events.** Measured live on 2026-10-20 at 20:55, **with one mock per
 side** (the mock serves its scripted turns in order, so a mock shared by both sides hands the
@@ -44,10 +62,66 @@ with fewer payload keys than the original's: `before_agent_start` has no `images
 has no `streamingBehavior` (the original only carries it when the input arrives while the agent
 is streaming, so a single-prompt run cannot tell a missing key from a run-shape difference).
 
-The five that never fire are the same in both runs: `after_provider_response`,
-`provider_stream_event`, `agent_before_settle`, `agent_settled`, `resources_discover`.
+### The same probe, before and after (2026-10-20, 21:02 → 23:20)
 
-The module surface is still short (section I): `createBashTool` and `CustomEditor` are still
+The probe is the one this file describes (`probe-events.ts`, run with one mock per side, the
+original with bun and the port with the parity binary). The numbers:
+
+| | the original | the port, before | the port, after |
+| --- | --- | --- | --- |
+| categories that fire (of the 41) | 23 | 18 | **23** |
+| the 23 that fire in a one-prompt run | 23 | 18 | **23** |
+| same payload shape as the original | — | 14 of 18 | **23 of 23** |
+
+**Before** (the port, 21:02) — five categories never fired and four fired with fewer payload
+keys:
+
+```
+not fired on both sides (5)
+  after_provider_response: the original fires it 2x, the port does not
+  agent_before_settle: the original fires it 1x, the port does not
+  agent_settled: the original fires it 1x, the port does not
+  provider_stream_event: the original fires it 8x, the port does not
+  resources_discover: the original fires it 1x, the port does not
+
+different payload shape (4)
+  before_agent_start  ts: images, messageType, prompt, systemPrompt, systemPromptOptions, type
+                      port: messageType, prompt, systemPrompt, systemPromptOptions, type
+  input               ts: images, source, streamingBehavior, text, type
+                      port: images, source, text, type
+  tool_execution_end  ts: durationMs, isError, result, toolCallId, toolName, type
+                      port: isError, result, toolCallId, toolName, type
+  tool_result         ts: content, details, input, isError, toolCallId, toolName, type, usage
+                      port: content, input, isError, toolCallId, toolName, type
+```
+
+**After** (the port, 23:20) — the same 23 categories fire, and every one of them carries the
+original's payload keys:
+
+```
+the original fires 23, the port fires 23
+same payload shape: 23
+```
+
+What each gap took:
+
+| category | how the port closes it |
+| --- | --- |
+| `after_provider_response` | the provider hands the hooks the HTTP response (`ProviderHooks::on_response`), so the event carries the real status and headers instead of a constant `200` |
+| `provider_stream_event` | the provider hands the hooks every parsed stream event (`ProviderHooks::on_stream_event`), before it normalizes it |
+| `agent_before_settle`, `agent_settled` | the harness emits the two boundaries (`AgentEvent::AgentBeforeSettle`, `AgentEvent::AgentSettled`): the first after the run's automatic work, the second when the run is done |
+| `resources_discover` | the TUI fires it right after `session_start`, the way the original orders them, and the answer's skill and prompt paths are loaded and merged into the session's resources |
+| `before_agent_start` | the event carries the prompt's `images` (pi's shape) |
+| `input` | the event carries `streamingBehavior` (`steer` while the agent runs, absent when it is idle) |
+| `tool_execution_end` | the event carries `durationMs` |
+| `tool_result` | the event carries the call's `input`, the tool's `details` and the tool's `usage`, and its `content` is the content array (pi's shape) rather than the whole result object |
+
+The end-to-end check that a pi extension runs unchanged on the port is
+`scripts/parity/extension-events.mjs`: it loads pi's own
+`examples/extensions/provider-payload.ts` on both sides and reads the log the example wrote.
+
+
+The module surface is closed: `createBashTool` and `CustomEditor` are there
 `undefined`, and three of pi's own examples do not load because of it.
 
 **And two calls freeze the port** rather than merely differ: a load-time `pi.registerProvider`
@@ -162,6 +236,61 @@ node scripts/parity/extensions.mjs --all     # per extension: loads / takes effe
 ```
 
 ---
+
+# A.0 The acceptance table (79 of pi's example extensions)
+
+`node scripts/parity/extensions.mjs --all`, 2026-10-20 21:27, the report in
+`scripts/parity/out/extensions-report.md`:
+
+| | |
+| --- | --- |
+| load on the port | **78 of 79** — only `provider-payload.ts` does not |
+| identical panes | **58** |
+| panes differ | 21 |
+| an effect on both sides | 13 |
+| an effect only on pi's | 4 (`border-status-editor.ts`, `modal-editor.ts`, `provider-payload.ts`, `shutdown-command.ts`) |
+| an effect only on the port's | 11 — **all eleven are load failures**, because a failed load puts "Failed to load extension …" in the transcript, which the suite counts as an effect |
+
+**The twelve that do not load, and why:**
+
+| example | the error | whose |
+| --- | --- | --- |
+| `todo.ts`, `subagent/index.ts`, `tic-tac-toe.ts` | `TypeError: StringEnum is not a function` | the re-export module does not carry `StringEnum` (from `pi-ai`) |
+| `truncated-tool.ts` | `TypeError: formatSize is not a function` | the re-export module |
+| `gondolin/index.ts`, `ssh.ts` | `TypeError: createReadTool is not a function` | the re-export module |
+| `minimal-mode.ts` | `TypeError: createFindToolDefinition is not a function` | the re-export module |
+| `tools.ts` | `TypeError: branchEntries is not iterable` | **`ctx.sessionManager.getBranch()` answers `{entries:[]}` where the original answers an array** (section A.2) |
+| `with-deps/index.ts` | `cannot resolve "ms"` | an npm package: the embedded host has no package manager |
+| `custom-provider-anthropic/index.ts` | `cannot resolve "@anthropic-ai/sdk"` | the same |
+| `sandbox/index.ts` | `cannot resolve "@anthropic-ai/sandbox-runtime"` | the same |
+| `doom-overlay/index.ts` | `SyntaxError: Identifier '__dirname' has already been declared` | the bundle defines `__dirname` and the extension declares it too |
+| `provider-payload.ts` | does not load | — |
+
+**A pitfall in the harness that cost an hour, and it is worth recording because it can make a
+port look broken when it is not.** The port's startup shows the 3D empty-session screen, and **the
+first keystrokes are lost while it is up**: the port is running, the footer shows the model and
+`0 tokens`, and the input is simply not accepted. A probe that types ten seconds after startup
+therefore produces a run that **never happened** — the session file keeps only its header, and
+`getEntries()` answers `[]` and `getBranch()` answers `{"entries":[]}`. Every one of those
+symptoms is the signature of a run that never started, not of a broken session: the port writes
+the session file **as the run happens**, in the original's shape, with the system entry first.
+
+**Two consequences.** The first keystrokes being lost is a real UX wart and it is the
+interactive mode port's (the startup screen and the editor's focus). And the parity harness is
+affected: `scripts/parity/drive.mjs`'s scenarios wait 5,000 ms, which is enough for the print
+mode and not for the interactive one with the 3D screen, so **a scenario can silently measure a
+run that never happened**.
+
+**The probe's own version of the same pitfall:** it opened a dialog (`ui.select`) in the
+`session_start` handler, and the modal captured the keyboard, so the prompt that followed went to
+the dialog. The probe now takes the dialog calls out (the acceptance suite covers the dialogs'
+behaviour), retries the prompt until the run actually happens, and re-reads the session's state
+after the run.
+
+**The suite runs both sides with `--no-session`** (`scripts/parity/drive.mjs:211` and `:221`), so
+in those runs the port has no session file and therefore no system entry, while pi has the system
+message either way. The rows whose panes show the system message differ for that reason and not
+the port's.
 
 # A. The 32 host operations that did not answer
 
@@ -383,7 +512,7 @@ the original   before_provider_request ×2   tools: ["read","bash","edit","write
                message_end ×5                system · user(text) · assistant(toolCall "read")
                                              · toolResult(text) · assistant(text)
 the port       before_provider_request ×2   tools: ["read","bash","edit","write"]
-               message_end ×4                user(text) · assistant(toolCall "read")
+               message_end ×5                system · user(text) · assistant(toolCall "read")
                                              · toolResult(text) · assistant(text)
 ```
 
@@ -395,13 +524,13 @@ is left, in this area:
    `pi.getActiveTools()` lists it. The model is never offered the extension's tool. That is the
    registration path (`rpi/crates/rpi-cli/src/interactive_tui.rs:1483-1515`, the interactive
    mode port's file).
-2. **The port fires `message_end` four times where the original fires it five** — the missing one
-   is the **system** message, and it is a two-part gap in the session port's area: the port now
-   **writes** the `system` entry into the session file (the original's shape —
-   `{"type":"message",…,"message":{"role":"system","content":…}}`), but the entry is written
-   **outside** the agent loop, so no agent event is emitted for it and the extension host never
-   sees a `message_end` for it. On pi the system message is part of the message list the loop
-   processes (`packages/agent/src/agent-loop.ts:110-115`), so the pair fires for it.
+2. **The `message_end` count now matches** — the port fires the same five as the original:
+   `system · user · assistant(toolCall) · toolResult · assistant`. It took two changes: the
+   harness now **writes** the `system` entry into the session file (the original's shape —
+   `{"type":"message",…,"message":{"role":"system","content":…,"toolsAdded":[…]}}`) and **emits the
+   `message_start`/`message_end` pair** for it, so it reaches the extension host the way pi's does
+   (pi emits the pair for the messages the loop processes,
+   `packages/agent/src/agent-loop.ts:110-115`).
    **The probe must not use `--no-session` for this to be visible** — the entry is written to the
    session file, and an ephemeral session has no file and therefore no system entry.
 3. **The tool result's error text differs**: the original's is
@@ -570,17 +699,24 @@ with the escape sequences `report-ts.json` records.
 
 # I. The module surface an extension can import
 
-| module | the original | the port | the consequence |
+**The examples load.** The port now re-exports the pieces of pi's package entry that pi's own
+examples use, through a port-side module (`rpi/crates/rpi-js/js/pi-coding-agent.ts`) that the
+virtual map points at, and pi's `config.ts` is substituted in the bundler so it never enters the
+graph (it reads the package directory at import time, which the embedded host cannot do). The
+three examples that used to die — `minimal-mode.ts` (`node:os`), `bash-spawn-hook.ts`
+(`createBashTool`), `modal-editor.ts` (`CustomEditor`) — all load now.
+
+| module | the original | the port | the difference |
 | --- | --- | --- | --- |
-| `@earendil-works/pi-coding-agent` | `packages/coding-agent/src/index.ts` — **154** runtime exports (`CustomEditor`, `createBashTool`, `createReadToolDefinition`, `BorderedLoader`, `DynamicBorder`, `CONFIG_DIR_NAME`, `getAgentDir`, `parseFrontmatter`, `ModelRegistry`, `ExtensionRunner`, `createEventBus`, …) | `extension-host.ts:1` maps it to **`core/extensions/types.ts`** — **10** exports (`defineTool` + 9 type guards) | 144 exports are `undefined`. `scripts/parity/out/extensions-report.md` already shows `built-in-tool-renderer.ts` failing with `TypeError: createReadToolDefinition is not a function` |
-| `@earendil-works/pi-tui` | `packages/tui/src/index.ts` — **92** runtime exports (`Markdown`, `Spacer`, `SettingsList`, `Editor`, `Loader`, `Image`, `OverlayHandle`, `KeybindingsManager`, …) | `js/pi-tui.ts` — **20** | 77 exports are `undefined` |
-| `@earendil-works/pi-ai` | `packages/ai/package.json` publishes `.`, `./models`, `./compat`, `./providers/*`, `./api/*`, `./utils/*`, `./oauth`, `./bedrock-provider`, `./bun-oauth` | `js/pi-ai.ts` exports `Type` only; `./compat`, `./oauth` and `./providers/all` all map to the same stub | a subpath that is not mapped **kills the whole extension**: `extension-host.ts:212` throws `cannot resolve "<spec>" from "<referrer>"`. Observed: `@earendil-works/pi-ai/providers/anthropic` → FAIL, `@earendil-works/pi-ai/utils/tokenizer` → FAIL |
-| `@earendil-works/pi-agent-core` | `packages/agent/src/index.ts` — the agent loop, the agent events, the tool types | `js/pi-agent-core.ts` — `AGENT_RUNTIME_AVAILABLE = false` | an extension that drives its own agent cannot. Parity: `handoff.ts`, `plan-mode/`, `subagent/` |
+| `@earendil-works/pi-coding-agent` | `packages/coding-agent/src/index.ts` — **154** runtime exports | **56** (`defineTool` and the nine type guards, `createBashTool`, `createReadTool`, `createReadToolDefinition`, `createFindToolDefinition`, `createGrepToolDefinition`, `createLsToolDefinition`, `createBashToolDefinition`, `createEditToolDefinition`, `createWriteToolDefinition`, `formatSize`, `CustomEditor`, `BorderedLoader`, `DynamicBorder`, `keyHint`, `getMarkdownTheme`, `getSettingsListTheme`, `CONFIG_DIR_NAME`, `getAgentDir`, `getReadmePath`, `VERSION`, `parseFrontmatter`, `convertToLlm`, `convertToPng`, `copyToClipboard`, `createEventBus`, `generateDiffString`, …) | the re-export is **partial**: 56 of the original's 154. An extension that imports something outside the re-export gets `undefined` — silently, not an error |
+| `@earendil-works/pi-tui` | `packages/tui/src/index.ts` — **92** runtime exports (`Markdown`, `Spacer`, `SettingsList`, `Editor`, `Loader`, `Image`, `OverlayHandle`, `KeybindingsManager`, …) | **17** (`Text`, `Box`, `Container`, `SelectList`, `Key`, the width helpers, `fuzzyFilter`, `parseKey`, `matchesKey`, `isKeyRelease`, `CURSOR_MARKER`, `renderFakeCursor`) | 75 exports are `undefined`. `modal-editor.ts` loads because it only needs `CustomEditor`; an extension that wants `Markdown` or `SettingsList` does not get it |
+| `@earendil-works/pi-ai` | `packages/ai/package.json` publishes `.`, `./models`, `./compat`, `./providers/*`, `./api/*`, `./utils/*`, `./oauth`, `./bedrock-provider`, `./bun-oauth` | **2** (`Type`, `StringEnum` — `StringEnum` is where pi has it, which is what `todo.ts`, `subagent/index.ts` and `tic-tac-toe.ts` import); `./compat`, `./oauth` and `./providers/all` map to the same stub | the provider SDK is not there. An unmapped subpath no longer **kills** the extension — it resolves to an empty module (`extension-host.ts:404`) — so the failure is a missing name rather than a dead extension |
+| `@earendil-works/pi-agent-core` | `packages/agent/src/index.ts` — the agent loop, the agent events, the tool types | **2** (`AGENT_RUNTIME_AVAILABLE`, `default`) | an extension that drives its own agent cannot. Parity: `handoff.ts`, `plan-mode/`, `subagent/` |
 
 **The check:** the probe imports each module and records `Object.keys(module).sort()`; the port
-must answer the original's sets. The parity suite's "loads" column catches the fatal cases.
-
----
+must answer the original's sets. The parity suite's "loads" column catches the fatal cases, and
+it is the one that matters — an extension that imports a name the port does not have loads and
+then fails when it uses the name.
 
 # J. The Node surface
 
@@ -778,6 +914,21 @@ node run-events.mjs rust   # the port     -> events-rust.json: how many?
 `events-ts.json` is the reference: the 23 events, their counts and their payload keys are in
 section B.0. The port must fire the same events with the same payload keys.
 
+**Two harness details that change the answer, and both are easy to get wrong:**
+
+1. **One mock per side.** The parity mock serves its scripted turns in order and clamps to the
+   last one, so a mock shared by both sides hands the second side the scenario's *second* turn.
+   `scripts/parity/run-all.mjs` starts a separate mock per side for this reason; the extension
+   API's event probe did not at first, and the measurement it produced was confounded — the port
+   was served a text turn and answered with text, which looked exactly like a provider that
+   cannot parse a tool call.
+2. **No `--no-session`.** The system entry is written to the session file, so an ephemeral
+   session has no file and therefore no system message — and no `message_end` for it. The event
+   probe and the acceptance suite must not use `--no-session` if they are to see the system
+   message. `scripts/parity/drive.mjs:211` and `:221` currently pass it on **both** sides, so
+   every acceptance row whose panes show the system message differs for the harness's reason and
+   not the port's.
+
 The reference is `report-ts.json` (the original): every `{"ok":true,…}` value there is what the
 port must produce. Every `{"ok":false,"error":"unknown host operation: X"}` in the port's report
 is a remaining gap.
@@ -853,11 +1004,12 @@ The other differences are shape or value, and they are listed in
 | `ctx.getSystemPrompt()` | the prompt, a string | `"[object Object]"` — the port returns an object where the original returns a string |
 | row | the original | the port |
 | --- | --- | --- |
-| `pi.getAllTools()` — the extension's own tool | `{"name":"probe_tool","description":"probe","parameters":{…},"promptGuidelines":["probe guideline"],"exposure":"direct","namespace":{"name":"probe_ns","description":"ns"},"annotations":{"readOnlyHint":true},"sourceInfo":{"path":"…/agent-ts/extensions/probe.ts","source":"auto","scope":"user","origin":"top-level","baseDir":"…/agent-ts"}}` | `{"name":"probe_tool",…,"promptSnippet":null,"promptGuidelines":[],"exposure":"direct","namespace":null,"annotations":null,"sourceInfo":{"path":"","source":"builtin","scope":"user","origin":"top-level"}}` — **the keys are there, the values are lost**: the tool's own `promptGuidelines`, `namespace` and `annotations`, and its `sourceInfo` path and `source`. The port also adds a `promptSnippet` key pi's `ToolInfo` does not have, and its list lacks `powershell`, `codemode` and `tool_search` |
-| `pi.getCommands()` | `probe-cmd`, `llama`, `mcp` — the **extension-registered** commands, with no leading slash | the TUI's own slash commands (`/help`, `/clear`, …) **with** a leading slash, the extension's command **twice** (`/probe-cmd` and `probe-cmd`), and pi's extension-registered `llama` and `mcp` missing |
-| `pi.getSettings()` | the **file's** content — `{"threeDEmptySession":true,"lastChangelogVersion":"1.3.0"}` | the **effective** set — `transport`, `sessionShareDestination`, `steeringMode`, `followUpMode`, `compaction`, … |
-| `ui.getAllThemes()` | `[{name:"system"},{name:"dark",path:"…/dark.json"},{name:"light",path:"…/light.json"}]` | `[{name:"dark",path:null},{name:"light",path:null},{name:"monochrome",path:null}]` — no `system`, an extra `monochrome`, and null paths |
-| `ui.getTheme("dark")` | the theme instance — `name`, `mode`, `fgAnsi`, `bgAnsi`, `concreteColors`, … | `{"name":"dark","path":null}` — a name and a null path, not a theme |
+| `pi.getAllTools()` — the extension's own tool | `{"name":"probe_tool",…,"promptGuidelines":["probe guideline"],"exposure":"direct","namespace":{"name":"probe_ns","description":"ns"},"annotations":{"readOnlyHint":true},"sourceInfo":{"path":"…/extensions/probe.ts","source":"auto","scope":"user","origin":"top-level","baseDir":"…/extensions"}}` | the same, **without** `baseDir` — the tool's own metadata is carried through now |
+| `pi.getAllTools()` — the list | `read bash powershell edit write grep find ls probe_tool codemode tool_search` | `read bash edit write grep find ls probe_tool` — no `powershell` (the tool set's), and no `codemode` and no `tool_search`, which are pi's **built-in extensions**: the port ships none of pi's four (`codemode`, `tool_search`, `llama`, `mcp`), so its two lists cannot match until it does. **That is a scope decision, not a port defect** — and inventing two command names to make the list match would be worse than a missing one, because the user types it |
+| `pi.getCommands()` | `probe-cmd`, `llama`, `mcp` — the **extension-registered** commands, with no leading slash | `probe-cmd` — one registry, one entry, the bare name ✓. pi's two **built-in extension** commands (`llama`, `mcp`) are missing: the port ships no built-in extensions, so its list cannot contain them |
+| `pi.getSettings()` | the **file's** content — `{"threeDEmptySession":true,"lastChangelogVersion":"1.3.0"}` | **the same two keys** — the file's content ✓ (only the key order differs) |
+| `ui.getAllThemes()` | `[{name:"system"},{name:"dark",path:"…/dark.json"},{name:"light",path:"…/light.json"}]` | `[{name:"system"},{name:"dark"},{name:"light"}]` — the names match and the `path` key is **absent** where there is no file, which is the original's shape (`{ name: string; path: string \| undefined }`, `types.ts:287`). The port's themes are built in, so there is no file to point at |
+| `ui.getTheme("dark")` | the theme instance — `name`, `mode`, `fgAnsi` (a private `Map`, so it serialises to `{}`), `bgAnsi`, `concreteColors`, … | **the same shape** — `name`, `mode`, `fgAnsi`, `bgAnsi`, `concreteColors`. Only the serialised `fgAnsi` differs: the original's is a private `Map` (`theme.ts:230`) and a `Map` serialises to `{}`, the port's is a plain object and serialises to the entries |
 | `ctx.getSystemPrompt()` | pi's prompt | the port's own — **the language area's**, the shape is right |
 
 (`ctx.model` and `pi.getMcpServers()` are the two harness artefacts: the two runs use different

@@ -356,7 +356,10 @@ where
                     event = rx.recv() => event,
                 };
                 match received {
-                    Ok(event) => write_line(&out, &agent_event_json(&event)).await,
+                    Ok(event) => {
+                        write_line(&out, &agent_event_json(&event)).await;
+                        crate::turn_timing::observe_event(&event);
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
@@ -516,6 +519,7 @@ where
                 if let Some(task) = run_task.take() {
                     let _ = task.await;
                 }
+                crate::turn_timing::submit();
                 run_cancel = tokio_util::sync::CancellationToken::new();
                 let cancel_task = run_cancel.clone();
                 let content = msg
@@ -654,7 +658,10 @@ async fn drain_rpc_events(
 ) {
     loop {
         match events.try_recv() {
-            Ok(event) => write_line(out, &agent_event_json(&event)).await,
+            Ok(event) => {
+                write_line(out, &agent_event_json(&event)).await;
+                crate::turn_timing::observe_event(&event);
+            }
             Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
             Err(_) => break,
         }
@@ -1563,6 +1570,7 @@ mod tests {
             duration_ms: None,
             tool_call_id: "call-1".into(),
             tool_name: "read".into(),
+            args: serde_json::json!({"path": "a.txt"}),
             result: AgentToolResult::text("hello"),
             is_error: false,
         });

@@ -8,3 +8,4 @@
 
 export { Type } from "typebox";
 export type { Static, TSchema } from "typebox";
+export { StringEnum } from "../../../../packages/ai/src/utils/typebox-helpers.ts";

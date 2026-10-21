@@ -808,7 +808,7 @@ pub fn play_easter_egg_3d(tui: &Arc<dyn crate::tui::TUI>, egg: EasterEgg3d) -> b
         return true;
     }
     let component = Arc::new(EasterEgg3dComponent::new(screen, egg, Instant::now()));
-    tui.show_overlay(
+    let overlay = tui.show_overlay(
         component.clone(),
         Some(crate::tui::OverlayOptions {
             width: Some(crate::tui::SizeValue::Percent(100.0)),
@@ -818,15 +818,28 @@ pub fn play_easter_egg_3d(tui: &Arc<dyn crate::tui::TUI>, egg: EasterEgg3d) -> b
         }),
     );
     let tui = tui.clone();
-    let handle = component.clone();
+    run_animation(tui, component, overlay);
+    true
+}
+
+/// Drive the animation: ask for a frame while it runs, then hide the overlay.
+///
+/// The render request is coalesced, like the original's animation: a forced
+/// one would repaint the whole screen on every tick and drown the terminal in
+/// output until the animation ends.
+fn run_animation(
+    tui: Arc<dyn crate::tui::TUI>,
+    component: Arc<EasterEgg3dComponent>,
+    overlay: Arc<dyn crate::tui::OverlayHandle>,
+) {
     std::thread::spawn(move || {
-        while !handle.is_finished() {
-            tui.request_render(true);
+        while !component.is_finished() {
+            tui.request_render(false);
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        tui.hide_overlay();
+        // Hide this overlay, not whatever is on top of it now.
+        overlay.hide();
     });
-    true
 }
 
 /// Plays the 3D pi logo, lifting off the header logo whose top-left cell is
@@ -1413,6 +1426,127 @@ mod tests {
         fn alt_screen_lines(&self) -> Option<Vec<String>> {
             self.screen.clone()
         }
+    }
+
+    #[test]
+    fn the_animation_ends_by_hiding_its_overlay() {
+        use crate::tui::{OverlayHandle, TUI};
+        // A TUI that hands out the overlay and records the hide.
+        struct Recorder {
+            hidden: std::sync::atomic::AtomicBool,
+        }
+        impl OverlayHandle for Recorder {
+            fn hide(&self) {
+                self.hidden.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            fn set_hidden(&self, _hidden: bool) {}
+            fn is_hidden(&self) -> bool {
+                false
+            }
+            fn focus(&self) {}
+            fn unfocus(&self) {}
+            fn is_focused(&self) -> bool {
+                false
+            }
+            fn get_bounds(&self) -> Option<crate::tui::OverlayBounds> {
+                None
+            }
+        }
+        struct Tui {
+            recorder: Arc<Recorder>,
+            renders: std::sync::atomic::AtomicUsize,
+        }
+        impl Component for Tui {
+            fn render(&self, _width: usize) -> Vec<String> {
+                Vec::new()
+            }
+            fn invalidate(&self) {}
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+        impl TUI for Tui {
+            fn mode(&self) -> crate::tui::TuiMode {
+                crate::tui::TuiMode::Fullscreen
+            }
+            fn terminal(&self) -> &dyn crate::terminal::Terminal {
+                unimplemented!()
+            }
+            fn children(&self) -> Vec<Arc<dyn Component>> {
+                Vec::new()
+            }
+            fn add_child(&self, _component: Arc<dyn Component>) {}
+            fn remove_child(&self, _component: &Arc<dyn Component>) {}
+            fn clear(&self) {}
+            fn get_show_hardware_cursor(&self) -> bool {
+                false
+            }
+            fn set_show_hardware_cursor(&self, _enabled: bool) {}
+            fn get_clear_on_shrink(&self) -> bool {
+                false
+            }
+            fn set_clear_on_shrink(&self, _enabled: bool) {}
+            fn set_focus(&self, _component: Option<Arc<dyn Component>>) {}
+            fn get_focus(&self) -> Option<Arc<dyn Component>> {
+                None
+            }
+            fn show_overlay(
+                &self,
+                _component: Arc<dyn Component>,
+                _options: Option<crate::tui::OverlayOptions>,
+            ) -> Arc<dyn OverlayHandle> {
+                self.recorder.clone()
+            }
+            fn hide_overlay(&self) {}
+            fn has_overlay(&self) -> bool {
+                false
+            }
+            fn start(&self) {}
+            fn stop(&self, _options: crate::tui::TuiStopOptions) {}
+            fn render_now(&self, _force: bool) {}
+            fn request_render(&self, _force: bool) {
+                self.renders
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            fn full_redraws(&self) -> usize {
+                0
+            }
+            fn alt_screen_lines(&self) -> Option<Vec<String>> {
+                Some(screen())
+            }
+        }
+
+        let recorder = Arc::new(Recorder {
+            hidden: std::sync::atomic::AtomicBool::new(false),
+        });
+        let tui = Arc::new(Tui {
+            recorder: recorder.clone(),
+            renders: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let as_tui: Arc<dyn TUI> = tui.clone();
+        // A component that is almost at the end of its timeline: the animation
+        // runs a couple of frames and then hands the overlay back.
+        let component = Arc::new(EasterEgg3dComponent::new(
+            screen(),
+            EasterEgg3d::Armin,
+            Instant::now() - std::time::Duration::from_millis((TOTAL_DURATION * 1000.0) as u64 - 120),
+        ));
+        let overlay = as_tui.show_overlay(component.clone(), None);
+        run_animation(as_tui.clone(), component, overlay);
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        while !recorder.hidden.load(std::sync::atomic::Ordering::Relaxed)
+            && Instant::now() < deadline
+        {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            recorder.hidden.load(std::sync::atomic::Ordering::Relaxed),
+            "the animation must hide its overlay when it ends"
+        );
+        assert!(
+            tui.renders.load(std::sync::atomic::Ordering::Relaxed) > 0,
+            "the animation asks for frames while it runs"
+        );
     }
 
     #[test]

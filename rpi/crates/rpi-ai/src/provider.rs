@@ -5,8 +5,9 @@
 
 use crate::event_stream::AssistantMessageEventStream;
 use crate::model::Model;
-use crate::types::{AssistantMessage, Context, DeferredHandle, ThinkingBudgets, ThinkingLevel};
+use crate::types::{Context, DeferredHandle, Message, ThinkingBudgets, ThinkingLevel, Tool};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
@@ -67,6 +68,10 @@ pub struct SimpleStreamOptions {
     /// Per-level reasoning token budgets for budget-based thinking models.
     /// Faux ignores this; anthropic uses it in `adjust_max_tokens_for_thinking`.
     pub thinking_budgets: Option<ThinkingBudgets>,
+    /// The host's per-call hooks. The provider hands them the HTTP response
+    /// and every parsed stream event, so the host can publish the provider
+    /// events pi publishes.
+    pub hooks: Option<ProviderHooksHandle>,
 }
 
 impl Default for SimpleStreamOptions {
@@ -85,6 +90,7 @@ impl Default for SimpleStreamOptions {
             max_tokens: None,
             temperature: None,
             thinking_budgets: None,
+            hooks: None,
         }
     }
 }
@@ -237,6 +243,16 @@ pub trait DeferredProvider: Send + Sync {
 /// "hooks must not throw" contract from pi and the harness's other hooks
 /// (`before_tool_call` etc.).
 pub trait ProviderHooks: Send + Sync {
+    /// Fired when the provider received the HTTP response, before the response
+    /// stream is consumed. `status` is the HTTP status code and `headers` the
+    /// response headers, lower-cased by the provider.
+    fn on_response(&self, _model: &Model, _status: u16, _headers: &BTreeMap<String, String>) {}
+
+    /// Fired for every parsed provider stream event, before the provider
+    /// normalizes it into an `AssistantMessageEvent`. `data` is the provider's
+    /// own parsed event.
+    fn on_stream_event(&self, _model: &Model, _data: &serde_json::Value) {}
+
     /// Fired before each `stream_simple` call, with a snapshot of the model +
     /// context + opts the harness is about to pass. Return a patch that the
     /// harness applies to a clone of `ctx` before calling the provider; return
@@ -261,8 +277,8 @@ pub trait ProviderHooks: Send + Sync {
 
     /// Fired before each `stream_simple` call, with a snapshot of the model +
     /// context + opts the harness is about to pass. Return a patch that the
-    /// harness applies to a clone of `opts` before calling the provider; return
-    /// `None` to leave `opts` untouched.
+    /// harness applies to the request before calling the provider; return
+    /// `None` to leave the request untouched.
     ///
     /// The hook receives a reference to the planned `opts`, not ownership — it
     /// must not retain the borrow (the closure clones before `await`). Runs on
@@ -272,15 +288,52 @@ pub trait ProviderHooks: Send + Sync {
         _model: &Model,
         _ctx: &Context,
         _opts: &SimpleStreamOptions,
-    ) -> Option<SimpleStreamOptionsPatch> {
+    ) -> Option<RequestPatch> {
         None
     }
+}
 
-    /// Fired after the stream resolves with the terminal assistant message.
-    /// `message` is the final `AssistantMessage` the provider produced (the same
-    /// one the loop emits as `MessageEnd`). `None` lets the default no-op impl
-    /// apply. Runs on the blocking-bridge thread.
-    fn after_response(&self, _model: &Model, _message: &AssistantMessage) {}
+/// The host's hooks, carried to the provider in [`SimpleStreamOptions::hooks`].
+#[derive(Clone)]
+pub struct ProviderHooksHandle(Arc<dyn ProviderHooks>);
+
+impl ProviderHooksHandle {
+    pub fn new(hooks: Arc<dyn ProviderHooks>) -> Self {
+        Self(hooks)
+    }
+
+    pub fn hooks(&self) -> &Arc<dyn ProviderHooks> {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for ProviderHooksHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ProviderHooksHandle")
+    }
+}
+
+/// A patch against the whole provider request: the model-facing context and
+/// the per-call options.
+#[derive(Debug, Clone, Default)]
+pub struct RequestPatch {
+    pub context: ContextPatch,
+    pub messages: Option<Vec<Message>>,
+    pub tools: Option<Vec<Tool>>,
+    pub options: SimpleStreamOptionsPatch,
+}
+
+impl RequestPatch {
+    pub fn apply(&self, ctx: &mut Context, opts: &mut SimpleStreamOptions) {
+        self.context.apply(ctx);
+        if let Some(messages) = &self.messages {
+            ctx.messages = messages.clone();
+        }
+        if let Some(tools) = &self.tools {
+            ctx.tools = tools.clone();
+        }
+        self.options.apply(opts);
+    }
 }
 
 /// A no-op default so the harness can install a `ProviderHooks` slot cheaply

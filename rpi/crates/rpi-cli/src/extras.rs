@@ -33,14 +33,33 @@ pub fn mark_setup_done() -> std::io::Result<()> {
 
 /// Whether the theme picker still has to run.
 ///
-/// The original shows it on a fresh install only: an agent directory that
-/// already holds a settings file is an existing profile, so the picker would
-/// interrupt a returning user.
+/// The original runs the setup on a fresh official install only: the
+/// experimental flag is on, the default agent directory is used and no
+/// settings file exists (`packages/coding-agent/src/cli/first-time-setup.ts:37-53`).
+/// Without those conditions the picker interrupts every run that overrides
+/// the agent directory, and it swallows the first prompt of the session —
+/// the picker owns the input slot while it is up.
 pub fn first_run_pending() -> bool {
+    if std::env::var_os(config::CONFIG_DIR_ENV).is_some() {
+        return false;
+    }
+    if !experimental_enabled() {
+        return false;
+    }
     !setup_done()
         && !config::settings_path()
             .map(|path| path.exists())
             .unwrap_or(false)
+}
+
+/// Whether the experimental flag is on.
+///
+/// The original reads `PI_EXPERIMENTAL`; the port also accepts its own
+/// `RPI_EXPERIMENTAL` (`rpi-cli/src/experimental.rs`).
+fn experimental_enabled() -> bool {
+    ["PI_EXPERIMENTAL", "RPI_EXPERIMENTAL"]
+        .iter()
+        .any(|name| std::env::var(name).map(|value| value == "1").unwrap_or(false))
 }
 
 /// The themes the picker offers, in the order the original lists them.

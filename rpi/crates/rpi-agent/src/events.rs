@@ -82,12 +82,46 @@ pub enum AgentEvent {
     ToolExecutionEnd {
         tool_call_id: String,
         tool_name: String,
+        /// The arguments the tool was called with.
+        args: serde_json::Value,
         result: AgentToolResult,
         is_error: bool,
         /// Milliseconds `execute` took, measured with a monotonic clock. Absent
         /// when the tool did not run.
         duration_ms: Option<u64>,
     },
+    /// Emitted before a run starts, with the prompt that starts it. Mirrors
+    /// pi's `before_agent_start`: the original fires it while it prepares the
+    /// run, before the agent loop starts.
+    BeforeAgentStart {
+        /// The prompt that starts the run.
+        prompt: AgentMessage,
+        /// The system prompt the run starts with.
+        system_prompt: String,
+    },
+    /// Emitted after the run's automatic work is done and before it settles.
+    /// Mirrors pi's `agent_before_settle`.
+    AgentBeforeSettle { outcome: AgentActivityOutcome },
+    /// Emitted when the run has fully settled. Mirrors pi's `agent_settled`.
+    AgentSettled { aborted: bool },
+}
+
+/// How a run ended. Mirrors pi's `AgentActivityOutcome`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentActivityOutcome {
+    Completed,
+    Aborted,
+    Error,
+}
+
+impl AgentActivityOutcome {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AgentActivityOutcome::Completed => "completed",
+            AgentActivityOutcome::Aborted => "aborted",
+            AgentActivityOutcome::Error => "error",
+        }
+    }
 }
 
 impl AgentEvent {
@@ -104,6 +138,9 @@ impl AgentEvent {
             AgentEvent::ToolExecutionStart { .. } => "tool_execution_start",
             AgentEvent::ToolExecutionUpdate { .. } => "tool_execution_update",
             AgentEvent::ToolExecutionEnd { .. } => "tool_execution_end",
+            AgentEvent::BeforeAgentStart { .. } => "before_agent_start",
+            AgentEvent::AgentBeforeSettle { .. } => "agent_before_settle",
+            AgentEvent::AgentSettled { .. } => "agent_settled",
         }
     }
 

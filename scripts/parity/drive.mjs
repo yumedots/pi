@@ -20,7 +20,10 @@ export const AGENT_DIR = join(PARITY_HOME, "agent");
 export const SCENARIOS = {
 	startup: [
 		{ name: "booted", settle: 4000, virtualTime: 0 },
-		{ name: "input focused", keys: ["hello world"], settle: 600, virtualTime: 2000 },
+		// The typed text has to show up in the input box: that is the proof
+		// that the input is live. A keystroke that arrives before the editor
+		// is ready is lost, and the pane would keep the empty input box.
+		{ name: "input focused", keys: ["hello world"], settle: 600, virtualTime: 2000, expect: /hello world/ },
 	],
 	panels: [
 		{ name: "booted", settle: 4000, virtualTime: 0 },
@@ -31,20 +34,20 @@ export const SCENARIOS = {
 	],
 	prompt: [
 		{ name: "booted", settle: 4000, virtualTime: 0 },
-		{ name: "answer", keys: ["hello world", "Enter"], settle: 4000, virtualTime: 2000 },
+		{ name: "answer", keys: ["hello world", "Enter"], settle: 4000, virtualTime: 2000, expect: /Hello from the parity mock\./ },
 	],
 	tool: [
 		{ name: "booted", settle: 4000, virtualTime: 0 },
 		{ name: "tool call", keys: ["read the fixture", "Enter"], settle: 4000, virtualTime: 2000 },
-		{ name: "answer", settle: 4000, virtualTime: 8000 },
+		{ name: "answer", settle: 4000, virtualTime: 8000, expect: /The fixture file says hello\./ },
 	],
 	thinking: [
 		{ name: "booted", settle: 4000, virtualTime: 0 },
-		{ name: "answer", keys: ["hello world", "Enter"], settle: 4000, virtualTime: 2000 },
+		{ name: "answer", keys: ["hello world", "Enter"], settle: 4000, virtualTime: 2000, expect: /Hello from the parity mock\./ },
 	],
 	markdown: [
 		{ name: "booted", settle: 4000, virtualTime: 0 },
-		{ name: "answer", keys: ["show me markdown", "Enter"], settle: 4000, virtualTime: 2000 },
+		{ name: "answer", keys: ["show me markdown", "Enter"], settle: 4000, virtualTime: 2000, expect: /E = mc²/ },
 	],
 	// The extension suite types once per extension, and a keystroke that
 	// arrives before the editor is ready is lost: the run never happens and
@@ -52,7 +55,7 @@ export const SCENARIOS = {
 	// the port to be up and taking keys.
 	extension: [
 		{ name: "booted", settle: 7000, virtualTime: 0 },
-		{ name: "answer", keys: ["hello world", "Enter"], settle: 4000, virtualTime: 2000 },
+		{ name: "answer", keys: ["hello world", "Enter"], settle: 4000, virtualTime: 2000, expect: /Hello from the parity mock\./ },
 	],
 };
 
@@ -106,6 +109,10 @@ export const MOCKS = {
 				text: "Hello from the parity mock.",
 			},
 		],
+	},
+	// The extension suite's scenario: one prompt, one answer.
+	extension: {
+		turns: [{ type: "text", text: "Hello from the parity mock." }],
 	},
 };
 

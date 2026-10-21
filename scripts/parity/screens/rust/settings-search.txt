@@ -23,8 +23,7 @@
 
 
 
-
-
+────────────────────────────────────────────────────────────────────────────────────────────────────
 > theme
 
 → Theme                             dark
@@ -33,4 +32,5 @@
   Color theme for the interface
 
   Type to search · Enter/Space to change · Esc to cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────
 mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                  /private/tmp/pi-screens/work/settings-search

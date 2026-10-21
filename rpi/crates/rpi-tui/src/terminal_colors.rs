@@ -358,9 +358,12 @@ impl TerminalColorQuery {
 ///
 /// The terminal answers a color query with escape sequences that arrive in
 /// arbitrary chunks, so incomplete sequences are kept until they are complete.
+/// The bytes that are not part of a sequence are the user's input: they are
+/// kept aside instead of being dropped.
 #[derive(Debug, Default)]
 pub struct ReplySplitter {
     pending: Vec<u8>,
+    plain: Vec<u8>,
 }
 
 impl ReplySplitter {
@@ -376,10 +379,26 @@ impl ReplySplitter {
         sequences
     }
 
+    /// The bytes that were not part of an escape sequence.
+    ///
+    /// They are the user's keystrokes: the query read them while it waited
+    /// for the terminal's reply.
+    pub fn take_plain(&mut self) -> Vec<u8> {
+        let mut plain = std::mem::take(&mut self.plain);
+        // The pending bytes are an incomplete escape sequence or plain input
+        // that no sequence started. The plain ones are the user's.
+        if !self.pending.is_empty() && !self.pending.contains(&0x1b) {
+            plain.extend_from_slice(&self.pending);
+            self.pending.clear();
+        }
+        plain
+    }
+
     fn take_sequence(&mut self) -> Option<String> {
         let start = self.pending.iter().position(|&byte| byte == 0x1b)?;
         if start > 0 {
-            self.pending.drain(..start);
+            let plain: Vec<u8> = self.pending.drain(..start).collect();
+            self.plain.extend_from_slice(&plain);
         }
         let second = *self.pending.get(1)?;
         match second {
@@ -424,23 +443,92 @@ pub const TERMINAL_COLOR_QUERY_TIMEOUT: std::time::Duration = std::time::Duratio
 /// The terminal must be in raw mode: the replies only arrive then. The query
 /// runs once per process: a second query would answer into the input stream
 /// of the running TUI.
+///
+/// The query reads the reply straight from the terminal, so it must not run
+/// while the user has already typed: those keystrokes belong to the editor.
+/// The original splits the reply out of the input stream instead of eating it
+/// (`packages/tui/src/tui.ts:1237`), and the port's reader only starts with
+/// the TUI — a query that ran first would swallow the first keystrokes of
+/// the session, which is what the user reported on the startup screen.
 pub fn request_terminal_colors(
     terminal: &dyn crate::terminal::Terminal,
     timeout: std::time::Duration,
 ) -> TerminalColors {
+    request_terminal_colors_preserving(terminal, timeout).0
+}
+
+/// Ask the terminal for its colors and hand back the input the query read.
+///
+/// The query reads the reply straight from the terminal, so the bytes that are
+/// not part of a reply are the user's keystrokes: they are returned instead of
+/// being eaten, and the caller replays them into the input stream.
+pub fn request_terminal_colors_preserving(
+    terminal: &dyn crate::terminal::Terminal,
+    timeout: std::time::Duration,
+) -> (TerminalColors, Vec<u8>) {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     static QUERIED: AtomicBool = AtomicBool::new(false);
 
     if QUERIED.swap(true, Ordering::AcqRel) {
-        return TerminalColors::default();
+        return (TerminalColors::default(), Vec::new());
     }
     if !crossterm::terminal::is_raw_mode_enabled().unwrap_or(false) || !can_read_replies() {
-        return TerminalColors::default();
+        return (TerminalColors::default(), Vec::new());
+    }
+    if has_pending_input() {
+        return (TerminalColors::default(), Vec::new());
     }
     terminal.write(&query_terminal_colors());
     terminal.flush();
-    read_terminal_colors(timeout)
+    read_terminal_colors_preserving(timeout)
+}
+
+/// The key events the preserved bytes stand for.
+///
+/// The colour query reads the terminal's input, so the bytes that are not
+/// part of a reply are the user's keystrokes. They are turned back into the
+/// key events they are, so the input the query read still reaches the
+/// editor: the original keeps the input stream whole (`packages/tui/src/tui.ts:1237`).
+pub fn bytes_to_key_events(bytes: &[u8]) -> Vec<crossterm::event::Event> {
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    let mut events = Vec::new();
+    for &byte in bytes {
+        let key = match byte {
+            b'\r' => KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            // The terminal sends a line feed for the Enter key; crossterm
+            // reports it as Ctrl+J, which the editor maps to Enter.
+            b'\n' => KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL),
+            b'\t' => KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+            0x7f => KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+            0x1b => KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            0x20..=0x7e => KeyEvent::new(KeyCode::Char(byte as char), KeyModifiers::NONE),
+            _ => continue,
+        };
+        events.push(Event::Key(key));
+    }
+    events
+}
+
+/// Whether the terminal already has input waiting.
+///
+/// The keystrokes typed before the TUI is ready are the user's first input;
+/// they must reach the editor, not the colour query.
+#[cfg(unix)]
+fn has_pending_input() -> bool {
+    let mut fds = [libc::pollfd {
+        fd: libc::STDIN_FILENO,
+        events: libc::POLLIN,
+        revents: 0,
+    }];
+    // SAFETY: fds points to one initialized pollfd for the call.
+    unsafe { libc::poll(fds.as_mut_ptr(), 1, 0) > 0 }
+}
+
+/// Whether the terminal already has input waiting.
+#[cfg(not(unix))]
+fn has_pending_input() -> bool {
+    false
 }
 
 /// Whether the replies can be read from the terminal.
@@ -460,15 +548,21 @@ fn can_read_replies() -> bool {
 ///
 /// The query must have been written to the terminal before. The read stops
 /// when the DA1 reply arrives, when every color replied, or when the timeout
-/// expires. Everything the terminal sends in the meantime is consumed, so a
-/// keystroke typed while the query runs does not reach the application.
+/// expires. The bytes that are not part of a reply are the user's
+/// keystrokes: they are returned with the colors instead of being eaten.
 #[cfg(unix)]
 pub fn read_terminal_colors(timeout: std::time::Duration) -> TerminalColors {
+    read_terminal_colors_preserving(timeout).0
+}
+
+/// Read the terminal's color replies and the input the query read.
+#[cfg(unix)]
+pub fn read_terminal_colors_preserving(timeout: std::time::Duration) -> (TerminalColors, Vec<u8>) {
     use std::io::IsTerminal;
     use std::time::Instant;
 
     if !std::io::stdin().is_terminal() {
-        return TerminalColors::default();
+        return (TerminalColors::default(), Vec::new());
     }
     let mut query = TerminalColorQuery::new();
     let mut splitter = ReplySplitter::default();
@@ -492,13 +586,21 @@ pub fn read_terminal_colors(timeout: std::time::Duration) -> TerminalColors {
             query.consume(&sequence);
         }
     }
-    query.result()
+    (query.result(), splitter.take_plain())
 }
 
 /// Read the terminal's color replies.
 #[cfg(not(unix))]
 pub fn read_terminal_colors(_timeout: std::time::Duration) -> TerminalColors {
     TerminalColors::default()
+}
+
+/// Read the terminal's color replies and the input the query read.
+#[cfg(not(unix))]
+pub fn read_terminal_colors_preserving(
+    _timeout: std::time::Duration,
+) -> (TerminalColors, Vec<u8>) {
+    (TerminalColors::default(), Vec::new())
 }
 
 /// Wait until the terminal sent something.
@@ -633,5 +735,58 @@ mod tests {
         assert_eq!(sequences[0], "\x1b]10;rgb:cccc/cccc/cccc\x07");
         assert_eq!(sequences[1], "\x1b[?1;2c");
         assert!(is_device_attributes_response(&sequences[1]));
+    }
+
+    #[test]
+    fn the_splitter_keeps_the_input_that_is_not_a_reply() {
+        // The user types while the query waits for the terminal's reply.
+        let mut splitter = ReplySplitter::default();
+        let sequences = splitter.push(b"hi\x1b]10;rgb:cccc/cccc/cccc\x07");
+        assert_eq!(sequences.len(), 1);
+        assert_eq!(splitter.take_plain(), b"hi".to_vec());
+    }
+
+    #[test]
+    fn the_splitter_keeps_the_input_that_arrives_after_the_reply() {
+        let mut splitter = ReplySplitter::default();
+        let sequences = splitter.push(b"\x1b[?1;2c");
+        assert_eq!(sequences.len(), 1);
+        splitter.push(b"x");
+        assert_eq!(splitter.take_plain(), b"x".to_vec());
+    }
+
+    #[test]
+    fn the_kept_input_becomes_the_key_events_it_is() {
+        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+        let events = bytes_to_key_events(b"hi\r\x7f\t\n");
+        let codes: Vec<KeyCode> = events
+            .iter()
+            .map(|event| match event {
+                Event::Key(key) => key.code,
+                other => panic!("expected a key event, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            codes,
+            vec![
+                KeyCode::Char('h'),
+                KeyCode::Char('i'),
+                KeyCode::Enter,
+                KeyCode::Backspace,
+                KeyCode::Tab,
+                KeyCode::Char('j'),
+            ]
+        );
+        // A line feed is the Enter the terminal sends: crossterm reports it
+        // as Ctrl+J, which the editor maps to Enter.
+        let last = events.last().expect("an event");
+        match last {
+            Event::Key(key) => assert_eq!(key.modifiers, KeyModifiers::CONTROL),
+            other => panic!("expected a key event, got {other:?}"),
+        }
+        assert!(matches!(
+            bytes_to_key_events(&[0x00]).first(),
+            None
+        ));
     }
 }

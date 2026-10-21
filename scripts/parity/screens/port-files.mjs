@@ -7,6 +7,10 @@
 export const PORT_FILES = {
 	startup: "rpi-cli/src/interactive_tui/rendering.rs (add_welcome_message), rpi-tui/src/editor.rs (render_card), rpi-tui/src/footer.rs",
 	"startup-3d": "rpi-tui/src/empty_session.rs (EmptySessionScreen), rpi-tui/src/logo3d.rs (Logo3d)",
+	"startup-3d-autocomplete":
+		"rpi-cli/src/interactive_tui.rs (empty_session_input_block), rpi-cli/src/interactive_tui/autocomplete.rs (render_autocomplete), rpi-tui/src/empty_session.rs (Centered)",
+	"startup-3d-autocomplete-enter":
+		"rpi-cli/src/interactive_tui/autocomplete.rs (accept_highlighted_suggestion), rpi-cli/src/interactive_tui.rs (the Enter handler)",
 	"first-run": "rpi-tui/src/first_run.rs (FirstRunDialog)",
 	"trust-prompt":
 		"not implemented - rpi-cli/src/config.rs (the port does not gate project resources behind trust, so there is no prompt)",
@@ -58,7 +62,8 @@ export const PORT_FILES = {
 	"transcript-error": "rpi-cli/src/interactive_tui/rendering.rs (add_error_message)",
 	"input-empty": "rpi-tui/src/editor.rs (Editor::render, render_card)",
 	"input-text": "rpi-tui/src/editor.rs (Editor::render, render_card)",
-	"input-autocomplete": "rpi-cli/src/interactive_tui/autocomplete.rs (render_autocomplete), rpi-tui/src/autocomplete.rs",
+	"input-autocomplete":
+		"rpi-cli/src/interactive_tui/autocomplete.rs (render_autocomplete), rpi-tui/src/autocomplete.rs; the port lists 29 commands against the original's 31 - the original's built-in extensions add /llama and /mcp. Deliberate divergence (command surface port): the port has no llama.cpp router and no MCP management, so the two commands would be empty stubs; landing them is a feature task",
 	"input-history": "rpi-tui/src/editor.rs (EditorState.history, Editor::handle_key)",
 	"overlay-animation":
 		"rpi-tui/src/overlay.rs (OverlayManager); rpi-cli/src/js_extensions.rs (ui.custom installs an editor component, not a real overlay)",

@@ -5,7 +5,7 @@ use crate::event_stream::{
     AssistantMessageEventStreamProducer,
 };
 use crate::model::{Model, StreamingProtocolCompat};
-use crate::provider::{Provider, SimpleStreamOptions};
+use crate::provider::{CacheRetention, Provider, SimpleStreamOptions};
 use crate::providers::anthropic::cost::calculate_cost;
 use crate::providers::anthropic::json_parse::parse_streaming_json;
 use crate::providers::anthropic::retry::retry_provider_request;
@@ -999,6 +999,41 @@ fn supports_openai_grammar_tools(model: &Model) -> bool {
     )
 }
 
+/// The Responses-API compat blob of a model, if it has one.
+fn responses_compat(model: &Model) -> Option<&crate::model::OpenaiResponsesCompat> {
+    match model.compat.as_ref() {
+        Some(StreamingProtocolCompat::OpenaiResponses(compat)) => Some(compat),
+        _ => None,
+    }
+}
+
+/// Whether the endpoint keeps a long-lived prompt cache. Mirrors TS
+/// `packages/ai/src/api/openai-responses.ts:89` (default true).
+fn supports_long_cache_retention(model: &Model) -> bool {
+    responses_compat(model)
+        .and_then(|compat| compat.supports_long_cache_retention)
+        .unwrap_or(true)
+}
+
+/// Whether the endpoint takes the explicit `prompt_cache_options` block.
+/// Mirrors TS `packages/ai/src/api/openai-responses.ts:94` (default false).
+fn supports_explicit_prompt_cache_mode(model: &Model) -> bool {
+    responses_compat(model)
+        .and_then(|compat| compat.supports_explicit_prompt_cache_mode)
+        .unwrap_or(false)
+}
+
+/// pi's `prompt_cache_key` clamp: at most 64 code points. Mirrors TS
+/// `packages/ai/src/api/openai-prompt-cache.ts:1-8`.
+fn clamp_prompt_cache_key(key: Option<&str>) -> Option<String> {
+    let key = key?;
+    let chars: Vec<char> = key.chars().collect();
+    if chars.len() <= 64 {
+        return Some(key.to_string());
+    }
+    Some(chars.into_iter().take(64).collect())
+}
+
 fn grammar_tool_properties(model: &Model, tools: &[Tool]) -> HashMap<String, String> {
     if !supports_openai_grammar_tools(model) {
         return HashMap::new();
@@ -1184,6 +1219,17 @@ async fn run_stream(
             return;
         }
     };
+    if let Some(hooks) = opts.hooks.as_ref() {
+        let status = response.status().as_u16();
+        let mut response_headers = std::collections::BTreeMap::new();
+        for (name, value) in response.headers() {
+            response_headers.insert(
+                name.to_string(),
+                value.to_str().unwrap_or_default().to_string(),
+            );
+        }
+        hooks.hooks().on_response(model, status, &response_headers);
+    }
     let mut events = SseEventStream::new(response, opts.signal.clone());
     let mut state =
         ResponsesStreamState::with_tools(&ctx.tools, supports_openai_grammar_tools(model));
@@ -1228,6 +1274,9 @@ async fn run_stream(
                     // A few gateways replay an SSE frame after reconnecting.
                     // Sequence numbers make those duplicates harmless.
                     continue;
+                }
+                if let Some(hooks) = opts.hooks.as_ref() {
+                    hooks.hooks().on_stream_event(model, &value);
                 }
                 // Some Responses-compatible gateways omit the SSE `event:`
                 // field and put the discriminator only in the JSON payload.
@@ -1733,6 +1782,27 @@ fn build_request(model: &Model, ctx: &Context, opts: &SimpleStreamOptions) -> Va
     if let Some(s) = &ctx.system_prompt {
         body["instructions"] = Value::String(s.clone());
     }
+    // The prompt-cache marker. Mirrors TS
+    // `packages/ai/src/api/openai-responses.ts:356-366`: the Responses API has
+    // no per-block marker, only these three top-level fields.
+    if opts.cache_retention != CacheRetention::None {
+        if let Some(key) = clamp_prompt_cache_key(opts.session_id.as_deref()) {
+            body["prompt_cache_key"] = Value::String(key);
+        }
+    }
+    if opts.cache_retention == CacheRetention::Long
+        && supports_long_cache_retention(model)
+        && !supports_explicit_prompt_cache_mode(model)
+    {
+        body["prompt_cache_retention"] = Value::String("24h".into());
+    }
+    if supports_explicit_prompt_cache_mode(model) {
+        if opts.cache_retention == CacheRetention::None {
+            body["prompt_cache_options"] = json!({ "mode": "explicit" });
+        } else if opts.cache_retention == CacheRetention::Long && supports_long_cache_retention(model) {
+            body["prompt_cache_options"] = json!({ "ttl": "30m" });
+        }
+    }
     let max = opts.max_tokens.unwrap_or(model.max_tokens);
     if max > 0 {
         // OpenAI rejects Responses requests with max_output_tokens < 16.
@@ -1766,11 +1836,18 @@ fn build_request(model: &Model, ctx: &Context, opts: &SimpleStreamOptions) -> Va
                 // when the transform succeeds, otherwise the request is a hard
                 // 400 (`'additionalProperties' is required to be supplied and to
                 // be false`).
+                //
+                // Mirrors pi's `convertResponsesTools`
+                // (`packages/ai/src/api/openai-responses-shared.ts:385-422`): the
+                // strict schema when the tool opted in, the plain one otherwise,
+                // and the `strict` field on the function tool whenever the
+                // provider supports strict mode.
                 if supports_strict_mode(model) {
-                    if let Some(strict_parameters) = strict_tool_parameters(t) {
-                        tool["parameters"] = strict_parameters;
-                        tool["strict"] = Value::Bool(true);
+                    let strict = strict_tool_parameters(t);
+                    if let Some(strict_parameters) = &strict {
+                        tool["parameters"] = strict_parameters.clone();
                     }
+                    tool["strict"] = Value::Bool(strict.is_some());
                 }
                 tool
             }
@@ -2206,11 +2283,14 @@ fn reasoning_effort(model: &Model, l: ThinkingLevel) -> Option<String> {
     }
 }
 fn supports_strict_mode(model: &Model) -> bool {
+    // pi's rule (`packages/ai/src/api/openai-responses-shared.ts:387`):
+    // `supportsStrictMode ?? true` — strict mode is on unless the provider
+    // says otherwise.
     match model.compat.as_ref() {
-        Some(StreamingProtocolCompat::OpenaiResponses(c)) => {
-            c.supports_strict_mode.unwrap_or(false)
+        Some(StreamingProtocolCompat::OpenaiResponses(compat)) => {
+            compat.supports_strict_mode != Some(false)
         }
-        _ => false,
+        _ => true,
     }
 }
 fn apply_response_metadata(out: &mut AssistantMessage, resp: &Value) {
@@ -2478,13 +2558,13 @@ mod tests {
             "strict mode requires every property to be listed"
         );
 
-        // Opted out: no `strict` key, so the raw schema is sent unchanged.
+        // Opted out: `strict: false`, so the raw schema is sent unchanged.
+        // Mirrors pi's `convertResponsesTools`
+        // (`packages/ai/src/api/openai-responses-shared.ts:416-419`): the
+        // `strict` field is written whenever the provider supports strict mode,
+        // and it is false for a tool that did not opt in.
         assert_eq!(tools[1]["name"], "ls");
-        assert!(
-            tools[1].get("strict").is_none(),
-            "an opted-out tool must not advertise strict: {}",
-            tools[1]
-        );
+        assert_eq!(tools[1]["strict"], false);
         assert!(tools[1]["parameters"].get("additionalProperties").is_none());
     }
 

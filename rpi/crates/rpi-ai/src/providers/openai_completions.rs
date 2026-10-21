@@ -15,12 +15,13 @@ use crate::event_stream::{
     AssistantMessageEventStreamProducer,
 };
 use crate::model::{MaxTokensField, Model, StreamingProtocolCompat};
-use crate::provider::{Provider, SimpleStreamOptions};
+use crate::provider::{CacheRetention, Provider, SimpleStreamOptions};
 use crate::providers::anthropic::cost::calculate_cost;
 use crate::providers::anthropic::json_parse::parse_streaming_json;
 use crate::providers::anthropic::retry::retry_provider_request;
 use crate::providers::anthropic::sse::SseEventStream;
 use crate::providers::{DELTA_FLUSH_BYTES, DELTA_FLUSH_INTERVAL};
+use crate::strict_schema::strict_tool_parameters;
 use crate::types::{
     Api, AssistantMessage, AssistantMessageEvent, Content, Context, DoneReason, ErrorReason,
     InputModality, Message, StopReason, ThinkingContent, ThinkingContentType, ThinkingLevel,
@@ -227,6 +228,18 @@ async fn run_stream(
         }
     };
 
+    if let Some(hooks) = opts.hooks.as_ref() {
+        let status = response.status().as_u16();
+        let mut response_headers = std::collections::BTreeMap::new();
+        for (name, value) in response.headers() {
+            response_headers.insert(
+                name.to_string(),
+                value.to_str().unwrap_or_default().to_string(),
+            );
+        }
+        hooks.hooks().on_response(model, status, &response_headers);
+    }
+
     state.start(producer);
     let mut events = SseEventStream::new(response, opts.signal.clone());
     loop {
@@ -237,6 +250,9 @@ async fn run_stream(
             }
             Ok(Some(event)) => match serde_json::from_str::<Value>(&event.data) {
                 Ok(chunk) => {
+                    if let Some(hooks) = opts.hooks.as_ref() {
+                        hooks.hooks().on_stream_event(model, &chunk);
+                    }
                     if let Some(message) = chunk
                         .get("error")
                         .and_then(|v| v.get("message"))
@@ -263,6 +279,136 @@ async fn run_stream(
             Err(error) => {
                 state.error(producer, error.to_string(), error.is_abort());
                 return;
+            }
+        }
+    }
+}
+
+/// Whether the endpoint takes the strict JSON-schema form of a tool.
+///
+/// Mirrors pi's rule (`packages/ai/src/api/openai-completions.ts:1510`):
+/// strict mode is on unless the provider says otherwise
+/// (`compat.supportsStrictMode !== false`), so a model without a compat flag
+/// gets the strict schema.
+fn supports_strict_mode(model: &Model) -> bool {
+    match model.compat.as_ref() {
+        Some(StreamingProtocolCompat::OpenaiCompletions(compat)) => {
+            compat.supports_strict_mode != Some(false)
+        }
+        _ => true,
+    }
+}
+
+/// The Anthropic-format cache-control block pi attaches to the prefix of an
+/// openai-completions request. Mirrors TS
+/// `packages/ai/src/api/openai-completions.ts:1079-1089`
+/// (`getCompatCacheControl`): only for providers whose compat says the
+/// endpoint speaks the Anthropic convention, and never when the retention is
+/// `None`. The `ttl: "1h"` marker rides on the long retention when the
+/// provider supports it.
+fn compat_cache_control(model: &Model, retention: CacheRetention) -> Option<Value> {
+    if cache_control_format(model) != Some("anthropic") || retention == CacheRetention::None {
+        return None;
+    }
+    let mut block = json!({ "type": "ephemeral" });
+    if retention == CacheRetention::Long && supports_long_cache_retention(model) {
+        block["ttl"] = Value::String("1h".into());
+    }
+    Some(block)
+}
+
+/// The cache-control convention the endpoint speaks, if any. Mirrors pi's
+/// `compat.cacheControlFormat`; the catalog sets it to `"anthropic"` for the
+/// OpenRouter Anthropic models.
+fn cache_control_format(model: &Model) -> Option<&str> {
+    compat(model)
+        .and_then(|compat| compat.cache_control_format.as_deref())
+}
+
+/// Whether the endpoint keeps a long-lived prompt cache.
+fn supports_long_cache_retention(model: &Model) -> bool {
+    compat(model)
+        .and_then(|compat| compat.supports_long_cache_retention)
+        .unwrap_or(true)
+}
+
+/// pi's `prompt_cache_key` clamp: at most 64 code points, not bytes and not
+/// UTF-16 units. Mirrors TS
+/// `packages/ai/src/api/openai-prompt-cache.ts:1-8`.
+fn clamp_prompt_cache_key(key: Option<&str>) -> Option<String> {
+    let key = key?;
+    let chars: Vec<char> = key.chars().collect();
+    if chars.len() <= 64 {
+        return Some(key.to_string());
+    }
+    Some(chars.into_iter().take(64).collect())
+}
+
+/// Attach the cache-control block to the last text part of a message, or turn
+/// a plain string content into a one-part array carrying it. Mirrors TS
+/// `packages/ai/src/api/openai-completions.ts:1159-1194`
+/// (`addCacheControlToTextContent`): a string content becomes
+/// `[{type:"text",text,cache_control}]`, an array content gets the marker on
+/// its LAST `text` part, and a content with no text part is left alone.
+fn attach_cache_control_to_text(content: &mut Value, cache_control: &Value) -> bool {
+    match content {
+        Value::String(text) => {
+            if text.is_empty() {
+                return false;
+            }
+            *content = json!([{ "type": "text", "text": text, "cache_control": cache_control }]);
+            true
+        }
+        Value::Array(parts) => {
+            for part in parts.iter_mut().rev() {
+                if part.get("type").and_then(Value::as_str) == Some("text") {
+                    part["cache_control"] = cache_control.clone();
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+/// pi's `applyAnthropicCacheControl`
+/// (`packages/ai/src/api/openai-completions.ts:1091-1099`): the block goes on
+/// the FIRST system/developer message, on the LAST tool, and on the LAST
+/// user/assistant/tool message that carries text.
+///
+/// The last breakpoint is the one that caches the conversation. pi scans the
+/// messages from the end and keeps going while a message has no text to mark
+/// (`openai-completions.ts:1113-1125`): an assistant message that carries only
+/// tool calls has a `null` content, and a marker cannot ride on it. Stopping
+/// at that message would leave the whole conversation without a breakpoint,
+/// and the provider would read the entire history again on every request.
+fn apply_anthropic_cache_control(
+    messages: &mut [Value],
+    tools: &mut [Value],
+    cache_control: &Value,
+) {
+    for message in messages.iter_mut() {
+        let role = message.get("role").and_then(Value::as_str).unwrap_or("");
+        if role == "system" || role == "developer" {
+            if let Some(content) = message.get_mut("content") {
+                attach_cache_control_to_text(content, cache_control);
+            }
+            break;
+        }
+    }
+    if let Some(last_tool) = tools.last_mut() {
+        last_tool["cache_control"] = cache_control.clone();
+    }
+    for message in messages.iter_mut().rev() {
+        let role = message.get("role").and_then(Value::as_str).unwrap_or("");
+        if role == "user" || role == "assistant" || role == "tool" {
+            let marked = match message.get_mut("content") {
+                Some(content) => attach_cache_control_to_text(content, cache_control),
+                None => false,
+            };
+            if marked {
+                break;
             }
         }
     }
@@ -431,25 +577,67 @@ fn build_request(model: &Model, ctx: &Context, opts: &SimpleStreamOptions) -> Va
             body.insert("reasoning_effort".into(), Value::String(effort));
         }
     }
+    let mut tools: Vec<Value> = Vec::new();
     if !ctx.tools.is_empty() {
-        body.insert(
-            "tools".into(),
-            Value::Array(
-                ctx.tools
-                    .iter()
-                    .map(|tool| {
-                        json!({
-                            "type": "function",
-                            "function": {
-                                "name": tool.name,
-                                "description": tool.description,
-                                "parameters": tool.parameters.as_value(),
-                            }
-                        })
-                    })
-                    .collect(),
-            ),
-        );
+        let supports_strict = supports_strict_mode(model);
+        tools = ctx
+            .tools
+            .iter()
+            .map(|tool| {
+                // Mirrors pi's `convertTools`
+                // (`packages/ai/src/api/openai-completions.ts:1487-1516`):
+                // the strict transform when the provider supports strict
+                // mode, the plain schema otherwise, and the `strict`
+                // field on the function object.
+                let strict = if supports_strict {
+                    strict_tool_parameters(tool)
+                } else {
+                    None
+                };
+                let parameters = strict
+                    .clone()
+                    .unwrap_or_else(|| tool.parameters.as_value().clone());
+                let mut function = json!({
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": parameters,
+                });
+                if supports_strict {
+                    function["strict"] = Value::Bool(strict.is_some());
+                }
+                json!({
+                    "type": "function",
+                    "function": function
+                })
+            })
+            .collect();
+    }
+    // The prompt-cache marker. Mirrors TS
+    // `packages/ai/src/api/openai-completions.ts:822-834,867-868`: the
+    // Anthropic-format `cache_control` block on the prefix, plus the
+    // OpenAI-style `prompt_cache_key` / `prompt_cache_retention`.
+    let cache_control = compat_cache_control(model, opts.cache_retention);
+    if let Some(cache_control) = cache_control.as_ref() {
+        if let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) {
+            apply_anthropic_cache_control(messages, &mut tools, cache_control);
+        }
+    }
+    if !tools.is_empty() {
+        body.insert("tools".into(), Value::Array(tools));
+    }
+    let prompt_cache_key = if (model.base_url.contains("api.openai.com")
+        && opts.cache_retention != CacheRetention::None)
+        || (opts.cache_retention == CacheRetention::Long && supports_long_cache_retention(model))
+    {
+        clamp_prompt_cache_key(opts.session_id.as_deref())
+    } else {
+        None
+    };
+    if let Some(key) = prompt_cache_key {
+        body.insert("prompt_cache_key".into(), Value::String(key));
+    }
+    if opts.cache_retention == CacheRetention::Long && supports_long_cache_retention(model) {
+        body.insert("prompt_cache_retention".into(), Value::String("24h".into()));
     }
     if supports_store(model) {
         body.insert("store".into(), Value::Bool(false));
@@ -1081,8 +1269,9 @@ mod tests {
     use super::*;
     use crate::model::OpenaiCompletionsCompat;
     use crate::types::{
-        AssistantMessage, AssistantMessageEvent, ImageContent, ImageContentType, Message,
-        StopReason, Tool, ToolResultMessage, ToolResultRole, UserMessage,
+        AssistantMessage, AssistantMessageEvent, ConstrainedSamplingConfig, ConstrainedStrictness,
+        ImageContent, ImageContentType, Message, StopReason, Tool, ToolCall, ToolCallType,
+        ToolResultMessage, ToolResultRole, UserMessage,
     };
     use std::time::Duration;
 
@@ -1393,6 +1582,377 @@ mod tests {
         assert_eq!(body["reasoning_effort"], "xhigh");
         assert_eq!(body["max_completion_tokens"], 1024);
         assert_eq!(body["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn the_tool_schema_is_sent_in_the_strict_form_the_original_sends() {
+        // Mirrors pi's `convertTools`: the strict transform when the provider
+        // supports strict mode (the default), the plain schema otherwise, and
+        // the `strict` field on the function object.
+        let mut context = Context::new(vec![Message::User(UserMessage::new("hello", 0))]);
+        context.tools.push(Tool {
+            name: "read".into(),
+            description: "Read a file".into(),
+            parameters: json!({
+                "type": "object",
+                "required": ["path"],
+                "properties": {
+                    "path": { "type": "string", "description": "Path to the file to read" },
+                    "offset": { "type": "number", "description": "Line to start from" }
+                }
+            })
+            .into(),
+            constrained_sampling: Some(ConstrainedSamplingConfig::JsonSchema {
+                strict: ConstrainedStrictness::Prefer,
+            }),
+        });
+        let model = model();
+        let opts = SimpleStreamOptions::default();
+        let body = build_request(&model, &context, &opts);
+        let function = &body["tools"][0]["function"];
+
+        assert_eq!(function["strict"], true);
+        let parameters = &function["parameters"];
+        // Every property is required …
+        assert_eq!(parameters["required"], json!(["path", "offset"]));
+        // … the optional one is nullable …
+        assert_eq!(
+            parameters["properties"]["offset"],
+            json!({
+                "anyOf": [
+                    { "type": "number", "description": "Line to start from" },
+                    { "type": "null" }
+                ]
+            })
+        );
+        // … and the object is closed.
+        assert_eq!(parameters["additionalProperties"], false);
+    }
+
+    #[test]
+    fn a_tool_without_constrained_sampling_keeps_the_plain_schema() {
+        // pi sends `strict: false` and the plain schema for a tool that did
+        // not opt into the JSON-schema constrained sampling.
+        let mut context = Context::new(vec![Message::User(UserMessage::new("hello", 0))]);
+        context.tools.push(Tool {
+            name: "grep".into(),
+            description: "Search files".into(),
+            parameters: json!({
+                "type": "object",
+                "required": ["pattern"],
+                "properties": { "pattern": { "type": "string" } }
+            })
+            .into(),
+            constrained_sampling: None,
+        });
+        let model = model();
+        let opts = SimpleStreamOptions::default();
+        let body = build_request(&model, &context, &opts);
+        let function = &body["tools"][0]["function"];
+
+        assert_eq!(function["strict"], false);
+        assert_eq!(function["parameters"]["required"], json!(["pattern"]));
+        assert_eq!(function["parameters"]["additionalProperties"], Value::Null);
+    }
+
+    /// A model whose compat says the endpoint speaks the Anthropic
+    /// cache-control convention (the OpenRouter Anthropic models).
+    fn anthropic_cache_model() -> Model {
+        let mut model = model();
+        let mut compat = OpenaiCompletionsCompat::default();
+        compat.cache_control_format = Some("anthropic".into());
+        model.compat = Some(StreamingProtocolCompat::OpenaiCompletions(compat));
+        model
+    }
+
+    /// The prompt-cache marker pi sends on the openai-completions API. The
+    /// block goes on the FIRST system/developer message, on the LAST tool,
+    /// and on the LAST user/assistant/tool message — the three breakpoints of
+    /// pi's `applyAnthropicCacheControl`
+    /// (`packages/ai/src/api/openai-completions.ts:1091-1099`).
+    #[test]
+    fn the_anthropic_cache_control_block_marks_the_prefix() {
+        let mut context = Context::new(vec![
+            Message::User(UserMessage::new("hello", 0)),
+            Message::User(UserMessage::new("again", 1)),
+        ]);
+        context.system_prompt = Some("system".into());
+        context.tools.push(Tool {
+            name: "read".into(),
+            description: "Read a file".into(),
+            parameters: json!({ "type": "object" }).into(),
+            constrained_sampling: None,
+        });
+        context.tools.push(Tool {
+            name: "bash".into(),
+            description: "Run a command".into(),
+            parameters: json!({ "type": "object" }).into(),
+            constrained_sampling: None,
+        });
+        let model = anthropic_cache_model();
+        let opts = SimpleStreamOptions::default();
+        let body = build_request(&model, &context, &opts);
+
+        assert_eq!(
+            body["messages"][0]["content"][0]["cache_control"],
+            json!({ "type": "ephemeral" }),
+            "the system message carries the marker"
+        );
+        assert_eq!(
+            body["messages"][1]["content"][0]["cache_control"],
+            json!({ "type": "ephemeral" }),
+            "the last conversation message carries the marker"
+        );
+        assert_eq!(
+            body["tools"][1]["cache_control"],
+            json!({ "type": "ephemeral" }),
+            "the last tool carries the marker"
+        );
+        assert!(
+            body["tools"][0].get("cache_control").is_none(),
+            "only the last tool is marked"
+        );
+        assert!(
+            body["messages"][0]["content"][0]["type"] == "text",
+            "the marker rides on a text part"
+        );
+    }
+
+    /// A plain OpenAI-compatible endpoint (the local llama.cpp server) gets no
+    /// marker: pi only sends the Anthropic convention when the compat says so.
+    #[test]
+    fn an_endpoint_without_the_anthropic_convention_gets_no_marker() {
+        let mut context = Context::new(vec![Message::User(UserMessage::new("hello", 0))]);
+        context.system_prompt = Some("system".into());
+        context.tools.push(Tool {
+            name: "read".into(),
+            description: "Read a file".into(),
+            parameters: json!({ "type": "object" }).into(),
+            constrained_sampling: None,
+        });
+        let model = model();
+        let opts = SimpleStreamOptions::default();
+        let body = build_request(&model, &context, &opts);
+
+        assert!(body["messages"][0]["content"].is_string());
+        assert!(body["tools"][0].get("cache_control").is_none());
+    }
+
+    /// The `none` retention switches the marker off, whatever the endpoint
+    /// says. Mirrors pi's `getCompatCacheControl`
+    /// (`packages/ai/src/api/openai-completions.ts:1083-1085`).
+    #[test]
+    fn the_none_retention_switches_the_marker_off() {
+        let mut context = Context::new(vec![Message::User(UserMessage::new("hello", 0))]);
+        context.system_prompt = Some("system".into());
+        let model = anthropic_cache_model();
+        let mut opts = SimpleStreamOptions::default();
+        opts.cache_retention = CacheRetention::None;
+        let body = build_request(&model, &context, &opts);
+
+        assert!(body["messages"][0]["content"].is_string());
+        assert!(body.get("prompt_cache_key").is_none());
+    }
+
+    /// The long retention marks the block with the one-hour TTL.
+    #[test]
+    fn the_long_retention_marks_the_block_with_the_one_hour_ttl() {
+        let mut context = Context::new(vec![Message::User(UserMessage::new("hello", 0))]);
+        context.system_prompt = Some("system".into());
+        let model = anthropic_cache_model();
+        let mut opts = SimpleStreamOptions::default();
+        opts.cache_retention = CacheRetention::Long;
+        let body = build_request(&model, &context, &opts);
+
+        assert_eq!(
+            body["messages"][0]["content"][0]["cache_control"],
+            json!({ "type": "ephemeral", "ttl": "1h" })
+        );
+        assert_eq!(body["prompt_cache_retention"], "24h");
+    }
+
+    /// pi's `prompt_cache_key` is the session id, clamped to 64 code points
+    /// (`packages/ai/src/api/openai-prompt-cache.ts:1-8`), sent for the
+    /// OpenAI endpoint and for the long retention.
+    #[test]
+    fn the_prompt_cache_key_is_the_session_id_clamped_to_64_code_points() {
+        let mut context = Context::new(vec![Message::User(UserMessage::new("hello", 0))]);
+        let mut model = model();
+        model.base_url = "https://api.openai.com/v1".into();
+        let mut opts = SimpleStreamOptions::default();
+        opts.session_id = Some("s".repeat(100));
+        let body = build_request(&model, &context, &opts);
+
+        let key = body["prompt_cache_key"].as_str().expect("a prompt cache key");
+        assert_eq!(key.chars().count(), 64);
+        assert_eq!(key, "s".repeat(64));
+    }
+
+    /// A local endpoint (the llama.cpp server) sends no `prompt_cache_key`:
+    /// it has no session-affinity routing and no OpenAI prompt cache.
+    #[test]
+    fn a_local_endpoint_sends_no_prompt_cache_key() {
+        let mut context = Context::new(vec![Message::User(UserMessage::new("hello", 0))]);
+        let model = model();
+        let mut opts = SimpleStreamOptions::default();
+        opts.session_id = Some("session-1".into());
+        let body = build_request(&model, &context, &opts);
+
+        assert!(body.get("prompt_cache_key").is_none());
+    }
+
+    /// The prefix of the request must be byte-identical between two
+    /// consecutive turns of the same conversation. The local llama.cpp server
+    /// reuses its KV cache for a common prefix, so anything that varies
+    /// between two turns — a timestamp, a re-serialized map, a re-ordered tool
+    /// list — throws the cache away and every turn pays for the whole prompt
+    /// again.
+    #[test]
+    fn the_prefix_is_byte_identical_across_two_turns() {
+        let mut context = Context::new(vec![Message::User(UserMessage::new("hello", 0))]);
+        context.system_prompt = Some("system prompt".into());
+        context.tools.push(Tool {
+            name: "read".into(),
+            description: "Read a file".into(),
+            parameters: json!({
+                "type": "object",
+                "required": ["path"],
+                "properties": { "path": { "type": "string" } }
+            })
+            .into(),
+            constrained_sampling: None,
+        });
+        let model = model();
+        let opts = SimpleStreamOptions::default();
+
+        let first = build_request(&model, &context, &opts);
+        // The second turn of the same conversation: the same system prompt and
+        // the same tools, one more exchange.
+        let mut second_context = context.clone();
+        second_context.messages.push(Message::Assistant(Box::new({
+            let mut assistant = AssistantMessage::empty(
+                Api::OpenaiCompletions,
+                "p",
+                "m",
+                1,
+            );
+            assistant.content = vec![Content::Text(crate::types::TextContent {
+                kind: Default::default(),
+                text: "hi".into(),
+                text_signature: None,
+            })];
+            assistant.stop_reason = StopReason::Stop;
+            assistant
+        })));
+        second_context
+            .messages
+            .push(Message::User(UserMessage::new("again", 2)));
+        let second = build_request(&model, &second_context, &opts);
+
+        assert_eq!(
+            first["messages"][0], second["messages"][0],
+            "the system prompt must be byte-identical across two turns"
+        );
+        assert_eq!(
+            first["tools"], second["tools"],
+            "the tool declarations must be byte-identical across two turns"
+        );
+    }
+
+    /// The bytes of the request payload that precede the newest user message
+    /// must be the same in every turn of one conversation. A provider's prompt
+    /// cache keys on that prefix, so one changed byte in it makes the
+    /// provider read the whole prompt again.
+    ///
+    /// The invariant is checked on the serialized messages array: the messages
+    /// of turn 1 must be a byte-prefix of the messages of turn 2, so
+    /// everything before the newest user message is byte-identical.
+    #[test]
+    fn the_request_payload_prefix_is_identical_across_two_turns() {
+        let mut context = Context::new(vec![Message::User(UserMessage::new("hello", 0))]);
+        context.system_prompt = Some("system prompt".into());
+        context.tools.push(Tool {
+            name: "read".into(),
+            description: "Read a file".into(),
+            parameters: json!({
+                "type": "object",
+                "required": ["path"],
+                "properties": { "path": { "type": "string" } }
+            })
+            .into(),
+            constrained_sampling: None,
+        });
+        let model = model();
+        let opts = SimpleStreamOptions::default();
+
+        let first = build_request(&model, &context, &opts);
+
+        let mut second_context = context.clone();
+        second_context.messages.push(Message::Assistant(Box::new({
+            let mut assistant = AssistantMessage::empty(Api::OpenaiCompletions, "p", "m", 1);
+            assistant.content = vec![Content::Text(crate::types::TextContent {
+                kind: Default::default(),
+                text: "hi".into(),
+                text_signature: None,
+            })];
+            assistant.stop_reason = StopReason::Stop;
+            assistant
+        })));
+        second_context
+            .messages
+            .push(Message::User(UserMessage::new("again", 2)));
+        let second = build_request(&model, &second_context, &opts);
+
+        let first_messages = serde_json::to_string(&first["messages"]).expect("the first messages");
+        let second_messages = serde_json::to_string(&second["messages"]).expect("the second messages");
+        assert!(
+            second_messages.starts_with(first_messages.trim_end_matches(']')),
+            "the bytes before the newest user message must be identical across turns:\n\
+             turn 1: {first_messages}\nturn 2: {second_messages}"
+        );
+        assert_eq!(
+            serde_json::to_string(&first["tools"]).expect("the first tools"),
+            serde_json::to_string(&second["tools"]).expect("the second tools"),
+            "the tool declarations must be byte-identical across turns"
+        );
+    }
+
+    /// The conversation breakpoint must land on the last message that carries
+    /// text. An assistant message that only calls a tool has a `null` content
+    /// and cannot carry the marker; pi keeps scanning backwards
+    /// (`packages/ai/src/api/openai-completions.ts:1113-1125`) and so must the
+    /// port. Stopping at that message leaves the whole conversation without a
+    /// breakpoint, and the provider reads the entire history again on every
+    /// request.
+    #[test]
+    fn the_conversation_breakpoint_lands_on_the_last_message_with_text() {
+        let mut context = Context::new(vec![Message::User(UserMessage::new("hello", 0))]);
+        context.system_prompt = Some("system prompt".into());
+        let mut assistant = AssistantMessage::empty(Api::OpenaiCompletions, "p", "m", 1);
+        assistant.content = vec![Content::ToolCall(ToolCall {
+            kind: ToolCallType,
+            id: "call-1".into(),
+            name: "read".into(),
+            arguments: json!({ "path": "a.txt" }),
+            thought_signature: None,
+            namespace: None,
+        })];
+        assistant.stop_reason = StopReason::ToolUse;
+        context.messages.push(Message::Assistant(Box::new(assistant)));
+
+        let model = anthropic_cache_model();
+        let opts = SimpleStreamOptions::default();
+        let body = build_request(&model, &context, &opts);
+
+        assert!(
+            body["messages"][2]["content"].is_null(),
+            "the tool-call-only assistant message has no text to mark"
+        );
+        assert_eq!(
+            body["messages"][1]["content"][0]["cache_control"],
+            json!({ "type": "ephemeral" }),
+            "the marker must land on the last message that carries text"
+        );
     }
 
     #[test]

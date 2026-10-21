@@ -68,6 +68,7 @@ struct JsState {
     footer: Mutex<Option<JsComponent>>,
     status: Mutex<Vec<(String, String)>>,
     commands: Mutex<Vec<JsCommand>>,
+    tools: Mutex<Vec<Value>>,
     render: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
     session: Mutex<Option<Arc<JsSession>>>,
 }
@@ -104,6 +105,9 @@ pub struct JsSession {
     pub pending_messages: AtomicBool,
     /// The MCP servers the extensions registered.
     pub mcp_servers: RwLock<Vec<Value>>,
+    /// The MCP client the session runs: the servers from `mcp.json` and the
+    /// ones the extensions registered, with their tools.
+    pub mcp: Option<Arc<crate::mcp::McpManager>>,
     /// The providers the extensions registered, by name.
     pub providers: RwLock<BTreeMap<String, Value>>,
     /// The virtual models the extensions registered.
@@ -143,6 +147,7 @@ impl Default for JsSession {
             idle: AtomicBool::new(true),
             pending_messages: AtomicBool::new(false),
             mcp_servers: RwLock::new(Vec::new()),
+            mcp: None,
             providers: RwLock::new(BTreeMap::new()),
             virtual_models: RwLock::new(Vec::new()),
             flags: RwLock::new(BTreeMap::new()),
@@ -167,6 +172,10 @@ enum JsRequest {
         source: String,
         reply: Sender<Result<Value, String>>,
     },
+    LoadBuiltin {
+        name: String,
+        reply: Sender<Result<Value, String>>,
+    },
     Dispatch {
         event: String,
         payload: Value,
@@ -179,6 +188,7 @@ enum JsRequest {
     },
     EmitInput {
         text: String,
+        streaming_behavior: Option<String>,
         reply: Sender<Result<Value, String>>,
     },
     CallTool {
@@ -195,6 +205,11 @@ enum JsRequest {
         reply: Sender<Result<Value, String>>,
     },
     Commands {
+        reply: Sender<Result<Value, String>>,
+    },
+    HostCall {
+        op: String,
+        args: Value,
         reply: Sender<Result<Value, String>>,
     },
 }
@@ -337,6 +352,14 @@ impl JsExtensions {
         })
     }
 
+    /// Load one of the port's own extensions.
+    pub fn load_builtin(&self, name: &str) -> Result<Value, String> {
+        self.request(|reply| JsRequest::LoadBuiltin {
+            name: name.to_string(),
+            reply,
+        })
+    }
+
     /// Send an event to every extension and return the first answer.
     pub fn dispatch(&self, event: &str, payload: Value) -> Result<Value, String> {
         self.request(|reply| JsRequest::Dispatch {
@@ -359,9 +382,14 @@ impl JsExtensions {
     ///
     /// The extensions see the text before the agent does: one can transform it,
     /// or handle it without an agent run.
-    pub fn emit_input(&self, text: &str) -> Result<Value, String> {
+    pub fn emit_input(
+        &self,
+        text: &str,
+        streaming_behavior: Option<&str>,
+    ) -> Result<Value, String> {
         self.request(|reply| JsRequest::EmitInput {
             text: text.to_string(),
+            streaming_behavior: streaming_behavior.map(str::to_string),
             reply,
         })
     }
@@ -380,6 +408,18 @@ impl JsExtensions {
         self.request(|reply| JsRequest::RenderComponent {
             id: id.to_string(),
             width,
+            reply,
+        })
+    }
+
+    /// Answer one host operation the way the extensions' `hostCall` does.
+    ///
+    /// The port's own host operations (`mcp.register` and the rest) are
+    /// answered here, so a test can drive them the way an extension does.
+    pub fn host_call(&self, op: &str, args: Value) -> Result<Value, String> {
+        self.request(|reply| JsRequest::HostCall {
+            op: op.to_string(),
+            args,
             reply,
         })
     }
@@ -412,7 +452,7 @@ fn run_runtime(state: Arc<JsState>, requests: Receiver<JsRequest>) {
     let host = Arc::new(JsHost {
         state: state.clone(),
     });
-    let mut runtime = match rpi_js::Runtime::new(host) {
+    let mut runtime = match rpi_js::Runtime::new(host.clone()) {
         Ok(runtime) => runtime,
         Err(error) => {
             eprintln!("the JavaScript extension host did not start: {error}");
@@ -428,6 +468,16 @@ fn run_runtime(state: Arc<JsState>, requests: Receiver<JsRequest>) {
             } => {
                 let result = runtime
                     .load_extension(&path, &source)
+                    .map_err(|error| error.to_string());
+                if result.is_ok() {
+                    collect_registrations(&mut runtime, &state);
+                }
+                let _ = reply.send(result);
+                continue;
+            }
+            JsRequest::LoadBuiltin { name, reply } => {
+                let result = runtime
+                    .call("__piExtensionHost.loadBuiltin", &[json!(name)])
                     .map_err(|error| error.to_string());
                 if result.is_ok() {
                     collect_registrations(&mut runtime, &state);
@@ -460,11 +510,28 @@ fn run_runtime(state: Arc<JsState>, requests: Receiver<JsRequest>) {
                 let _ = reply.send(result);
                 continue;
             }
-            JsRequest::EmitInput { text, reply } => {
+            JsRequest::HostCall { op, args, reply } => {
+                let result = rpi_js::Host::call(host.as_ref(), &op, args);
+                let _ = reply.send(result);
+                continue;
+            }
+            JsRequest::EmitInput {
+                text,
+                streaming_behavior,
+                reply,
+            } => {
                 let result = runtime
                     .call(
                         "__piExtensionHost.emitInput",
-                        &[json!(text), Value::Null, json!("interactive")],
+                        &[
+                            json!(text),
+                            Value::Null,
+                            json!("interactive"),
+                            match &streaming_behavior {
+                                Some(behavior) => json!(behavior),
+                                None => Value::Null,
+                            },
+                        ],
                     )
                     .map_err(|error| error.to_string());
                 let _ = reply.send(result);
@@ -513,6 +580,10 @@ fn run_runtime(state: Arc<JsState>, requests: Receiver<JsRequest>) {
 
 /// Read the commands the extensions registered and keep them for the TUI.
 fn collect_registrations(runtime: &mut rpi_js::Runtime, state: &Arc<JsState>) {
+    let tools = runtime.tools().unwrap_or(Value::Array(Vec::new()));
+    if let Ok(mut slot) = state.tools.lock() {
+        *slot = tools.as_array().cloned().unwrap_or_default();
+    }
     let commands = runtime
         .call("__piExtensionHost.listCommands", &[])
         .unwrap_or(Value::Null);
@@ -567,6 +638,10 @@ impl JsHost {
             "theme.get" => Ok(rpi_js::theme_tokens()),
             "ui.notify" => {
                 self.notify(&args);
+                Ok(Value::Null)
+            }
+            "extension.error" => {
+                self.extension_error(&args);
                 Ok(Value::Null)
             }
             "ui.setStatus" => {
@@ -768,6 +843,7 @@ impl JsHost {
                                 })
                                 .cloned()
                         })
+                        .map(|_| theme_instance(name))
                         .unwrap_or(Value::Null)
                 }))
             }
@@ -906,9 +982,57 @@ impl JsHost {
             "tools.getActive" => self.action(|host| {
                 Box::pin(async move { host.get_active_tools(json!({})).await })
             }),
-            "tools.getAll" => self.action(|host| {
-                Box::pin(async move { host.get_all_tools(json!({})).await })
-            }),
+            "tools.getAll" => {
+                // The session's tools, with the extensions' own metadata: the
+                // guidelines, the namespace and the annotations come from the
+                // extension's registration, not from the harness's schema.
+                let mut tools = self
+                    .action(|host| {
+                        Box::pin(async move { host.get_all_tools(json!({})).await })
+                    })
+                    .ok()
+                    .and_then(|value| value.as_array().cloned())
+                    .unwrap_or_default();
+                for entry in self.extension_tools() {
+                    let name = entry
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    if name.is_empty() {
+                        continue;
+                    }
+                    let path = entry
+                        .get("path")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    let info = json!({
+                        "name": name,
+                        "description": entry.get("description").cloned().unwrap_or(json!("")),
+                        "parameters": entry.get("parameters").cloned().unwrap_or(Value::Null),
+                        "promptGuidelines": entry.get("promptGuidelines").cloned().unwrap_or(json!([])),
+                        "namespace": entry.get("namespace").cloned().unwrap_or(Value::Null),
+                        "annotations": entry.get("annotations").cloned().unwrap_or(Value::Null),
+                        "exposure": entry.get("exposure").cloned().unwrap_or(json!("direct")),
+                        "sourceInfo": {
+                            "path": path,
+                            "source": "auto",
+                            "scope": "user",
+                            "origin": "top-level",
+                            "baseDir": base_dir(&path),
+                        },
+                    });
+                    match tools
+                        .iter_mut()
+                        .find(|tool| tool.get("name").and_then(Value::as_str) == Some(&name))
+                    {
+                        Some(slot) => *slot = info,
+                        None => tools.push(info),
+                    }
+                }
+                Ok(Value::Array(tools))
+            }
             "tools.setActive" => {
                 let tools = args
                     .get("toolNames")
@@ -943,45 +1067,39 @@ impl JsHost {
                     }
                 }
                 Ok(crate::settings::load_settings()
-                    .map(|settings| settings.effective())
-                    .unwrap_or_else(|_| Value::Object(serde_json::Map::new())))
+                    .ok()
+                    .and_then(|settings| serde_json::to_value(&settings).ok())
+                    .map(|settings| {
+                        // The file's content: the keys the file holds, not
+                        // every key the loader knows with a null.
+                        let Some(entries) = settings.as_object() else {
+                            return settings;
+                        };
+                        let mut kept = serde_json::Map::new();
+                        for (key, value) in entries {
+                            if !value.is_null() {
+                                kept.insert(key.clone(), value.clone());
+                            }
+                        }
+                        Value::Object(kept)
+                    })
+                    .unwrap_or_else(|| Value::Object(serde_json::Map::new())))
             }
             "commands.get" => {
-                // The session's commands, plus the ones the extensions
-                // registered: the extension's own command is in the list, the
-                // same way its own tool is in the active tool set.
-                let mut commands = self
+                // The session's command list: the commands the extensions
+                // registered, the prompt templates and the skills — the
+                // original's list. The host's own slash commands are not in
+                // it, and the extension's own command is in it once.
+                Ok(self
                     .session()
                     .and_then(|session| {
                         session
                             .commands
                             .read()
                             .ok()
-                            .map(|commands| commands.clone())
+                            .map(|commands| Value::Array(commands.clone()))
                     })
-                    .unwrap_or_default();
-                for command in self.extension_commands() {
-                    let name = command.name.clone();
-                    if name.is_empty()
-                        || commands.iter().any(|entry| {
-                            entry.get("name").and_then(Value::as_str) == Some(&name)
-                        })
-                    {
-                        continue;
-                    }
-                    commands.push(json!({
-                        "name": name,
-                        "description": command.description,
-                        "source": "extension",
-                        "sourceInfo": {
-                            "path": command.path,
-                            "source": "auto",
-                            "scope": "user",
-                            "origin": "top-level",
-                        },
-                    }));
-                }
-                Ok(Value::Array(commands))
+                    .unwrap_or(Value::Array(Vec::new())))
             }
             "session.getSessionName" => Ok(self
                 .session()
@@ -1017,9 +1135,24 @@ impl JsHost {
                 }
                 Err("Entry id not found".to_string())
             }
-            "session.getBranch" => self.action(|host| {
-                Box::pin(async move { host.get_session_branch(json!({})).await })
-            }),
+            "session.getBranch" => {
+                // The original answers the branch as an array: an extension
+                // iterates it (`for (const entry of ctx.sessionManager.getBranch())`).
+                let branch = self
+                    .action(|host| {
+                        Box::pin(async move { host.get_session_branch(json!({})).await })
+                    })
+                    .ok()
+                    .and_then(|value| {
+                        value
+                            .as_array()
+                            .cloned()
+                            .map(Value::Array)
+                            .or_else(|| value.get("entries").cloned())
+                    })
+                    .unwrap_or(Value::Array(Vec::new()));
+                Ok(branch)
+            }
             "session.getEntries" => self.action(|host| {
                 Box::pin(async move { host.get_entries(json!({})).await })
             }),
@@ -1124,41 +1257,57 @@ impl JsHost {
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_string();
-                if let Some(session) = self.session() {
-                    if let Ok(mut servers) = session.mcp_servers.write() {
-                        servers.retain(|server| server.get("name").and_then(Value::as_str) != Some(&name));
-                        servers.push(json!({
-                            "name": name,
-                            "config": config,
-                            "extensionPath": extension_path,
-                        }));
-                        let servers = Value::Array(servers.clone());
-                        rpi_extensions::emit_event(
-                            "mcp_servers_change",
-                            &json!({ "type": "mcp_servers_change", "servers": servers }),
-                        );
-                    }
+                let Some(session) = self.session() else {
+                    return Ok(Value::Null);
+                };
+                let Some(manager) = session.mcp.clone() else {
+                    return Err("MCP support is disabled".to_string());
+                };
+                if let Err(error) = manager.register(&name, &config, &extension_path) {
+                    return Err(error);
                 }
+                if let Ok(mut servers) = session.mcp_servers.write() {
+                    servers.retain(|server| server.get("name").and_then(Value::as_str) != Some(&name));
+                    servers.push(json!({
+                        "name": name,
+                        "config": config,
+                        "extensionPath": extension_path,
+                    }));
+                }
+                let servers = Value::Array(manager.list());
+                rpi_extensions::emit_event(
+                    "mcp_servers_change",
+                    &json!({ "type": "mcp_servers_change", "servers": servers }),
+                );
+                manager.connect_in_background(&name);
                 Ok(Value::Null)
             }
             "mcp.unregister" => {
-                let name = args.get("name").and_then(Value::as_str).unwrap_or("");
-                if let Some(session) = self.session() {
-                    if let Ok(mut servers) = session.mcp_servers.write() {
-                        servers.retain(|server| server.get("name").and_then(Value::as_str) != Some(name));
-                    }
+                let name = args.get("name").and_then(Value::as_str).unwrap_or("").to_string();
+                let Some(session) = self.session() else {
+                    return Ok(Value::Null);
+                };
+                if let Some(manager) = session.mcp.clone() {
+                    manager.unregister(&name);
                 }
+                if let Ok(mut servers) = session.mcp_servers.write() {
+                    servers.retain(|server| server.get("name").and_then(Value::as_str) != Some(&name));
+                }
+                let servers = session
+                    .mcp
+                    .as_ref()
+                    .map(|manager| Value::Array(manager.list()))
+                    .unwrap_or(Value::Array(Vec::new()));
+                rpi_extensions::emit_event(
+                    "mcp_servers_change",
+                    &json!({ "type": "mcp_servers_change", "servers": servers }),
+                );
                 Ok(Value::Null)
             }
             "mcp.list" => Ok(self
                 .session()
-                .map(|session| {
-                    session
-                        .mcp_servers
-                        .read()
-                        .map(|servers| Value::Array(servers.clone()))
-                        .unwrap_or(Value::Array(Vec::new()))
-                })
+                .and_then(|session| session.mcp.clone())
+                .map(|manager| Value::Array(manager.list()))
                 .unwrap_or(Value::Array(Vec::new()))),
             "models.list" | "models.listAvailable" => self.action(|host| {
                 Box::pin(async move { host.list_models(json!({})).await })
@@ -1224,6 +1373,15 @@ impl JsHost {
 }
 
 impl JsHost {
+    /// The tools the extensions registered, with their own metadata.
+    fn extension_tools(&self) -> Vec<Value> {
+        self.state
+            .tools
+            .lock()
+            .map(|tools| tools.clone())
+            .unwrap_or_default()
+    }
+
     /// The commands the extensions registered.
     fn extension_commands(&self) -> Vec<JsCommand> {
         self.state
@@ -1409,6 +1567,26 @@ impl JsHost {
         self.request_render();
     }
 
+    /// Report an extension whose handler threw.
+    ///
+    /// The original names the extension and the event in the transcript
+    /// (`interactive-mode.ts:2809`): a failure the user cannot see is a
+    /// failure the user cannot act on.
+    fn extension_error(&self, args: &Value) {
+        let path = args.get("path").and_then(Value::as_str).unwrap_or("");
+        let message = args.get("message").and_then(Value::as_str).unwrap_or("");
+        let text = if path.is_empty() {
+            format!("Extension error: {message}")
+        } else {
+            format!("Extension \"{path}\" error: {message}")
+        };
+        let chat = self.state.chat.lock().ok().and_then(|chat| chat.clone());
+        let Some(chat) = chat else { return };
+        chat.add_child(Arc::new(rpi_tui::Text::new(text, 1, 0)));
+        chat.add_child(Arc::new(rpi_tui::Spacer::new(1)));
+        self.request_render();
+    }
+
     fn set_widget(&self, args: &Value) {
         let key = args
             .get("key")
@@ -1468,15 +1646,37 @@ pub fn in_host_call() -> bool {
 
 /// The themes the session offers.
 ///
-/// The port has three presets; the original has a "system" entry and two
-/// files. The list is what the two operations answer, so the port's list is
-/// what they return, in the original's shape.
+/// The original lists the current theme, the dark one and the light one, each
+/// with the file it came from. The port's themes are built in, so the path is
+/// empty, but the names are the original's.
 fn theme_list() -> Value {
     json!([
-        { "name": "dark", "path": Value::Null },
-        { "name": "light", "path": Value::Null },
-        { "name": "monochrome", "path": Value::Null },
+        { "name": "system" },
+        { "name": "dark" },
+        { "name": "light" },
     ])
+}
+
+/// The directory an extension lives in: the base directory of its source
+/// information.
+fn base_dir(path: &str) -> String {
+    Path::new(path)
+        .parent()
+        .map(|parent| parent.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
+/// The theme itself: the name, the colour mode, the escape sequences and the
+/// concrete colours, the way the original's theme object carries them.
+fn theme_instance(name: &str) -> Value {
+    let tokens = rpi_js::theme_tokens();
+    json!({
+        "name": name,
+        "mode": "truecolor",
+        "fgAnsi": tokens.get("fg").cloned().unwrap_or(Value::Null),
+        "bgAnsi": tokens.get("bg").cloned().unwrap_or(Value::Null),
+        "concreteColors": tokens.get("colors").cloned().unwrap_or(Value::Null),
+    })
 }
 
 /// The next dialog request id. The ids only have to be unique per session.

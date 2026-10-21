@@ -409,3 +409,136 @@ fn a_command_registered_in_javascript_runs_in_rust() {
 		.expect("the command runs");
 	assert_eq!(answer, "hello world");
 }
+
+/// An extension that imports an npm package the host publishes loads.
+///
+/// The host has no node_modules, so an npm package is either published by
+/// the host or missing. `ms` is published: it is small, pure and has no
+/// dependencies.
+#[test]
+fn an_extension_imports_an_npm_package_the_host_publishes() {
+	const IMPORTS: &str = r#"
+		import ms from "ms";
+
+		export default function (api) {
+			api.registerCommand("duration", {
+				description: "the package resolves",
+				handler: async () => ({ milliseconds: ms("2 days") }),
+			});
+		}
+	"#;
+
+	let host = Arc::new(ProcessHost::new());
+	let mut runtime = Runtime::new(host).expect("the runtime starts");
+	runtime
+		.load_extension("duration.ts", IMPORTS)
+		.expect("the extension loads");
+
+	let answer = runtime
+		.call("__piExtensionHost.runCommand", &[json!("duration"), json!("")])
+		.expect("the command runs");
+	assert_eq!(answer["milliseconds"], 172_800_000);
+}
+
+/// An extension that imports an npm package the host cannot provide loads.
+///
+/// The import answers, so the extension loads; the name it wanted fails
+/// when it is used, with a message that says which package is missing. A
+/// load error would look like a mistake in the extension.
+#[test]
+fn an_extension_imports_an_npm_package_the_host_cannot_provide() {
+	const IMPORTS: &str = r#"
+		import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
+
+		export default function (api) {
+			api.registerCommand("sandbox", {
+				description: "the package is missing",
+				handler: async () => ({ wrapped: await SandboxManager.wrapWithSandbox("ls") }),
+			});
+		}
+	"#;
+
+	let host = Arc::new(ProcessHost::new());
+	let mut runtime = Runtime::new(host).expect("the runtime starts");
+	runtime
+		.load_extension("sandbox.ts", IMPORTS)
+		.expect("the extension loads");
+
+	let error = runtime
+		.call("__piExtensionHost.runCommand", &[json!("sandbox"), json!("")])
+		.expect_err("the package fails when it is used");
+	assert!(
+		error.to_string().contains("cannot provide the npm package"),
+		"the error names the package: {error}"
+	);
+}
+
+/// An extension that declares `__dirname` loads.
+///
+/// The module scope used to carry `__dirname` as a parameter, so an
+/// extension that declares its own died with "Identifier '__dirname' has
+/// already been declared". The extension's own declaration wins.
+#[test]
+fn an_extension_declares_its_own_dirname() {
+	const EXTENSION: &str = r#"
+		const __dirname = "/tmp/example";
+
+		export default function (api) {
+			api.registerCommand("dirname", {
+				description: "the extension loaded",
+				handler: async () => ({ dir: __dirname }),
+			});
+		}
+	"#;
+
+	let host = Arc::new(ProcessHost::new());
+	let mut runtime = Runtime::new(host).expect("the runtime starts");
+	runtime
+		.load_extension("dirname.ts", EXTENSION)
+		.expect("the extension loads");
+
+	let answer = runtime
+		.call("__piExtensionHost.runCommand", &[json!("dirname"), json!("")])
+		.expect("the command runs");
+	assert_eq!(answer["dir"], "/tmp/example");
+}
+
+/// A handler that throws is reported to the host.
+///
+/// The original reports the extension and the error and goes on with the
+/// next handler. A failure the user cannot see is a failure the user cannot
+/// act on.
+#[test]
+fn a_handler_that_throws_is_reported() {
+	const EXTENSION: &str = r#"
+		export default function (api) {
+			api.on("session_start", async () => {
+				throw new Error("the handler failed");
+			});
+		}
+	"#;
+
+	let host = Arc::new(RecordingHost::default());
+	let mut runtime = Runtime::new(host.clone()).expect("the runtime starts");
+	runtime
+		.load_extension("throwing.ts", EXTENSION)
+		.expect("the extension loads");
+
+	runtime
+		.dispatch("session_start", json!({ "type": "session_start" }))
+		.expect("the event is answered");
+
+	let ops = host.ops.lock().unwrap().clone();
+	let report = ops
+		.iter()
+		.find(|(op, _)| op == "extension.error")
+		.expect("the failure is reported");
+	assert_eq!(report.1["path"], "throwing.ts");
+	assert_eq!(report.1["event"], "session_start");
+	assert_eq!(report.1["message"], "the handler failed");
+	assert!(
+		report.1["stack"].as_str().unwrap_or_default().contains("the handler failed"),
+		"the stack comes with the message: {}",
+		report.1["stack"]
+	);
+}

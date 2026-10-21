@@ -644,7 +644,7 @@ async fn harness_forwards_after_tool_call_option_into_loop() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn harness_fires_provider_hooks_before_request_per_call() {
-    use rpi_ai::{ProviderHooks, SimpleStreamOptions, SimpleStreamOptionsPatch};
+    use rpi_ai::{ProviderHooks, RequestPatch, SimpleStreamOptions};
 
     // One hook fire per stream_simple call. The script has 2 turns
     // (tool-call + final text), so we expect 2 provider calls == 2 hook fires.
@@ -659,7 +659,7 @@ async fn harness_fires_provider_hooks_before_request_per_call() {
             model: &rpi_ai::Model,
             _ctx: &rpi_ai::types::Context,
             _opts: &SimpleStreamOptions,
-        ) -> Option<SimpleStreamOptionsPatch> {
+        ) -> Option<RequestPatch> {
             self.fires.lock().unwrap().push(model.id.clone());
             // Return a no-op patch (None would also work; exercise the apply path).
             None

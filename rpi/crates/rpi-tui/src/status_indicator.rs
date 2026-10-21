@@ -10,13 +10,14 @@
 //! cancel hint uses a literal `"Ctrl+C"` via [`raw_key_hint`].
 
 use std::any::Any;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::component::Component;
 use crate::ansi::visible_width;
 use crate::countdown_timer::CountdownTimer;
 use crate::keybinding_hints::key_text;
+use crate::loader::{SpinnerCounter, SpinnerTicker};
 use crate::theme::{theme, Color};
 use crate::utils::truncate_to_width;
 
@@ -45,7 +46,8 @@ pub enum CompactionReason {
 pub struct StatusIndicator {
     kind: Mutex<StatusKind>,
     message: Mutex<String>,
-    frame: Mutex<usize>,
+    counter: Arc<SpinnerCounter>,
+    ticker: Mutex<Option<SpinnerTicker>>,
     start: Mutex<Option<Instant>>,
     countdown: Mutex<Option<CountdownTimer>>,
     retry_progress: Option<(u32, u32)>,
@@ -56,14 +58,17 @@ const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧
 impl StatusIndicator {
     /// Build a working status with a message.
     pub fn working(message: impl Into<String>) -> Self {
-        Self {
+        let indicator = Self {
             kind: Mutex::new(StatusKind::Working),
             message: Mutex::new(message.into()),
-            frame: Mutex::new(0),
+            counter: Arc::new(SpinnerCounter::with_frames(SPINNER.to_vec())),
+            ticker: Mutex::new(None),
             start: Mutex::new(Some(Instant::now())),
             countdown: Mutex::new(None),
             retry_progress: None,
-        }
+        };
+        indicator.start_ticker();
+        indicator
     }
 
     /// Build a retry status that counts down `delay`.
@@ -76,14 +81,17 @@ impl StatusIndicator {
             secs_remaining,
             raw_key_hint_keys()
         );
-        Self {
+        let indicator = Self {
             kind: Mutex::new(StatusKind::Retry),
             message: Mutex::new(message),
-            frame: Mutex::new(0),
+            counter: Arc::new(SpinnerCounter::with_frames(SPINNER.to_vec())),
+            ticker: Mutex::new(None),
             start: Mutex::new(Some(Instant::now())),
             countdown: Mutex::new(Some(CountdownTimer::new(delay))),
             retry_progress: Some((attempt, max_attempts)),
-        }
+        };
+        indicator.start_ticker();
+        indicator
     }
 
     /// Build a compaction status.
@@ -96,27 +104,33 @@ impl StatusIndicator {
             }
             CompactionReason::Threshold => format!("Auto-compacting... {}", cancel),
         };
-        Self {
+        let indicator = Self {
             kind: Mutex::new(StatusKind::Compaction),
             message: Mutex::new(label),
-            frame: Mutex::new(0),
+            counter: Arc::new(SpinnerCounter::with_frames(SPINNER.to_vec())),
+            ticker: Mutex::new(None),
             start: Mutex::new(Some(Instant::now())),
             countdown: Mutex::new(None),
             retry_progress: None,
-        }
+        };
+        indicator.start_ticker();
+        indicator
     }
 
     /// Build a branch-summary status.
     pub fn branch_summary() -> Self {
         let message = format!("Summarizing branch... ({} to cancel)", raw_key_hint_keys());
-        Self {
+        let indicator = Self {
             kind: Mutex::new(StatusKind::BranchSummary),
             message: Mutex::new(message),
-            frame: Mutex::new(0),
+            counter: Arc::new(SpinnerCounter::with_frames(SPINNER.to_vec())),
+            ticker: Mutex::new(None),
             start: Mutex::new(Some(Instant::now())),
             countdown: Mutex::new(None),
             retry_progress: None,
-        }
+        };
+        indicator.start_ticker();
+        indicator
     }
 
     /// Replace the message (e.g. as a retry countdown ticks down).
@@ -150,15 +164,43 @@ impl StatusIndicator {
             .unwrap_or_default()
     }
 
-    fn advance(&self) {
-        if let Ok(mut f) = self.frame.lock() {
-            *f = (*f + 1) % SPINNER.len();
-        }
+    fn spinner_char(&self) -> char {
+        self.counter.char()
     }
 
-    fn spinner_char(&self) -> char {
-        let f = *self.frame.lock().unwrap();
-        SPINNER.get(f).copied().unwrap_or('⠋')
+    /// Run the frame ticker, if it is not already running.
+    ///
+    /// The frame is a counter the ticker advances once per
+    /// [`SPINNER_FRAME_MS`](crate::loader::SPINNER_FRAME_MS); a paint does
+    /// not move the animation.
+    fn start_ticker(&self) {
+        let mut ticker = match self.ticker.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        if ticker.is_some() {
+            return;
+        }
+        let counter = Arc::clone(&self.counter);
+        *ticker = Some(SpinnerTicker::start(
+            crate::loader::SPINNER_FRAME_MS,
+            move || {
+                counter.advance();
+            },
+        ));
+    }
+
+    /// Stop the frame ticker.
+    ///
+    /// The frame counter stops advancing; the indicator keeps its last frame.
+    pub fn stop_animation(&self) {
+        let mut ticker = match self.ticker.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        if let Some(mut running) = ticker.take() {
+            running.stop();
+        }
     }
 
     fn colors_for(kind: StatusKind) -> (Color, Color) {
@@ -205,9 +247,8 @@ impl Component for StatusIndicator {
 
         let line = format!("{} {}", prefix, msg_color.fg(&display_msg));
 
-        // Advance spinner for the next render (the 120ms tick re-renders).
-        self.advance();
-
+        // The frame comes from the counter the ticker advances — a paint does
+        // not move the animation.
         vec![line]
     }
 
@@ -292,5 +333,31 @@ mod tests {
         let lines = ind.render(20);
         assert_eq!(lines.len(), 1);
         assert!(visible_width(&lines[0]) <= 20);
+    }
+
+    #[test]
+    fn the_spinner_advances_by_frame_not_by_render() {
+        let ind = StatusIndicator::working("Working");
+        ind.stop_animation();
+        let base = ind.counter.index();
+        // A paint does not move the animation.
+        let _ = ind.render(40);
+        assert_eq!(ind.counter.index(), base);
+        // One interval moves it exactly one frame, and the frame on screen is
+        // the one the original's rule gives for the same elapsed time.
+        ind.counter.advance();
+        let elapsed = std::time::Duration::from_millis((base + 1) as u64 * crate::loader::SPINNER_FRAME_MS);
+        let plain = crate::ansi::strip_ansi(&ind.render(40)[0]);
+        assert!(
+            plain.contains(crate::loader::spinner_frame_at(elapsed)),
+            "the spinner must show the frame the original shows: {plain}"
+        );
+    }
+
+    #[test]
+    fn the_elapsed_clock_shows_whole_seconds() {
+        let ind = StatusIndicator::working("Working");
+        let plain = crate::ansi::strip_ansi(&ind.render(40)[0]);
+        assert!(plain.contains("0s"), "the clock starts at zero: {plain}");
     }
 }

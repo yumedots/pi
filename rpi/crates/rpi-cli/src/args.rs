@@ -172,6 +172,9 @@ pub struct Args {
     /// `--no-extensions`/`-ne`: skip Rust cdylib extension loading.
     /// Honored by `session.rs`: when set, no extension directory is scanned.
     pub no_extensions: bool,
+    /// `--no-mcp`: disable the built-in MCP support: no server connects and no
+    /// MCP tool is declared to the model.
+    pub no_mcp: bool,
     /// `--no-themes`: disable custom theme discovery and loading.
     /// Built-in presets remain available unless a custom `--theme` is given.
     pub no_themes: bool,
@@ -376,6 +379,7 @@ pub fn parse_args(args: &[String]) -> Args {
             "--no-prompt-templates" | "-np" => result.no_prompt_templates = true,
             "--no-context-files" | "-nc" => result.no_context_files = true,
             "--no-extensions" | "-ne" => result.no_extensions = true,
+            "--no-mcp" => result.no_mcp = true,
             "--local-only" => result.dev_local_only = true,
             "--package-only" | "--project-only" => result.project_only = true,
             "--extensions-dir" | "-ed" => {

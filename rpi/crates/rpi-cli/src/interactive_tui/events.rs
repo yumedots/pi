@@ -200,6 +200,24 @@ pub(super) async fn handle_agent_event(
             tui.request_render(false);
         }
 
+        AgentEvent::BeforeAgentStart { .. } => {}
+        AgentEvent::AgentBeforeSettle { .. } => {
+            dispatch_js_event(
+                state,
+                "agent_before_settle",
+                serde_json::json!({ "type": "agent_before_settle" }),
+            );
+        }
+
+        AgentEvent::AgentSettled { .. } => {
+            crate::turn_timing::turn_end();
+            dispatch_js_event(
+                state,
+                "agent_settled",
+                serde_json::json!({ "type": "agent_settled" }),
+            );
+        }
+
         AgentEvent::AgentEnd { .. } => {
             // Finalize any still-streaming assistant message.
             state.transcript_view().finalize_assistant();
@@ -271,6 +289,14 @@ pub(super) async fn handle_agent_event(
                 tui.request_render(false);
             }
             AgentMessage::Custom(custom) => {
+                // A `bashExecution` message is the persisted record of a `!`
+                // command. Its panel is already in the transcript (the submit
+                // path adds it before the command runs), so the raw payload
+                // must not be printed a second time as a note.
+                if custom.role == rpi_harness::messages::BASH_EXECUTION_ROLE {
+                    tui.request_render(false);
+                    return;
+                }
                 let payload = serde_json::json!({
                     "customType": custom.role,
                     "content": custom.content,
@@ -333,8 +359,12 @@ pub(super) async fn handle_agent_event(
             );
             // A freshly-created bash panel hides the global `Working…` loader.
             state.sync_working_loader_with_bash();
+            let has_text = !text.is_empty();
             *state.last_assistant_text.lock().unwrap() = text;
             tui.request_render(false);
+            if has_text {
+                crate::turn_timing::first_token();
+            }
         }
 
         AgentEvent::MessageEnd { message } => {
@@ -442,6 +472,7 @@ pub(super) async fn handle_agent_event(
         AgentEvent::ToolExecutionEnd {
             tool_call_id,
             tool_name,
+            args: _,
             result,
             is_error,
             duration_ms: _,
