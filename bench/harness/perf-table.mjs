@@ -600,7 +600,7 @@ async function main() {
 	const fixture = ensureFixture(fixtureDir, options.sessions, workDirReal);
 
 	if (!existsSync(options.rustBinary)) {
-		throw new Error(`The binary of the port is missing: ${options.rustBinary}. Build it first: scripts/agent-cargo.sh build -p rpi-cli`);
+		throw new Error(`The binary of the port is missing: ${options.rustBinary}. Check out the rpi branch and build it there: scripts/agent-cargo.sh build -p rpi-cli`);
 	}
 	const tsCli = join(options.tsRoot, "packages/coding-agent/src/cli.ts");
 	if (!existsSync(tsCli)) {
