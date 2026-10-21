@@ -170,6 +170,24 @@ Use `agent_before_settle` when an extension must append entries or request one f
 
 Use the exported declarations in [`extensions/types.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/extensions/types.ts) for exact event, context, tool, and result types.
 
+### Declare the side
+
+Pi runs the agent in a server process and the terminal UI in a client process. `pi.setSide()` says which of them an extension needs:
+
+```typescript
+export default function (pi) {
+	pi.setSide("client");
+}
+```
+
+| Side | Meaning |
+|---|---|
+| `server` (default) | The extension only provides tools and behavior, so it runs in the server. |
+| `client` | The extension only renders, so it runs in the client. |
+| `both` | The extension needs both, so it has to be installed on the server and on the client. |
+
+An extension that declares `client` is skipped on the server, and one that declares `server` is skipped in the client. A `both` extension only works when it is installed on both sides; each side then runs the part it can.
+
 ## Follow the extension contracts
 
 <a id="events"></a>

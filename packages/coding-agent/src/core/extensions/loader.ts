@@ -26,6 +26,7 @@ import type {
 	ExtensionAPI,
 	ExtensionFactory,
 	ExtensionRuntime,
+	ExtensionSide,
 	ExtensionVirtualModel,
 	LoadExtensionsResult,
 	MarkdownTransformer,
@@ -370,6 +371,11 @@ function createExtensionAPI(
 			extension.toolRenderers.push(resolver);
 		},
 
+		setSide(side: ExtensionSide): void {
+			assertActive();
+			extension.side = side;
+		},
+
 		// Flag access - checks extension registered it, reads from runtime
 		getFlag(name: string): boolean | string | undefined {
 			assertActive();
@@ -599,6 +605,7 @@ function createExtension(extensionPath: string, resolvedPath: string): Extension
 	return {
 		path: extensionPath,
 		resolvedPath,
+		side: "server",
 		sourceInfo: createSyntheticSourceInfo(extensionPath, { source, baseDir }),
 		handlers: new Map(),
 		tools: new Map(),

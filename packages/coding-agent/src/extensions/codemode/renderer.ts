@@ -11,10 +11,10 @@ import { Spacer } from "@earendil-works/pi-tui/components/spacer";
 import { Text } from "@earendil-works/pi-tui/components/text";
 import { Container } from "@earendil-works/pi-tui/tui";
 import type { ToolDefinition } from "../../core/extensions/types.ts";
+import { highlightCode, type Theme } from "../../core/theme/theme.ts";
 import { getTextOutput, replaceTabs, startToolTimer, str, toolTimerText } from "../../core/tools/render-utils.ts";
-import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
-import { VisualLinePreview } from "../../modes/interactive/components/visual-truncate.ts";
-import { highlightCode, type Theme } from "../../modes/interactive/theme/theme.ts";
+import { keyHint } from "../../core/ui/keybinding-hints.ts";
+import { VisualLinePreview } from "../../core/ui/visual-truncate.ts";
 import type { CodemodeNestedCall, CodemodeToolDetails } from "./tool.ts";
 
 const CODE_PREVIEW_LINES = 10;

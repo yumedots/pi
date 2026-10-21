@@ -91,6 +91,7 @@ export type {
 	// Runtime
 	ExtensionRuntime,
 	ExtensionShortcut,
+	ExtensionSide,
 	ExtensionToolContext,
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
@@ -212,6 +213,7 @@ export type {
 // Type guards
 export {
 	defineTool,
+	extensionRunsOnSide,
 	isBashToolResult,
 	isEditToolResult,
 	isFindToolResult,

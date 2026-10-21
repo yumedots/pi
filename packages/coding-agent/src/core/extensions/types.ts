@@ -1708,6 +1708,19 @@ export interface ExtensionAPI {
 	getFlag(name: string): boolean | string | undefined;
 
 	// =========================================================================
+	// Side Declaration
+	// =========================================================================
+
+	/**
+	 * Declares which side of the server/client split this extension needs.
+	 *
+	 * "server" (the default) means the extension only provides tools and behaviour.
+	 * "client" means it only renders, so it runs in the client.
+	 * "both" means it needs both: it has to be installed on the server and on the client.
+	 */
+	setSide(side: ExtensionSide): void;
+
+	// =========================================================================
 	// Message Rendering
 	// =========================================================================
 
@@ -2264,10 +2277,30 @@ export interface ExtensionCommandContextActions {
  */
 export interface ExtensionRuntime extends ExtensionRuntimeState, ExtensionActions {}
 
+/**
+ * Which side of the server/client split an extension needs.
+ *
+ * "server" extensions only provide tools and behaviour, so they run in the server process.
+ * "client" extensions only render, so they run in the client process.
+ * "both" extensions need both sides and have to be installed on each of them.
+ */
+export type ExtensionSide = "client" | "server" | "both";
+
+/**
+ * Whether an extension that declared `extensionSide` is used on the `hostSide`.
+ *
+ * "both" extensions are used on either side, every other extension only on the side it declared.
+ */
+export function extensionRunsOnSide(extensionSide: ExtensionSide, hostSide: ExtensionSide): boolean {
+	return extensionSide === "both" || extensionSide === hostSide;
+}
+
 /** Loaded extension with all registered items. */
 export interface Extension {
 	path: string;
 	resolvedPath: string;
+	/** The side this extension needs. Defaults to "server" when the extension does not declare one. */
+	side: ExtensionSide;
 	hidden?: boolean;
 	/** See {@link InlineExtension}. */
 	replaceable?: boolean;

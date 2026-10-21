@@ -18,10 +18,10 @@ import {
 } from "@earendil-works/pi-tui";
 import type { ExtensionCommandContext } from "../../core/extensions/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
-import { AuthUrlComponent } from "../../modes/interactive/components/auth-url.ts";
-import { DynamicBorder } from "../../modes/interactive/components/dynamic-border.ts";
-import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
-import { getSelectListTheme, type Theme } from "../../modes/interactive/theme/theme.ts";
+import { getSelectListTheme, type Theme } from "../../core/theme/theme.ts";
+import { AuthUrlComponent } from "../../core/ui/auth-url.ts";
+import { DynamicBorder } from "../../core/ui/dynamic-border.ts";
+import { keyHint } from "../../core/ui/keybinding-hints.ts";
 
 export interface McpMenu {
 	title: string;

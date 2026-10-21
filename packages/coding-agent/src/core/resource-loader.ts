@@ -22,9 +22,11 @@ import type {
 	Extension,
 	ExtensionFactory,
 	ExtensionRuntime,
+	ExtensionSide,
 	InlineExtension,
 	LoadExtensionsResult,
 } from "./extensions/types.ts";
+import { extensionRunsOnSide } from "./extensions/types.ts";
 import { findGitPaths } from "./footer-data-provider.ts";
 import { DefaultPackageManager, type PathMetadata, type ResolvedResource } from "./package-manager.ts";
 import type { PromptTemplate } from "./prompt-templates.ts";
@@ -153,6 +155,11 @@ function omitReplacedExtensions(
 
 export interface ResourceLoader {
 	getExtensions(): LoadExtensionsResult;
+	/**
+	 * The loaded extensions that are used on the given side: "server" returns the "server" and
+	 * "both" extensions, "client" returns the "client" and "both" ones.
+	 */
+	getExtensionsBySide?(side: ExtensionSide): Extension[];
 	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] };
 	getPrompts(): { prompts: PromptTemplate[]; diagnostics: ResourceDiagnostic[] };
 	getThemes(): { themes: Theme[]; diagnostics: ResourceDiagnostic[] };
@@ -278,6 +285,11 @@ export interface DefaultResourceLoaderOptions {
 	cwd: string;
 	agentDir: string;
 	settingsManager?: SettingsManager;
+	/**
+	 * The side this loader runs on. Extensions that declared a different side are skipped and
+	 * reported as a warning. Defaults to "server", the side the agent runtime runs on.
+	 */
+	extensionSide?: ExtensionSide;
 	eventBus?: EventBus;
 	additionalExtensionPaths?: string[];
 	additionalSkillPaths?: string[];
@@ -317,6 +329,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private cwd: string;
 	private agentDir: string;
 	private settingsManager: SettingsManager;
+	private extensionSide: ExtensionSide;
 	private eventBus: EventBus;
 	private packageManager: DefaultPackageManager;
 	private additionalExtensionPaths: string[];
@@ -371,12 +384,15 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private resourceMetadataByPath: Map<string, PathMetadata>;
 	private lastPromptPaths: string[];
 	private lastThemePaths: string[];
+	/** Every loaded extension, including the ones skipped on this side. */
+	private allExtensions: Extension[];
 	private loaded: boolean;
 
 	constructor(options: DefaultResourceLoaderOptions) {
 		this.cwd = resolvePath(options.cwd);
 		this.agentDir = resolvePath(options.agentDir);
 		this.settingsManager = options.settingsManager ?? SettingsManager.create(this.cwd, this.agentDir);
+		this.extensionSide = options.extensionSide ?? "server";
 		this.eventBus = options.eventBus ?? createEventBus();
 		const factories = options.extensionFactories ?? [];
 		this.extensionFactories = factories.filter((input) => !isBuiltinExtension(input));
@@ -424,11 +440,16 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.resourceMetadataByPath = new Map();
 		this.lastPromptPaths = [];
 		this.lastThemePaths = [];
+		this.allExtensions = [];
 		this.loaded = false;
 	}
 
 	getExtensions(): LoadExtensionsResult {
 		return this.extensionsResult;
+	}
+
+	getExtensionsBySide(side: ExtensionSide): Extension[] {
+		return this.allExtensions.filter((extension) => extensionRunsOnSide(extension.side, side));
 	}
 
 	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] } {
@@ -594,8 +615,10 @@ export class DefaultResourceLoader implements ResourceLoader {
 				}
 			}
 		}
-		this.extensionsResult = this.extensionsOverride ? this.extensionsOverride(extensionsResult) : extensionsResult;
-		this.applyExtensionSourceInfo(this.extensionsResult.extensions, metadataByPath);
+		const resolvedExtensions = this.extensionsOverride ? this.extensionsOverride(extensionsResult) : extensionsResult;
+		this.allExtensions = resolvedExtensions.extensions;
+		this.extensionsResult = this.filterExtensionsBySide(resolvedExtensions);
+		this.applyExtensionSourceInfo(this.allExtensions, metadataByPath);
 
 		const skillPaths = this.noSkills
 			? this.mergePaths(cliEnabledSkills, this.additionalSkillPaths)
@@ -676,6 +699,24 @@ export class DefaultResourceLoader implements ResourceLoader {
 			.filter((source) => existsSync(source))
 			.map((source) => resolvePath(source));
 		this.loaded = true;
+	}
+
+	/**
+	 * Drop the extensions that are not used on this loader's side and report each of them as a
+	 * warning, so an extension that did nothing says why.
+	 */
+	private filterExtensionsBySide(result: LoadExtensionsResult): LoadExtensionsResult {
+		const used = result.extensions.filter((extension) => extensionRunsOnSide(extension.side, this.extensionSide));
+		if (used.length === result.extensions.length) return result;
+		const skipped = result.extensions.filter((extension) => !extensionRunsOnSide(extension.side, this.extensionSide));
+		const warnings = [
+			...(result.warnings ?? []),
+			...skipped.map((extension) => ({
+				path: extension.path,
+				warning: `Extension declares side "${extension.side}" and was skipped on the ${this.extensionSide} side. It has to be installed on the side it declares.`,
+			})),
+		];
+		return { ...result, extensions: used, warnings };
 	}
 
 	private async loadCurrentExtensionSet(options: { includeInlineFactories: boolean }): Promise<LoadExtensionsResult> {

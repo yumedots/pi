@@ -75,6 +75,7 @@ describe.skipIf(!API_KEY)("Compaction extensions", () => {
 		return {
 			path: "test-extension",
 			resolvedPath: "/test/test-extension.ts",
+			side: "server",
 			sourceInfo: createSyntheticSourceInfo("<test:test-extension>", { source: "test" }),
 			handlers,
 			tools: new Map(),
@@ -232,6 +233,7 @@ describe.skipIf(!API_KEY)("Compaction extensions", () => {
 		const throwingExtension: Extension = {
 			path: "throwing-extension",
 			resolvedPath: "/test/throwing-extension.ts",
+			side: "server",
 			sourceInfo: createSyntheticSourceInfo("<test:throwing-extension>", { source: "test" }),
 			handlers: new Map<string, ((event: any, ctx: any) => Promise<any>)[]>([
 				[
@@ -281,6 +283,7 @@ describe.skipIf(!API_KEY)("Compaction extensions", () => {
 		const extension1: Extension = {
 			path: "extension1",
 			resolvedPath: "/test/extension1.ts",
+			side: "server",
 			sourceInfo: createSyntheticSourceInfo("<test:extension1>", { source: "test" }),
 			handlers: new Map<string, ((event: any, ctx: any) => Promise<any>)[]>([
 				[
@@ -312,6 +315,7 @@ describe.skipIf(!API_KEY)("Compaction extensions", () => {
 		const extension2: Extension = {
 			path: "extension2",
 			resolvedPath: "/test/extension2.ts",
+			side: "server",
 			sourceInfo: createSyntheticSourceInfo("<test:extension2>", { source: "test" }),
 			handlers: new Map<string, ((event: any, ctx: any) => Promise<any>)[]>([
 				[

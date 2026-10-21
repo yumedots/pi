@@ -10,6 +10,7 @@
 
 ### Added
 
+- Extensions can declare the side they need with `pi.setSide("client" | "server" | "both")`. The default is `"server"`. A client-only extension is skipped on the server, and the session resources now report the side of every loaded extension
 - Added the `threeDEmptySession` setting. When it is on, a new session opens with the spinning 3D pi logo above a centered input box, and the screen gives way to the transcript as soon as the first message is sent
 - Added `/skills` to browse the loaded skills and run one from a picker
 - `/resume` now also answers to `/history` and `/sessions`, and both aliases show up in the command menu
