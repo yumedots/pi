@@ -1,6 +1,6 @@
 # screen: session-search
 # side: ts
-# command: cd '/tmp/pi-screens/work/session-search' && HOME='/tmp/pi-screens/home/ts/session-search' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/session-search' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline  --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/session-search' && HOME='/tmp/pi-screens/home/ts/session-search' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/session-search' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline  --provider mock --model mock/mock-1
 # keys: hello world Enter /resume Enter hello
 # note: /resume: the session menu with a search term typed.
 
@@ -27,10 +27,10 @@
 
   Sessions
 > hello
-→ hello world                                                                                  3 now
-  tab scope: current · re:<pattern> regex · "phrase" exact
-  ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path (off) · ctrl+r rename
+→ hello world                                                                                    now
+  tab scope: current · re:<pattern> regex · "phrase" exact · ctrl+s sort · ctrl+n named · ctrl+d
+delete · ctrl+p path (off) · ctrl+r rename
 
 >
 
-mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                  /private/tmp/pi-screens/work/session-search
+mock/mock-1 / ░░░░░░░░░░ 0.0% 49 tokens                  /private/tmp/pi-screens/work/session-search
