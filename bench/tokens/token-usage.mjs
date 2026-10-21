@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Measures the token usage of a conversation, the TypeScript agent against the Rust port.
+ * Measures the token usage of a conversation.
  *
  * The agent talks to the model through a local proxy, so the request that goes out is
  * measured next to the usage the server reports. The breakdown shows where the tokens
@@ -20,14 +20,11 @@
  *   --prompt <text>    The first user message (default: "Say hello in three words")
  *   --scenario <name>  single (one message), conversation (three messages) or
  *                       tool (one message that runs a tool) (default: single)
- *   --runtimes <list>  Comma separated: node, bun, rpi (default: rpi when the
- *                       Rust binary is there, node otherwise)
+ *   --runtimes <list>  Comma separated: node, bun (default: node)
  *   --agent-dir <dir>  The agent directory (default: PI_BENCH_AGENT_DIR)
- *   --rpi <path>       The Rust binary (default: rpi/target/release/rpi)
- *   --rpi-args <args>  Extra arguments for the Rust binary (space separated)
  *   --ts-repo <dir>    The TypeScript repository (default: this repository)
  *   --cwd <dir>        The working directory of the agent (default: the repository
- *                       of the runtime, so each side runs with its own project context)
+ *                       of the runtime)
  *   --trust <mode>     always or never: the project trust of the agent
  *                       (default: always, so the project context is in the prompt)
  *   --own-server       Start a fresh llama-server for every run, so the prompt
@@ -47,7 +44,6 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
 const PKG = join(REPO_ROOT, "packages/coding-agent");
-const RPI_BINARY = join(REPO_ROOT, "rpi/target/release/rpi");
 const UPSTREAM = process.env.PI_LLAMA_URL ?? "http://127.0.0.1:8081";
 let tokenizerUrl = UPSTREAM;
 const MODEL = { provider: "local", id: "smollm2-1.7b-instruct" };
@@ -56,12 +52,6 @@ const TS_RPC = {
 	prompt: (id, message) => ({ id, type: "prompt", message }),
 	isState: (event) => event.type === "response" && event.command === "get_state",
 	isTurnEnd: (event) => event.type === "agent_settled",
-};
-
-const RPI_RPC = {
-	prompt: (id, message) => ({ id, type: "prompt", content: message }),
-	isState: (event) => event.type === "response" && event.id === "s" && event.status === "ok",
-	isTurnEnd: (event, id) => event.type === "response" && event.id === id && event.status === "ok",
 };
 
 const RUNTIMES = {
@@ -74,11 +64,6 @@ const RUNTIMES = {
 		command: "bun",
 		args: (tsRepo) => [join(tsRepo, "packages/coding-agent/src/cli.ts"), "--mode", "rpc", "--no-session"],
 		rpc: TS_RPC,
-	},
-	rpi: {
-		command: (rpi) => rpi,
-		args: (rpi, extra) => ["--mode", "rpc", "--no-session", ...extra],
-		rpc: RPI_RPC,
 	},
 };
 
@@ -99,8 +84,6 @@ const options = {
 	scenario: "single",
 	runtimes: undefined,
 	agentDir: process.env.PI_BENCH_AGENT_DIR,
-	rpi: RPI_BINARY,
-	rpiArgs: [],
 	tsRepo: REPO_ROOT,
 	cwd: undefined,
 	trust: "always",
@@ -124,8 +107,6 @@ for (let index = 2; index < process.argv.length; index++) {
 	else if (arg === "--runtimes") options.runtimes = value.split(",").map((name) => name.trim()).filter(Boolean);
 	else if (arg === "--runtime") options.runtimes = [value.trim()];
 	else if (arg === "--agent-dir") options.agentDir = resolve(value);
-	else if (arg === "--rpi") options.rpi = resolve(value);
-	else if (arg === "--rpi-args") options.rpiArgs = value.split(" ").filter(Boolean);
 	else if (arg === "--ts-repo") options.tsRepo = resolve(value);
 	else if (arg === "--cwd") options.cwd = resolve(value);
 	else if (arg === "--trust") options.trust = value;
@@ -133,7 +114,10 @@ for (let index = 2; index < process.argv.length; index++) {
 	else if (arg === "--model") options.model = resolve(value);
 	else if (arg === "--dump") options.dump = resolve(value);
 	else if (arg === "--json") options.json = resolve(value);
-	else throw new Error(`Unknown option: ${arg}`);
+	else if (arg === "--help" || arg === "-h") {
+		process.stdout.write(`${readFileSync(fileURLToPath(import.meta.url), "utf8").split("*/")[0]}\n`);
+		process.exit(0);
+	} else throw new Error(`Unknown option: ${arg}`);
 }
 
 if (!SCENARIOS[options.scenario]) throw new Error(`Unknown scenario: ${options.scenario}`);
@@ -261,7 +245,7 @@ function topLevelTags(text) {
 }
 
 /** Cut a system prompt into its parts: the preamble, the rules and the tagged blocks. */
-function splitSystem(runtime, text) {
+function splitSystem(text) {
 	const tags = topLevelTags(text);
 	const parts = [];
 	const plain = [];
@@ -275,40 +259,7 @@ function splitSystem(runtime, text) {
 	const rest = text.slice(cursor);
 	if (rest.trim()) plain.push(rest);
 	const remainder = plain.join("\n\n").trim();
-	if (remainder) {
-		if (runtime === "rpi") {
-			for (const part of splitPortRemainder(remainder)) parts.unshift(part);
-		} else {
-			parts.unshift({ label: "preamble", text: remainder });
-		}
-	}
-	return parts;
-}
-
-/** The Rust port writes one flat prompt: the preamble, the tool list, the rules and the cwd. */
-function splitPortRemainder(text) {
-	const parts = [];
-	const markers = [
-		{ label: "preamble", start: null, end: "Available tools:" },
-		{ label: "tools", start: "Available tools:", end: "\n\nIn addition to the tools above" },
-		{ label: "rules", start: "\n\nGuidelines:", end: "\n\nCurrent working directory:" },
-		{ label: "cwd", start: "\n\nCurrent working directory:", end: null },
-	];
-	for (const marker of markers) {
-		let slice;
-		if (marker.start === null) {
-			const end = text.indexOf(marker.end);
-			slice = end < 0 ? text : text.slice(0, end);
-		} else {
-			const start = text.indexOf(marker.start);
-			if (start < 0) continue;
-			const from = start + marker.start.length;
-			const end = marker.end === null ? text.length : text.indexOf(marker.end, from);
-			slice = text.slice(from, end < 0 ? text.length : end);
-		}
-		const trimmed = slice.trim();
-		if (trimmed) parts.push({ label: marker.label, text: trimmed });
-	}
+	if (remainder) parts.unshift({ label: "preamble", text: remainder });
 	return parts;
 }
 
@@ -319,7 +270,7 @@ function messageText(message) {
 }
 
 /** The breakdown of one request: the system prompt, the tools and the conversation. */
-async function breakdownRequest(entry, runtime) {
+async function breakdownRequest(entry) {
 	let payload;
 	try {
 		payload = JSON.parse(entry.body);
@@ -331,7 +282,7 @@ async function breakdownRequest(entry, runtime) {
 	const conversation = messages.filter((message) => message !== system);
 	const systemText = system ? messageText(system) : "";
 	const systemParts = [];
-	for (const part of splitSystem(runtime, systemText)) {
+	for (const part of splitSystem(systemText)) {
 		systemParts.push({
 			label: `system:${part.label}`,
 			chars: part.text.length,
@@ -387,8 +338,7 @@ async function breakdownRequest(entry, runtime) {
 function runTurns(runtime, agentDir, cwd, prompts, captured) {
 	return new Promise((resolvePromise, reject) => {
 		const { command, args, rpc } = RUNTIMES[runtime];
-		const binary = typeof command === "function" ? command(options.rpi) : command;
-		const child = spawn(binary, args(runtime === "rpi" ? options.rpi : options.tsRepo, options.rpiArgs), {
+		const child = spawn(command, args(options.tsRepo), {
 			cwd,
 			env: { ...process.env, PI_CODING_AGENT_DIR: agentDir ?? "" },
 			stdio: ["pipe", "pipe", "pipe"],
@@ -538,7 +488,7 @@ function startToolMock() {
 async function measure(runtime, prompts, upstream) {
 	const { server, captured, url } = await startCaptureProxy(upstream);
 	const agentDir = prepareAgentDir(url);
-	const cwd = options.cwd ?? (runtime === "rpi" ? REPO_ROOT : options.tsRepo);
+	const cwd = options.cwd ?? options.tsRepo;
 	try {
 		const { usages, turns, stderr } = await runTurns(runtime, agentDir, cwd, prompts, captured);
 		const measured = [];
@@ -546,7 +496,7 @@ async function measure(runtime, prompts, upstream) {
 			const to = turn.index + 1 < turns.length ? turns[turn.index + 1].from : captured.length;
 			const requests = [];
 			for (const entry of captured.slice(turn.from, to)) {
-				const breakdown = await breakdownRequest(entry, runtime);
+				const breakdown = await breakdownRequest(entry);
 				if (breakdown) {
 					breakdown.raw = entry.body;
 					requests.push(breakdown);
@@ -601,7 +551,7 @@ function checkMeasurement(output) {
 }
 
 async function main() {
-	const runtimes = options.runtimes ?? [existsSync(options.rpi) ? "rpi" : "node"];
+	const runtimes = options.runtimes ?? ["node"];
 	const prompts = SCENARIOS[options.scenario](options.prompt);
 	let upstream = UPSTREAM;
 	const results = [];

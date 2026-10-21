@@ -4,7 +4,7 @@
  *
  * The model of the benchmark does not call tools, so the tool turn is measured against
  * this server: every request that carries the tool declarations gets a tool call back,
- * every other request (the context summary of the Rust port) gets a short text.
+ * every other request gets a short text.
  *
  * Usage:
  *   node bench/tokens/tool-mock.mjs

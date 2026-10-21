@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Measures what the prompt cache is worth, per turn, for the local llama.cpp
- * server and for the same conversation on the TypeScript original.
+ * server and for the same conversation on the TypeScript agent.
  *
  * The local server reuses its KV cache for a byte-identical prompt prefix, so
  * the number that matters is the SERVER's own accounting: `timings.prompt_n`
@@ -26,8 +26,7 @@
  * Options:
  *   --turns <n>        Messages in the conversation (default: 5)
  *   --runs <n>         Repetitions (default: 1)
- *   --runtimes <list>  Comma separated: node, rpi (default: both that are present)
- *   --rpi <path>       The Rust binary (default: rpi/target/release/rpi)
+ *   --runtimes <list>  Comma separated: node (default: node when it is present)
  *   --ts-repo <dir>    The TypeScript repository (default: this repository)
  *   --agent-dir <dir>  The agent directory (default: PI_BENCH_AGENT_DIR)
  *   --cwd <dir>        The working directory of the agent (default: the runtime's repo)
@@ -42,7 +41,6 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
-const RPI_BINARY = join(REPO_ROOT, "rpi/target/release/rpi");
 const UPSTREAM = process.env.PI_LLAMA_URL ?? "http://127.0.0.1:8081";
 const MODEL = { provider: "local", id: "smollm2-1.7b-instruct" };
 
@@ -52,22 +50,11 @@ const TS_RPC = {
 	isTurnEnd: (event) => event.type === "agent_settled",
 };
 
-const RPI_RPC = {
-	prompt: (id, message) => ({ id, type: "prompt", content: message }),
-	isState: (event) => event.type === "response" && event.id === "s" && event.status === "ok",
-	isTurnEnd: (event, id) => event.type === "response" && event.id === id && event.status === "ok",
-};
-
 const RUNTIMES = {
 	node: {
 		command: process.execPath,
 		args: (tsRepo) => [join(tsRepo, "packages/coding-agent/dist/cli.js"), "--mode", "rpc", "--no-session"],
 		rpc: TS_RPC,
-	},
-	rpi: {
-		command: (rpi) => rpi,
-		args: () => ["--mode", "rpc", "--no-session"],
-		rpc: RPI_RPC,
 	},
 };
 
@@ -76,7 +63,6 @@ const options = {
 	runs: 1,
 	runtimes: undefined,
 	agentDir: process.env.PI_BENCH_AGENT_DIR,
-	rpi: RPI_BINARY,
 	tsRepo: REPO_ROOT,
 	cwd: undefined,
 	json: undefined,
@@ -87,7 +73,6 @@ for (let index = 2; index < process.argv.length; index++) {
 	if (arg === "--turns") options.turns = Number.parseInt(process.argv[++index], 10);
 	else if (arg === "--runs") options.runs = Number.parseInt(process.argv[++index], 10);
 	else if (arg === "--runtimes") options.runtimes = process.argv[++index].split(",").map((n) => n.trim()).filter(Boolean);
-	else if (arg === "--rpi") options.rpi = resolve(process.argv[++index]);
 	else if (arg === "--ts-repo") options.tsRepo = resolve(process.argv[++index]);
 	else if (arg === "--agent-dir") options.agentDir = resolve(process.argv[++index]);
 	else if (arg === "--cwd") options.cwd = resolve(process.argv[++index]);
@@ -204,8 +189,7 @@ function prepareAgentDir(proxyUrl) {
 function runTurns(runtime, agentDir, cwd, prompts, captured) {
 	return new Promise((resolvePromise, reject) => {
 		const { command, args, rpc } = RUNTIMES[runtime];
-		const binary = typeof command === "function" ? command(options.rpi) : command;
-		const child = spawn(binary, args(runtime === "rpi" ? options.rpi : options.tsRepo), {
+		const child = spawn(command, args(options.tsRepo), {
 			cwd,
 			env: { ...process.env, PI_CODING_AGENT_DIR: agentDir ?? "" },
 			stdio: ["pipe", "pipe", "pipe"],
@@ -269,7 +253,7 @@ function sharedPrefix(a, b) {
 async function measure(runtime) {
 	const { server, captured, url } = await startCaptureProxy(UPSTREAM);
 	const agentDir = prepareAgentDir(url);
-	const cwd = options.cwd ?? (runtime === "rpi" ? REPO_ROOT : options.tsRepo);
+	const cwd = options.cwd ?? options.tsRepo;
 	try {
 		const { turns, stderr } = await runTurns(runtime, agentDir, cwd, PROMPTS, captured);
 		const measured = [];
@@ -310,9 +294,7 @@ async function measure(runtime) {
 }
 
 async function main() {
-	const available = ["node", "rpi"].filter((name) =>
-		name === "node" ? existsSync(join(options.tsRepo, "packages/coding-agent/dist/cli.js")) : existsSync(options.rpi),
-	);
+	const available = existsSync(join(options.tsRepo, "packages/coding-agent/dist/cli.js")) ? ["node"] : [];
 	const runtimes = options.runtimes ?? available;
 	for (const runtime of runtimes) {
 		if (!available.includes(runtime)) {

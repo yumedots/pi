@@ -4,14 +4,14 @@
  * and per turn, with the raw numbers of every run beside the summary.
  *
  * Usage:
- *   node bench/tokens/summarize.mjs bench/tokens/results/rust-vs-ts-single.json [...]
- *   node bench/tokens/summarize.mjs --markdown bench/tokens/results/rust-vs-ts-single.json [...]
+ *   node bench/tokens/summarize.mjs <token-usage output.json> [...]
+ *   node bench/tokens/summarize.mjs --markdown <token-usage output.json> [...]
  */
 import { readFileSync } from "node:fs";
 
 const markdown = process.argv[2] === "--markdown";
 const paths = process.argv.slice(markdown ? 3 : 2);
-const NAMES = { node: "TypeScript agent", rpi: "Rust port", bun: "TypeScript agent (bun)" };
+const NAMES = { node: "TypeScript agent", bun: "TypeScript agent (bun)" };
 
 function mean(values) {
 	if (values.length === 0) return null;
@@ -36,13 +36,16 @@ function auxiliaryRequests(turn) {
 
 function collect(path) {
 	const result = JSON.parse(readFileSync(path, "utf8"));
-	const runtimes = [...new Set(result.runs.map((run) => run.runtime))];
-	const turns = Math.max(...result.runs.map((run) => run.turns.length));
+	const runs = result.runs.filter((run) => Array.isArray(run.turns));
+	const runtimes = [...new Set(runs.map((run) => run.runtime))];
+	const turns = runs.length === 0 ? 0 : Math.max(...runs.map((run) => run.turns.length));
 	const rows = [];
 	for (let turn = 0; turn < turns; turn++) {
 		for (const runtime of runtimes) {
-			const runs = result.runs.filter((run) => run.runtime === runtime);
-			const entries = runs.map((run) => run.turns[turn]).filter(Boolean);
+			const entries = runs
+				.filter((run) => run.runtime === runtime)
+				.map((run) => run.turns[turn])
+				.filter(Boolean);
 			const requests = entries.map(turnRequest).filter(Boolean);
 			if (requests.length === 0) continue;
 			const pick = (reader) => requests.map(reader);
