@@ -2846,7 +2846,7 @@ fn test_autocomplete_slash_suggestions_render() {
     }
 
     let editor = Arc::new(Editor::simple());
-    editor.set_text("/he");
+    editor.set_text("/ho");
     editor.set_cursor(0, 3);
     refresh_autocomplete(&state, &editor);
     let lines = state.autocomplete_container.render(80);
@@ -2854,8 +2854,12 @@ fn test_autocomplete_slash_suggestions_render() {
     // The original's command rows show the bare name, without the leading
     // slash (`packages/tui/src/autocomplete.ts:352-360`).
     assert!(
-        joined.contains("help"),
+        joined.contains("hotkeys"),
         "slash suggestions not rendered: {joined}"
+    );
+    assert!(
+        !joined.contains("/hotkeys"),
+        "the row must not carry the leading slash: {joined}"
     );
 
     // Clear: no suggestions for plain text.

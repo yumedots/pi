@@ -131,12 +131,23 @@ pub(super) fn render_autocomplete(
     // Setting the index also centres the window on it, so the highlighted row
     // is the one the popup shows.
     list.set_selected_index(selection);
-    for line in list.render(0) {
+    // The list renders its rows at the pane's width; the container renders
+    // them at whatever width the layout gives it, so the rows are laid out
+    // here and the container only holds them.
+    for line in list.render(POPUP_WIDTH) {
         state
             .autocomplete_container
             .add_child(Arc::new(Text::new(line, 0, 0)));
     }
 }
+
+/// The width the popup's rows are laid out at.
+///
+/// The container renders its children at the width the layout gives it, which
+/// the popup does not know; the rows are laid out at the pane's width here so
+/// the label column and the descriptions have room, and the container's own
+/// render truncates them to its width if it is narrower.
+const POPUP_WIDTH: usize = 200;
 
 /// Whether the completion is a `/` command list, the one the original gives
 /// its narrower label column (`packages/tui/src/components/editor.ts:2451`).

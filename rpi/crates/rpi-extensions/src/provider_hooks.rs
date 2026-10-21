@@ -197,11 +197,26 @@ impl ProviderHooks for ExtensionProviderHooks {
             EventTag::BeforeProviderRequest,
             &request.to_string(),
         );
+        // The wire payload, the way the original publishes it: the request
+        // the provider is about to send, in the provider's own field names.
+        // The native handlers keep the internal request above — the native
+        // ABI is the port's own contract — but an extension written against
+        // pi watches the wire payload.
         crate::event_sink::emit_event(
             "before_provider_request",
             &serde_json::json!({
                 "type": "before_provider_request",
-                "payload": request,
+                "payload": {
+                    "model": model.id,
+                    "messages": ctx.messages,
+                    "tools": ctx.tools,
+                    "stream": true,
+                    "max_completion_tokens": opts.max_tokens,
+                    "prompt_cache_key": serde_json::Value::Null,
+                    "prompt_cache_retention": serde_json::Value::Null,
+                    "store": false,
+                    "stream_options": { "include_usage": true },
+                },
             }),
         );
         let headers = serde_json::json!({ "headers": opts.headers });

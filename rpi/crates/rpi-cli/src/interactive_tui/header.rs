@@ -221,13 +221,52 @@ mod tests {
     fn the_expanded_header_lists_every_binding() {
         let mut header = header();
         header.set_expanded(true);
-        let lines = header.render(100);
+        let lines: Vec<String> = header
+            .render(100)
+            .iter()
+            .map(|line| rpi_tui::strip_ansi(line))
+            .collect();
         assert_eq!(lines.len(), 21);
-        assert!(lines[1].contains("escape to interrupt"));
-        assert!(lines[2].contains("ctrl+c twice to exit"));
-        assert!(lines[3].contains("ctrl+d to exit (empty)"));
-        assert!(lines[18].contains("drop files to attach"));
-        assert!(lines[20].contains("Pi can explain its own features"));
+        assert!(lines[1].contains("escape to interrupt"), "{}", lines[1]);
+        assert!(lines[2].contains("ctrl+c twice to exit"), "{}", lines[2]);
+        assert!(lines[3].contains("ctrl+d to exit (empty)"), "{}", lines[3]);
+        assert!(lines[4].contains("ctrl+z to suspend"), "{}", lines[4]);
+        assert!(lines[5].contains("ctrl+k to delete to end"), "{}", lines[5]);
+        assert!(
+            lines[6].contains("shift+tab to cycle thinking level"),
+            "{}",
+            lines[6]
+        );
+        assert!(
+            lines[7].contains("ctrl+p/shift+ctrl+p to cycle models"),
+            "{}",
+            lines[7]
+        );
+        assert!(lines[8].contains("ctrl+l to select model"), "{}", lines[8]);
+        assert!(lines[9].contains("ctrl+o to expand tools"), "{}", lines[9]);
+        assert!(lines[10].contains("ctrl+t to expand thinking"), "{}", lines[10]);
+        assert!(lines[11].contains("ctrl+g for external editor"), "{}", lines[11]);
+        assert!(lines[12].contains("/ for commands"), "{}", lines[12]);
+        assert!(lines[13].contains("! to run bash"), "{}", lines[13]);
+        assert!(lines[14].contains("!! to run bash (no context)"), "{}", lines[14]);
+        assert!(
+            lines[15].contains("option+enter to queue follow-up"),
+            "{}",
+            lines[15]
+        );
+        assert!(
+            lines[16].contains("option+up to edit all queued messages"),
+            "{}",
+            lines[16]
+        );
+        assert!(
+            lines[17].contains("ctrl+v to paste files on macOS, images, or text"),
+            "{}",
+            lines[17]
+        );
+        assert!(lines[18].contains("drop files to attach"), "{}", lines[18]);
+        assert!(lines[19].trim().is_empty(), "{}", lines[19]);
+        assert!(lines[20].contains("Pi can explain its own features"), "{}", lines[20]);
     }
 
     #[test]

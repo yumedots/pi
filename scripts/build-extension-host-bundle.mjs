@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { sep } from "node:path";
 
 const require = createRequire(import.meta.url);
 const { build } = require("esbuild");
@@ -81,6 +82,26 @@ const nodeShims = {
 
 const piPackageDir = join(repoRoot, "packages", "coding-agent");
 const piReadmePath = join(piPackageDir, "README.md");
+
+// esbuild names each module by its resolved path, and those names end up in
+// the output as the module wrapper keys. The resolved path depends on where
+// node_modules lives, so the same source would produce a different bundle in
+// a different checkout — which would make the CI bundle check fail on a
+// rebuild that changed nothing. Rewriting every path under a node_modules
+// directory to a stable, root-relative name makes the output reproducible.
+const stableModulePathsPlugin = {
+	name: "stable-module-paths",
+	setup(context) {
+		context.onResolve({ filter: /.*/ }, (args) => {
+			if (args.namespace === "file" && args.path.includes(`${sep}node_modules${sep}`)) {
+				const marker = `${sep}node_modules${sep}`;
+				const index = args.path.indexOf(marker);
+				return { path: `node_modules/${args.path.slice(index + marker.length)}` };
+			}
+			return undefined;
+		});
+	},
+};
 
 const virtualModulePlugin = {
 	name: "pi-virtual-modules",
@@ -201,7 +222,7 @@ const result = await build({
 	},
 	target: "es2022",
 	write: false,
-	plugins: [virtualModulePlugin],
+	plugins: [stableModulePathsPlugin, virtualModulePlugin],
 	// The vendored pi packages carry their own dependencies; the port's
 	// workspace has them at the root, so the resolution has to look there.
 	nodePaths: [join(repoRoot, "node_modules"), join(repoRoot, "..", "pi", "node_modules")],
@@ -212,6 +233,13 @@ const result = await build({
 	// live. The bundle has to be byte-reproducible, because CI rebuilds it and
 	// fails when it differs.
 	legalComments: "none",
+	// The port's `node_modules` is a symlink to the original's checkout, so
+	// esbuild would resolve the packages to paths *outside* the repository and
+	// write them into the bundle as module names — the bundle would then
+	// differ per checkout, and the CI gate that rebuilds it would fail.
+	// Keeping the symlink unresolved puts every package under the
+	// repository's own `node_modules`, and the names are stable.
+	preserveSymlinks: true,
 });
 
 const builtins = new Set();

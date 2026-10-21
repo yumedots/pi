@@ -1912,13 +1912,7 @@ pub async fn interactive_tui(
             editor_container.clone(),
             EMPTY_SESSION_EDITOR_WIDTH,
         ));
-        // The autocomplete lives in the dock, and the 3-D screen owns the pane
-        // while the session is empty, so the suggestion list has to be part of
-        // the screen: the user types `/` and expects the commands.
-        let empty_session_editor = Arc::new(VStack::from_children(vec![
-            StackChild::Entry(StackEntry::new(centered_editor)),
-            StackChild::Entry(StackEntry::new(autocomplete_container.clone())),
-        ]));
+        let empty_session_editor = centered_editor;
         let tui_weak = Arc::downgrade(&tui);
         let height = Arc::new(move || {
             tui_weak

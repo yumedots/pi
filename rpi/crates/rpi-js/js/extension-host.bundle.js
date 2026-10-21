@@ -386,7 +386,7 @@
 
 
   var require_windows = __commonJS({
-    "../pi/node_modules/isexe/windows.js"(exports, module) {
+    "node_modules/isexe/windows.js"(exports, module) {
       module.exports = isexe;
       isexe.sync = sync;
       var fs6 = require_node_fs();
@@ -426,7 +426,7 @@
 
 
   var require_mode = __commonJS({
-    "../pi/node_modules/isexe/mode.js"(exports, module) {
+    "node_modules/isexe/mode.js"(exports, module) {
       module.exports = isexe;
       isexe.sync = sync;
       var fs6 = require_node_fs();
@@ -459,7 +459,7 @@
 
 
   var require_isexe = __commonJS({
-    "../pi/node_modules/isexe/index.js"(exports, module) {
+    "node_modules/isexe/index.js"(exports, module) {
       var fs6 = require_node_fs();
       var core;
       if (globalThis.__piProcess.platform === "win32" || global.TESTING_WINDOWS) {
@@ -514,7 +514,7 @@
 
 
   var require_which = __commonJS({
-    "../pi/node_modules/which/which.js"(exports, module) {
+    "node_modules/which/which.js"(exports, module) {
       var isWindows = globalThis.__piProcess.platform === "win32" || globalThis.__piProcess.env.OSTYPE === "cygwin" || globalThis.__piProcess.env.OSTYPE === "msys";
       var path2 = (init_node_path(), __toCommonJS(node_path_exports));
       var COLON = isWindows ? ";" : ":";
@@ -610,7 +610,7 @@
 
 
   var require_path_key = __commonJS({
-    "../pi/node_modules/path-key/index.js"(exports, module) {
+    "node_modules/path-key/index.js"(exports, module) {
       "use strict";
       var pathKey = (options = {}) => {
         const environment = options.env || globalThis.__piProcess.env;
@@ -627,7 +627,7 @@
 
 
   var require_resolveCommand = __commonJS({
-    "../pi/node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
+    "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
       "use strict";
       var path2 = (init_node_path(), __toCommonJS(node_path_exports));
       var which = require_which();
@@ -669,7 +669,7 @@
 
 
   var require_escape = __commonJS({
-    "../pi/node_modules/cross-spawn/lib/util/escape.js"(exports, module) {
+    "node_modules/cross-spawn/lib/util/escape.js"(exports, module) {
       "use strict";
       var metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
       function escapeCommand(arg) {
@@ -694,7 +694,7 @@
 
 
   var require_shebang_regex = __commonJS({
-    "../pi/node_modules/shebang-regex/index.js"(exports, module) {
+    "node_modules/shebang-regex/index.js"(exports, module) {
       "use strict";
       module.exports = /^#!(.*)/;
     }
@@ -702,7 +702,7 @@
 
 
   var require_shebang_command = __commonJS({
-    "../pi/node_modules/shebang-command/index.js"(exports, module) {
+    "node_modules/shebang-command/index.js"(exports, module) {
       "use strict";
       var shebangRegex = require_shebang_regex();
       module.exports = (string2 = "") => {
@@ -722,7 +722,7 @@
 
 
   var require_readShebang = __commonJS({
-    "../pi/node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
+    "node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
       "use strict";
       var fs6 = require_node_fs();
       var shebangCommand = require_shebang_command();
@@ -744,7 +744,7 @@
 
 
   var require_parse = __commonJS({
-    "../pi/node_modules/cross-spawn/lib/parse.js"(exports, module) {
+    "node_modules/cross-spawn/lib/parse.js"(exports, module) {
       "use strict";
       var path2 = (init_node_path(), __toCommonJS(node_path_exports));
       var resolveCommand = require_resolveCommand();
@@ -806,7 +806,7 @@
 
 
   var require_enoent = __commonJS({
-    "../pi/node_modules/cross-spawn/lib/enoent.js"(exports, module) {
+    "node_modules/cross-spawn/lib/enoent.js"(exports, module) {
       "use strict";
       var isWin = globalThis.__piProcess.platform === "win32";
       function notFoundError(original, syscall) {
@@ -856,7 +856,7 @@
 
 
   var require_cross_spawn = __commonJS({
-    "../pi/node_modules/cross-spawn/index.js"(exports, module) {
+    "node_modules/cross-spawn/index.js"(exports, module) {
       "use strict";
       var cp = (init_node_child_process(), __toCommonJS(node_child_process_exports));
       var parse4 = require_parse();
@@ -883,7 +883,7 @@
 
 
   var require_core = __commonJS({
-    "../pi/node_modules/highlight.js/lib/core.js"(exports, module) {
+    "node_modules/highlight.js/lib/core.js"(exports, module) {
       function deepFreeze(obj) {
         if (obj instanceof Map) {
           obj.clear = obj.delete = obj.set = function() {
@@ -2401,7 +2401,7 @@
 
 
   var require_bash = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/bash.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/bash.js"(exports, module) {
       function source(re) {
         if (!re) return null;
         if (typeof re === "string") return re;
@@ -2541,7 +2541,7 @@
 
 
   var require_c = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/c.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/c.js"(exports, module) {
       function source(re) {
         if (!re) return null;
         if (typeof re === "string") return re;
@@ -2790,7 +2790,7 @@
 
 
   var require_cpp = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/cpp.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/cpp.js"(exports, module) {
       function source(re) {
         if (!re) return null;
         if (typeof re === "string") return re;
@@ -3195,7 +3195,7 @@
 
 
   var require_csharp = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/csharp.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/csharp.js"(exports, module) {
       function csharp2(hljs2) {
         const BUILT_IN_KEYWORDS = [
           "bool",
@@ -3629,7 +3629,7 @@
 
 
   var require_dart = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/dart.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/dart.js"(exports, module) {
       function dart2(hljs2) {
         const SUBST = {
           className: "subst",
@@ -3814,7 +3814,7 @@
 
 
   var require_go = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/go.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/go.js"(exports, module) {
       function go2(hljs2) {
         const GO_KEYWORDS = {
           keyword: "break default func interface select case map struct chan else goto package switch const fallthrough if range type continue for import return var go defer bool byte complex64 complex128 float32 float64 int8 int16 int32 int64 string uint8 uint16 uint32 uint64 int uint uintptr rune",
@@ -3879,7 +3879,7 @@
 
 
   var require_groovy = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/groovy.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/groovy.js"(exports, module) {
       function source(re) {
         if (!re) return null;
         if (typeof re === "string") return re;
@@ -4022,7 +4022,7 @@
 
 
   var require_java = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/java.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/java.js"(exports, module) {
       var decimalDigits = "[0-9](_*[0-9])*";
       var frac = `\\.(${decimalDigits})`;
       var hexDigits2 = "[0-9a-fA-F](_*[0-9a-fA-F])*";
@@ -4195,7 +4195,7 @@
 
 
   var require_javascript = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/javascript.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/javascript.js"(exports, module) {
       var IDENT_RE = "[A-Za-z$_][0-9A-Za-z$_]*";
       var KEYWORDS = [
         "as",
@@ -4743,7 +4743,7 @@
 
 
   var require_json = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/json.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/json.js"(exports, module) {
       function json2(hljs2) {
         const LITERALS = {
           literal: "true false null"
@@ -4804,7 +4804,7 @@
 
 
   var require_kotlin = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/kotlin.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/kotlin.js"(exports, module) {
       var decimalDigits = "[0-9](_*[0-9])*";
       var frac = `\\.(${decimalDigits})`;
       var hexDigits2 = "[0-9a-fA-F](_*[0-9a-fA-F])*";
@@ -5064,7 +5064,7 @@
 
 
   var require_lua = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/lua.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/lua.js"(exports, module) {
       function lua2(hljs2) {
         const OPENING_LONG_BRACKET = "\\[=*\\[";
         const CLOSING_LONG_BRACKET = "\\]=*\\]";
@@ -5131,7 +5131,7 @@
 
 
   var require_nix = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/nix.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/nix.js"(exports, module) {
       function nix2(hljs2) {
         const NIX_KEYWORDS = {
           keyword: "rec with let in inherit assert if else then",
@@ -5190,7 +5190,7 @@
 
 
   var require_perl = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/perl.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/perl.js"(exports, module) {
       function source(re) {
         if (!re) return null;
         if (typeof re === "string") return re;
@@ -5666,7 +5666,7 @@
 
 
   var require_php = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/php.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/php.js"(exports, module) {
       function php2(hljs2) {
         const VARIABLE = {
           className: "variable",
@@ -5854,7 +5854,7 @@
 
 
   var require_python = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/python.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/python.js"(exports, module) {
       function source(re) {
         if (!re) return null;
         if (typeof re === "string") return re;
@@ -6262,7 +6262,7 @@
 
 
   var require_ruby = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/ruby.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/ruby.js"(exports, module) {
       function source(re) {
         if (!re) return null;
         if (typeof re === "string") return re;
@@ -6604,7 +6604,7 @@
 
 
   var require_rust = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/rust.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/rust.js"(exports, module) {
       function rust2(hljs2) {
         const NUM_SUFFIX = "([ui](8|16|32|64|128|size)|f(32|64))?";
         const KEYWORDS = "abstract as async await become box break const continue crate do dyn else enum extern false final fn for if impl in let loop macro match mod move mut override priv pub ref return self Self static struct super trait true try type typeof unsafe unsized use virtual where while yield";
@@ -6723,7 +6723,7 @@
 
 
   var require_scala = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/scala.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/scala.js"(exports, module) {
       function scala2(hljs2) {
         const ANNOTATION = {
           className: "meta",
@@ -6850,7 +6850,7 @@
 
 
   var require_swift = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/swift.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/swift.js"(exports, module) {
       function source(re) {
         if (!re) return null;
         if (typeof re === "string") return re;
@@ -7645,7 +7645,7 @@
 
 
   var require_typescript = __commonJS({
-    "../pi/node_modules/highlight.js/lib/languages/typescript.js"(exports, module) {
+    "node_modules/highlight.js/lib/languages/typescript.js"(exports, module) {
       var IDENT_RE = "[A-Za-z$_][0-9A-Za-z$_]*";
       var KEYWORDS = [
         "as",
@@ -8380,7 +8380,7 @@
 
 
   var require_photon_rs = __commonJS({
-    "../pi/node_modules/@silvia-odwyer/photon-node/photon_rs.js"(exports, module) {
+    "node_modules/@silvia-odwyer/photon-node/photon_rs.js"(exports, module) {
       var imports = {};
       imports["__wbindgen_placeholder__"] = module.exports;
       var wasm;
