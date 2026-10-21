@@ -80,9 +80,6 @@ const nodeShims = {
 	"node:trace-events": join(shimDir, "node-trace-events.ts"),
 };
 
-const piPackageDir = join(repoRoot, "packages", "coding-agent");
-const piReadmePath = join(piPackageDir, "README.md");
-
 // esbuild names each module by its resolved path, and those names end up in
 // the output as the module wrapper keys. The resolved path depends on where
 // node_modules lives, so the same source would produce a different bundle in
@@ -216,9 +213,6 @@ const result = await build({
 		// CommonJS package in pi's dependency tree replaces the global, and
 		// the replacement has no environment.
 		process: "globalThis.__piProcess",
-		// The vendored package's own paths, known when the bundle is built.
-		__piPiReadmePath: JSON.stringify(piReadmePath),
-		__piPiPackageDir: JSON.stringify(piPackageDir),
 	},
 	target: "es2022",
 	write: false,
@@ -254,9 +248,17 @@ if (builtins.size > 0) {
 	throw new Error(`the bundle needs node built-ins the host does not provide: ${[...builtins].join(", ")}`);
 }
 
-const bundle = result.outputFiles[0].text.replace(
-	/^[ \t]*\/\/[ \t]+[\w@.~/-]*[\w@~-]\.(?:mjs|cjs|jsx|js|ts|tsx|json)[ \t]*$/gm,
-	"",
-);
+// The bundle must not carry the checkout's path: esbuild's node shim names
+// the output file by its absolute path, and a bundle that differs per
+// checkout fails the CI gate that rebuilds it. The path is rewritten to the
+// repository-relative one, which is what the file is called wherever the
+// checkout is.
+const bundle = result.outputFiles[0].text
+	.replace(
+		/^[ \t]*\/\/[ \t]+[\w@.~/-]*[\w@~-]\.(?:mjs|cjs|jsx|js|ts|tsx|json)[ \t]*$/gm,
+		"",
+	)
+	.split(`file://${output}`)
+	.join("file://rpi/crates/rpi-js/js/extension-host.bundle.js");
 writeFileSync(output, bundle);
 console.log(`built ${output} (${(bundle.length / 1024).toFixed(1)} KiB)`);

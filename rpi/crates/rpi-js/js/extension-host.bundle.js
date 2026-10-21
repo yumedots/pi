@@ -16302,7 +16302,7 @@ Command exited with code ${msg.exitCode}`;
     const home = globalThis.__piProcess.env.HOME ?? globalThis.__piProcess.env.USERPROFILE ?? "/";
     return `${home}/.pi/agent`;
   };
-  var getReadmePath = () => "/Users/gabriel/pi-native/packages/coding-agent/README.md";
+  var getReadmePath = () => `${getAgentDir()}/README.md`;
   var getThemesDir = () => `${getAgentDir()}/theme`;
   var getCustomThemesDir = () => `${getAgentDir()}/themes`;
   var getBinDir = () => `${getAgentDir()}/bin`;
@@ -23140,7 +23140,7 @@ ${command}` : command;
 
 
   init_node_path();
-  var require2 = createRequire("file:///Users/gabriel/pi-native/rpi/crates/rpi-js/js/extension-host.bundle.js");
+  var require2 = createRequire("file://rpi/crates/rpi-js/js/extension-host.bundle.js");
   var fs3 = require2("fs");
   var WASM_FILENAME = "photon_rs_bg.wasm";
   var photonModule = null;
@@ -23447,10 +23447,10 @@ ${command}` : command;
     }
   }
   async function resizeImage(inputBytes, mimeType, options) {
-    const isTypeScriptRuntime = "file:///Users/gabriel/pi-native/rpi/crates/rpi-js/js/extension-host.bundle.js".endsWith(".ts");
+    const isTypeScriptRuntime = "file://rpi/crates/rpi-js/js/extension-host.bundle.js".endsWith(".ts");
     const workerUrl = new URL(
       isTypeScriptRuntime ? "./image-resize-worker.ts" : "./image-resize-worker.js",
-      "file:///Users/gabriel/pi-native/rpi/crates/rpi-js/js/extension-host.bundle.js"
+      "file://rpi/crates/rpi-js/js/extension-host.bundle.js"
     );
     if (typeof globalThis.__piProcess.versions.bun === "string") {
       try {
@@ -29392,10 +29392,10 @@ Please report this to https://github.com/markedjs/marked.`, e) {
 
 
   init_node_path();
-  var moduleRequire = createRequire("file:///Users/gabriel/pi-native/rpi/crates/rpi-js/js/extension-host.bundle.js");
+  var moduleRequire = createRequire("file://rpi/crates/rpi-js/js/extension-host.bundle.js");
   var TUI_PACKAGE_NAME = "@earendil-works/pi-tui";
   function getNativeModuleCandidates(nativePath, options = {}) {
-    const moduleDir = dirname(fileURLToPath(options.moduleUrl ?? "file:///Users/gabriel/pi-native/rpi/crates/rpi-js/js/extension-host.bundle.js"));
+    const moduleDir = dirname(fileURLToPath(options.moduleUrl ?? "file://rpi/crates/rpi-js/js/extension-host.bundle.js"));
     const candidates = [];
     try {
       const packageEntry = (options.resolvePackage ?? moduleRequire.resolve)(TUI_PACKAGE_NAME);
@@ -29411,7 +29411,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
   }
 
 
-  var cjsRequire = createRequire("file:///Users/gabriel/pi-native/rpi/crates/rpi-js/js/extension-host.bundle.js");
+  var cjsRequire = createRequire("file://rpi/crates/rpi-js/js/extension-host.bundle.js");
   var helpers = /* @__PURE__ */ new Map();
   function loadNativePlatformHelper(platform4, suffix = "") {
     const arch3 = globalThis.__piProcess.arch;
