@@ -163,11 +163,55 @@ fn the_hotkeys_listing_reads_like_the_original() {
 }
 
 #[test]
-fn the_version_block_shows_the_originals_version() {
+fn the_hotkeys_extensions_section_reads_like_the_original() {
+    // The original appends an `Extensions` section when the loaded extensions
+    // registered shortcuts (`interactive-mode.ts:6892-6903`): a heading, the
+    // `| Key | Action |` table, the capitalised key, and the description — or
+    // the extension's path when the shortcut has no description.
     let chat = Arc::new(Container::new());
-    add_version_message(&chat);
+    add_hotkeys_message_with_extensions(
+        &chat,
+        &[
+            ExtensionShortcut {
+                key: "ctrl+x".to_string(),
+                description: Some("Do the thing".to_string()),
+                extension: "/tmp/first.js".to_string(),
+            },
+            ExtensionShortcut {
+                key: "alt+y".to_string(),
+                description: None,
+                extension: "/tmp/second.js".to_string(),
+            },
+        ],
+    );
     let output = strip_ansi(&chat.render(120).join("\n"));
-    assert!(output.contains("pi v1.3.0"));
+    assert!(output.contains("Extensions"), "{output}");
+    assert!(output.contains("Key"), "{output}");
+    assert!(output.contains("Action"), "{output}");
+    assert!(output.contains("Ctrl+X"), "{output}");
+    assert!(output.contains("Do the thing"), "{output}");
+    assert!(output.contains("Alt+Y"), "{output}");
+    assert!(output.contains("/tmp/second.js"), "{output}");
+    // A shortcut with a description does not also show the extension's path.
+    assert!(!output.contains("/tmp/first.js"), "{output}");
+    // Without an extension there is no section at all.
+    let chat = Arc::new(Container::new());
+    add_hotkeys_message(&chat);
+    let output = strip_ansi(&chat.render(120).join("\n"));
+    assert!(!output.contains("Extensions"), "{output}");
+}
+
+#[test]
+fn the_startup_header_shows_the_originals_version() {
+    // The original has no `/version` command: the version is part of the
+    // startup header.
+    let chat = Arc::new(Container::new());
+    add_startup_header(
+        &chat,
+        &Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
+    );
+    let output = strip_ansi(&chat.render(120).join("\n"));
+    assert!(output.contains("v1.3.0"), "the header shows the version");
     assert!(!output.contains("rpi"));
 }
 
@@ -1584,8 +1628,8 @@ fn multiline_autocomplete_preserves_row_and_column() {
 fn test_slash_command_dispatch() {
     // The registry is the single source of truth for dispatch: `find(token)`
     // returns the command (by name or alias) whose `name()` is the canonical
-    // form, or `None` for an unknown token. This replaces the old enum-based
-    // `handle_slash_command` assertions with equivalent registry lookups.
+    // form, or `None` for an unknown token. The set is the original's own
+    // (`packages/coding-agent/src/core/slash-commands.ts:21-52`).
     let registry = build_builtin_registry();
 
     // Helper: a token resolves to the command with this canonical name.
@@ -1599,36 +1643,48 @@ fn test_slash_command_dispatch() {
         );
     };
 
-    resolves_to("/help", "/help");
-    resolves_to("/?", "/help"); // alias → canonical
-    resolves_to("/clear", "/clear");
-    resolves_to("/new", "/clear"); // alias
-    resolves_to("/q", "/exit"); // alias
-    resolves_to("/quit", "/quit");
-    resolves_to("/exit", "/quit"); // alias
-    resolves_to("/version", "/version");
-    resolves_to("/v", "/version"); // alias
-    resolves_to("/changelog", "/changelog");
-    resolves_to("/hotkeys", "/hotkeys");
-    resolves_to("/model", "/model");
-    resolves_to("/m", "/model"); // alias
-    resolves_to("/provider", "/provider");
-    resolves_to("/theme", "/theme");
-    resolves_to("/resume", "/resume");
-    resolves_to("/history", "/resume"); // alias
-    resolves_to("/sessions", "/resume"); // alias
-    resolves_to("/session", "/resume"); // the port's own hidden alias
-    resolves_to("/compact", "/compact");
-    resolves_to("/copy", "/copy");
-    resolves_to("/thinking", "/thinking");
-    resolves_to("/think", "/thinking"); // alias
-    resolves_to("/tools", "/tools");
-    resolves_to("/images", "/images");
+    // The original's 26 commands.
+    for command in [
+        "/settings",
+        "/model",
+        "/tree",
+        "/thinking",
+        "/scoped-models",
+        "/skills",
+        "/theme",
+        "/export",
+        "/import",
+        "/share",
+        "/bug",
+        "/copy",
+        "/name",
+        "/stats",
+        "/changelog",
+        "/hotkeys",
+        "/fork",
+        "/clone",
+        "/trust",
+        "/login",
+        "/logout",
+        "/new",
+        "/compact",
+        "/resume",
+        "/reload",
+        "/quit",
+    ] {
+        resolves_to(command, command);
+    }
+    // The original's aliases point at their command.
+    resolves_to("/history", "/resume");
+    resolves_to("/sessions", "/resume");
+    resolves_to("/exit", "/quit");
+    // The port's own aliases, kept off the `/` list.
+    resolves_to("/q", "/quit");
+    resolves_to("/m", "/model");
+    resolves_to("/think", "/thinking");
+    resolves_to("/session", "/resume");
+    // The port's own command.
     resolves_to("/context", "/context");
-    // Out-of-v1-scope commands resolve to their own UnsupportedCommand entry.
-    resolves_to("/settings", "/settings");
-    resolves_to("/name", "/name");
-    resolves_to("/export", "/export");
 
     // Unknown token → not found.
     assert!(registry.find("/nope").is_none(), "/nope should be unknown");
@@ -1668,15 +1724,142 @@ fn test_registry_visible_entries_cover_dispatch() {
         );
     }
     // Hidden commands stay off the list.
-    for hidden in [
-        "/context", "/q", "/m", "/v", "/think", "/exit", "/session", "/history", "/sessions",
-        "/?",
-    ] {
+    for hidden in ["/context", "/q", "/m", "/think", "/session"] {
         assert!(
             !names.contains(&hidden.to_string()),
             "{hidden} should be hidden from autocomplete"
         );
     }
+}
+
+#[test]
+fn the_slash_list_is_the_originals_list() {
+    // The `/` list is the original's own: the same commands, the same
+    // descriptions, the same argument hints and the same order, with each
+    // alias as its own row right after the command it points at
+    // (`packages/coding-agent/src/core/slash-commands.ts:21-52` and
+    // `packages/coding-agent/src/modes/interactive/interactive-mode.ts:722-733`).
+    let entries = build_builtin_registry().visible_entries();
+    let rows: Vec<(String, Option<String>, String)> = entries
+        .iter()
+        .map(|entry| {
+            (
+                entry.name.clone(),
+                entry.argument_hint.clone(),
+                entry.description.clone(),
+            )
+        })
+        .collect();
+    let expected: Vec<(&str, Option<&str>, &str)> = vec![
+        ("/settings", None, "Open settings menu"),
+        (
+            "/model",
+            Some("<provider/model>"),
+            "Select model (opens selector UI)",
+        ),
+        ("/tree", None, "Navigate session tree (switch branches)"),
+        ("/thinking", Some("<level>"), "Set thinking level"),
+        (
+            "/scoped-models",
+            None,
+            "Enable/disable models for Ctrl+P cycling",
+        ),
+        ("/skills", None, "Browse and run a skill"),
+        ("/theme", Some("<name>"), "Change the color theme"),
+        (
+            "/export",
+            None,
+            "Export session (HTML default, or specify path: .html/.jsonl)",
+        ),
+        (
+            "/import",
+            None,
+            "Import and resume a session from a JSONL file",
+        ),
+        (
+            "/share",
+            None,
+            "Share session via a Radius artifact or a GitHub gist",
+        ),
+        (
+            "/bug",
+            Some("<description>"),
+            "Report a bug to the Pi developers",
+        ),
+        ("/copy", None, "Copy last agent message to clipboard"),
+        ("/name", None, "Set session display name"),
+        ("/stats", None, "Show session info and stats"),
+        ("/changelog", None, "Show changelog entries"),
+        ("/hotkeys", None, "Show all keyboard shortcuts"),
+        ("/fork", None, "Create a new fork from a previous user message"),
+        (
+            "/clone",
+            None,
+            "Duplicate the current session at the current position",
+        ),
+        (
+            "/trust",
+            None,
+            "Save project trust decision for future sessions",
+        ),
+        (
+            "/login",
+            Some("<provider>"),
+            "Configure provider authentication",
+        ),
+        ("/logout", None, "Remove provider authentication"),
+        ("/new", None, "Start a new session"),
+        ("/compact", None, "Manually compact the session context"),
+        ("/resume", None, "Resume a different session"),
+        ("/history", None, "Resume a different session"),
+        ("/sessions", None, "Resume a different session"),
+        (
+            "/reload",
+            None,
+            "Reload keybindings, extensions, skills, prompts, themes, and context files",
+        ),
+        ("/quit", None, "Quit pi"),
+        ("/exit", None, "Quit pi"),
+    ];
+    let expected: Vec<(String, Option<String>, String)> = expected
+        .into_iter()
+        .map(|(name, hint, description)| {
+            (name.to_string(), hint.map(str::to_string), description.to_string())
+        })
+        .collect();
+    assert_eq!(rows, expected);
+}
+
+#[test]
+fn a_registered_command_never_reaches_the_model() {
+    // The submit handler runs a registered command and returns, so the input
+    // never becomes a prompt; an unregistered `/name` names no command, so it
+    // falls through to the model.
+    let registry = build_builtin_registry();
+    for text in [
+        "/hotkeys",
+        "/new",
+        "/quit",
+        "/exit",
+        "/history",
+        "/model mock/mock-1",
+    ] {
+        let resolved = resolve_command(text, &registry);
+        assert!(resolved.is_some(), "{text} should name a command");
+    }
+    for text in ["/help", "/?", "/clear", "/version", "/v", "/provider", "/tools", "/images", "/usage"] {
+        assert!(
+            resolve_command(text, &registry).is_none(),
+            "{text} names no command, so it belongs to the model"
+        );
+    }
+    // A bare alias with text is not an invocation: the original rewrites a
+    // bare alias only (`packages/coding-agent/src/core/slash-commands.ts:56-68`).
+    assert!(resolve_command("/exit please", &registry).is_none());
+    assert!(resolve_command("/history please", &registry).is_none());
+    assert!(resolve_command("/sessions please", &registry).is_none());
+    // A registered command with text is still an invocation.
+    assert!(resolve_command("/model mock/mock-1", &registry).is_some());
 }
 
 #[test]
@@ -3160,15 +3343,15 @@ fn test_accept_top_suggestion_replaces_prefix() {
         state.autocomplete.set_provider(Arc::new(combined));
     }
     let editor = Arc::new(Editor::simple());
-    editor.set_text("/he");
-    editor.set_cursor(0, 3);
+    editor.set_text("/hotk");
+    editor.set_cursor(0, 5);
     refresh_autocomplete(&state, &editor);
     let accepted = accept_top_suggestion(&state, &editor);
     assert!(accepted, "should accept the top suggestion");
     let text = editor.get_text();
     assert!(
-        text.starts_with("/help"),
-        "editor text should start with /help, got {text}"
+        text.starts_with("/hotkeys"),
+        "editor text should start with /hotkeys, got {text}"
     );
 }
 
@@ -3832,32 +4015,41 @@ fn the_originals_commands_are_registered_with_their_text() {
         entries
             .iter()
             .find(|entry| entry.name == name)
-            .map(|entry| entry.description.clone())
+            .cloned()
     };
-    assert_eq!(row("/skills").as_deref(), Some("Browse and run a skill"));
     assert_eq!(
-        row("/bug").as_deref(),
-        Some("<description> — Report a bug to the Pi developers")
+        row("/skills").map(|entry| entry.description),
+        Some("Browse and run a skill".to_string())
     );
-    assert_eq!(row("/stats").as_deref(), Some("Show session info and stats"));
-    assert_eq!(row("/resume").as_deref(), Some("Resume a different session"));
-    assert_eq!(row("/quit").as_deref(), Some("Quit pi"));
+    assert_eq!(row("/stats").map(|entry| entry.description), Some("Show session info and stats".to_string()));
+    assert_eq!(row("/resume").map(|entry| entry.description), Some("Resume a different session".to_string()));
+    assert_eq!(row("/quit").map(|entry| entry.description), Some("Quit pi".to_string()));
+    // The row shows the argument hint in front of the description, the way
+    // the original's `fullDesc` does (`packages/tui/src/autocomplete.ts:356-359`).
     assert_eq!(
-        row("/model").as_deref(),
-        Some("<provider/model> — Select model (opens selector UI)")
-    );
-    assert_eq!(
-        row("/thinking").as_deref(),
-        Some("<level> — Set thinking level")
+        row("/bug").map(|entry| entry.row_description()),
+        Some("<description> — Report a bug to the Pi developers".to_string())
     );
     assert_eq!(
-        row("/theme").as_deref(),
-        Some("<name> — Change the color theme")
+        row("/model").map(|entry| entry.row_description()),
+        Some("<provider/model> — Select model (opens selector UI)".to_string())
     );
     assert_eq!(
-        row("/login").as_deref(),
-        Some("<provider> — Configure provider authentication")
+        row("/thinking").map(|entry| entry.row_description()),
+        Some("<level> — Set thinking level".to_string())
     );
+    assert_eq!(
+        row("/theme").map(|entry| entry.row_description()),
+        Some("<name> — Change the color theme".to_string())
+    );
+    assert_eq!(
+        row("/login").map(|entry| entry.row_description()),
+        Some("<provider> — Configure provider authentication".to_string())
+    );
+    // An alias row carries the command's description and no hint of its own.
+    let exit = row("/exit").expect("/exit is listed");
+    assert_eq!(exit.description, "Quit pi");
+    assert_eq!(exit.argument_hint, None);
 }
 
 #[test]

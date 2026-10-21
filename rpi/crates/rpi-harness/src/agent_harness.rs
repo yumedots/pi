@@ -616,6 +616,11 @@ struct HarnessInner {
     driving: DrivingMode,
     tool_execution: HarnessToolExecution,
     system_prompt: Option<String>,
+    /// Whether the session already carries the `system` message entry. The
+    /// original writes one at the start of a session (and rewrites it when the
+    /// tool set changes); the port has no tool-change announcement, so it
+    /// writes it once and never rewrites it.
+    system_entry_written: std::sync::atomic::AtomicBool,
     /// Provider registry; the harness resolves by `model.provider`.
     models: Vec<Arc<dyn AiProvider>>,
     /// Optional caller-supplied converter; if `None` the harness-level
@@ -769,6 +774,7 @@ impl AgentHarness {
             driving: options.drive,
             tool_execution: options.tool_execution,
             system_prompt: options.system_prompt,
+            system_entry_written: std::sync::atomic::AtomicBool::new(false),
             models: options.models,
             to_provider_messages: options.to_provider_messages,
             entry_projectors: options.entry_projectors,
@@ -3160,6 +3166,74 @@ impl AgentHarness {
         compose_system_prompt(base, skills, None, None)
     }
 
+    /// Write the session's `system` message entry, once per session.
+    ///
+    /// The original's session file carries a `system` message
+    /// (`packages/coding-agent/src/core/session-manager.ts`: the entry's
+    /// `message` has `role: "system"`, the prompt's `content`, its `sections`
+    /// and the `toolsAdded` list). The port writes it once, at the first run:
+    /// it has no tool-change announcement, so there is nothing to rewrite it
+    /// for. The entry is **not** part of the model context — the system
+    /// prompt is composed for the provider separately — so the context builder
+    /// skips it.
+    async fn write_system_entry(&self) -> HarnessResult<()> {
+        let (system_prompt, tools) = {
+            let inner = self.inner.lock().unwrap();
+            (
+                Self::compose_prompt(
+                    inner.system_prompt.as_deref(),
+                    &inner.resources,
+                    &inner.active_tool_names,
+                ),
+                inner.tools.clone(),
+            )
+        };
+        let message = AgentMessage::System(Box::new(rpi_ai::types::SystemMessage {
+            role: rpi_ai::types::SystemRole,
+            content: system_prompt,
+            sections: None,
+            tools_added: Some(tools.iter().map(|tool| tool.tool.schema().clone()).collect()),
+            timestamp: now_ms(),
+        }));
+        self.view()
+            .append_message(message)
+            .await
+            .map_err(session_to_harness_err)?;
+        Ok(())
+    }
+
+    /// Write the `system` message entry when the session does not have one yet.
+    async fn ensure_system_entry(&self) -> HarnessResult<()> {
+        if self
+            .inner
+            .lock()
+            .unwrap()
+            .system_entry_written
+            .load(Ordering::Relaxed)
+        {
+            return Ok(());
+        }
+        let existing = self
+            .session
+            .find_entries(&crate::session::types::EntryQuery::default())
+            .await
+            .map_err(session_to_harness_err)?
+            .iter()
+            .any(|entry| {
+                matches!(entry, crate::session::types::Entry::Message(m)
+                    if matches!(m.message, AgentMessage::System(_)))
+            });
+        if !existing {
+            self.write_system_entry().await?;
+        }
+        self.inner
+            .lock()
+            .unwrap()
+            .system_entry_written
+            .store(true, Ordering::Relaxed);
+        Ok(())
+    }
+
     /// Reserve an entry id. Exposed so a settle observer can name an entry in a
     /// `step_attempt` record *before* committing it, which is what makes the
     /// record's `result_entry_id` checkable at recovery.
@@ -3663,6 +3737,10 @@ impl AgentHarness {
         self.write_operation_started(&run_id, source_leaf.clone(), intent)
             .await?;
 
+        // The session file carries the `system` message entry (the original
+        // writes one); it comes before the first user message.
+        self.ensure_system_entry().await?;
+
         // Persist prompts (the user's input) BEFORE the run so they're durable.
         for (index, msg) in prompts.iter().enumerate() {
             if let Some(entry_id) = queued_ids.get(index) {
@@ -4049,6 +4127,25 @@ impl AgentHarness {
             Arc::clone(&settle_state),
             self.clone(),
         ));
+        // The original's loop emits the `message_start`/`message_end` pair for
+        // the messages it is given (`packages/agent/src/agent-loop.ts:110-115`).
+        // The harness runs the loop with an empty prompt vector — the prompts
+        // are persisted and already in the context via the branch-path build —
+        // so the pair is emitted here, once, before the loop starts.
+        if !from_assistant {
+            for message in &prompts {
+                emitter
+                    .emit(AgentEvent::MessageStart {
+                        message: message.clone(),
+                    })
+                    .await;
+                emitter
+                    .emit(AgentEvent::MessageEnd {
+                        message: message.clone(),
+                    })
+                    .await;
+            }
+        }
         let result = loop {
             // Entering from an assistant runs that message's tools as its very
             // first action, which is exactly why it is never retried (see below).
@@ -5765,7 +5862,7 @@ mod session_switch_tests {
     use rpi_ai::{Api, Model};
     use rpi_tools::{FileSystem, OsExecutionEnv};
 
-    fn opts() -> AgentHarnessOptions {
+    pub(super) fn opts() -> AgentHarnessOptions {
         AgentHarnessOptions {
             model: Model::new("m", "m", Api::Faux, "faux", "http://x"),
             thinking_level: Default::default(),
@@ -6020,5 +6117,45 @@ mod session_switch_tests {
                     )
             )
         }));
+    }
+}
+
+#[cfg(test)]
+mod system_entry_tests {
+    use super::session_switch_tests::opts;
+    use super::*;
+    use crate::session::context::session_entry_to_context_messages;
+    use crate::session::types::{Entry, EntryQuery};
+
+    /// The session file carries the `system` message entry, the original's
+    /// shape, and the entry never reaches the model context.
+    #[tokio::test]
+    async fn the_session_carries_the_system_message_entry() {
+        let harness = AgentHarness::create(opts()).await.unwrap();
+        harness.ensure_system_entry().await.unwrap();
+
+        let entries = harness
+            .session()
+            .find_entries(&EntryQuery::default())
+            .await
+            .unwrap();
+        let system = entries
+            .iter()
+            .find(|entry| {
+                matches!(entry, Entry::Message(m) if matches!(m.message, AgentMessage::System(_)))
+            })
+            .expect("the session carries a system message entry");
+
+        // The original's shape: `role: "system"`, the prompt's content, the
+        // timestamp.
+        let json = serde_json::to_string(&system.to_flat_json()).unwrap();
+        assert!(json.contains("\"role\":\"system\""), "{json}");
+        assert!(json.contains("\"type\":\"message\""), "{json}");
+
+        // And it is not a conversation message: the context builder skips it,
+        // so the model does not receive the system prompt twice.
+        let context =
+            session_entry_to_context_messages(system, 0, &entries, &Default::default());
+        assert!(context.is_empty(), "the system entry must not enter the context");
     }
 }

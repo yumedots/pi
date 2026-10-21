@@ -394,12 +394,14 @@ impl CommandRegistry {
                     argument_hint: c.argument_hint().map(str::to_string),
                 });
             }
-            // Surfaced aliases share the command's description.
+            // Surfaced aliases share the command's description, and carry no
+            // argument hint of their own
+            // (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:722-733`).
             for alias in c.alias_visible() {
                 out.push(SlashCommandEntry {
                     name: (*alias).into(),
                     description: description.clone(),
-                    argument_hint: c.argument_hint().map(str::to_string),
+                    argument_hint: None,
                 });
             }
         }
@@ -590,7 +592,7 @@ fn template_autocomplete_description(template: &rpi_harness::types::PromptTempla
 }
 
 /// Aliases the original rewrites only when the input is the bare command name.
-const BARE_ALIASES: &[&str] = &["/history", "/sessions"];
+const BARE_ALIASES: &[&str] = &["/history", "/sessions", "/exit"];
 
 /// Whether the input's first word is a command invocation. The original
 /// rewrites a bare alias only, so `/history some text` stays a message
@@ -602,6 +604,25 @@ fn is_command_token(token: &str, args: &str) -> bool {
     true
 }
 
+/// The command a `/`-prefixed input names, and the rest of the line.
+///
+/// `None` when the input names no registered command, so it falls through to
+/// the model.
+fn resolve_command<'a>(
+    text: &str,
+    registry: &'a CommandRegistry,
+) -> Option<(&'a Arc<dyn SlashCommand>, String)> {
+    let mut parts = text.split_whitespace();
+    let token = parts.next().unwrap_or("");
+    let args = parts.collect::<Vec<_>>().join(" ");
+    // The original rewrites a bare alias only: `/history some text` is not an
+    // alias invocation and stays a message.
+    if !is_command_token(token, &args) {
+        return None;
+    }
+    registry.find(token).map(|cmd| (cmd, args))
+}
+
 /// Resolve a command for a `/`-prefixed input and run it when one matches.
 ///
 /// Unknown slash-prefixed input is deliberately left for the normal prompt
@@ -610,16 +631,8 @@ fn is_command_token(token: &str, args: &str) -> bool {
 /// converted into a local error before input handlers or the agent see it.
 /// Returns `true` only when a registered slash command handled the input.
 fn dispatch_slash(text: &str, ctx: &CommandContext, registry: &CommandRegistry) -> bool {
-    let mut parts = text.split_whitespace();
-    let token = parts.next().unwrap_or("");
-    let args = parts.collect::<Vec<_>>().join(" ");
-    // The original rewrites a bare alias only: `/history some text` is not an
-    // alias invocation and stays a message.
-    if !is_command_token(token, &args) {
-        return false;
-    }
-    match registry.find(token) {
-        Some(cmd) => {
+    match resolve_command(text, registry) {
+        Some((cmd, args)) => {
             cmd.execute(ctx, &args);
             true
         }
@@ -778,8 +791,6 @@ enum TuiMessage {
     OpenTree,
     NavigateTree(String),
     Exit,
-    /// Clear the transcript (from `/clear`).
-    ClearChat,
     /// Start a new session (from `/new`).
     NewSession,
     /// Compact the conversation (from `/compact`).
@@ -2111,18 +2122,13 @@ pub async fn interactive_tui(
             return;
         }
 
-        // Render the user bubble here, NOT from `AgentEvent::MessageStart`.
-        //
-        // The harness persists the prompt itself and then drives
-        // `run_agent_loop` with an EMPTY prompts vec (so the prompt is not
-        // double-counted in the provider context), which means the loop emits
-        // no `message_start` for it — see
-        // `directly_sent_prompt_emits_no_user_message_start` in
-        // `crates/rpi-harness/tests/harness_run_e2e.rs`. Queued steering /
-        // follow-up prompts DO get a `message_start` (the loop drains those
-        // itself), so those are deliberately rendered from the event instead.
+        // The user bubble is rendered from the run's own `message_start`, the
+        // way the original replaces the submit echo with the message the run
+        // received (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:3196`).
+        // The harness emits that pair for the messages it is given
+        // (`packages/agent/src/agent-loop.ts:110-115`), so echoing the prompt
+        // here as well would show it twice.
         empty_session_for_submit.deactivate(&ctx_for_cb.tui);
-        add_user_message(&ctx_for_cb.chat, text);
         // A new prompt starts a fresh interaction at the tail even when the
         // user had scrolled up to inspect older output.
         if let Some(scroll) = ctx_for_cb.tui.get_primary_scroll_view() {
@@ -3314,7 +3320,7 @@ pub async fn interactive_tui(
                 &key,
                 rpi_tui::keybindings::keys::SESSION_NEW,
             ) {
-                if let Some(cmd) = registry_for_key.find("/clear") {
+                if let Some(cmd) = registry_for_key.find("/new") {
                     cmd.execute(&ctx_for_key, "");
                 }
                 continue;
@@ -3800,11 +3806,6 @@ pub async fn interactive_tui(
                         &format!("Could not navigate session tree: {error}"),
                     ),
                 }
-                tui.request_render(false);
-            }
-            Some(TuiMessage::ClearChat) => {
-                chat_container.clear();
-                add_startup_header(&chat_container, &state.startup_header);
                 tui.request_render(false);
             }
             Some(TuiMessage::Compact) => {

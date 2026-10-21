@@ -3642,6 +3642,40 @@ mod tests {
         );
     }
 
+    /// The tools that are ACTIVE by default are pi's four (`read`, `bash`,
+    /// `edit`, `write`); the other built-ins stay registered and are selectable
+    /// with `--tools`. Mirrors pi's `defaultTools`
+    /// (`packages/coding-agent/src/core/settings-manager.ts:85`).
+    #[test]
+    fn the_default_active_tool_set_is_pis_four() {
+        let env = Arc::new(OsExecutionEnv::with_cwd(PathBuf::from(".")));
+        let env_dyn: Arc<dyn rpi_tools::ExecutionEnv> = env.clone();
+        let mut_env: Arc<dyn rpi_tools::MutatingEnv> = env.clone();
+        let context = ExecutionToolContext::new(env_dyn, Some(mut_env));
+        let tools = build_tools(&context, &Args::default());
+        let active = active_tool_names(&tools, &Args::default());
+
+        assert_eq!(
+            active,
+            vec![
+                "read".to_string(),
+                "bash".to_string(),
+                "edit".to_string(),
+                "write".to_string()
+            ]
+        );
+
+        // The search tools are still registered and still selectable.
+        let mut args = Args::default();
+        args.tools = Some(vec!["grep".to_string()]);
+        let tools = build_tools(&context, &args);
+        assert_eq!(
+            active_tool_names(&tools, &args),
+            vec!["grep".to_string()],
+            "--tools selects the registered tool the model is offered"
+        );
+    }
+
     /// Project trust fails closed: a project with trust-requiring resources and
     /// no decision is not trusted. Mirrors pi's `resolveProjectTrusted`
     /// (`packages/coding-agent/src/core/project-trust.ts:51-92`).

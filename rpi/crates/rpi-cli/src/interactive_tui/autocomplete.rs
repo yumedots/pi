@@ -77,11 +77,11 @@ pub(super) fn set_editor_cursor_offset(editor: &Editor, text: &str, offset: usiz
 /// Render (or clear) the autocomplete suggestion list into the container.
 ///
 /// The original builds the popup's list as a `SelectList`
-/// (`packages/tui/src/components/editor.ts:2451-2452`), so the popup shows the
-/// same `(n/m)` counter, the same label column and the same wrap-around as
-/// every other list. The rows come from the provider and the highlight from
-/// `state.autocomplete_selection`, so the row the popup highlights is the row
-/// the accept path takes.
+/// (`packages/tui/src/components/editor.ts:2451-2452`) and renders it at the
+/// editor's own width, so the popup shows the same `(n/m)` counter, the same
+/// label column and the same wrap-around as every other list. The rows come
+/// from the provider and the highlight from `state.autocomplete_selection`, so
+/// the row the popup highlights is the row the accept path takes.
 pub(super) fn render_autocomplete(
     state: &Arc<TuiState>,
     suggestions: Option<AutocompleteSuggestions>,
@@ -115,39 +115,59 @@ pub(super) fn render_autocomplete(
                 .with_description(item.description.as_deref().unwrap_or(""))
         })
         .collect();
-    // The list's theme is the tui library's default, which reads the process
-    // theme — the same colours the original's popup uses.
-    let mut list = rpi_tui::SelectList::new(items, state.autocomplete_max_visible);
     // The original gives its command list the narrower column
     // (`packages/tui/src/components/editor.ts:2451`); every other list keeps
     // the default.
+    let mut layout = rpi_tui::SelectListLayoutOptions::default();
     if is_command_context(&sugg) {
-        list.set_layout(rpi_tui::SelectListLayoutOptions {
-            min_primary_column_width: Some(12),
-            max_primary_column_width: Some(32),
-            truncate_primary: None,
-        });
+        layout.min_primary_column_width = Some(12);
+        layout.max_primary_column_width = Some(32);
     }
-    // Setting the index also centres the window on it, so the highlighted row
-    // is the one the popup shows.
-    list.set_selected_index(selection);
-    // The list renders its rows at the pane's width; the container renders
-    // them at whatever width the layout gives it, so the rows are laid out
-    // here and the container only holds them.
-    for line in list.render(POPUP_WIDTH) {
-        state
-            .autocomplete_container
-            .add_child(Arc::new(Text::new(line, 0, 0)));
-    }
+    state
+        .autocomplete_container
+        .add_child(Arc::new(AutocompletePopup {
+            items,
+            selection,
+            max_visible: state.autocomplete_max_visible,
+            layout,
+            fallback_width: state.viewport_width(),
+        }));
 }
 
-/// The width the popup's rows are laid out at.
+/// The popup's rows, rendered as a `SelectList` at the width the layout gives
+/// the popup — the original's shape: the editor owns the list and renders it
+/// at its own width (`packages/tui/src/components/editor.ts:2451-2452`).
 ///
-/// The container renders its children at the width the layout gives it, which
-/// the popup does not know; the rows are laid out at the pane's width here so
-/// the label column and the descriptions have room, and the container's own
-/// render truncates them to its width if it is narrower.
-const POPUP_WIDTH: usize = 200;
+/// The rows are rendered here rather than pre-rendered into the container,
+/// because a row laid out at one width and drawn at another wraps: the
+/// description ends up on a second line and the row is broken.
+struct AutocompletePopup {
+    items: Vec<rpi_tui::SelectItem>,
+    selection: usize,
+    max_visible: usize,
+    layout: rpi_tui::SelectListLayoutOptions,
+    /// The width the popup falls back to when the layout gives it none: the
+    /// editor's own width, the way the original's editor renders its list.
+    fallback_width: usize,
+}
+
+impl Component for AutocompletePopup {
+    fn render(&self, width: usize) -> Vec<String> {
+        let width = if width == 0 { self.fallback_width } else { width };
+        let mut list = rpi_tui::SelectList::new(self.items.clone(), self.max_visible);
+        list.set_layout(self.layout.clone());
+        // Setting the index also centres the window on it, so the highlighted
+        // row is the one the popup shows.
+        list.set_selected_index(self.selection);
+        list.render(width)
+    }
+
+    fn invalidate(&self) {}
+
+    fn as_any(&self) -> &(dyn std::any::Any + 'static) {
+        self
+    }
+}
 
 /// Whether the completion is a `/` command list, the one the original gives
 /// its narrower label column (`packages/tui/src/components/editor.ts:2451`).
@@ -430,6 +450,68 @@ mod tests {
         assert!(
             rendered.contains("(1/7)"),
             "the popup must show the counter, got:\n{rendered}"
+        );
+    }
+
+    /// The popup renders its rows in the dock, at the width the layout gives
+    /// it.
+    ///
+    /// The rows are drawn by the popup itself, at the width the layout hands
+    /// it — the original's shape, where the editor owns the list and renders it
+    /// at its own width (`packages/tui/src/components/editor.ts:2451-2452`).
+    /// A row laid out at one width and drawn at another wraps, and the popup
+    /// then shows a broken row instead of the list.
+    #[test]
+    fn the_popup_renders_its_rows_in_the_dock() {
+        use rpi_tui::render_layout_frame;
+
+        let state = crate::interactive_tui::tests::autocomplete_test_state(5);
+        let commands: Vec<rpi_tui::SlashCommand> = (0..7)
+            .map(|i| rpi_tui::SlashCommand {
+                name: format!("/choice{i}"),
+                description: format!("choice {i}"),
+                argument_hint: None,
+            })
+            .collect();
+        state
+            .autocomplete
+            .set_provider(Arc::new(rpi_tui::SlashCommandAutocompleteProvider::new(
+                commands,
+            )));
+        let editor = Arc::new(Editor::simple());
+        editor.set_text("/");
+        editor.set_cursor(0, 1);
+        refresh_autocomplete(&state, &editor);
+
+        // The dock the popup lives in: above the editor.
+        let editor_container = Arc::new(Container::new());
+        editor_container.add_child(editor.clone());
+        let dock = Arc::new(VStack::from_children(vec![
+            StackChild::Entry(StackEntry::new(state.autocomplete_container.clone())),
+            StackChild::Entry(
+                StackEntry::new(editor_container)
+                    .shrink(0)
+                    .min_size(3),
+            ),
+        ]));
+        let frame = render_layout_frame(dock, 80, 10);
+        let plain: String = frame
+            .lines
+            .iter()
+            .map(|line| rpi_tui::strip_ansi(line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            plain.contains("choice0"),
+            "the popup must show its rows, got:\n{plain}"
+        );
+        assert!(
+            plain.contains("choice 0"),
+            "the popup must show the descriptions, got:\n{plain}"
+        );
+        assert!(
+            plain.contains("(1/7)"),
+            "the popup must show the counter, got:\n{plain}"
         );
     }
 

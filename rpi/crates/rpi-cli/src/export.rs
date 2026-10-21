@@ -352,6 +352,6 @@ mod tests {
         std::fs::write(&bogus, "{\"type\":\"message\"}\n").unwrap();
         let out = dir.path().join("out.md");
         let err = export_file(&bogus, &out).unwrap_err();
-        assert!(err.contains("not a JSONL v4 session file"), "{err}");
+        assert!(err.contains("is not a JSONL session file"), "{err}");
     }
 }

@@ -172,27 +172,6 @@ pub(super) fn add_update_panel(
     container.add_child(Arc::new(DynamicBorder::with_color(color)));
 }
 
-/// Add the `/version` block to the chat container.
-pub(super) fn add_version_message(container: &Arc<Container>) {
-    let c = current_theme().colors;
-    container.add_child(Arc::new(Text::new(
-        c.md_heading.fg(&tui_bold("📦 Version Information")),
-        1,
-        0,
-    )));
-    container.add_child(Arc::new(Spacer::new(1)));
-    container.add_child(Arc::new(Text::new(
-        format!(
-            "  {} {}",
-            c.muted.fg("pi"),
-            c.text.fg(&format!("v{}", crate::changelog::current_version()))
-        ),
-        1,
-        0,
-    )));
-    container.add_child(Arc::new(Spacer::new(1)));
-}
-
 /// Show the release notes that ship with the port.
 pub(super) fn add_changelog_message(container: &Arc<Container>) {
     let c = current_theme().colors;
@@ -474,7 +453,30 @@ fn hotkey_keys(ids: &[&'static str]) -> String {
 /// plain `> text` echo. A trailing Spacer(1) separates it from the next
 // transcript entry (every entry contributes one trailing spacer so
 // consecutive turns are separated by exactly one blank line).
+/// The text of the last user message the host echoed, pending the agent's own
+/// copy of it.
+static PENDING_USER_ECHO: LazyLock<Mutex<Option<String>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+/// Echo the user message the agent's own `message_start` carries.
+///
+/// A directly sent prompt is echoed by the host when it is submitted — the
+/// harness emits no `message_start` for it — so the agent's copy of the same
+/// text must not be echoed a second time. A queued prompt has no host echo and
+/// is rendered from the event instead.
+pub(super) fn add_agent_user_message(container: &Arc<Container>, text: &str) {
+    let mut pending = PENDING_USER_ECHO.lock().unwrap();
+    let duplicate = pending.as_deref() == Some(text);
+    *pending = None;
+    if duplicate {
+        return;
+    }
+    drop(pending);
+    add_user_message(container, text);
+}
+
 pub(super) fn add_user_message(container: &Arc<Container>, text: &str) {
+    *PENDING_USER_ECHO.lock().unwrap() = Some(text.to_string());
     // The original separates an echoed user message from the entry above it
     // with a blank row, but only when the transcript is not empty
     // (`interactive-mode.ts:3192`); the message component carries its own

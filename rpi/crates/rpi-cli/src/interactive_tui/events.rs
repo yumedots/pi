@@ -297,12 +297,13 @@ pub(super) async fn handle_agent_event(
             // delivered. The loop drains those itself and emits
             // `message_start` for them (`agent_loop.rs` pending-message drain).
             //
-            // A DIRECTLY-sent prompt does NOT reach this arm: the harness
-            // persists it up front and runs the loop with an empty prompts vec,
-            // so no `message_start` is emitted for it — the submit handler
-            // renders that bubble instead.
+            // A DIRECTLY-sent prompt reaches this arm too: the harness emits
+            // the `message_start`/`message_end` pair for the messages it is
+            // given (`packages/agent/src/agent-loop.ts:110-115`), so the
+            // bubble is rendered once, here, exactly as the original's echo
+            // is replaced by the run's own user message.
             AgentMessage::User(user) => {
-                state.transcript_view().add_user(&user_message_text(&user));
+                add_agent_user_message(&state.chat_container, &user_message_text(&user));
                 add_user_images(&state.chat_container, &user, state.images_visible());
                 // A consumed entry must drop out of the pending display.
                 refresh_pending_messages(state, lane).await;

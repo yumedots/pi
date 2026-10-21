@@ -120,6 +120,13 @@ pub fn session_entry_to_context_messages(
                     return Vec::new();
                 }
             }
+            // The `system` message is the session's record of the system
+            // prompt, not a conversation message: the prompt itself is
+            // composed for the provider separately, so the entry must not
+            // reach the model context.
+            if matches!(m.message, AgentMessage::System(_)) {
+                return Vec::new();
+            }
             vec![m.message.clone()]
         }
         Entry::Compaction(c) => compaction_to_context_messages(c),

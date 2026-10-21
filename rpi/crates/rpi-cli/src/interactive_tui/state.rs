@@ -171,10 +171,6 @@ pub(super) enum SelectorKind {
     Model,
     /// `/thinking` — supported thinking levels (live via `lane.set_thinking_level`).
     Thinking,
-    /// `/tools` — toggle builtin tools on/off.
-    Tools,
-    /// `/images` — toggle inline image rendering.
-    Images,
     /// `/session` — browse and switch saved JSONL sessions.
     Session,
     /// `/theme` — dark / light / monochrome presets applied live.
@@ -1416,6 +1412,15 @@ impl TuiState {
         let next = !self.hide_thinking();
         self.set_hide_thinking(next);
         next
+    }
+
+    /// The viewport width the panels and the popup are laid out at.
+    pub(super) fn viewport_width(&self) -> usize {
+        self.tui
+            .as_ref()
+            .map(|tui| tui.width())
+            .filter(|width| *width > 0)
+            .unwrap_or(80)
     }
 
     pub(super) fn toggle_tool_outputs(&self) -> bool {

@@ -378,6 +378,10 @@ pub struct TuiAltScreen {
     copy_on_select: AtomicBool,
     /// Logical lines moved for each mouse-wheel event.
     wheel_scroll_lines: AtomicI32,
+    /// Transient messages composited over the screen, the original's
+    /// `AltScreenFlashContainer`
+    /// (packages/tui/src/components/alt-screen-flash.ts).
+    flashes: Mutex<Vec<FlashEntry>>,
     /// A jump to the latest message drops the wheel gesture in progress.
     ///
     /// A trackpad keeps sending wheel events after the fingers lift; without
@@ -393,6 +397,18 @@ pub struct TuiAltScreen {
 /// The original's `WHEEL_GESTURE_GAP_MS`
 /// (packages/tui/src/wheel-scroll.ts:8).
 const WHEEL_GESTURE_GAP_MS: f64 = 200.0;
+
+/// A transient message shown over the screen.
+struct FlashEntry {
+    message: String,
+    expires_at: std::time::Instant,
+}
+
+/// How long a flash stays on the screen, in milliseconds.
+///
+/// The original's `DEFAULT_DURATION_MS`
+/// (packages/tui/src/components/alt-screen-flash.ts:6).
+const FLASH_DURATION_MS: u64 = 1000;
 
 impl TuiAltScreen {
     /// Create a new alternate screen TUI.
@@ -443,6 +459,7 @@ impl TuiAltScreen {
             wheel_scroll_lines: AtomicI32::new(3),
             cancel_wheel_gesture: AtomicBool::new(false),
             last_wheel_at: Mutex::new(0.0),
+            flashes: Mutex::new(Vec::new()),
         }
     }
 
@@ -1226,6 +1243,7 @@ impl TuiAltScreen {
             .paint(&frame, &mut visible, self.has_overlay());
         self.paint_overlays(&mut visible, width, height);
         self.apply_selection(&mut visible);
+        self.composite_flashes(&mut visible, width);
 
         // Cursor markers are an internal layout protocol, not terminal output.
         // Extract the location first, then strip every marker before diffing or
@@ -1754,6 +1772,65 @@ impl TuiAltScreen {
         }
     }
 
+    /// Show a transient message over the screen.
+    ///
+    /// The original's `flash` (packages/tui/src/tui-alt-screen.ts:686-688) and
+    /// its `AltScreenFlashContainer`; the copy notice is its use.
+    pub fn flash(&self, message: &str, duration_ms: Option<u64>) {
+        let duration = duration_ms.unwrap_or(FLASH_DURATION_MS);
+        if let Ok(mut flashes) = self.flashes.lock() {
+            let now = std::time::Instant::now();
+            flashes.retain(|entry| entry.expires_at > now);
+            flashes.push(FlashEntry {
+                message: message.to_string(),
+                expires_at: now + std::time::Duration::from_millis(duration),
+            });
+        }
+        self.request_render(false);
+    }
+
+    /// Composite the transient messages over the bottom rows, the original's
+    /// `compositeFlashes` (packages/tui/src/tui-alt-screen.ts:1705-1717).
+    fn composite_flashes(&self, screen: &mut [String], width: usize) {
+        let flashes: Vec<String> = {
+            let Ok(mut guard) = self.flashes.lock() else {
+                return;
+            };
+            let now = std::time::Instant::now();
+            guard.retain(|entry| entry.expires_at > now);
+            guard
+                .iter()
+                .map(|entry| {
+                    let text = crate::utils::truncate_to_width(
+                        &format!(" {} ", entry.message),
+                        width,
+                        "",
+                    );
+                    format!("\x1b[7m{text}\x1b[27m")
+                })
+                .collect()
+        };
+        let height = screen.len() as isize;
+        for (index, line) in flashes.iter().enumerate() {
+            let row = height - 1 - index as isize;
+            if row < 0 {
+                break;
+            }
+            let row = row as usize;
+            let flash_width = crate::ansi::visible_width(line);
+            if flash_width == 0 {
+                continue;
+            }
+            screen[row] = crate::layout::composite_tui_line(
+                &screen[row],
+                line,
+                width.saturating_sub(flash_width),
+                flash_width,
+                width,
+            );
+        }
+    }
+
     /// The pointer position as a selection point.
     fn selection_point(&self, x: usize, y: usize) -> SelectionPoint {
         let (width, height) = (self.width(), self.height());
@@ -1817,7 +1894,12 @@ impl TuiAltScreen {
         };
         let copier = self.copy_selection.lock().ok().and_then(|slot| slot.clone());
         if let Some(copier) = copier {
-            return copier(&text);
+            let copied = copier(&text);
+            self.flash(
+                if copied { "Copied!" } else { "Copy failed" },
+                if copied { None } else { Some(5000) },
+            );
+            return copied;
         }
         let encoded = base64::Engine::encode(
             &base64::engine::general_purpose::STANDARD,
@@ -1827,6 +1909,7 @@ impl TuiAltScreen {
             terminal.write(&format!("\x1b]52;c;{encoded}\x07"));
             terminal.flush();
         }
+        self.flash("Copied!", None);
         true
     }
 
@@ -2528,6 +2611,19 @@ mod tests {
         }
         fn set_progress(&self, _active: bool) {}
         fn flush(&self) {}
+    }
+
+    #[test]
+    fn a_flash_is_composited_over_the_bottom_row() {
+        let terminal = ResizableTerminal::new(40, 8);
+        let tui = TuiAltScreen::new(Box::new(terminal), false, None);
+        tui.set_layout_root(Some(Arc::new(crate::text::Text::new("hello", 0, 0))));
+        tui.start_readerless();
+        tui.flash("Copied!", None);
+        let lines = tui.previous_screen.lock().unwrap().clone();
+        let last = lines.last().cloned().unwrap_or_default();
+        assert!(last.contains("Copied!"), "{lines:?}");
+        assert!(last.contains("\x1b[7m"), "the flash is reverse video: {last:?}");
     }
 
     #[test]

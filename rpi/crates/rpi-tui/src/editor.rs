@@ -2773,6 +2773,22 @@ l12",
     }
 
     #[test]
+    fn moving_the_cursor_ends_the_selection() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let editor = Editor::simple();
+        editor.set_text("one\ntwo\nthree");
+        editor.set_cursor(2, 0);
+        // Shift+Up extends the selection up.
+        editor.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
+        assert!(editor.has_selection(), "shift+up selects");
+        // A plain Up moves the cursor and ends the selection: the selection
+        // and the cursor are two separate things.
+        editor.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert!(!editor.has_selection(), "the selection ends with the cursor move");
+        assert_eq!(editor.cursor_position().0, 0);
+    }
+
+    #[test]
     fn the_caret_never_lands_inside_a_folded_paste_marker() {
         let editor = Editor::simple();
         let payload = "x".repeat(2000);

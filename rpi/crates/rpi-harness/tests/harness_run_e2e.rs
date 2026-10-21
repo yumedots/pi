@@ -903,12 +903,13 @@ async fn provider_hooks_can_replace_the_system_prompt_the_model_sees() {
 /// the provider context), so the loop never emits `message_start`/`message_end`
 /// for the user's prompt.
 ///
-/// The TUI renders user bubbles from `AgentEvent::MessageStart`, so this test
-/// pins the contract the TUI must compensate for: a directly-sent prompt
-/// produces NO user `MessageStart`, while a queued (steering) message DOES
-/// (that one is drained inside the loop).
+/// The original's loop emits the `message_start`/`message_end` pair for the
+/// messages it is given (`packages/agent/src/agent-loop.ts:110-115`), and pi's
+/// TUI renders the user bubble from that event. The harness runs the loop with
+/// an empty prompts vec (the prompts are persisted and already in the context),
+/// so the harness emits the pair itself.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn directly_sent_prompt_emits_no_user_message_start() {
+async fn directly_sent_prompt_emits_the_user_message_pair() {
     let script = FauxScript::new();
     script.set_responses(vec![FauxStep::text("Done.")]);
     let (collector, events) = CollectorEmitter::new();
@@ -933,10 +934,22 @@ async fn directly_sent_prompt_emits_no_user_message_start() {
         })
         .count();
     assert_eq!(
-        user_starts, 0,
-        "harness passes an empty prompts vec, so the loop emits no user MessageStart; \
-         the TUI must render the prompt itself. events: {events:#?}"
+        user_starts, 1,
+        "the prompt's message pair is emitted, the way the original's loop emits it; \
+         the TUI renders the bubble from it. events: {events:#?}"
     );
+    let user_ends = events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                AgentEvent::MessageEnd {
+                    message: rpi_agent::AgentMessage::User(_)
+                }
+            )
+        })
+        .count();
+    assert_eq!(user_ends, 1, "the prompt's message_end fires too");
     // The assistant still streams normally.
     assert!(
         events.iter().any(|event| matches!(

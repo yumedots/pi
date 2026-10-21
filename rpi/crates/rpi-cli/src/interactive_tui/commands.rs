@@ -27,6 +27,12 @@ impl SlashCommand for ExitCommand {
     fn aliases(&self) -> &'static [&'static str] {
         &["/exit", "/q"]
     }
+    /// The original lists the alias as its own row
+    /// (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:722-733`).
+    /// The port's own `/q` stays off the list.
+    fn alias_visible(&self) -> &'static [&'static str] {
+        &["/exit"]
+    }
     fn description(&self) -> &'static str {
         "Quit pi"
     }
@@ -224,6 +230,12 @@ impl SlashCommand for SessionCommand {
     }
     fn aliases(&self) -> &'static [&'static str] {
         &["/history", "/sessions", "/session"]
+    }
+    /// The original lists its two aliases as their own rows
+    /// (`packages/coding-agent/src/modes/interactive/interactive-mode.ts:722-733`).
+    /// The port's own `/session` stays off the list.
+    fn alias_visible(&self) -> &'static [&'static str] {
+        &["/history", "/sessions"]
     }
     fn description(&self) -> &'static str {
         "Resume a different session"
@@ -709,42 +721,45 @@ impl SlashCommand for ReloadCommand {
     }
 }
 
-/// Build the full command registry: active built-ins first (so they win on a
-/// fuzzy autocomplete tie), then the v1-out-of-scope stubs. Prompt-template
-/// commands are merged in separately by the autocomplete builder (they dispatch
-/// via template expansion, not this registry).
+/// Build the full command registry.
+///
+/// The order is the original's own list
+/// (`packages/coding-agent/src/core/slash-commands.ts:21-52`): the `/` picker
+/// shows the commands in that order, and an alias follows the command it
+/// points at. The port's own commands come last and stay off the list.
+/// Prompt-template commands are merged in separately by the autocomplete
+/// builder (they dispatch via template expansion, not this registry).
 pub(super) fn build_builtin_registry() -> CommandRegistry {
     let mut r = CommandRegistry::new();
-    r.register(Arc::new(NewSessionCommand));
-    r.register(Arc::new(ExitCommand));
-    r.register(Arc::new(ChangelogCommand));
-    r.register(Arc::new(ModelCommand));
-    r.register(Arc::new(ThinkingCommand));
-    r.register(Arc::new(SessionCommand));
-    r.register(Arc::new(ThemeCommand));
-    r.register(Arc::new(CompactCommand));
-    r.register(Arc::new(CopyCommand));
-    r.register(Arc::new(HotkeysCommand));
-    r.register(Arc::new(ContextCommand));
-    // Recognized but inert in v1 (one struct backs them all). The TS builtins
-    // out of v1 scope; each carries a description so autocomplete surfaces its
-    // existence even though running it reports "not supported".
-    r.register(Arc::new(NameCommand));
     r.register(Arc::new(SettingsCommand));
+    r.register(Arc::new(ModelCommand));
+    r.register(Arc::new(TreeCommand));
+    r.register(Arc::new(ThinkingCommand));
     r.register(Arc::new(ScopedModelsCommand));
+    r.register(Arc::new(SkillsCommand));
+    r.register(Arc::new(ThemeCommand));
     r.register(Arc::new(ExportCommand));
     r.register(Arc::new(ImportCommand));
     r.register(Arc::new(ShareCommand));
+    r.register(Arc::new(BugCommand));
+    r.register(Arc::new(CopyCommand));
+    r.register(Arc::new(NameCommand));
+    r.register(Arc::new(StatsCommand));
+    r.register(Arc::new(ChangelogCommand));
+    r.register(Arc::new(HotkeysCommand));
     r.register(Arc::new(ForkCommand));
     r.register(Arc::new(CloneCommand));
-    r.register(Arc::new(TreeCommand));
     r.register(Arc::new(TrustCommand));
     r.register(Arc::new(LoginCommand));
     r.register(Arc::new(LogoutCommand));
+    r.register(Arc::new(NewSessionCommand));
+    r.register(Arc::new(CompactCommand));
+    r.register(Arc::new(SessionCommand));
     r.register(Arc::new(ReloadCommand));
-    r.register(Arc::new(SkillsCommand));
-    r.register(Arc::new(BugCommand));
-    r.register(Arc::new(StatsCommand));
+    r.register(Arc::new(ExitCommand));
+    // The port's own command: it lists the discovered context files, skills and
+    // prompt templates, and stays off the `/` list.
+    r.register(Arc::new(ContextCommand));
     r
 }
 

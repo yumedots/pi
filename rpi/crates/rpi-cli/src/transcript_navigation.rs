@@ -7,25 +7,14 @@ use rpi_tui::{keybindings::keys, Keybindings, TuiAltScreen};
 pub(crate) fn install(tui: &TuiAltScreen, bindings: Arc<Keybindings>) {
     tui.set_scroll_to_end_indicator(Some(Arc::new(move || {
         let colors = rpi_tui::theme().colors;
-        format!("{}{}\x1b[39m", colors.text.to_fg(), label(&bindings))
+        format!("{}{}\x1b[39m", colors.text.to_fg(), label())
     })));
 }
 
-/// The original's label (`tui-renderer.ts:30`) with the port's shortcut
-/// hint: the key that jumps to the latest message, and nothing when that
-/// binding is disabled.
-fn label(bindings: &Keybindings) -> String {
-    let shortcut = bindings
-        .get_keys(keys::BOTTOM)
-        .iter()
-        .map(|key| key.display())
-        .collect::<Vec<_>>()
-        .join("/");
-    if shortcut.is_empty() {
-        " ↓ Jump to latest message ".to_owned()
-    } else {
-        format!(" ↓ Jump to latest message · {shortcut} ")
-    }
+/// The original's label, exactly (`tui-renderer.ts:30`): the text, a
+/// foreground colour, and no background or shortcut suffix.
+fn label() -> String {
+    " ↓ Jump to latest message ".to_owned()
 }
 
 pub(crate) fn handle_key(tui: &TuiAltScreen, bindings: &Keybindings, key: &KeyEvent) -> bool {
@@ -63,15 +52,7 @@ mod tests {
     use rpi_tui::KeyCombo;
 
     #[test]
-    fn indicator_hint_uses_the_actual_binding_and_hides_disabled_shortcuts() {
-        let mut bindings = Keybindings::new();
-        assert_eq!(label(&bindings), " ↓ Jump to latest message · End ");
-        bindings.set(
-            keys::BOTTOM,
-            vec![KeyCombo::new(KeyCode::End, KeyModifiers::CONTROL)],
-        );
-        assert_eq!(label(&bindings), " ↓ Jump to latest message · Ctrl+End ");
-        bindings.set(keys::BOTTOM, Vec::new());
-        assert_eq!(label(&bindings), " ↓ Jump to latest message ");
+    fn indicator_hint_is_the_originals_label() {
+        assert_eq!(label(), " ↓ Jump to latest message ");
     }
 }
