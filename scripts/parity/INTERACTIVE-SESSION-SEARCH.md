@@ -11,6 +11,10 @@ Reading the port: `rpi/crates/rpi-cli/src/…` means the path relative to
 `/Users/gabriel/pi-native/`. Reading the original: `packages/…` means the path
 relative to `/Users/gabriel/pi`.
 
+**Run the checks:**
+`scripts/agent-cargo.sh test -p rpi-cli --lib session_search` → 30 passed,
+0 failed.
+
 ---
 
 ## 1. The query language
@@ -141,6 +145,7 @@ through the same scored branch (`filterAndSortSessions` has no separate
 **Check.** Tests `recent_keeps_incoming_order`,
 `relevance_sorts_by_score_with_newer_tie_break`,
 `relevance_tie_breaks_on_newer_modified`,
+`threaded_sort_orders_by_score_like_relevance`,
 `invalid_regex_query_yields_no_sessions`.
 
 ---

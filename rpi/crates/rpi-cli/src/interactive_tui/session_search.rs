@@ -1002,6 +1002,30 @@ mod tests {
     }
 
     #[test]
+    fn threaded_sort_orders_by_score_like_relevance() {
+        let sessions = vec![
+            candidate("a", None, "alpha", "/tmp", 10),
+            candidate("b", None, "beta", "/tmp", 20),
+        ];
+        let threaded = filter_and_sort(
+            &sessions,
+            "re:alpha|beta",
+            SortMode::Threaded,
+            NameFilter::All,
+        );
+        let relevance = filter_and_sort(
+            &sessions,
+            "re:alpha|beta",
+            SortMode::Relevance,
+            NameFilter::All,
+        );
+        assert_eq!(threaded.len(), 2);
+        assert_eq!(threaded[0].id, "b");
+        assert_eq!(threaded[0].id, relevance[0].id);
+        assert_eq!(threaded[1].id, relevance[1].id);
+    }
+
+    #[test]
     fn relevance_sorts_by_score_with_newer_tie_break() {
         let sessions = vec![
             candidate("a", Some("first"), "alpha", "/tmp", 10),
@@ -1058,6 +1082,7 @@ mod tests {
     #[test]
     fn regex_matches_literals_case_insensitively() {
         let regex = Regex::new("Hello").expect("valid");
+        assert_eq!(regex.pattern(), "Hello");
         assert_eq!(regex.search("say hello world"), Some(4));
         assert!(regex.is_match("SAY HELLO"));
         assert!(!regex.is_match("goodbye"));
