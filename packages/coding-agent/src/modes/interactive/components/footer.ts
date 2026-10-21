@@ -37,25 +37,12 @@ function formatExactTokens(count: number): string {
 
 /** Width of the context bar in cells. */
 export const CONTEXT_BAR_WIDTH = 10;
-/** The eighth blocks, from empty to full, for the partly filled cell of the bar. */
-const BLOCK_PARTIALS = ["\u258F", "\u258E", "\u258D", "\u258C", "\u258B", "\u258A", "\u2589"];
 
-/**
- * A filling bar for the context usage: full blocks for the used part, an empty shade for the rest.
- *
- * The partly filled cell uses an eighth block, so the bar shows fractions of a cell.
- */
+/** A filling bar for the context usage: full blocks for the used part, an empty shade for the rest. */
 export function formatContextBar(percent: number, width: number = CONTEXT_BAR_WIDTH): string {
 	const clamped = Math.max(0, Math.min(100, percent));
-	const exact = (clamped / 100) * width;
-	const full = Math.floor(exact);
-	const fraction = exact - full;
-	const partial =
-		fraction > 0
-			? BLOCK_PARTIALS[Math.min(BLOCK_PARTIALS.length - 1, Math.floor(fraction * BLOCK_PARTIALS.length))]
-			: "";
-	const empty = Math.max(0, width - full - (partial ? 1 : 0));
-	return "\u2588".repeat(full) + partial + "\u2591".repeat(empty);
+	const full = Math.floor((clamped / 100) * width);
+	return "\u2588".repeat(full) + "\u2591".repeat(width - full);
 }
 
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
@@ -409,7 +396,6 @@ export class FooterComponent implements Component {
 	render(width: number): string[] {
 		const state = this.session.state;
 		const { usageTotals, contextUsage } = this.getSessionStats();
-		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
 		const contextPercentValue = contextUsage?.percent ?? 0;
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
 		const contextTokens = contextUsage?.tokens ?? null;
@@ -437,7 +423,7 @@ export class FooterComponent implements Component {
 		const contextPercentDisplay =
 			contextTokens !== null && contextPercent !== "?"
 				? `${contextBar} ${contextPercent}% ${formatExactTokens(contextTokens)} tokens`
-				: `${contextBar} ?/${formatExactTokens(contextWindow)} tokens`;
+				: "";
 		if (contextPercentValue > 90) {
 			contextPercentStr = theme.fg("error", contextPercentDisplay);
 		} else if (contextPercentValue > 70) {

@@ -125,11 +125,6 @@ describe("formatContextBar", () => {
 		expect(formatContextBar(100, 10)).toBe("\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588");
 	});
 
-	it("shows fractions of a cell", () => {
-		expect(formatContextBar(12.3, 10)).toBe("\u2588\u258E\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591");
-		expect(formatContextBar(75, 10)).toBe("\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u258C\u2591\u2591");
-	});
-
 	it("clamps the percentage to the bar", () => {
 		expect(formatContextBar(-10, 10)).toBe("\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591");
 		expect(formatContextBar(150, 10)).toBe("\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588");
@@ -257,7 +252,7 @@ describe("FooterComponent width handling", () => {
 		expect(line).toContain("glm-5.1");
 	});
 
-	it("shows the context window while the used tokens are unknown", () => {
+	it("drops the context meter while the used tokens are unknown", () => {
 		const session = createSession({
 			sessionName: "",
 			modelId: "glm-5.1",
@@ -266,7 +261,10 @@ describe("FooterComponent width handling", () => {
 		const footer = new FooterComponent(session, createFooterData(1));
 
 		const line = stripAnsi(footer.render(120)[0]);
-		expect(line).toContain(`${formatContextBar(0)} ?/200,000 tokens`);
+		expect(line).not.toContain("?");
+		expect(line).not.toContain("░");
+		expect(line).toContain("test/glm-5.1");
+		expect(line).toContain("/tmp/project:main");
 	});
 
 	it("shows the cost on the right side of the line", () => {
