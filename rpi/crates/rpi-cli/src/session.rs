@@ -487,11 +487,24 @@ pub async fn build_prepared(
     let base_prompt = match args.system_prompt.as_deref() {
         Some(explicit) => explicit.to_string(),
         None if project_trusted => match discover_system_prompt_file(cwd) {
-            Some(path) => read_prompt_source(&path, &mut context_paths)
-                .unwrap_or_else(|| default_system_prompt(&cwd_str, prior_reasoning_replayed, &tools)),
-            None => default_system_prompt(&cwd_str, prior_reasoning_replayed, &tools),
+            Some(path) => read_prompt_source(&path, &mut context_paths).unwrap_or_else(|| {
+                default_system_prompt(
+                    &cwd_str,
+                    prior_reasoning_replayed,
+                    &active_tools(&tools, &active),
+                )
+            }),
+            None => default_system_prompt(
+                &cwd_str,
+                prior_reasoning_replayed,
+                &active_tools(&tools, &active),
+            ),
         },
-        None => default_system_prompt(&cwd_str, prior_reasoning_replayed, &tools),
+        None => default_system_prompt(
+            &cwd_str,
+            prior_reasoning_replayed,
+            &active_tools(&tools, &active),
+        ),
     };
 
     // ---- Append-text sources (precedence: --append-system-prompt > APPEND_SYSTEM.md) ----
@@ -1603,14 +1616,28 @@ where
         .as_ref()
         .is_some_and(rpi_ai::model::prior_reasoning_is_replayed);
     let mut context_paths = Vec::new();
+    let prompt_active = active_tool_names(&prompt_tools, &effective_args);
     let base_prompt = match effective_args.system_prompt.as_deref() {
         Some(explicit) => explicit.to_string(),
         None if project_trusted => match discover_system_prompt_file(&ctx.cwd) {
-            Some(path) => read_prompt_source(&path, &mut context_paths)
-                .unwrap_or_else(|| default_system_prompt(&cwd_str, prior_reasoning_replayed, &prompt_tools)),
-            None => default_system_prompt(&cwd_str, prior_reasoning_replayed, &prompt_tools),
+            Some(path) => read_prompt_source(&path, &mut context_paths).unwrap_or_else(|| {
+                default_system_prompt(
+                    &cwd_str,
+                    prior_reasoning_replayed,
+                    &active_tools(&prompt_tools, &prompt_active),
+                )
+            }),
+            None => default_system_prompt(
+                &cwd_str,
+                prior_reasoning_replayed,
+                &active_tools(&prompt_tools, &prompt_active),
+            ),
         },
-        None => default_system_prompt(&cwd_str, prior_reasoning_replayed, &prompt_tools),
+        None => default_system_prompt(
+            &cwd_str,
+            prior_reasoning_replayed,
+            &active_tools(&prompt_tools, &prompt_active),
+        ),
     };
     let mut append_texts: Vec<String> = Vec::new();
     for extra in &effective_args.append_system_prompt {
@@ -2176,14 +2203,36 @@ fn build_tools(ctx: &ExecutionToolContext, args: &Args) -> Vec<HarnessTool> {
     all.into_iter().map(|(_, t)| t).collect()
 }
 
-/// Resolve the active tool names from the constructed tools when no explicit
-/// `--tools` allowlist was given. Mirrors the TS default: all registered tools
-/// active.
+/// The tools that are active by default. Mirrors pi's `defaultTools`
+/// (`packages/coding-agent/src/core/settings-manager.ts:85`): `read`, `bash`,
+/// `edit` and `write`. The other built-ins stay registered and are selectable
+/// with `--tools grep`, `--tools find` or `--tools ls`.
+pub const DEFAULT_ACTIVE_TOOL_NAMES: &[&str] = &["read", "bash", "edit", "write"];
+
+/// Resolve the active tool names from the constructed tools. Mirrors pi: the
+/// CLI's `--tools` wins, then the settings' `defaultTools`, and otherwise pi's
+/// default set (`read`, `bash`, `edit`, `write`).
 fn active_tool_names(tools: &[HarnessTool], args: &Args) -> Vec<String> {
-    filter_active_tool_names(
+    let names = filter_active_tool_names(
         tools.iter().map(|tool| tool.tool.schema().name.clone()),
         args,
-    )
+    );
+    if args.tools.is_some() {
+        return names;
+    }
+    let configured = crate::settings::load_settings()
+        .ok()
+        .and_then(|settings| settings.default_tools);
+    match configured {
+        Some(default_tools) => names
+            .into_iter()
+            .filter(|name| default_tools.iter().any(|tool| tool == name))
+            .collect(),
+        None => names
+            .into_iter()
+            .filter(|name| DEFAULT_ACTIVE_TOOL_NAMES.contains(&name.as_str()))
+            .collect(),
+    }
 }
 
 /// Whether a tool name survives the command-line tool policy. Keep this check
@@ -2216,6 +2265,23 @@ where
     names
         .into_iter()
         .filter(|name| tool_name_allowed(name, args))
+        .collect()
+}
+
+/// The tools the model is offered: the active ones. The system prompt's tool
+/// list follows this set, so a tool the model cannot call is never advertised.
+fn active_tools(tools: &[HarnessTool], active: &[String]) -> Vec<HarnessTool> {
+    tools
+        .iter()
+        .filter(|tool| {
+            active
+                .iter()
+                .any(|name| *name == tool.tool.schema().name)
+        })
+        .map(|tool| HarnessTool {
+            tool: Arc::clone(&tool.tool),
+            replay: tool.replay,
+        })
         .collect()
 }
 
