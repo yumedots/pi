@@ -11,9 +11,6 @@
  * vendored tree's location is only known there.
  */
 
-declare const __piPiReadmePath: string;
-declare const __piPiPackageDir: string;
-
 export const APP_NAME = "pi";
 export const APP_TITLE = "π";
 export const PACKAGE_NAME = "@earendil-works/pi-coding-agent";
@@ -33,9 +30,9 @@ export const getAgentDir = (): string => {
 	return `${home}/.pi/agent`;
 };
 
-export const getPackageDir = (): string => __piPiPackageDir;
-export const getReadmePath = (): string => __piPiReadmePath;
-export const getPackageJsonPath = (): string => `${__piPiPackageDir}/package.json`;
+export const getPackageDir = (): string => getAgentDir();
+export const getReadmePath = (): string => `${getAgentDir()}/README.md`;
+export const getPackageJsonPath = (): string => `${getAgentDir()}/package.json`;
 export const getDocsPath = (): string => `${getAgentDir()}/docs`;
 export const getExamplesPath = (): string => `${getAgentDir()}/examples`;
 export const getChangelogPath = (): string => `${getAgentDir()}/CHANGELOG.md`;
@@ -50,7 +47,7 @@ export const getQuickJSWasmPath = (): string => `${getAgentDir()}/quickjs.wasm`;
 export const setEmbeddedQuickJSWasmPath = (_path: string): void => undefined;
 export const detectInstallMethod = (): string => "unknown";
 export const detectInstallChange = (): undefined => undefined;
-export const findNodePackageDir = (_startDir: string): string => __piPiPackageDir;
+export const findNodePackageDir = (_startDir: string): string => getAgentDir();
 export const getSelfUpdateCommand = (): string => "pi update";
 export const getSelfUpdateUnavailableInstruction = (): string =>
 	"pi cannot update itself in this installation";
