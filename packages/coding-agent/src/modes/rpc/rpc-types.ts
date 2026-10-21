@@ -10,6 +10,7 @@ import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import type { PromptDisposition, QueuedInputDisposition, SessionStats } from "../../core/agent-session.ts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
+import type { ContextUsage, ToolDefinition } from "../../core/extensions/types.ts";
 import type { SessionEntry, SessionTreeNode } from "../../core/session-manager.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
 
@@ -33,6 +34,11 @@ export type RpcCommand =
 	| { id?: string; type: "set_model"; provider: string; modelId: string }
 	| { id?: string; type: "cycle_model" }
 	| { id?: string; type: "get_available_models" }
+	| {
+			id?: string;
+			type: "set_scoped_models";
+			scopedModels: Array<{ provider: string; modelId: string; thinkingLevel?: ThinkingLevel }>;
+	  }
 
 	// Thinking
 	| { id?: string; type: "set_thinking_level"; level: ThinkingLevel }
@@ -46,6 +52,11 @@ export type RpcCommand =
 	// Compaction
 	| { id?: string; type: "compact"; customInstructions?: string }
 	| { id?: string; type: "set_auto_compaction"; enabled: boolean }
+	| { id?: string; type: "abort_compaction" }
+	| { id?: string; type: "abort_branch_summary" }
+
+	// Cache warming
+	| { id?: string; type: "set_cache_warming_mode"; mode: "off" | "streaming" | "idle" }
 
 	// Retry
 	| { id?: string; type: "set_auto_retry"; enabled: boolean }
@@ -54,10 +65,25 @@ export type RpcCommand =
 	// Bash
 	| { id?: string; type: "bash"; command: string; excludeFromContext?: boolean }
 	| { id?: string; type: "abort_bash" }
+	| { id?: string; type: "execute_bash"; command: string; excludeFromContext?: boolean }
+	| { id?: string; type: "record_bash_result"; command: string; result: BashResult; excludeFromContext?: boolean }
 
 	// Session
 	| { id?: string; type: "get_session_stats" }
 	| { id?: string; type: "export_html"; outputPath?: string }
+	| { id?: string; type: "export_jsonl"; outputPath?: string }
+	| { id?: string; type: "reload" }
+	| {
+			id?: string;
+			type: "navigate_tree";
+			targetId: string;
+			summarize?: boolean;
+			customInstructions?: string;
+			replaceInstructions?: boolean;
+			label?: string;
+	  }
+	| { id?: string; type: "get_context_usage" }
+	| { id?: string; type: "get_tool_definition"; name: string }
 	| { id?: string; type: "switch_session"; sessionPath: string }
 	| { id?: string; type: "fork"; entryId: string }
 	| { id?: string; type: "clone" }
@@ -66,6 +92,9 @@ export type RpcCommand =
 	| { id?: string; type: "get_tree" }
 	| { id?: string; type: "get_last_assistant_text" }
 	| { id?: string; type: "set_session_name"; name: string }
+	| { id?: string; type: "label_entry"; entryId: string; label: string | undefined }
+	| { id?: string; type: "append_custom_entry"; customType: string; data?: unknown }
+	| { id?: string; type: "summarize_for_bug_report"; hint?: string }
 
 	// Messages
 	| { id?: string; type: "get_messages" }
@@ -159,6 +188,7 @@ export type RpcResponse =
 			success: true;
 			data: { models: Model<any>[] };
 	  }
+	| { id?: string; type: "response"; command: "set_scoped_models"; success: true }
 
 	// Thinking
 	| { id?: string; type: "response"; command: "set_thinking_level"; success: true }
@@ -184,6 +214,11 @@ export type RpcResponse =
 	// Compaction
 	| { id?: string; type: "response"; command: "compact"; success: true; data: CompactionResult }
 	| { id?: string; type: "response"; command: "set_auto_compaction"; success: true }
+	| { id?: string; type: "response"; command: "abort_compaction"; success: true }
+	| { id?: string; type: "response"; command: "abort_branch_summary"; success: true }
+
+	// Cache warming
+	| { id?: string; type: "response"; command: "set_cache_warming_mode"; success: true }
 
 	// Retry
 	| { id?: string; type: "response"; command: "set_auto_retry"; success: true }
@@ -192,10 +227,23 @@ export type RpcResponse =
 	// Bash
 	| { id?: string; type: "response"; command: "bash"; success: true; data: BashResult }
 	| { id?: string; type: "response"; command: "abort_bash"; success: true }
+	| { id?: string; type: "response"; command: "execute_bash"; success: true; data: BashResult }
+	| { id?: string; type: "response"; command: "record_bash_result"; success: true }
 
 	// Session
 	| { id?: string; type: "response"; command: "get_session_stats"; success: true; data: SessionStats }
 	| { id?: string; type: "response"; command: "export_html"; success: true; data: { path: string } }
+	| { id?: string; type: "response"; command: "export_jsonl"; success: true; data: { path: string } }
+	| { id?: string; type: "response"; command: "reload"; success: true }
+	| {
+			id?: string;
+			type: "response";
+			command: "navigate_tree";
+			success: true;
+			data: { cancelled: boolean; aborted?: boolean; editorText?: string };
+	  }
+	| { id?: string; type: "response"; command: "get_context_usage"; success: true; data: ContextUsage | null }
+	| { id?: string; type: "response"; command: "get_tool_definition"; success: true; data: ToolDefinition | null }
 	| { id?: string; type: "response"; command: "switch_session"; success: true; data: { cancelled: boolean } }
 	| { id?: string; type: "response"; command: "fork"; success: true; data: { text: string; cancelled: boolean } }
 	| { id?: string; type: "response"; command: "clone"; success: true; data: { cancelled: boolean } }
@@ -228,6 +276,9 @@ export type RpcResponse =
 			data: { text: string | null };
 	  }
 	| { id?: string; type: "response"; command: "set_session_name"; success: true }
+	| { id?: string; type: "response"; command: "label_entry"; success: true }
+	| { id?: string; type: "response"; command: "append_custom_entry"; success: true; data: { entryId: string } }
+	| { id?: string; type: "response"; command: "summarize_for_bug_report"; success: true; data: { summary: string } }
 
 	// Messages
 	| { id?: string; type: "response"; command: "get_messages"; success: true; data: { messages: AgentMessage[] } }

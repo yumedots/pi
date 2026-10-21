@@ -279,6 +279,8 @@ export {
 export {
 	type BranchSummaryEntry,
 	buildContextEntries,
+// Session controller and runtime factory: the pieces a host process (the server) drives.
+export { SessionController, type SessionControllerHooks } from "./core/session-controller.ts";
 	buildSessionContext,
 	buildSessionProjection,
 	type CompactionEntry,
@@ -463,6 +465,7 @@ export {
 	ShowImagesSelectorComponent,
 	SkillInvocationMessageComponent,
 	ThemeSelectorComponent,
+	type RpcSlashCommand,
 	ThinkingSelectorComponent,
 	ToolExecutionComponent,
 	type ToolExecutionOptions,
