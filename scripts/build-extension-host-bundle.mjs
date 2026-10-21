@@ -79,22 +79,9 @@ const nodeShims = {
 	"node:trace-events": join(shimDir, "node-trace-events.ts"),
 };
 
-const piPackageDir = join(repoRoot, "packages", "coding-agent");
-const piReadmePath = join(piPackageDir, "README.md");
-
 const virtualModulePlugin = {
 	name: "pi-virtual-modules",
 	setup(context) {
-		// pi's config module reads its own package directory when it loads,
-		// and the embedded host has no package directory: the bundle's
-		// location is not the vendored package's. The port's own module
-		// answers the same paths.
-		context.onResolve({ filter: /config\.ts$/ }, (args) => {
-			if (args.importer.includes("coding-agent/src")) {
-				return { path: join(crateDir, "js", "pi-config.ts") };
-			}
-			return undefined;
-		});
 		context.onResolve({ filter: /^typebox(\/compile|\/value)?$/ }, (args) => {
 			const resolved = typeboxEntries[args.path];
 			if (!resolved) throw new Error(`unknown typebox entry: ${args.path}`);
@@ -195,9 +182,6 @@ const result = await build({
 		// CommonJS package in pi's dependency tree replaces the global, and
 		// the replacement has no environment.
 		process: "globalThis.__piProcess",
-		// The vendored package's own paths, known when the bundle is built.
-		__piPiReadmePath: JSON.stringify(piReadmePath),
-		__piPiPackageDir: JSON.stringify(piPackageDir),
 	},
 	target: "es2022",
 	write: false,

@@ -124,14 +124,6 @@ impl AgentSession {
         &self.harness
     }
 
-    /// The session file's path, when the session is a file. `None` for an
-    /// in-memory session — the original refuses to export those with
-    /// `Cannot export in-memory session to HTML`
-    /// (`packages/coding-agent/src/core/export-html/index.ts:236`).
-    pub fn session_file(&self) -> Option<String> {
-        self.harness.session_file()
-    }
-
     /// The `Arc` handle, for spawning work onto the runtime.
     pub fn harness_arc(&self) -> Arc<AgentHarness> {
         Arc::clone(&self.harness)

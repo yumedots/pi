@@ -59,8 +59,6 @@ mod session_search;
 use session_search::*;
 mod rendering;
 use rendering::*;
-mod header;
-use header::*;
 mod empty_session;
 mod panels;
 mod pet;
@@ -1262,20 +1260,9 @@ pub async fn interactive_tui(
     if let Some(dialog) = crate::extras::first_run_dialog(&theme_manager) {
         *first_run.lock().unwrap() = Some(dialog);
     }
-    // The startup header is a component of its own, so `app.tools.expand` can
-    // re-render it expanded and the mark can be clicked (upstream's
-    // `BuiltInHeader`).
-    let startup_header = Arc::new(StartupHeader::new(
-        crate::changelog::current_version(),
-        should_show_startup_listing(args.verbose, quiet_startup),
-    ));
-    {
-        let tui_for_logo: Arc<dyn TUI> = tui.clone();
-        startup_header.set_logo_click(Some(Arc::new(move |column, row| {
-            rpi_tui::easter_egg_3d::play_pi_logo_3d(&tui_for_logo, column, row);
-        })));
+    if should_show_startup_listing(args.verbose, quiet_startup) {
+        add_welcome_message(&chat_container);
     }
-    add_startup_header(&chat_container, &startup_header);
     add_tmux_warning(&chat_container);
 
     let collapse_changelog =
@@ -1705,7 +1692,6 @@ pub async fn interactive_tui(
         footer: footer.clone(),
         status_container: status_container.clone(),
         chat_container: chat_container.clone(),
-        startup_header: startup_header.clone(),
         warning_container: Arc::new(Container::new()),
         warning_message: std::sync::Mutex::new(String::new()),
         session_menu: std::sync::Mutex::new(SessionMenuState::default()),
@@ -3731,7 +3717,7 @@ pub async fn interactive_tui(
                     Ok(result) => match result.outcome {
                         rpi_harness::agent_harness::NavigationOutcome::Completed { .. } => {
                             chat_container.clear();
-                            add_startup_header(&chat_container, &state.startup_header);
+                            add_welcome_message(&chat_container);
                             render_session_history(
                                 &harness,
                                 &chat_container,
@@ -3762,7 +3748,7 @@ pub async fn interactive_tui(
             }
             Some(TuiMessage::ClearChat) => {
                 chat_container.clear();
-                add_startup_header(&chat_container, &state.startup_header);
+                add_welcome_message(&chat_container);
                 tui.request_render(false);
             }
             Some(TuiMessage::Compact) => {

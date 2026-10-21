@@ -1084,13 +1084,6 @@ impl AgentHarness {
         &self.session
     }
 
-    /// The session file's path, when the session is a file. `None` for an
-    /// in-memory session — the original refuses to export those
-    /// (`packages/coding-agent/src/core/export-html/index.ts:236`).
-    pub fn session_file(&self) -> Option<String> {
-        self.session.file_path()
-    }
-
     /// Return a runner bound to a session lane. All lanes share configuration,
     /// cancellation, and the event bus, while persistence and context use the
     /// selected lane's branch. The lane must already exist in the session.

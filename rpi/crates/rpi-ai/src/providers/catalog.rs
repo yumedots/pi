@@ -42,10 +42,6 @@ pub struct BuiltinProvider {
     pub api_key_env: Option<&'static str>,
     /// Whether the provider also offers an OAuth login.
     pub oauth: bool,
-    /// pi's OAuth display name (the `lazyOAuth({name})` label).
-    pub oauth_name: Option<&'static str>,
-    /// pi's `isSubscription`: `false` means the auth row says "account".
-    pub oauth_subscription: bool,
 }
 
 /// Every built-in provider, in the order pi publishes them.
@@ -57,8 +53,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["bedrock-converse-stream"],
         api_key_env: None,
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "ant-ling",
@@ -67,8 +61,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("ANT_LING_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "anthropic",
@@ -77,8 +69,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["anthropic-messages"],
         api_key_env: Some("ANTHROPIC_API_KEY"),
         oauth: true,
-        oauth_name: Some("Anthropic (Claude Pro/Max)"),
-        oauth_subscription: true,
     },
     BuiltinProvider {
         id: "azure",
@@ -87,8 +77,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["azure-openai-responses", "openai-completions"],
         api_key_env: Some("AZURE_OPENAI_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "baseten",
@@ -97,8 +85,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("BASETEN_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "cerebras",
@@ -107,8 +93,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("CEREBRAS_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "cloudflare-ai-gateway",
@@ -117,8 +101,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["anthropic-messages", "openai-completions", "openai-responses"],
         api_key_env: Some("CLOUDFLARE_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "cloudflare-workers-ai",
@@ -127,8 +109,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions", "cloudflare-workers-ai-system-one"],
         api_key_env: Some("CLOUDFLARE_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "deepseek",
@@ -137,8 +117,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("DEEPSEEK_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "fireworks",
@@ -147,8 +125,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["anthropic-messages", "openai-completions"],
         api_key_env: Some("FIREWORKS_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "github-copilot",
@@ -157,8 +133,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["anthropic-messages", "openai-completions", "openai-responses"],
         api_key_env: Some("COPILOT_GITHUB_TOKEN"),
         oauth: true,
-        oauth_name: Some("GitHub Copilot"),
-        oauth_subscription: true,
     },
     BuiltinProvider {
         id: "google",
@@ -167,8 +141,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["google-generative-ai"],
         api_key_env: Some("GEMINI_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "google-vertex",
@@ -177,8 +149,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["google-vertex"],
         api_key_env: Some("GOOGLE_CLOUD_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "groq",
@@ -187,8 +157,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("GROQ_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "huggingface",
@@ -197,8 +165,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("HF_TOKEN"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "kimi-coding",
@@ -207,8 +173,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("KIMI_API_KEY"),
         oauth: true,
-        oauth_name: Some("Kimi Code (subscription)"),
-        oauth_subscription: true,
     },
     BuiltinProvider {
         id: "meta",
@@ -217,8 +181,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-responses"],
         api_key_env: Some("META_API_KEY"),
         oauth: true,
-        oauth_name: Some("Meta (Muse subscription)"),
-        oauth_subscription: true,
     },
     BuiltinProvider {
         id: "minimax",
@@ -227,8 +189,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["anthropic-messages"],
         api_key_env: Some("MINIMAX_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "minimax-cn",
@@ -237,8 +197,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["anthropic-messages"],
         api_key_env: Some("MINIMAX_CN_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "mistral",
@@ -247,8 +205,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["mistral-conversations"],
         api_key_env: Some("MISTRAL_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "moonshotai",
@@ -257,8 +213,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("MOONSHOT_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "moonshotai-cn",
@@ -267,8 +221,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("MOONSHOT_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "nvidia",
@@ -277,8 +229,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("NVIDIA_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "openai",
@@ -287,8 +237,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-responses"],
         api_key_env: Some("OPENAI_API_KEY"),
         oauth: true,
-        oauth_name: Some("OpenAI (ChatGPT subscription)"),
-        oauth_subscription: true,
     },
     BuiltinProvider {
         id: "openai-codex",
@@ -297,8 +245,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-codex-responses"],
         api_key_env: None,
         oauth: true,
-        oauth_name: Some("OpenAI (ChatGPT Plus/Pro)"),
-        oauth_subscription: true,
     },
     BuiltinProvider {
         id: "opencode",
@@ -312,8 +258,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         ],
         api_key_env: Some("OPENCODE_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "opencode-go",
@@ -327,8 +271,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         ],
         api_key_env: Some("OPENCODE_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "openrouter",
@@ -337,8 +279,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["anthropic-messages", "openai-completions", "openrouter-images"],
         api_key_env: Some("OPENROUTER_API_KEY"),
         oauth: true,
-        oauth_name: Some("OpenRouter OAuth"),
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "qwen-token-plan",
@@ -347,8 +287,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("QWEN_TOKEN_PLAN_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "qwen-token-plan-cn",
@@ -357,8 +295,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("QWEN_TOKEN_PLAN_CN_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "qwen-token-plan-individual",
@@ -367,8 +303,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("QWEN_TOKEN_PLAN_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "radius",
@@ -377,8 +311,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["pi-messages"],
         api_key_env: Some("RADIUS_API_KEY"),
         oauth: true,
-        oauth_name: Some("Radius"),
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "together",
@@ -387,8 +319,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("TOGETHER_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "typesafe",
@@ -397,8 +327,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["typesafe-system-one"],
         api_key_env: Some("TYPESAFE_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "vercel-ai-gateway",
@@ -407,8 +335,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["anthropic-messages", "typesafe-system-one"],
         api_key_env: Some("AI_GATEWAY_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "xai",
@@ -417,8 +343,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-responses"],
         api_key_env: Some("XAI_API_KEY"),
         oauth: true,
-        oauth_name: Some("xAI (Grok/X subscription)"),
-        oauth_subscription: true,
     },
     BuiltinProvider {
         id: "xiaomi",
@@ -427,8 +351,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("XIAOMI_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "xiaomi-token-plan-ams",
@@ -437,8 +359,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("XIAOMI_TOKEN_PLAN_AMS_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "xiaomi-token-plan-cn",
@@ -447,8 +367,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("XIAOMI_TOKEN_PLAN_CN_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "xiaomi-token-plan-sgp",
@@ -457,8 +375,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("XIAOMI_TOKEN_PLAN_SGP_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "zai",
@@ -467,8 +383,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("ZAI_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
     BuiltinProvider {
         id: "zai-coding-cn",
@@ -477,8 +391,6 @@ pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         apis: &["openai-completions"],
         api_key_env: Some("ZAI_CODING_CN_API_KEY"),
         oauth: false,
-        oauth_name: None,
-        oauth_subscription: false,
     },
 ];
 
@@ -823,37 +735,6 @@ mod tests {
                 for entry in entries.values() {
                     assert_eq!(&entry.provider, provider_id);
                 }
-            }
-        }
-    }
-
-    #[test]
-    fn the_oauth_providers_carry_pi_s_names_and_subscription_flags() {
-        let expected = [
-            ("anthropic", "Anthropic (Claude Pro/Max)", true),
-            ("github-copilot", "GitHub Copilot", true),
-            ("kimi-coding", "Kimi Code (subscription)", true),
-            ("meta", "Meta (Muse subscription)", true),
-            ("openai", "OpenAI (ChatGPT subscription)", true),
-            ("openai-codex", "OpenAI (ChatGPT Plus/Pro)", true),
-            ("openrouter", "OpenRouter OAuth", false),
-            ("xai", "xAI (Grok/X subscription)", true),
-            ("radius", "Radius", false),
-        ];
-        for (id, name, subscription) in expected {
-            let provider = builtin_provider(id).expect("the provider is published");
-            assert_eq!(provider.oauth_name, Some(name), "{id}");
-            assert_eq!(provider.oauth_subscription, subscription, "{id}");
-        }
-        let with_oauth = builtin_providers()
-            .iter()
-            .filter(|provider| provider.oauth_name.is_some())
-            .count();
-        assert_eq!(with_oauth, expected.len());
-        for provider in builtin_providers() {
-            if !expected.iter().any(|(id, _, _)| *id == provider.id) {
-                assert_eq!(provider.oauth_name, None, "{}", provider.id);
-                assert!(!provider.oauth_subscription, "{}", provider.id);
             }
         }
     }

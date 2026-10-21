@@ -125,29 +125,16 @@ fn collapsed_startup_changelog_links_to_full_notes() {
 }
 
 #[test]
-fn the_port_only_commands_are_gone() {
-    // The original has no `/help`, `/clear`, `/version`, `/provider`, `/tools`,
-    // `/images` or `/usage` (`packages/coding-agent/src/core/slash-commands.ts`).
-    let registry = build_builtin_registry();
-    for gone in [
-        "/help", "/?", "/clear", "/version", "/v", "/provider", "/tools", "/images", "/usage",
-    ] {
-        assert!(
-            registry.find(gone).is_none(),
-            "{gone} is not in the original's command set"
-        );
-    }
-    let names: Vec<String> = registry
-        .visible_entries()
-        .iter()
-        .map(|entry| entry.name.clone())
-        .collect();
-    for gone in ["/help", "/clear", "/version", "/provider", "/tools", "/images", "/usage"] {
-        assert!(
-            !names.contains(&gone.to_string()),
-            "{gone} should not be in the `/` list"
-        );
-    }
+fn the_help_listing_reads_like_the_original() {
+    let chat = Arc::new(Container::new());
+    add_help_message(&chat);
+    let output = strip_ansi(&chat.render(120).join("\n"));
+    assert!(output.contains("Open settings menu"));
+    assert!(output.contains("Select model (opens selector UI)"));
+    assert!(output.contains("Show changelog entries"));
+    assert!(output.contains("Show all keyboard shortcuts"));
+    assert!(output.contains("Quit pi"));
+    assert!(!output.contains("rpi"));
 }
 
 #[test]
@@ -1259,10 +1246,7 @@ fn key_repeat_is_dispatched_but_release_is_not() {
 #[test]
 fn test_layout_renders_welcome_message() {
     let chat = Arc::new(Container::new());
-    add_startup_header(
-        &chat,
-        &Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
-    );
+    add_welcome_message(&chat);
 
     let scroll = Arc::new(ScrollView::new(
         chat.clone(),
@@ -1305,10 +1289,7 @@ fn test_layout_renders_welcome_message() {
 #[test]
 fn startup_block_shows_the_originals_lines_and_nothing_else() {
     let chat = Arc::new(Container::new());
-    add_startup_header(
-        &chat,
-        &Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
-    );
+    add_welcome_message(&chat);
     let plain = strip_ansi(&chat.render(100).join("\n"));
 
     assert!(plain.contains("v1.3.0"), "pi's version missing: {plain}");
@@ -1647,19 +1628,26 @@ fn test_registry_visible_entries_cover_dispatch() {
         .map(|c| c.name.clone())
         .collect();
     for recognized in [
+        "/help",
+        "/clear",
         "/new",
         "/quit",
         "/skills",
         "/bug",
         "/stats",
+        "/version",
         "/changelog",
         "/model",
-        "/resume",
+        "/provider",
+        "/session",
         "/theme",
         "/compact",
         "/copy",
         "/hotkeys",
+        "/tools",
+        "/images",
         "/thinking",
+        "/usage",
     ] {
         assert!(
             names.contains(&recognized.to_string()),

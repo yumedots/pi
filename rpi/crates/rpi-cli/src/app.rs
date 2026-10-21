@@ -380,14 +380,6 @@ async fn run_inner() -> i32 {
     // plugin owns.
     let mode = if stdio_claimed { RunMode::Rpc } else { mode };
 
-    // Print and JSON modes print the resolver's diagnostic, like pi's startup
-    // diagnostics (`packages/coding-agent/src/main.ts:489-490`).
-    if matches!(mode, RunMode::Print | RunMode::Json) {
-        if let Some(warning) = resolved.warning.as_deref() {
-            eprintln!("Warning: {warning}");
-        }
-    }
-
     // Print and JSON modes report the missing model on stderr, like pi
     // (`packages/coding-agent/src/main.ts:942-945`). The interactive TUI and
     // the headless server start anyway and report the same guidance when a

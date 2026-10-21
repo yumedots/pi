@@ -6,6 +6,61 @@ use super::*;
 // Transcript message helpers
 // ===========================================================================
 
+/// Add the startup block to the chat container: pi's mark and version, the key
+/// hints, and the note the original prints under them.
+pub(super) fn add_welcome_message(container: &Arc<Container>) {
+    let c = current_theme().colors;
+    let version = crate::changelog::current_version();
+    let (top, bottom) = pi_logo_lines();
+    // The original's header container opens with a blank row.
+    container.add_child(Arc::new(Spacer::new(1)));
+    container.add_child(Arc::new(Text::new(
+        format!("{top} v{version}"),
+        1,
+        0,
+    )));
+    container.add_child(Arc::new(Text::new(
+        c.muted.fg(&format!("{bottom} {}", compact_hints())),
+        1,
+        0,
+    )));
+    container.add_child(Arc::new(Text::new(
+        c.dim.fg(&format!(
+            "Press {} to show full startup help.",
+            rpi_tui::key_text("app.tools.expand")
+        )),
+        1,
+        0,
+    )));
+    add_startup_note(container);
+    // The original's header container closes with a blank row too.
+    container.add_child(Arc::new(Spacer::new(1)));
+}
+
+/// The original's mark: four cells wide, two lines tall, in its own colours.
+fn pi_logo_lines() -> (String, String) {
+    let coral = rpi_tui::ansi::foreground_rgb(228, 138, 122);
+    let blue = rpi_tui::ansi::foreground_rgb(79, 142, 179);
+    let yellow = rpi_tui::ansi::foreground_rgb(234, 182, 93);
+    let blue_background = rpi_tui::ansi::background_rgb(79, 142, 179);
+    let reset = "\u{1b}[0m";
+    let top = format!("{coral}{blue_background}▀{reset}{coral}▀█{reset} ");
+    let bottom = format!("{blue}█▀{reset} {yellow}█{reset}");
+    (top, bottom)
+}
+
+/// The original's compact startup hints.
+fn compact_hints() -> String {
+    [
+        format!("{} interrupt", rpi_tui::key_text("app.interrupt")),
+        "ctrl+c twice to exit".to_string(),
+        "/ commands".to_string(),
+        "! bash".to_string(),
+        format!("{} more", rpi_tui::key_text("app.tools.expand")),
+    ]
+    .join(" · ")
+}
+
 /// The original's warning when tmux cannot deliver modified Enter keys.
 pub(crate) const TMUX_EXTENDED_KEYS_OFF: &str = "tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.";
 
@@ -95,12 +150,17 @@ fn tmux_option(name: &str) -> Option<String> {
     }
 }
 
-/// The status line the original shows in the transcript (`showStatus`,
-/// `interactive-mode.ts:3676`): a blank row, then the dim message.
-pub(super) fn add_status_message(container: &Arc<Container>, text: &str) {
+/// The note the original prints under the startup hints.
+pub(super) fn add_startup_note(container: &Arc<Container>) {
     let c = current_theme().colors;
     container.add_child(Arc::new(Spacer::new(1)));
-    container.add_child(Arc::new(Text::new(c.dim.fg(text), 1, 0)));
+    container.add_child(Arc::new(Text::new(
+        c.dim.fg(
+            "Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.",
+        ),
+        1,
+        0,
+    )));
 }
 
 /// Append update notices inside the live transcript. Fullscreen mode clears
@@ -170,6 +230,37 @@ pub(super) fn add_update_panel(
         0,
     )));
     container.add_child(Arc::new(DynamicBorder::with_color(color)));
+}
+
+/// Add the `/help` command listing to the chat container.
+pub(super) fn add_help_message(container: &Arc<Container>) {
+    let c = current_theme().colors;
+    container.add_child(Arc::new(Text::new(
+        c.md_heading.fg(&tui_bold("Available Commands")),
+        1,
+        0,
+    )));
+    container.add_child(Arc::new(Spacer::new(1)));
+
+    // The original has no `/help`; its equivalent is the `/` autocomplete
+    // list, so the port's listing is generated from the same registry and
+    // always shows the same set of commands.
+    let entries = super::build_builtin_registry().visible_entries();
+    let cmds: Vec<(&str, &str)> = entries
+        .iter()
+        .map(|entry| (entry.name.as_str(), entry.description.as_str()))
+        .collect();
+    let cmd_w = cmds.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
+    for (cmd, desc) in &cmds {
+        let row = format!(
+            "  {:<cmd_w$}  {}  {}",
+            c.accent.fg(cmd),
+            c.dim.fg("—"),
+            c.muted.fg(desc)
+        );
+        container.add_child(Arc::new(Text::new(row, 1, 0)));
+    }
+    container.add_child(Arc::new(Spacer::new(1)));
 }
 
 /// Add the `/version` block to the chat container.

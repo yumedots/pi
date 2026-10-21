@@ -114,14 +114,12 @@ pub fn slice_by_column(s: &str, start_col: usize, width: usize, preserve_styles:
 
     while !rest.is_empty() {
         if let Some((escape, remainder)) = crate::utils::take_escape_sequence(rest) {
-            if preserve_styles {
-                if col >= start_col && col < end_col {
-                    result.push_str(&pending);
-                    pending.clear();
-                    result.push_str(escape);
-                } else if col < start_col {
-                    pending.push_str(escape);
-                }
+            if col >= start_col {
+                result.push_str(&pending);
+                pending.clear();
+                result.push_str(escape);
+            } else if preserve_styles {
+                pending.push_str(escape);
             }
             rest = remainder;
             continue;
@@ -377,16 +375,6 @@ pub fn dim(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_slice_keeps_the_style_of_the_text_it_cuts() {
-        let line = "\x1b[31mred text here\x1b[0m";
-        let slice = crate::ansi::slice_by_column(line, 0, 4, true);
-        assert!(slice.starts_with("\x1b[31m"), "{slice:?}");
-        assert!(slice.contains("red "), "{slice:?}");
-        let plain = crate::ansi::slice_by_column(line, 0, 4, false);
-        assert_eq!(plain, "red ");
-    }
 
     #[test]
     fn test_visible_width() {

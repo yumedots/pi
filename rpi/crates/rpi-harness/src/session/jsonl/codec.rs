@@ -93,7 +93,7 @@ pub fn metadata_from_header(
 }
 
 /// The session id in a session file's name (`<timestamp>_<id>.jsonl`).
-pub fn session_id_from_path(path: &str) -> Option<String> {
+fn session_id_from_path(path: &str) -> Option<String> {
     let name = path.rsplit('/').next()?;
     let stem = name.strip_suffix(".jsonl")?;
     let id = stem.rsplit_once('_')?.1;
