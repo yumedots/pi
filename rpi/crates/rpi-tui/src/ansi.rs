@@ -98,46 +98,44 @@ pub fn strip_ansi(s: &str) -> String {
 /// Slice a string by visible column positions.
 ///
 /// Returns a substring that starts at `start_col` and has at most `width` visible columns.
-/// Preserves ANSI escape sequences appropriately.
+/// The escape sequences inside the slice are kept, and the ones that were active
+/// before it are kept too when `preserve_styles` is set, so a styled row does
+/// not lose its colour when it is clipped.
 pub fn slice_by_column(s: &str, start_col: usize, width: usize, preserve_styles: bool) -> String {
     if width == 0 {
         return String::new();
     }
 
-    let stripped = strip_ansi(s);
-    let segments: Vec<&str> = stripped.graphemes(true).collect();
+    let end_col = start_col + width;
+    let mut result = String::new();
+    let mut pending = String::new();
+    let mut col = 0usize;
+    let mut rest = s;
 
-    // Find the character indices for the column range
-    let mut current_col = 0;
-    let mut start_idx = None;
-    let mut end_idx = segments.len();
-    let mut col_count = 0;
-
-    for (i, seg) in segments.iter().enumerate() {
-        let seg_width = UnicodeWidthStr::width(*seg);
-        if current_col >= start_col && start_idx.is_none() {
-            start_idx = Some(i);
-        }
-        if start_idx.is_some() {
-            col_count += seg_width;
-            if col_count >= width {
-                end_idx = i + 1;
-                break;
+    while !rest.is_empty() {
+        if let Some((escape, remainder)) = crate::utils::take_escape_sequence(rest) {
+            if col >= start_col {
+                result.push_str(&pending);
+                pending.clear();
+                result.push_str(escape);
+            } else if preserve_styles {
+                pending.push_str(escape);
             }
+            rest = remainder;
+            continue;
         }
-        current_col += seg_width;
+        let grapheme = rest.graphemes(true).next().unwrap_or_default();
+        let grapheme_width = UnicodeWidthStr::width(grapheme);
+        if col >= start_col && col < end_col {
+            result.push_str(&pending);
+            pending.clear();
+            result.push_str(grapheme);
+        }
+        col += grapheme_width;
+        rest = &rest[grapheme.len()..];
     }
 
-    let start_idx = start_idx.unwrap_or(segments.len());
-    let result: String = segments[start_idx..end_idx].iter().copied().collect();
-
-    if preserve_styles && result != stripped {
-        // TODO: Preserve ANSI styles from the original string
-        // This is a simplified version
-        result
-    } else {
-        result
-    }
+    result
 }
 
 /// Normalize terminal output by resetting styles at line ends.

@@ -378,7 +378,21 @@ pub struct TuiAltScreen {
     copy_on_select: AtomicBool,
     /// Logical lines moved for each mouse-wheel event.
     wheel_scroll_lines: AtomicI32,
+    /// A jump to the latest message drops the wheel gesture in progress.
+    ///
+    /// A trackpad keeps sending wheel events after the fingers lift; without
+    /// this the momentum would scroll the view straight back off the end the
+    /// user just jumped to.
+    cancel_wheel_gesture: AtomicBool,
+    /// When the last wheel event arrived, in milliseconds.
+    last_wheel_at: Mutex<f64>,
 }
+
+/// The gap that ends a wheel gesture, in milliseconds.
+///
+/// The original's `WHEEL_GESTURE_GAP_MS`
+/// (packages/tui/src/wheel-scroll.ts:8).
+const WHEEL_GESTURE_GAP_MS: f64 = 200.0;
 
 impl TuiAltScreen {
     /// Create a new alternate screen TUI.
@@ -427,6 +441,8 @@ impl TuiAltScreen {
             copy_selection: Mutex::new(None),
             copy_on_select: AtomicBool::new(true),
             wheel_scroll_lines: AtomicI32::new(3),
+            cancel_wheel_gesture: AtomicBool::new(false),
+            last_wheel_at: Mutex::new(0.0),
         }
     }
 
@@ -707,6 +723,9 @@ impl TuiAltScreen {
 
     /// Scroll to the bottom.
     pub fn scroll_to_bottom(&self) {
+        // The jump drops the wheel gesture in progress, so the trackpad's
+        // momentum cannot scroll the view straight back off the end.
+        self.cancel_wheel_gesture.store(true, Ordering::Relaxed);
         if let Some(scroll) = self.get_primary_scroll_view() {
             scroll.scroll_to_end();
             self.request_render_reusing_scroll_content();
@@ -1452,6 +1471,24 @@ impl TuiAltScreen {
     /// Route a wheel event to the components, and scroll the transcript when
     /// no component took it.
     fn handle_mouse_wheel(&self, event: &MouseEvent) -> bool {
+        // A trackpad keeps sending wheel events after the fingers lift. When
+        // the user jumps to the latest message, the momentum of that gesture
+        // must not scroll the view back off the end: the events of the gesture
+        // in progress are dropped and the next gesture scrolls again.
+        // (packages/tui/src/tui-alt-screen.ts:511-518 and :729-734)
+        let now = crate::clock::wall_now_ms();
+        let continues_gesture = {
+            let mut last = self.last_wheel_at.lock().unwrap();
+            let continues = now - *last <= WHEEL_GESTURE_GAP_MS;
+            *last = now;
+            continues
+        };
+        if self.cancel_wheel_gesture.load(Ordering::Relaxed) {
+            if continues_gesture {
+                return true;
+            }
+            self.cancel_wheel_gesture.store(false, Ordering::Relaxed);
+        }
         let dispatched = self
             .dispatch_mouse_to_overlay(event)
             .or_else(|| self.dispatch_mouse_to_layout(event));
@@ -2494,6 +2531,37 @@ mod tests {
     }
 
     #[test]
+    fn the_momentum_after_a_jump_to_the_latest_does_not_scroll_back() {
+        let terminal = ResizableTerminal::new(40, 8);
+        let tui = TuiAltScreen::new(Box::new(terminal), false, None);
+        let content = Arc::new(crate::text::Text::new("line\n".repeat(50), 0, 0));
+        let scroll = Arc::new(ScrollView::new(
+            content,
+            crate::ScrollViewOptions {
+                follow: crate::scroll_view::FollowMode::End,
+                primary: true,
+                ..Default::default()
+            },
+        ));
+        tui.set_layout_root(Some(scroll.clone()));
+        tui.start_readerless();
+        scroll.scroll_by(-10);
+        assert!(!scroll.is_following_end(), "the view scrolled up");
+
+        tui.scroll_to_bottom();
+        assert!(scroll.is_following_end(), "the jump reached the end");
+
+        // The trackpad's momentum arrives right after the jump: it must not
+        // scroll the view back off the end.
+        let event = MouseEvent::new(MouseEventKind::Wheel, MouseButton::None, 0, 0);
+        tui.handle_mouse_wheel(&event);
+        assert!(
+            scroll.is_following_end(),
+            "the momentum scrolled the view back off the end"
+        );
+    }
+
+    #[test]
     fn resize_repaints_every_row_at_the_dimensions_the_window_reports() {
         let terminal = ResizableTerminal::new(40, 8);
         let output = terminal.output();
@@ -2741,7 +2809,7 @@ mod tests {
         let click = MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             column: 20,
-            row: (scroll.viewport_height() - 1) as u16,
+            row: scroll.viewport_height() as u16,
             modifiers: KeyModifiers::NONE,
         };
         assert!(tui.handle_scroll_to_end_indicator_mouse_event(&click));

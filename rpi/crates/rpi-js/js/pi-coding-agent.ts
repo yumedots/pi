@@ -23,16 +23,20 @@ export {
 	type EventBus,
 	type EventBusController,
 } from "../../../../packages/coding-agent/src/core/event-bus.ts";
-export {
-	CONFIG_DIR_NAME,
-	getAgentDir,
-	getDocsPath,
-	getExamplesPath,
-	getPackageDir,
-	getReadmePath,
-	VERSION,
-} from "../../../../packages/coding-agent/src/config.ts";
-export { parseArgs } from "../../../../packages/coding-agent/src/cli/args.ts";
+// The config paths are the port's own: pi's `config.ts` reads the package
+// directory at import time, which the embedded host cannot do.
+export const CONFIG_DIR_NAME = ".pi";
+export const getAgentDir = (): string => {
+	const override = process.env.PI_CODING_AGENT_DIR;
+	if (override) return override;
+	const home = process.env.HOME ?? process.env.USERPROFILE ?? "/";
+	return `${home}/.pi/agent`;
+};
+export const getDocsPath = (): string => `${getAgentDir()}/docs`;
+export const getExamplesPath = (): string => `${getAgentDir()}/examples`;
+export const getPackageDir = (): string => getAgentDir();
+export const getReadmePath = (): string => `${getAgentDir()}/README.md`;
+export const VERSION = "1.3.0";
 export {
 	defineTool,
 	isBashToolResult,
@@ -50,24 +54,21 @@ export {
 	generateDiffString,
 	generateUnifiedPatch,
 } from "../../../../packages/coding-agent/src/core/tools/edit-diff.ts";
+// The tools are imported one by one: the barrel also pulls the renderers,
+// which reach for the package directory at import time.
 export {
 	createBashToolDefinition,
-	createEditToolDefinition,
-	createFindToolDefinition,
-	createGrepToolDefinition,
 	createLocalBashOperations,
-	createLocalPowerShellOperations,
-	createLsToolDefinition,
-	createPowerShellToolDefinition,
-	createReadToolDefinition,
-	createWriteToolDefinition,
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
 	formatSize,
 	truncateHead,
 	truncateTail,
-	withFileMutationQueue,
-} from "../../../../packages/coding-agent/src/core/tools/index.ts";
+} from "../../../../packages/coding-agent/src/core/tools/bash.ts";
+export { createReadToolDefinition } from "../../../../packages/coding-agent/src/core/tools/read.ts";
+export { createWriteToolDefinition } from "../../../../packages/coding-agent/src/core/tools/write.ts";
+export { createEditToolDefinition } from "../../../../packages/coding-agent/src/core/tools/edit.ts";
+export { withFileMutationQueue } from "../../../../packages/coding-agent/src/core/tools/file-mutation-queue.ts";
 export { formatReadLineRange } from "../../../../packages/coding-agent/src/core/tools/render-utils.ts";
 export { createBashTool } from "../../../../packages/coding-agent/src/core/tools/bash.ts";
 // The components are imported one by one: the barrel also pulls the
@@ -93,4 +94,3 @@ export { parseFrontmatter, stripFrontmatter } from "../../../../packages/coding-
 export { convertToPng } from "../../../../packages/coding-agent/src/utils/image-convert.ts";
 export { formatDimensionNote, resizeImage } from "../../../../packages/coding-agent/src/utils/image-resize.ts";
 export { detectSupportedImageMimeTypeFromFile } from "../../../../packages/coding-agent/src/utils/mime.ts";
-export { getPowerShellConfig, getShellConfig } from "../../../../packages/coding-agent/src/utils/shell.ts";

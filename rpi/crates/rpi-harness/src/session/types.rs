@@ -1640,6 +1640,13 @@ pub trait SessionStorage: Send + Sync {
         self.metadata()
     }
 
+    /// The session file's path, when the backend has one. `None` for an
+    /// in-memory session — the original refuses to export those
+    /// (`packages/coding-agent/src/core/export-html/index.ts:236`).
+    fn file_path(&self) -> Option<String> {
+        None
+    }
+
     // Lanes
     async fn get_lanes(&self) -> SessionResult<Vec<LanePointer>>;
     async fn create_lane(&self, lane: &str, at: Option<&str>) -> SessionResult<()>;

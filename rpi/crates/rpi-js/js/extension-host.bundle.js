@@ -193,7 +193,7 @@
         appendFile,
         mkdtemp
       };
-      var fs = {
+      var fs2 = {
         readFileSync,
         writeFileSync,
         existsSync,
@@ -244,7 +244,7 @@
         mkdtemp,
         promises: promises2
       };
-      module.exports = fs;
+      module.exports = fs2;
     }
   });
 
@@ -252,8 +252,8 @@
   var require_node_fs_promises = __commonJS({
     "rpi/crates/rpi-js/js/shims/node-fs-promises.ts"(exports, module) {
       "use strict";
-      var import_node_fs = __toESM(require_node_fs(), 1);
-      var { promises: promises2 } = import_node_fs.default;
+      var import_node_fs2 = __toESM(require_node_fs(), 1);
+      var { promises: promises2 } = import_node_fs2.default;
       var readFile = promises2.readFile;
       var writeFile = promises2.writeFile;
       var exists = promises2.exists;
@@ -6981,7 +6981,7 @@
     return parsed.codepoint === expectedKeycode && parsed.modifier === expectedModifier;
   }
   function isWindowsTerminalSession() {
-    return Boolean(__piProcess.env.WT_SESSION) && !__piProcess.env.SSH_CONNECTION && !__piProcess.env.SSH_CLIENT && !__piProcess.env.SSH_TTY;
+    return Boolean(globalThis.__piProcess.env.WT_SESSION) && !globalThis.__piProcess.env.SSH_CONNECTION && !globalThis.__piProcess.env.SSH_CLIENT && !globalThis.__piProcess.env.SSH_TTY;
   }
   function matchesRawBackspace(data, expectedModifier) {
     if (data === "\x7F") return expectedModifier === 0;
@@ -7408,16 +7408,16 @@
     userInfo: () => userInfo,
     version: () => version
   });
-  var homedir = () => __piProcess.env.HOME ?? __piProcess.env.USERPROFILE ?? "/";
-  var tmpdir = () => __piProcess.env.TMPDIR ?? "/tmp";
-  var platform = () => __piProcess.platform;
-  var arch = () => __piProcess.arch;
+  var homedir = () => globalThis.__piProcess.env.HOME ?? globalThis.__piProcess.env.USERPROFILE ?? "/";
+  var tmpdir = () => globalThis.__piProcess.env.TMPDIR ?? "/tmp";
+  var platform = () => globalThis.__piProcess.platform;
+  var arch = () => globalThis.__piProcess.arch;
   var EOL = "\n";
   var hostname = () => "localhost";
   var userInfo = () => ({
-    username: __piProcess.env.USER ?? __piProcess.env.LOGNAME ?? "user",
+    username: globalThis.__piProcess.env.USER ?? globalThis.__piProcess.env.LOGNAME ?? "user",
     homedir: homedir(),
-    shell: __piProcess.env.SHELL ?? "/bin/sh"
+    shell: globalThis.__piProcess.env.SHELL ?? "/bin/sh"
   });
   var release = () => "";
   var version = () => "";
@@ -13615,10 +13615,15 @@
     default: () => node_module_default,
     isBuiltin: () => isBuiltin
   });
+  var import_node_fs = __toESM(require_node_fs(), 1);
   var unavailable3 = (name) => () => {
     throw new Error(`${name} is not available in the embedded extension host`);
   };
-  var createRequire = unavailable3("createRequire");
+  var createRequire = (_from) => (id) => {
+    if (id === "fs" || id === "node:fs") return import_node_fs.default;
+    if (id === "path" || id === "node:path") return node_path_default;
+    return unavailable3("require")(id);
+  };
   var Module3 = unavailable3("Module");
   var isBuiltin = (name) => name.startsWith("node:") || ["fs", "path", "os", "url", "events", "module"].includes(name);
   var node_module_default = { createRequire, Module: Module3, isBuiltin };
@@ -13669,18 +13674,18 @@
     versions: () => versions
   });
   var globals = globalThis;
-  var process2 = globals.__piProcess ?? globals.process;
-  var env = process2.env;
-  var argv = process2.argv;
-  var platform2 = process2.platform;
-  var pid = process2.pid;
-  var version2 = process2.version;
-  var versions = process2.versions;
-  var cwd = process2.cwd;
-  var exit = process2.exit;
-  var stdout = process2.stdout;
-  var stderr = process2.stderr;
-  var node_process_default = process2;
+  var hostProcess = globals.__piProcess ?? globals.process;
+  var env = hostProcess.env;
+  var argv = hostProcess.argv;
+  var platform2 = hostProcess.platform;
+  var pid = hostProcess.pid;
+  var version2 = hostProcess.version;
+  var versions = hostProcess.versions;
+  var cwd = hostProcess.cwd;
+  var exit = hostProcess.exit;
+  var stdout = hostProcess.stdout;
+  var stderr = hostProcess.stderr;
+  var node_process_default = hostProcess;
 
 
   var node_punycode_exports = {};

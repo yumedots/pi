@@ -144,7 +144,12 @@
 
 
 	globalThis.process = {
-		env: call("process.env", {}),
+		// The environment is read when it is used, not copied when the
+		// surface runs: a copy that arrives empty (or null) takes down every
+		// bundled module that reads `process.env`.
+		get env() {
+			return call("process.env", {}) ?? {};
+		},
 		argv: call("process.argv", {}),
 		platform: call("process.platform", {}),
 		pid: call("process.pid", {}),

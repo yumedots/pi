@@ -48,7 +48,16 @@ impl JumpToEnd {
         if clip.width == 0 || clip.height == 0 {
             return;
         }
-        let row = clip.y + clip.height - 1;
+        // The label lands on the row below the transcript, so it does not paint
+        // over the last row of it. Without room there it stays on that row.
+        // (packages/tui/src/tui-alt-screen.ts:1684-1687, the app's
+        // `scrollToEndIndicatorPlacement: "below-scroll-view"`.)
+        let below = clip.y + clip.height < screen.len();
+        let row = if below {
+            clip.y + clip.height
+        } else {
+            clip.y + clip.height - 1
+        };
         let Some(line) = screen.get_mut(row) else {
             return;
         };
@@ -59,20 +68,24 @@ impl JumpToEnd {
         {
             return;
         }
-        let label = truncate_to_width(&label(), clip.width, "");
-        let label_width = visible_width(&label);
-        let column = clip.x + (clip.width - label_width) / 2;
-        // Center against the full clip so auto scrollbar visibility cannot move
-        // the label. Clip its right edge to preserve the scrollbar column.
+        // Below the scroll view the label is anchored to the right edge of the
+        // screen; on the last row of the view it stops at the scrollbar column
+        // so it does not move when the scrollbar appears.
+        // (packages/tui/src/tui-alt-screen.ts:1689-1698.)
         let scrollbar = (scroll.is_scrollbar_visible() && view.rect.width > 0)
             .then_some(view.rect.x + view.rect.width.saturating_sub(1))
             .filter(|column| *column >= clip.x && *column < clip.x + clip.width);
-        let right = scrollbar.unwrap_or(clip.x + clip.width);
-        let label = truncate_to_width(&label, right.saturating_sub(column), "");
+        let right_edge = if below {
+            frame.width
+        } else {
+            scrollbar.unwrap_or(clip.x + clip.width)
+        };
+        let label = truncate_to_width(&label(), right_edge.saturating_sub(clip.x), "");
         let width = visible_width(&label);
         if width == 0 {
             return;
         }
+        let column = right_edge - width;
         *line = composite_tui_line(line, &label, column, width, frame.width);
         self.state.lock().unwrap().rect = Some(LayoutRect::new(column, row, width, 1));
     }
@@ -141,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn indicator_is_inside_the_transcript_and_only_the_label_captures_presses() {
+    fn the_indicator_is_below_the_transcript_and_only_the_label_captures_presses() {
         let (scroll, root, indicator) = scene(30, FollowMode::End, ScrollbarMode::Hidden);
         let frame = crate::layout::render_layout_frame(root.clone(), 30, 6);
         let mut lines = frame.lines.clone();
@@ -151,10 +164,13 @@ mod tests {
         let frame = crate::layout::render_layout_frame(root, 30, 6);
         let mut lines = frame.lines.clone();
         indicator.paint(&frame, &mut lines, false);
-        assert!(lines[3].contains("Jump to end"));
-        assert_eq!(lines[4].trim_end(), "editor");
+        // The label lands on the row below the transcript, so it does not
+        // paint over the last row of it.
+        assert!(lines[4].contains("Jump to end"), "{lines:?}");
+        assert!(!lines[3].contains("Jump to end"), "{lines:?}");
         assert_eq!(lines[5].trim_end(), "footer");
         let rect = indicator.state.lock().unwrap().rect.unwrap();
+        assert_eq!(rect.y, 4);
         let mut mouse = MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             column: rect.x as u16,
@@ -176,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn narrow_wide_character_labels_preserve_the_scrollbar_column() {
+    fn a_wide_label_below_the_transcript_spans_to_the_screen_edge() {
         for width in [1, 2, 5, 30] {
             let (scroll, root, indicator) = scene(width, FollowMode::End, ScrollbarMode::Always);
             scroll.scroll_by(-3);
@@ -184,20 +200,18 @@ mod tests {
             indicator.set_label(Some(Arc::new(|| "跳到末尾".repeat(20))));
             let mut lines = frame.lines.clone();
             indicator.paint(&frame, &mut lines, false);
-            assert_eq!(
-                crate::ansi::slice_by_column(&lines[3], width - 1, 1, true),
-                crate::ansi::slice_by_column(&frame.lines[3], width - 1, 1, true)
-            );
-            assert!(visible_width(&lines[3]) <= width);
             let rect = indicator.state.lock().unwrap().rect;
             if let Some(rect) = rect {
-                assert!(rect.x + rect.width <= width - 1);
+                // Below the scroll view the label reaches the screen edge: the
+                // scrollbar does not reach there.
+                assert_eq!(rect.x + rect.width, width, "the label ends at the edge");
+                assert!(visible_width(&lines[rect.y]) <= width);
             }
         }
     }
 
     #[test]
-    fn indicator_centers_inside_a_transcript_next_to_a_fixed_sidebar() {
+    fn the_indicator_is_right_aligned_next_to_a_fixed_sidebar() {
         use crate::HStack;
         let (scroll, _, indicator) = scene(37, FollowMode::End, ScrollbarMode::Hidden);
         scroll.scroll_by(-3);
@@ -210,7 +224,9 @@ mod tests {
         let mut lines = frame.lines.clone();
         indicator.paint(&frame, &mut lines, false);
         let rect = indicator.state.lock().unwrap().rect.unwrap();
-        assert_eq!(rect.x, 3 + (37 - 6) / 2);
+        // The scroll view fills the height here, so there is no row below it
+        // and the label stays on its last row, anchored to the screen edge.
+        assert_eq!(rect.x + rect.width, 40);
         assert_eq!(rect.y, 3);
         let visible = crate::ansi::strip_ansi(&lines[3]);
         assert_eq!(visible.find(" Jump ").unwrap(), rect.x);
@@ -230,9 +246,10 @@ mod tests {
         let mut lines = frame.lines.clone();
         indicator.paint(&frame, &mut lines, true);
         assert!(indicator.state.lock().unwrap().rect.is_none());
-        lines[3] = "\x1b_Ga=T;image\x1b\\".to_owned();
+        // The row the label would land on owns the image, so it is left alone.
+        lines[4] = "\x1b_Ga=T;image\x1b\\".to_owned();
         indicator.paint(&frame, &mut lines, false);
         assert!(indicator.state.lock().unwrap().rect.is_none());
-        assert_eq!(lines[3], "\x1b_Ga=T;image\x1b\\");
+        assert_eq!(lines[4], "\x1b_Ga=T;image\x1b\\");
     }
 }

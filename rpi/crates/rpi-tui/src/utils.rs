@@ -21,7 +21,7 @@ enum LineAtom<'a> {
 }
 
 /// Take one escape sequence from the front of `s`.
-fn take_escape_sequence(s: &str) -> Option<(&str, &str)> {
+pub(crate) fn take_escape_sequence(s: &str) -> Option<(&str, &str)> {
     let bytes = s.as_bytes();
     if bytes.first() != Some(&0x1b) {
         return None;

@@ -7,27 +7,14 @@ use rpi_tui::{keybindings::keys, Keybindings, TuiAltScreen};
 pub(crate) fn install(tui: &TuiAltScreen, bindings: Arc<Keybindings>) {
     tui.set_scroll_to_end_indicator(Some(Arc::new(move || {
         let colors = rpi_tui::theme().colors;
-        format!(
-            "{}{}{}\x1b[39m\x1b[49m",
-            colors.selected_bg.to_bg(),
-            colors.text.to_fg(),
-            label(&bindings)
-        )
+        format!("{}{}\x1b[39m", colors.text.to_fg(), label())
     })));
 }
 
-fn label(bindings: &Keybindings) -> String {
-    let shortcut = bindings
-        .get_keys(keys::BOTTOM)
-        .iter()
-        .map(|key| key.display())
-        .collect::<Vec<_>>()
-        .join("/");
-    if shortcut.is_empty() {
-        " ↓ Jump to latest message ".to_owned()
-    } else {
-        format!(" ↓ Jump to latest message · {shortcut} ")
-    }
+/// The original's label, exactly (`tui-renderer.ts:30`): a foreground
+/// colour, no background and no shortcut suffix.
+fn label() -> String {
+    " ↓ Jump to latest message ".to_owned()
 }
 
 pub(crate) fn handle_key(tui: &TuiAltScreen, bindings: &Keybindings, key: &KeyEvent) -> bool {

@@ -527,6 +527,27 @@ fn dispatch_key_event(state: &TuiState, key: &KeyEvent, editor: &Editor) -> bool
     claimed
 }
 
+/// Expand a skill command and a prompt template in the submitted text.
+///
+/// The original expands in `AgentSession.prompt` **and** in the queueing path
+/// (`packages/coding-agent/src/core/agent-session.ts:2258`), so a message typed
+/// while the agent is running is expanded too. The port expands in the
+/// harness's `prompt_text` (the idle path) and here (the queueing path).
+fn expand_for_resources(ctx: &CommandContext, text: &str) -> String {
+    let resources = match ctx.resources.lock() {
+        Ok(resources) => resources,
+        Err(_) => return text.to_string(),
+    };
+    let expanded = match resources.skills.as_deref() {
+        Some(skills) => rpi_harness::skills::expand_skill_command(text, skills),
+        None => text.to_string(),
+    };
+    match resources.prompt_templates.as_deref() {
+        Some(templates) => rpi_harness::prompt_templates::expand_prompt_template(&expanded, templates),
+        None => expanded,
+    }
+}
+
 /// The autocomplete description of a prompt template.
 ///
 /// Mirrors the original's rendering (`packages/tui/src/autocomplete.ts:355`):
@@ -1631,9 +1652,16 @@ pub async fn interactive_tui(
         combined.add_provider(Arc::new(SlashCommandAutocompleteProvider::new(
             all_slash_commands,
         )));
-        combined.add_provider(Arc::new(SkillMentionAutocompleteProvider::new(
-            skill_mentions,
-        )));
+        // The original shows the skill mentions and the file completions
+        // together for one `@` query, the mentions first
+        // (`packages/tui/src/autocomplete.ts:330-345`). The port's providers
+        // are chained, and a chain returns the first provider that answers, so
+        // the mention provider takes the file provider and merges its rows.
+        combined.add_provider(Arc::new(
+            SkillMentionAutocompleteProvider::new(skill_mentions).with_files(Arc::new(
+                FilePathAutocompleteProvider::with_root(cwd.clone()),
+            )),
+        ));
         combined.add_provider(Arc::new(FilePathAutocompleteProvider::with_root(
             cwd.clone(),
         )));
@@ -1971,7 +1999,8 @@ pub async fn interactive_tui(
                 }
             }
         }
-        let text = prompt.as_str();
+        let text = expand_for_resources(&ctx_for_cb, prompt.as_str());
+        let text = text.as_str();
 
         // User-initiated shell mode: `!command` runs in the background and is
         // recorded in the session context; `!!command` is excluded from it.

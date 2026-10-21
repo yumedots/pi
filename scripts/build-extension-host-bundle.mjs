@@ -181,7 +181,7 @@ const result = await build({
 		// Every `process` in the bundled sources is the host's object: a
 		// CommonJS package in pi's dependency tree replaces the global, and
 		// the replacement has no environment.
-		process: "__piProcess",
+		process: "globalThis.__piProcess",
 	},
 	target: "es2022",
 	write: false,

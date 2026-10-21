@@ -188,6 +188,12 @@ impl Session {
         self.storage_arc()
     }
 
+    /// The session file's path, when the backend is a file. `None` for an
+    /// in-memory session.
+    pub fn file_path(&self) -> Option<String> {
+        self.storage_arc().file_path()
+    }
+
     /// `getMetadata()`. Mirrors TS `Session.getMetadata`.
     pub async fn get_metadata(&self) -> SessionResult<SessionMetadata> {
         Ok(self.storage_arc().metadata())

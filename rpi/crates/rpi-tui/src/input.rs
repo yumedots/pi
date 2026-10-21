@@ -363,7 +363,6 @@ impl Input {
     }
 
     /// Yank pop (cycle through kill ring).
-    #[allow(dead_code)]
     fn yank_pop(&self) {
         if self.get_last_action() != LastAction::Yank {
             return;
@@ -579,6 +578,7 @@ impl Input {
                 'b' => self.move_word_left(),
                 'f' => self.move_word_right(),
                 'd' => self.delete_word_forward(),
+                'y' => self.yank_pop(),
                 _ => {}
             },
             (KeyCode::Char(c), _) => {
@@ -730,6 +730,38 @@ mod tests {
         let input = Input::new();
         input.set_value("hello");
         assert_eq!(input.get_value(), "hello");
+    }
+
+    #[test]
+    fn alt_y_rotates_the_kill_ring() {
+        let input = Input::new();
+        // Two kills that do not coalesce: the ring holds both. A typed
+        // character between them breaks the kill run.
+        input.set_value("one two");
+        input.handle_key(crossterm::event::KeyEvent::new(
+            KeyCode::Char('w'),
+            KeyModifiers::CONTROL,
+        ));
+        input.handle_key(crossterm::event::KeyEvent::new(
+            KeyCode::Char('x'),
+            KeyModifiers::NONE,
+        ));
+        input.handle_key(crossterm::event::KeyEvent::new(
+            KeyCode::Char('w'),
+            KeyModifiers::CONTROL,
+        ));
+        input.set_value("");
+        input.handle_key(crossterm::event::KeyEvent::new(
+            KeyCode::Char('y'),
+            KeyModifiers::CONTROL,
+        ));
+        let yanked = input.get_value();
+        assert!(!yanked.is_empty(), "ctrl+y yanks: {yanked:?}");
+        input.handle_key(crossterm::event::KeyEvent::new(
+            KeyCode::Char('y'),
+            KeyModifiers::ALT,
+        ));
+        assert_ne!(input.get_value(), yanked, "alt+y rotates the kill ring");
     }
 
     #[test]
