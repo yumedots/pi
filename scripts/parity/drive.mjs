@@ -46,6 +46,14 @@ export const SCENARIOS = {
 		{ name: "booted", settle: 4000, virtualTime: 0 },
 		{ name: "answer", keys: ["show me markdown", "Enter"], settle: 4000, virtualTime: 2000 },
 	],
+	// The extension suite types once per extension, and a keystroke that
+	// arrives before the editor is ready is lost: the run never happens and
+	// the pane shows the startup screen. The boot settle is long enough for
+	// the port to be up and taking keys.
+	extension: [
+		{ name: "booted", settle: 7000, virtualTime: 0 },
+		{ name: "answer", keys: ["hello world", "Enter"], settle: 4000, virtualTime: 2000 },
+	],
 };
 
 const MARKDOWN_REPLY = `# Parity Heading
@@ -166,8 +174,23 @@ export function drive({ name, command, scenario, clock, meta }) {
 	const trace = { scenario, width: PANE_WIDTH, height: PANE_HEIGHT, meta: meta ?? {}, steps: [] };
 	try {
 		for (const step of steps) {
+			const before = readPane(session);
 			for (const key of step.keys ?? []) {
 				tmux(["send-keys", "-t", session, key]);
+			}
+			if (step.keys?.length) {
+				// The app may still be painting its startup screen, and the first
+				// keystrokes can be lost while it does. A lost keystroke leaves the
+				// pane exactly as it was, so the keys are sent again until the
+				// screen changes — otherwise the scenario measures a run that
+				// never happened and reports it as a match.
+				for (let attempt = 0; attempt < 3; attempt++) {
+					spawnSync("sleep", ["0.5"]);
+					if (readPane(session).join("\n") !== before.join("\n")) break;
+					for (const key of step.keys ?? []) {
+						tmux(["send-keys", "-t", session, key]);
+					}
+				}
 			}
 			if (step.settle) spawnSync("sleep", [String(step.settle / 1000)]);
 			trace.steps.push({ name: step.name, pane: capture(session) });
@@ -218,7 +241,7 @@ export function rustCommand({ rustBin, cwd, agentDir, clock, extra = "" }) {
 		`PI_CODING_AGENT_DIR=${agentDir}`,
 		`PI_PARITY_CLOCK=${clock}`,
 		rustBin,
-		`--offline --no-session --provider mock --model mock/mock-1 --api-key parity-key${extra ? ` ${extra}` : ""}`,
+		`--offline --provider mock --model mock/mock-1 --api-key parity-key${extra ? ` ${extra}` : ""}`,
 	].join(" ");
 }
 

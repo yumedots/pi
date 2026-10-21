@@ -47,6 +47,12 @@ Two rules the harness needed to become a gate rather than a noisy report:
   there) and `PI_PARITY_HOME` chooses the work and agent directories. Set both to
   a directory of your own when another run may be in flight; the defaults are the
   shared `scripts/parity/out` and `/tmp/pi-parity`.
+- **A keystroke that did not land is sent again.** The app can still be painting
+  its startup screen when the driver types, and the first keystrokes are lost. A
+  lost keystroke leaves the pane exactly as it was, so the driver reads the pane
+  before it types and sends the keys again while the screen does not change. A
+  scenario that measured a run that never happened would otherwise be reported
+  as a match.
 - **A capture waits for the settled screen.** The app paints in pieces and
   repaints while the logo animates, so a read can land between two of them. The
   capture reads until two reads a good while apart agree.
