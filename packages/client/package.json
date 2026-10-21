@@ -5,6 +5,9 @@
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"bin": {
+		"pi": "dist/bundle/cli.js"
+	},
 	"exports": {
 		".": {
 			"source": "./src/index.ts",

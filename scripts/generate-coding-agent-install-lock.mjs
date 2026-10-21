@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const codingAgentDir = join(repoRoot, "packages/coding-agent");
+const clientDir = join(repoRoot, "packages/client");
 const outputDir = join(codingAgentDir, "install-lock");
 const rootLockfilePath = join(repoRoot, "package-lock.json");
 const outputPackageJsonPath = join(outputDir, "package.json");
@@ -243,14 +244,14 @@ function addExternalPackage(lockPackages, installLockPackages, addedPaths, queue
 	}
 }
 
-function createInstallerPackageJson(codingAgentPackage) {
+function createInstallerPackageJson(codingAgentPackage, clientPackage) {
 	const packageJson = {
 		name: installPackageName,
-		version: codingAgentPackage.version,
+		version: clientPackage.version,
 		private: true,
 		description: "Lockfile root used by the Pi installer and updater.",
 		dependencies: {
-			[codingAgentPackage.name]: codingAgentPackage.version,
+			[clientPackage.name]: clientPackage.version,
 		},
 	};
 	if (codingAgentPackage.overrides) {
@@ -376,7 +377,8 @@ function generateInstallLock() {
 
 	const lockPackages = rootLock.packages;
 	const codingAgentPackage = readJson(join(codingAgentDir, "package.json"));
-	const installerPackageJson = createInstallerPackageJson(codingAgentPackage);
+	const clientPackage = readJson(join(clientDir, "package.json"));
+	const installerPackageJson = createInstallerPackageJson(codingAgentPackage, clientPackage);
 	const internalWorkspaces = getInternalWorkspaces(lockPackages);
 	const installLockPackages = {
 		"": createRootLockEntry(installerPackageJson),
