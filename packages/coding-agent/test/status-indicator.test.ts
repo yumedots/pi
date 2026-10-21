@@ -21,25 +21,19 @@ describe("status indicators", () => {
 		const idleStatus = new IdleStatus();
 
 		const lines = idleStatus.render(20);
-		expect(lines).toHaveLength(2);
-		expect(lines).toEqual([" ".repeat(20), " ".repeat(20)]);
+		expect(lines).toHaveLength(1);
+		expect(lines).toEqual([" ".repeat(20)]);
 	});
 
-	it("keeps the top row empty unless the editor opts in", () => {
+	it("keeps the editor's top row free of the status", () => {
 		initTheme("dark");
 		const tui = {
 			requestRender: vi.fn(),
 			terminal: { rows: 10 },
 		} as unknown as TUI;
 		const editor = new CustomEditor(tui, getEditorTheme(), KeybindingsManager.create());
-		const indicator = new WorkingStatusIndicator(tui, "Working");
-		editor.setWorkingStatusIndicator(indicator);
 
 		expect(stripAnsi(editor.render(20)[0]!)).toBe(" ".repeat(20));
-		const standaloneLine = indicator.render(20)[1]!;
-		expect(standaloneLine).toContain(theme.getFgAnsi("accent"));
-		expect(standaloneLine).toContain(theme.getFgAnsi("muted"));
-		indicator.dispose();
 	});
 
 	it("paints the editor box in the color of the sent messages", () => {
@@ -54,56 +48,45 @@ describe("status indicators", () => {
 		}
 	});
 
-	it("embeds the working indicator when the editor opts in", () => {
+	it("renders the working indicator on its own row", () => {
 		initTheme("dark");
 		const tui = {
 			requestRender: vi.fn(),
 			terminal: { rows: 10 },
 		} as unknown as TUI;
-		const editor = new CustomEditor(tui, getEditorTheme(), KeybindingsManager.create(), {
-			embedWorkingStatus: true,
-		});
-		expect(editor.embedWorkingStatus).toBe(true);
-		editor.borderColor = theme.getThinkingBorderColor("high");
-		const indicator = new WorkingStatusIndicator(tui, "Working", undefined, (text) => editor.borderColor(text));
-		editor.setWorkingStatusIndicator(indicator);
+		const indicator = new WorkingStatusIndicator(tui, "Working");
 
-		const topBorder = editor.render(20)[0]!;
-		expect(stripAnsi(topBorder)).toBe("⠋ Working           ");
-		expect(visibleWidth(topBorder)).toBe(20);
-		expect(topBorder).toContain(theme.getFgAnsi("thinkingHigh"));
+		const lines = indicator.render(20);
+		expect(lines).toHaveLength(1);
+		expect(stripAnsi(lines[0]!).trimEnd()).toBe(" ⠋ Working");
+		expect(visibleWidth(lines[0]!)).toBe(20);
+		expect(lines[0]).toContain(theme.getFgAnsi("accent"));
+		expect(lines[0]).toContain(theme.getFgAnsi("muted"));
 		indicator.dispose();
 	});
 
-	it("embeds compaction, summary, and retry labels within the border width", () => {
+	it("renders compaction, summary, and retry labels on the status row", () => {
 		initTheme("dark");
 		vi.useFakeTimers();
 		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
-		const editor = new CustomEditor(tui, getEditorTheme(), KeybindingsManager.create(), {
-			embedWorkingStatus: true,
-		});
 		const indicators = [
-			new CompactionStatusIndicator(tui, "manual"),
-			new CompactionStatusIndicator(tui, "threshold"),
-			new CompactionStatusIndicator(tui, "overflow"),
-			new BranchSummaryStatusIndicator(tui),
-			new RetryStatusIndicator(tui, 1, 3, 3000),
+			{ indicator: new CompactionStatusIndicator(tui, "manual"), label: "Compacting context..." },
+			{ indicator: new CompactionStatusIndicator(tui, "threshold"), label: "Auto-compacting..." },
+			{ indicator: new CompactionStatusIndicator(tui, "overflow"), label: "Context overflow detected," },
+			{ indicator: new BranchSummaryStatusIndicator(tui), label: "Summarizing branch..." },
+			{ indicator: new RetryStatusIndicator(tui, 1, 3, 3000), label: "Retrying (1/3) in 3s" },
 		];
 		try {
-			for (const indicator of indicators) {
-				editor.setWorkingStatusIndicator(indicator);
-				const label = stripAnsi(indicator.render(120)[1]!).trim();
-				expect(stripAnsi(editor.render(120)[0]!)).toContain(label);
-				for (const width of [1, 4, 10, 20, 80, 120]) {
-					expect(visibleWidth(editor.render(width)[0]!)).toBe(width);
-				}
+			for (const { indicator, label } of indicators) {
+				const lines = indicator.render(120);
+				expect(lines).toHaveLength(1);
+				expect(stripAnsi(lines[0]!)).toContain(label);
+				expect(visibleWidth(lines[0]!)).toBe(120);
 			}
 			vi.advanceTimersByTime(1000);
-			expect(stripAnsi(editor.render(120)[0]!)).toContain("Retrying (1/3) in 2s");
-			editor.setWorkingStatusIndicator(undefined);
-			expect(stripAnsi(editor.render(120)[0]!)).toBe(" ".repeat(120));
+			expect(stripAnsi(indicators[4]!.indicator.render(120)[0]!)).toContain("Retrying (1/3) in 2s");
 		} finally {
-			for (const indicator of indicators) indicator.dispose();
+			for (const { indicator } of indicators) indicator.dispose();
 		}
 	});
 

@@ -213,20 +213,6 @@ interface ActiveEditor extends EditorComponent {
 	getCursor?(): { line: number; col: number };
 }
 
-interface WorkingStatusEditor extends EditorComponent {
-	readonly embedWorkingStatus: boolean;
-	setWorkingStatusIndicator(indicator: StatusIndicator | undefined): void;
-}
-
-function isEmbeddedStatus(editor: EditorComponent): editor is WorkingStatusEditor {
-	return (
-		"embedWorkingStatus" in editor &&
-		editor.embedWorkingStatus === true &&
-		"setWorkingStatusIndicator" in editor &&
-		typeof editor.setWorkingStatusIndicator === "function"
-	);
-}
-
 function isExpandable(obj: unknown): obj is Expandable {
 	return typeof obj === "object" && obj !== null && "setExpanded" in obj && typeof obj.setExpanded === "function";
 }
@@ -500,7 +486,6 @@ export class InteractiveMode {
 	 */
 	private pendingUserMessageEchoes: Array<{ text: string; component: UserMessageComponent; spacer?: Spacer }> = [];
 	private activeStatusIndicator: StatusIndicator | undefined = undefined;
-	private activeWorkingIndicatorEmbedded = false;
 	private readonly idleStatus = new IdleStatus();
 	private workingMessage: string | undefined = undefined;
 	private workingVisible = true;
@@ -672,7 +657,6 @@ export class InteractiveMode {
 			paddingX: editorPaddingX,
 			autocompleteMaxVisible,
 			autocompletePosition: this.settingsManager.getAutocompletePosition(),
-			embedWorkingStatus: true,
 			maxContentHeight: EDITOR_MAX_CONTENT_HEIGHT,
 			showScrollHints: false,
 		});
@@ -886,11 +870,13 @@ export class InteractiveMode {
 		return [
 			this.documentContainer,
 			this.pendingMessagesContainer,
-			this.statusContainer,
 			// Regular mode scrolls its content, so the bar goes above the input box.
 			this.progressBar,
 			this.widgetContainerAbove,
 			this.warningContainer,
+			// The status sits directly above the input box, so the run state reads
+			// as the line right on top of it.
+			this.statusContainer,
 			this.editorContainer,
 			this.widgetContainerBelow,
 			this.footerContainer,
@@ -2061,23 +2047,13 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	private setEditorWorkingStatusIndicator(indicator: StatusIndicator | undefined): boolean {
-		this.defaultEditor.setWorkingStatusIndicator(undefined);
-		if (!isEmbeddedStatus(this.editor)) return false;
-		this.editor.setWorkingStatusIndicator(indicator);
-		return true;
-	}
-
+	/**
+	 * Show the status indicator on its own line above the input box.
+	 */
 	private showStatusIndicator(indicator: StatusIndicator): void {
 		this.activeStatusIndicator?.dispose();
 		this.activeStatusIndicator = indicator;
-		this.activeWorkingIndicatorEmbedded = false;
 		this.statusContainer.clear();
-		this.setEditorWorkingStatusIndicator(undefined);
-		if (this.setEditorWorkingStatusIndicator(indicator)) {
-			this.activeWorkingIndicatorEmbedded = true;
-			return;
-		}
 		this.statusContainer.addChild(indicator);
 	}
 
@@ -2086,33 +2062,20 @@ export class InteractiveMode {
 			return;
 		}
 		const clearedIndicator = this.activeStatusIndicator;
-		const clearedIndicatorWasEmbedded = this.activeWorkingIndicatorEmbedded;
 		clearedIndicator?.dispose();
 		this.activeStatusIndicator = undefined;
-		this.activeWorkingIndicatorEmbedded = false;
 		this.statusContainer.clear();
-		this.setEditorWorkingStatusIndicator(undefined);
-		if (
-			clearedIndicator &&
-			!clearedIndicatorWasEmbedded &&
-			this.options.tuiMode === "regular" &&
-			this.ui.getClearOnShrink()
-		) {
+		if (clearedIndicator && this.options.tuiMode === "regular" && this.ui.getClearOnShrink()) {
 			this.statusContainer.addChild(this.idleStatus);
 		}
 	}
 
 	private showWorkingStatusIndicator(): void {
-		const colorFn = isEmbeddedStatus(this.editor)
-			? (text: string) =>
-					(this.editor.borderColor ?? theme.getThinkingBorderColor(this.session.thinkingLevel || "off"))(text)
-			: undefined;
 		this.showStatusIndicator(
 			new WorkingStatusIndicator(
 				this.ui,
 				this.workingMessage ?? this.defaultWorkingMessage,
 				this.workingIndicatorOptions,
-				colorFn,
 			),
 		);
 	}
@@ -2699,10 +2662,7 @@ export class InteractiveMode {
 		this.editorContainer.addChild(this.editor as Component);
 		if (this.activeStatusIndicator) {
 			this.statusContainer.clear();
-			this.activeWorkingIndicatorEmbedded = this.setEditorWorkingStatusIndicator(this.activeStatusIndicator);
-			if (!this.activeWorkingIndicatorEmbedded) {
-				this.statusContainer.addChild(this.activeStatusIndicator);
-			}
+			this.statusContainer.addChild(this.activeStatusIndicator);
 		}
 		this.ui.setFocus(this.editor as Component);
 		this.ui.requestRender();
@@ -3519,13 +3479,7 @@ export class InteractiveMode {
 				this.defaultEditor.onEscape = () => {
 					this.session.abortCompaction();
 				};
-				const colorFn = isEmbeddedStatus(this.editor)
-					? (text: string) =>
-							(this.editor.borderColor ?? theme.getThinkingBorderColor(this.session.thinkingLevel || "off"))(
-								text,
-							)
-					: undefined;
-				this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason, colorFn));
+				this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason));
 				this.ui.requestRender();
 				break;
 			}
@@ -3623,13 +3577,7 @@ export class InteractiveMode {
 				if (event.source === "branchSummary") {
 					this.showStatusIndicator(new BranchSummaryStatusIndicator(this.ui));
 				} else {
-					const colorFn = isEmbeddedStatus(this.editor)
-						? (text: string) =>
-								(this.editor.borderColor ?? theme.getThinkingBorderColor(this.session.thinkingLevel || "off"))(
-									text,
-								)
-						: undefined;
-					this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason, colorFn));
+					this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason));
 				}
 				this.ui.requestRender();
 				break;

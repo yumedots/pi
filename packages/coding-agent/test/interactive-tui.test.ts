@@ -454,46 +454,31 @@ describe("InteractiveMode transcript rebuild", () => {
 	});
 });
 
-type StatusEditor = {
-	embedWorkingStatus: boolean;
-	setWorkingStatusIndicator: (indicator: StatusIndicator | undefined) => void;
-};
-
 type ClearStatusContext = {
 	activeStatusIndicator: { kind: StatusIndicatorKind; dispose: () => void } | undefined;
-	activeWorkingIndicatorEmbedded: boolean;
 	statusContainer: Container;
-	defaultEditor: StatusEditor;
-	editor: Partial<StatusEditor>;
 	options: { tuiMode?: TuiMode };
 	ui: { getClearOnShrink: () => boolean };
 	idleStatus: Component;
-	setEditorWorkingStatusIndicator(indicator: StatusIndicator | undefined): boolean;
 };
 
 type InteractiveModePrototype = {
 	showStatusIndicator(this: ClearStatusContext, indicator: StatusIndicator): void;
 	clearStatusIndicator(this: ClearStatusContext, kind?: StatusIndicatorKind): void;
-	setEditorWorkingStatusIndicator(this: ClearStatusContext, indicator: StatusIndicator | undefined): boolean;
 };
 
 const interactiveModePrototype = InteractiveMode.prototype as unknown as InteractiveModePrototype;
 
-describe("clear-on-shrink status spacing", () => {
-	it.each([true, false])("routes every status through the editor opt-in (%s)", (embedWorkingStatus) => {
+describe("status row above the input box", () => {
+	it("routes every status to the row above the input box", () => {
 		initTheme("dark");
 		const tui = { requestRender: vi.fn() } as unknown as TUI;
-		const editor: StatusEditor = { embedWorkingStatus, setWorkingStatusIndicator: vi.fn() };
 		const context: ClearStatusContext = {
 			activeStatusIndicator: undefined,
-			activeWorkingIndicatorEmbedded: false,
 			statusContainer: new Container(),
-			defaultEditor: { embedWorkingStatus: true, setWorkingStatusIndicator: vi.fn() },
-			editor,
 			options: { tuiMode: "regular" },
 			ui: { getClearOnShrink: () => true },
 			idleStatus: new Text("", 0, 0),
-			setEditorWorkingStatusIndicator: interactiveModePrototype.setEditorWorkingStatusIndicator,
 		};
 		const indicators = [
 			new WorkingStatusIndicator(tui, "Working"),
@@ -507,13 +492,7 @@ describe("clear-on-shrink status spacing", () => {
 			for (const indicator of indicators) {
 				interactiveModePrototype.showStatusIndicator.call(context, indicator);
 				expect(context.activeStatusIndicator).toBe(indicator);
-				expect(context.activeWorkingIndicatorEmbedded).toBe(embedWorkingStatus);
-				if (embedWorkingStatus) {
-					expect(editor.setWorkingStatusIndicator).toHaveBeenLastCalledWith(indicator);
-					expect(context.statusContainer.children).toHaveLength(0);
-				} else {
-					expect(context.statusContainer.children).toEqual([indicator]);
-				}
+				expect(context.statusContainer.children).toEqual([indicator]);
 			}
 		} finally {
 			for (const indicator of indicators) indicator.dispose();
@@ -521,54 +500,36 @@ describe("clear-on-shrink status spacing", () => {
 	});
 
 	it.each<StatusIndicatorKind>(["working", "compaction", "branchSummary", "retry"])(
-		"does not reserve separate status height for an embedded %s indicator",
+		"clears the %s row when the status ends",
 		(kind) => {
 			const dispose = vi.fn();
-			const editor: StatusEditor = { embedWorkingStatus: true, setWorkingStatusIndicator: vi.fn() };
 			const context: ClearStatusContext = {
 				activeStatusIndicator: { kind, dispose },
-				activeWorkingIndicatorEmbedded: true,
 				statusContainer: new Container(),
-				defaultEditor: editor,
-				editor,
 				options: { tuiMode: "regular" },
 				ui: { getClearOnShrink: () => true },
 				idleStatus: new Text("", 0, 0),
-				setEditorWorkingStatusIndicator: interactiveModePrototype.setEditorWorkingStatusIndicator,
 			};
 
 			interactiveModePrototype.clearStatusIndicator.call(context);
 
 			expect(dispose).toHaveBeenCalledOnce();
-			expect(editor.setWorkingStatusIndicator).toHaveBeenCalledWith(undefined);
-			expect(context.statusContainer.children).toHaveLength(0);
+			expect(context.activeStatusIndicator).toBeUndefined();
+			expect(context.statusContainer.children).toEqual([context.idleStatus]);
 		},
 	);
 
-	it("uses the standalone row for a custom editor that has not opted in", () => {
-		for (const [tuiMode, expectedChildren] of [
-			["regular", 1],
-			["fullscreen", 0],
-		] as const) {
-			const defaultEditor: StatusEditor = { embedWorkingStatus: true, setWorkingStatusIndicator: vi.fn() };
-			const customEditor = { embedWorkingStatus: false, setWorkingStatusIndicator: vi.fn() };
-			const context: ClearStatusContext = {
-				activeStatusIndicator: { kind: "working", dispose: vi.fn() },
-				activeWorkingIndicatorEmbedded: false,
-				statusContainer: new Container(),
-				defaultEditor,
-				editor: customEditor,
-				options: { tuiMode },
-				ui: { getClearOnShrink: () => true },
-				idleStatus: new Text("", 0, 0),
-				setEditorWorkingStatusIndicator: interactiveModePrototype.setEditorWorkingStatusIndicator,
-			};
+	it("leaves the row empty when the screen may shrink", () => {
+		const context: ClearStatusContext = {
+			activeStatusIndicator: { kind: "working", dispose: vi.fn() },
+			statusContainer: new Container(),
+			options: { tuiMode: "fullscreen" },
+			ui: { getClearOnShrink: () => true },
+			idleStatus: new Text("", 0, 0),
+		};
 
-			interactiveModePrototype.clearStatusIndicator.call(context);
+		interactiveModePrototype.clearStatusIndicator.call(context);
 
-			expect(defaultEditor.setWorkingStatusIndicator).toHaveBeenCalledWith(undefined);
-			expect(customEditor.setWorkingStatusIndicator).not.toHaveBeenCalled();
-			expect(context.statusContainer.children).toHaveLength(expectedChildren);
-		}
+		expect(context.statusContainer.children).toHaveLength(0);
 	});
 });
