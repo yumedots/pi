@@ -263,8 +263,8 @@ node bench/harness/compare-session-list.mjs --original /tmp/original-list.json -
 | --- | --- | --- | --- |
 | The list of 2563 sessions | **58-99 ms** (one header line per file) | 299-311 ms (every file parsed) | 133-139 ms (every file parsed) |
 | The titles of the rows the list shows | **0.24-0.36 ms** (12 rows) | - | - |
-| The picker paints its first session row | **91-101 ms** | - | 150-154 ms |
-| The first byte the picker writes | **89-99 ms** | - | 137-144 ms |
+| The picker paints its first session row | **72-103 ms** | - | 150-154 ms |
+| The first byte the picker writes | **71-101 ms** | - | 137-144 ms |
 | The path the picker used to take | 121-123 ms (metadata list) + 35-37 ms (a full summary of every file) | - | - |
 
 The port's own counters (`RPI_SESSION_PICKER_TIMING=1`) for the three runs
