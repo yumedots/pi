@@ -226,6 +226,10 @@ impl Component for PetDocument {
         }
         lines
     }
+    fn handle_mouse(&self, event: &rpi_tui::component::MouseEvent) -> Option<rpi_tui::component::MouseEventResult> {
+        rpi_tui::mouse::dispatch_mouse_event(&self.transcript, event)
+            .map(|dispatched| dispatched.result)
+    }
     fn invalidate(&self) {
         self.transcript.invalidate();
     }

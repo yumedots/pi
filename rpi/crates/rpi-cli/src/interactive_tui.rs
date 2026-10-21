@@ -59,6 +59,8 @@ mod session_search;
 use session_search::*;
 mod rendering;
 use rendering::*;
+mod header;
+use header::*;
 mod empty_session;
 mod panels;
 mod pet;
@@ -287,6 +289,23 @@ struct CommandContext {
     /// reads, export, or usage stats go through this instead of reaching into
     /// the harness directly, so the product surface is one object.
     session: Arc<crate::agent_session::AgentSession>,
+    /// The shortcuts the loaded extensions registered, for the `/hotkeys`
+    /// `Extensions` section. One row per shortcut: the key, and the
+    /// description, or the extension's path when the shortcut has none.
+    pub extension_shortcuts: Vec<ExtensionShortcut>,
+}
+
+/// One extension-registered shortcut, for the `/hotkeys` `Extensions` section.
+#[derive(Clone, Debug)]
+pub struct ExtensionShortcut {
+    /// The key as the extension registered it; the renderer capitalises it the
+    /// way the original's `formatKeyText(key, { capitalize: true })` does.
+    pub key: String,
+    /// The shortcut's description, when it has one.
+    pub description: Option<String>,
+    /// The extension that registered the shortcut, used when there is no
+    /// description.
+    pub extension: String,
 }
 
 /// One slash command.
@@ -1260,9 +1279,20 @@ pub async fn interactive_tui(
     if let Some(dialog) = crate::extras::first_run_dialog(&theme_manager) {
         *first_run.lock().unwrap() = Some(dialog);
     }
-    if should_show_startup_listing(args.verbose, quiet_startup) {
-        add_welcome_message(&chat_container);
+    // The startup header is a component of its own, so `app.tools.expand` can
+    // re-render it expanded and the mark can be clicked (upstream's
+    // `BuiltInHeader`).
+    let startup_header = Arc::new(StartupHeader::new(
+        crate::changelog::current_version(),
+        should_show_startup_listing(args.verbose, quiet_startup),
+    ));
+    {
+        let tui_for_logo: Arc<dyn TUI> = tui.clone();
+        startup_header.set_logo_click(Some(Arc::new(move |column, row| {
+            rpi_tui::easter_egg_3d::play_pi_logo_3d(&tui_for_logo, column, row);
+        })));
     }
+    add_startup_header(&chat_container, &startup_header);
     add_tmux_warning(&chat_container);
 
     let collapse_changelog =
@@ -1672,6 +1702,9 @@ pub async fn interactive_tui(
     let tool_outputs_expanded = session_values
         .get_as::<bool>("display.tool_outputs_expanded")
         .unwrap_or(false);
+    // Upstream's `getStartupExpansionState`: the header starts expanded when
+    // the run is verbose or the tool output was already expanded.
+    startup_header.set_expanded(tool_outputs_expanded || args.verbose);
     let state = Arc::new(TuiState {
         current_assistant: Arc::new(std::sync::Mutex::new(None)),
         tool_components: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -1692,6 +1725,7 @@ pub async fn interactive_tui(
         footer: footer.clone(),
         status_container: status_container.clone(),
         chat_container: chat_container.clone(),
+        startup_header: startup_header.clone(),
         warning_container: Arc::new(Container::new()),
         warning_message: std::sync::Mutex::new(String::new()),
         session_menu: std::sync::Mutex::new(SessionMenuState::default()),
@@ -1948,6 +1982,26 @@ pub async fn interactive_tui(
         scoped_models,
         cwd.clone(),
     ));
+    // The extension-registered shortcuts, for the `/hotkeys` `Extensions`
+    // section: the key, the description (or `None`), and the extension.
+    let extension_shortcuts: Vec<ExtensionShortcut> = reload_context
+        .extension_session
+        .lock()
+        .ok()
+        .and_then(|session| session.snapshot_arc())
+        .map(|snapshot| {
+            snapshot
+                .shortcuts()
+                .iter()
+                .map(|shortcut| ExtensionShortcut {
+                    key: shortcut.key.clone(),
+                    description: (!shortcut.description.is_empty())
+                        .then(|| shortcut.description.clone()),
+                    extension: shortcut.plugin.clone(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let ctx = CommandContext {
         chat: chat_container.clone(),
         tui: tui.clone(),
@@ -1961,6 +2015,7 @@ pub async fn interactive_tui(
         resources: resources_arc.clone(),
         reload_context: Arc::new(reload_context.clone()),
         session: agent_session.clone(),
+        extension_shortcuts: extension_shortcuts.clone(),
     };
 
     let ctx_for_cb = ctx.clone();
@@ -2999,6 +3054,13 @@ pub async fn interactive_tui(
                 rpi_tui::keybindings::keys::TOOLS_EXPAND,
             ) {
                 let expanded = state_for_key.toggle_tool_outputs();
+                // The startup header swaps to the expanded help with the tool
+                // panels (upstream's `setToolsExpanded`).
+                state_for_key.startup_header.set_expanded(expanded);
+                add_status_message(
+                    &state_for_key.chat_container,
+                    &format!("Tool output: {}", if expanded { "expanded" } else { "collapsed" }),
+                );
                 // Persist per-session so a later `-c`/`-r` restores it.
                 let session = ctx_for_key.session.clone();
                 tokio::spawn(async move {
@@ -3717,7 +3779,7 @@ pub async fn interactive_tui(
                     Ok(result) => match result.outcome {
                         rpi_harness::agent_harness::NavigationOutcome::Completed { .. } => {
                             chat_container.clear();
-                            add_welcome_message(&chat_container);
+                            add_startup_header(&chat_container, &state.startup_header);
                             render_session_history(
                                 &harness,
                                 &chat_container,
@@ -3748,7 +3810,7 @@ pub async fn interactive_tui(
             }
             Some(TuiMessage::ClearChat) => {
                 chat_container.clear();
-                add_welcome_message(&chat_container);
+                add_startup_header(&chat_container, &state.startup_header);
                 tui.request_render(false);
             }
             Some(TuiMessage::Compact) => {

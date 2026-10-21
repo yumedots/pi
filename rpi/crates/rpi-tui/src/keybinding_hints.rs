@@ -20,6 +20,14 @@ use crate::theme::{theme, Color};
 /// macOS, the way the original renders it. `capitalize` first-letter-capitalizes
 /// every part, the way the original's `keyDisplayText` does.
 pub fn format_combo(combo: KeyCombo, capitalize: bool) -> String {
+    format_combo_ordered(combo, capitalize, false)
+}
+
+/// Format a [`KeyCombo`], optionally with `shift` before `ctrl`.
+///
+/// The original's key ids are literal strings, and a few of them write the
+/// modifiers in the order `shift+ctrl+…`.
+fn format_combo_ordered(combo: KeyCombo, capitalize: bool, shift_first: bool) -> String {
     let mut parts: Vec<String> = Vec::new();
 
     let m = combo.modifiers;
@@ -27,6 +35,16 @@ pub fn format_combo(combo: KeyCombo, capitalize: bool) -> String {
     let alt = m.contains(KeyModifiers::ALT);
     let sup = m.contains(KeyModifiers::SUPER);
 
+    let key_name = key_code_name(&combo.code);
+
+    // Shift on a printable char is implied by the glyph — drop it. For other
+    // keys (Enter, Esc, arrows) keep "shift+".
+    let shift_implicit = matches!(combo.code, KeyCode::Char(_)) && !ctrl && !alt;
+    let shift = m.contains(KeyModifiers::SHIFT) && !shift_implicit;
+
+    if shift && shift_first {
+        parts.push("shift".to_string());
+    }
     if ctrl {
         parts.push("ctrl".to_string());
     }
@@ -40,13 +58,7 @@ pub fn format_combo(combo: KeyCombo, capitalize: bool) -> String {
     if sup {
         parts.push("super".to_string());
     }
-
-    let key_name = key_code_name(&combo.code);
-
-    // Shift on a printable char is implied by the glyph — drop it. For other
-    // keys (Enter, Esc, arrows) keep "shift+".
-    let shift_implicit = matches!(combo.code, KeyCode::Char(_)) && !ctrl && !alt;
-    if m.contains(KeyModifiers::SHIFT) && !shift_implicit {
+    if shift && !shift_first {
         parts.push("shift".to_string());
     }
 
@@ -106,17 +118,27 @@ pub fn key_code_name(code: &KeyCode) -> String {
     }
 }
 
+/// The original writes a few key ids with `shift` before `ctrl`
+/// (`app.model.cycleBackward` is `shift+ctrl+p`), while [`format_combo`] always
+/// puts the modifiers in the order ctrl, alt, super, shift. These ids keep the
+/// original's order.
+const SHIFT_FIRST_IDS: &[KeybindingId] = &[
+    "app.model.cycleBackward",
+    "app.tree.filter.cycleBackward",
+];
+
 /// Resolve a keybinding ID to its key display text, joining multiple
-/// `KeyCombo`s with `/`. Returns an empty string when the ID has no bound keys
+/// [`KeyCombo`]s with `/`. Returns an empty string when the ID has no bound keys
 /// (mirrors the TS `keyText`).
 pub fn key_text(id: KeybindingId) -> String {
     let combos = get_keybindings().get_keys(id);
     if combos.is_empty() {
         return String::new();
     }
+    let shift_first = SHIFT_FIRST_IDS.contains(&id);
     combos
         .iter()
-        .map(|c| format_combo(*c, false))
+        .map(|c| format_combo_ordered(*c, false, shift_first))
         .collect::<Vec<_>>()
         .join("/")
 }
@@ -127,9 +149,10 @@ pub fn key_display_text(id: KeybindingId) -> String {
     if combos.is_empty() {
         return String::new();
     }
+    let shift_first = SHIFT_FIRST_IDS.contains(&id);
     combos
         .iter()
-        .map(|c| format_combo(*c, true))
+        .map(|c| format_combo_ordered(*c, true, shift_first))
         .collect::<Vec<_>>()
         .join("/")
 }
@@ -206,5 +229,12 @@ mod tests {
         assert_eq!(key_display_text("app.interrupt"), "Escape");
         assert_eq!(key_text("app.tools.expand"), "ctrl+o");
         assert_eq!(key_display_text("app.tools.expand"), "Ctrl+O");
+    }
+
+    #[test]
+    fn the_ids_the_original_writes_shift_first_keep_that_order() {
+        assert_eq!(key_text("app.model.cycleBackward"), "shift+ctrl+p");
+        assert_eq!(key_text("app.model.cycleForward"), "ctrl+p");
+        assert_eq!(key_text("tui.altScreen.search"), "ctrl+shift+f");
     }
 }

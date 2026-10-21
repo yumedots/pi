@@ -33,12 +33,15 @@ fn docs_dir() -> std::path::PathBuf {
         .cloned();
     let dir = found.unwrap_or_else(|| std::path::PathBuf::from(DOCS_DIR));
     // The message names an absolute path, like pi's `getDocsPath()`.
-    if dir.is_absolute() {
-        return dir;
-    }
-    std::env::current_dir()
-        .map(|cwd| cwd.join(&dir))
-        .unwrap_or(dir)
+    let dir = if dir.is_absolute() {
+        dir
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(&dir))
+            .unwrap_or(dir)
+    };
+    // A clean path: no `..` segments, no symlink hops.
+    std::fs::canonicalize(&dir).unwrap_or(dir)
 }
 
 pub fn provider_login_help() -> String {

@@ -125,16 +125,29 @@ fn collapsed_startup_changelog_links_to_full_notes() {
 }
 
 #[test]
-fn the_help_listing_reads_like_the_original() {
-    let chat = Arc::new(Container::new());
-    add_help_message(&chat);
-    let output = strip_ansi(&chat.render(120).join("\n"));
-    assert!(output.contains("Open settings menu"));
-    assert!(output.contains("Select model (opens selector UI)"));
-    assert!(output.contains("Show changelog entries"));
-    assert!(output.contains("Show all keyboard shortcuts"));
-    assert!(output.contains("Quit pi"));
-    assert!(!output.contains("rpi"));
+fn the_port_only_commands_are_gone() {
+    // The original has no `/help`, `/clear`, `/version`, `/provider`, `/tools`,
+    // `/images` or `/usage` (`packages/coding-agent/src/core/slash-commands.ts`).
+    let registry = build_builtin_registry();
+    for gone in [
+        "/help", "/?", "/clear", "/version", "/v", "/provider", "/tools", "/images", "/usage",
+    ] {
+        assert!(
+            registry.find(gone).is_none(),
+            "{gone} is not in the original's command set"
+        );
+    }
+    let names: Vec<String> = registry
+        .visible_entries()
+        .iter()
+        .map(|entry| entry.name.clone())
+        .collect();
+    for gone in ["/help", "/clear", "/version", "/provider", "/tools", "/images", "/usage"] {
+        assert!(
+            !names.contains(&gone.to_string()),
+            "{gone} should not be in the `/` list"
+        );
+    }
 }
 
 #[test]
@@ -494,6 +507,7 @@ pub(super) fn test_tui_state() -> Arc<TuiState> {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        startup_header: Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
         warning_container: Arc::new(Container::new()),
         warning_message: std::sync::Mutex::new(String::new()),
         session_menu: std::sync::Mutex::new(SessionMenuState::default()),
@@ -1246,7 +1260,10 @@ fn key_repeat_is_dispatched_but_release_is_not() {
 #[test]
 fn test_layout_renders_welcome_message() {
     let chat = Arc::new(Container::new());
-    add_welcome_message(&chat);
+    add_startup_header(
+        &chat,
+        &Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
+    );
 
     let scroll = Arc::new(ScrollView::new(
         chat.clone(),
@@ -1289,7 +1306,10 @@ fn test_layout_renders_welcome_message() {
 #[test]
 fn startup_block_shows_the_originals_lines_and_nothing_else() {
     let chat = Arc::new(Container::new());
-    add_welcome_message(&chat);
+    add_startup_header(
+        &chat,
+        &Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
+    );
     let plain = strip_ansi(&chat.render(100).join("\n"));
 
     assert!(plain.contains("v1.3.0"), "pi's version missing: {plain}");
@@ -1628,26 +1648,19 @@ fn test_registry_visible_entries_cover_dispatch() {
         .map(|c| c.name.clone())
         .collect();
     for recognized in [
-        "/help",
-        "/clear",
         "/new",
         "/quit",
         "/skills",
         "/bug",
         "/stats",
-        "/version",
         "/changelog",
         "/model",
-        "/provider",
-        "/session",
+        "/resume",
         "/theme",
         "/compact",
         "/copy",
         "/hotkeys",
-        "/tools",
-        "/images",
         "/thinking",
-        "/usage",
     ] {
         assert!(
             names.contains(&recognized.to_string()),
@@ -1697,6 +1710,7 @@ fn test_agent_event_mapping_creates_assistant_and_tool() {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        startup_header: Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
         warning_container: Arc::new(Container::new()),
         warning_message: std::sync::Mutex::new(String::new()),
         session_menu: std::sync::Mutex::new(SessionMenuState::default()),
@@ -2776,6 +2790,7 @@ fn test_autocomplete_slash_suggestions_render() {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        startup_header: Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
         warning_container: Arc::new(Container::new()),
         warning_message: std::sync::Mutex::new(String::new()),
         session_menu: std::sync::Mutex::new(SessionMenuState::default()),
@@ -2877,6 +2892,7 @@ fn test_select_list_swap_restores_editor() {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        startup_header: Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
         warning_container: Arc::new(Container::new()),
         warning_message: std::sync::Mutex::new(String::new()),
         session_menu: std::sync::Mutex::new(SessionMenuState::default()),
@@ -2979,6 +2995,7 @@ fn test_message_history_browse_restores_draft() {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        startup_header: Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
         warning_container: Arc::new(Container::new()),
         warning_message: std::sync::Mutex::new(String::new()),
         session_menu: std::sync::Mutex::new(SessionMenuState::default()),
@@ -3084,6 +3101,7 @@ fn test_accept_top_suggestion_replaces_prefix() {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        startup_header: Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
         warning_container: Arc::new(Container::new()),
         warning_message: std::sync::Mutex::new(String::new()),
         session_menu: std::sync::Mutex::new(SessionMenuState::default()),
@@ -3260,7 +3278,7 @@ fn escape_closes_the_autocomplete_without_changing_the_text() {
 
 /// Build a `TuiState` for autocomplete tests (autocomplete providers are
 /// installed by each test).
-fn autocomplete_test_state(max_visible: usize) -> Arc<TuiState> {
+pub(crate) fn autocomplete_test_state(max_visible: usize) -> Arc<TuiState> {
     Arc::new(TuiState {
         js_extensions: None,
         turn_index: std::sync::atomic::AtomicUsize::new(0),
@@ -3283,6 +3301,7 @@ fn autocomplete_test_state(max_visible: usize) -> Arc<TuiState> {
         footer: Arc::new(FooterComponent::new()),
         status_container: Arc::new(Container::new()),
         chat_container: Arc::new(Container::new()),
+        startup_header: Arc::new(StartupHeader::new(crate::changelog::current_version(), true)),
         warning_container: Arc::new(Container::new()),
         warning_message: std::sync::Mutex::new(String::new()),
         session_menu: std::sync::Mutex::new(SessionMenuState::default()),

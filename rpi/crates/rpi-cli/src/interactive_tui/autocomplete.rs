@@ -75,6 +75,13 @@ pub(super) fn set_editor_cursor_offset(editor: &Editor, text: &str, offset: usiz
 }
 
 /// Render (or clear) the autocomplete suggestion list into the container.
+///
+/// The original builds the popup's list as a `SelectList`
+/// (`packages/tui/src/components/editor.ts:2451-2452`), so the popup shows the
+/// same `(n/m)` counter, the same label column and the same wrap-around as
+/// every other list. The rows come from the provider and the highlight from
+/// `state.autocomplete_selection`, so the row the popup highlights is the row
+/// the accept path takes.
 pub(super) fn render_autocomplete(
     state: &Arc<TuiState>,
     suggestions: Option<AutocompleteSuggestions>,
@@ -88,9 +95,6 @@ pub(super) fn render_autocomplete(
         *state.autocomplete_selection.lock().unwrap() = 0;
         return;
     }
-    // Clamp the highlight to the full candidate list, then compute the visible
-    // window (with a scroll offset) so ↓ can reach items past `max_visible`.
-    let max_visible = state.autocomplete_max_visible;
     let total = sugg.items.len();
     let selection = {
         let mut sel = state.autocomplete_selection.lock().unwrap();
@@ -102,63 +106,45 @@ pub(super) fn render_autocomplete(
         };
         *sel
     };
-    let window_start = if total <= max_visible {
-        0
-    } else {
-        selection
-            .saturating_sub(max_visible / 2)
-            .min(total - max_visible)
-    };
-    let window_end = (window_start + max_visible).min(total);
-    // Build a compact list: the highlighted item marked with `→`, the rest `  `.
-    // Cap the list so the dock doesn't swallow the transcript.
-    let accent = state.theme_manager.get().colors.accent;
-    let muted = state.theme_manager.get().colors.muted;
-    // The original's label column: the widest label of the filtered items plus
-    // two, clamped to 12..32 (`packages/tui/src/components/select-list.ts:6-7`,
-    // `packages/tui/src/components/editor.ts:286-288`). The rule itself is the
-    // tui library's (`SelectListLayoutOptions::column_width`), so the popup and
-    // the select lists cannot drift apart.
-    let visible: Vec<(usize, &rpi_tui::autocomplete::AutocompleteItem)> = sugg
+    // The rows: the bare label for display, the text for the accept.
+    let items: Vec<rpi_tui::SelectItem> = sugg
         .items
         .iter()
-        .enumerate()
-        .skip(window_start)
-        .take(window_end - window_start)
+        .map(|item| {
+            rpi_tui::SelectItem::new(&item.text, bare_label(item))
+                .with_description(item.description.as_deref().unwrap_or(""))
+        })
         .collect();
-    // The width is measured over every filtered item, not just the visible
-    // window (`packages/tui/src/components/select-list.ts:288-307` reads
-    // `this.filteredItems`).
-    let labels: Vec<&str> = sugg
-        .items
-        .iter()
-        .map(|item| bare_label(item))
-        .collect();
-    let column = rpi_tui::SelectListLayoutOptions {
-        min_primary_column_width: Some(12),
-        max_primary_column_width: Some(32),
-        truncate_primary: None,
+    // The list's theme is the tui library's default, which reads the process
+    // theme — the same colours the original's popup uses.
+    let mut list = rpi_tui::SelectList::new(items, state.autocomplete_max_visible);
+    // The original gives its command list the narrower column
+    // (`packages/tui/src/components/editor.ts:2451`); every other list keeps
+    // the default.
+    if is_command_context(&sugg) {
+        list.set_layout(rpi_tui::SelectListLayoutOptions {
+            min_primary_column_width: Some(12),
+            max_primary_column_width: Some(32),
+            truncate_primary: None,
+        });
     }
-    .column_width(&labels);
-    for (i, item) in visible {
-        let prefix = if i == selection { "→ " } else { "  " };
-        let label = bare_label(item);
-        let label_width = rpi_tui::utils::visible_width(label);
-        let spacing = " ".repeat(column.saturating_sub(label_width).max(1));
-        let description = item.description.as_deref().unwrap_or("");
-        let line = if i == selection {
-            format!(
-                "{prefix}{}{spacing}{}",
-                accent.fg(label),
-                muted.fg(description)
-            )
-        } else {
-            format!("{prefix}{}{spacing}{}", muted.fg(label), muted.fg(description))
-        };
+    // Setting the index also centres the window on it, so the highlighted row
+    // is the one the popup shows.
+    list.set_selected_index(selection);
+    for line in list.render(0) {
         state
             .autocomplete_container
-            .add_child(Arc::new(Text::new(line, 1, 0)));
+            .add_child(Arc::new(Text::new(line, 0, 0)));
     }
+}
+
+/// Whether the completion is a `/` command list, the one the original gives
+/// its narrower label column (`packages/tui/src/components/editor.ts:2451`).
+fn is_command_context(sugg: &AutocompleteSuggestions) -> bool {
+    sugg.items
+        .first()
+        .map(|item| item.text.starts_with('/'))
+        .unwrap_or(false)
 }
 
 /// The row label of an autocomplete item. The original's command rows show the
@@ -357,10 +343,14 @@ pub(super) fn navigate_autocomplete(
         if *sel == AUTOCOMPLETE_DISMISSED {
             return false;
         }
+        let last = sugg.items.len().saturating_sub(1);
+        // The original's list wraps: `↓` past the last entry returns to the
+        // first and `↑` before the first goes to the last
+        // (`packages/tui/src/components/select-list.ts:196-212`).
         if direction < 0 {
-            *sel = sel.saturating_sub(1);
+            *sel = if *sel == 0 { last } else { *sel - 1 };
         } else {
-            *sel = (*sel + 1).min(sugg.items.len().saturating_sub(1));
+            *sel = if *sel >= last { 0 } else { *sel + 1 };
         }
     }
     render_autocomplete(state, Some(sugg));
@@ -399,5 +389,76 @@ mod tests {
         assert!(is_explicit_completion("src/li", 0, 6));
         assert!(!is_explicit_completion("docs", 0, 4));
         assert!(!is_explicit_completion("say docs", 4, 8));
+    }
+
+    /// The popup shows the original's `(n/m)` counter
+    /// (`packages/tui/src/components/select-list.ts:126-131`).
+    #[test]
+    fn the_popup_shows_the_counter() {
+        let state = crate::interactive_tui::tests::autocomplete_test_state(5);
+        let commands: Vec<rpi_tui::SlashCommand> = (0..7)
+            .map(|i| rpi_tui::SlashCommand {
+                name: format!("/choice{i}"),
+                description: format!("choice {i}"),
+                argument_hint: None,
+            })
+            .collect();
+        state
+            .autocomplete
+            .set_provider(Arc::new(rpi_tui::SlashCommandAutocompleteProvider::new(
+                commands,
+            )));
+        let editor = Arc::new(Editor::simple());
+        editor.set_text("/");
+        editor.set_cursor(0, 1);
+        refresh_autocomplete(&state, &editor);
+        let rendered = state
+            .autocomplete_container
+            .render(80)
+            .join("\n");
+        assert!(
+            rendered.contains("(1/7)"),
+            "the popup must show the counter, got:\n{rendered}"
+        );
+    }
+
+    /// The original's list wraps: `↓` past the last entry returns to the first
+    /// (`packages/tui/src/components/select-list.ts:203-210`).
+    #[test]
+    fn the_popup_wraps_around() {
+        let state = crate::interactive_tui::tests::autocomplete_test_state(5);
+        let commands: Vec<rpi_tui::SlashCommand> = (0..3)
+            .map(|i| rpi_tui::SlashCommand {
+                name: format!("/choice{i}"),
+                description: format!("choice {i}"),
+                argument_hint: None,
+            })
+            .collect();
+        state
+            .autocomplete
+            .set_provider(Arc::new(rpi_tui::SlashCommandAutocompleteProvider::new(
+                commands,
+            )));
+        let editor = Arc::new(Editor::simple());
+        editor.set_text("/");
+        editor.set_cursor(0, 1);
+        refresh_autocomplete(&state, &editor);
+        // ↓ twice reaches the last entry, ↓ once more wraps to the first.
+        assert!(navigate_autocomplete(&state, &editor, 1));
+        assert!(navigate_autocomplete(&state, &editor, 1));
+        assert_eq!(*state.autocomplete_selection.lock().unwrap(), 2);
+        assert!(navigate_autocomplete(&state, &editor, 1));
+        assert_eq!(
+            *state.autocomplete_selection.lock().unwrap(),
+            0,
+            "↓ past the last entry must wrap to the first"
+        );
+        // ↑ before the first wraps to the last.
+        assert!(navigate_autocomplete(&state, &editor, -1));
+        assert_eq!(
+            *state.autocomplete_selection.lock().unwrap(),
+            2,
+            "↑ before the first entry must wrap to the last"
+        );
     }
 }

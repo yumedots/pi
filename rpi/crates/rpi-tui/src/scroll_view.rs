@@ -6,7 +6,7 @@
 use std::any::Any;
 use std::sync::{Arc, Mutex};
 
-use super::component::Component;
+use super::component::{Component, MouseEvent, MouseEventKind, MouseEventResult};
 use super::layout_node::{LayoutNode, LayoutNodeProvider, ScrollNode};
 
 /// Follow mode for ScrollView.
@@ -501,6 +501,24 @@ impl Component for ScrollView {
         // Unconstrained render: show all content
         let content_width = self.get_content_width(width);
         self.child.render(content_width)
+    }
+
+    /// Forward a mouse event to the scrolled content.
+    ///
+    /// The viewport row becomes a content row by adding the scroll offset, so
+    /// a component inside the document sees the same coordinates it would see
+    /// in the terminal. Upstream's `ScrollView` extends `Container`, which
+    /// dispatches to its child the same way.
+    fn handle_mouse(&self, event: &MouseEvent) -> Option<MouseEventResult> {
+        if event.kind == MouseEventKind::Wheel {
+            return None;
+        }
+        let local = MouseEvent {
+            y: event.y + self.scroll_top(),
+            height: self.content_height().max(event.height),
+            ..*event
+        };
+        crate::mouse::dispatch_mouse_event(&self.child, &local).map(|dispatched| dispatched.result)
     }
 
     fn invalidate(&self) {

@@ -1,4 +1,4 @@
-import * as piCodingAgent from "../../../../packages/coding-agent/src/core/extensions/types.ts";
+import * as piCodingAgent from "./pi-coding-agent.ts";
 import * as piAgentCore from "./pi-agent-core.ts";
 import * as piAi from "./pi-ai.ts";
 import * as piTui from "./pi-tui.ts";

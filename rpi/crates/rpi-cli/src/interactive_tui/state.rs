@@ -339,6 +339,9 @@ pub(super) struct TuiState {
     pub(super) status_container: Arc<Container>,
     /// The chat transcript container.
     pub(super) chat_container: Arc<Container>,
+    /// The startup header component (upstream's `BuiltInHeader`), so the
+    /// `app.tools.expand` binding can re-render it expanded.
+    pub(super) startup_header: Arc<super::header::StartupHeader>,
     /// Dock slot for the transient warning banner (upstream's
     /// `warningContainer`). Empty when no warning is showing, so it renders
     /// zero rows and never affects the layout.
@@ -1416,7 +1419,12 @@ impl TuiState {
     }
 
     pub(super) fn toggle_tool_outputs(&self) -> bool {
-        let next = !*self.tool_outputs_expanded.lock().unwrap();
+        let next = {
+            let mut guard = self.tool_outputs_expanded.lock().unwrap();
+            let next = !*guard;
+            *guard = next;
+            next
+        };
         self.transcript_view().set_expanded(next);
         next
     }

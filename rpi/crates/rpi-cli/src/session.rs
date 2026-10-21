@@ -2892,6 +2892,19 @@ pub(crate) async fn create_jsonl_session(dir: &Path, cwd: &str) -> Result<Sessio
     create_jsonl_session_with_id(dir, cwd, None).await
 }
 
+/// Start a **new** session in the default session directory for `cwd`.
+///
+/// The original's `/new` is `Start a new session`
+/// (`packages/coding-agent/src/core/slash-commands.ts:46`): it writes a new
+/// session file with a fresh id and switches to it. The caller hands the
+/// session to [`set_active_session`], which publishes the new session id to
+/// the plugin channels.
+pub(crate) async fn new_session(cwd: &str) -> Result<Session, String> {
+    let dir = default_session_dir(Path::new(cwd));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    create_jsonl_session(&dir, cwd).await
+}
+
 /// `create_jsonl_session` with an explicit id (the `--session-id` fixed-id
 /// contract: the file is named with the given id so later `--session-id`
 /// launches restore the same session).
