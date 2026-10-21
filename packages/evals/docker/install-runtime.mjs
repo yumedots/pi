@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { installConsumer } from "../../../scripts/local-package-install.mjs";
 import { produceArtifactSet } from "../../../scripts/package-artifacts.mjs";
 import { codingAgentName } from "../../../scripts/coding-agent-smoke.mjs";
+import { clientName } from "../../../scripts/client-smoke.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const outputDirectory = process.argv[2];
@@ -23,7 +24,7 @@ const artifactSet = produceArtifactSet({
 const artifactNames = new Set(artifactSet.packages.map((pkg) => pkg.name));
 const evaluatorDependencies = Object.entries(evalPackage.devDependencies).filter(([name]) => !artifactNames.has(name));
 const installDirectory = join(outputDirectory, "install");
-installConsumer({ artifactSet, directory: installDirectory, packageNames: [codingAgentName] });
+installConsumer({ artifactSet, directory: installDirectory, packageNames: [codingAgentName, clientName] });
 execFileSync(
 	"npm",
 	[

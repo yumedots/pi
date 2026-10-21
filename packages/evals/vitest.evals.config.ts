@@ -1,5 +1,8 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig, mergeConfig } from "vitest/config";
 import baseConfig, { workspaceSourcePaths } from "../../vitest.base.ts";
+
+const clientIndex = fileURLToPath(new URL("../../packages/client/src/index.ts", import.meta.url));
 
 const evalConfig = defineConfig({
 		test: {
@@ -38,7 +41,10 @@ const localConfig = mergeConfig(
 	baseConfig,
 	defineConfig({
 		resolve: {
-			alias: [{ find: /^@earendil-works\/pi-coding-agent$/, replacement: workspaceSourcePaths.codingAgentIndex }],
+			alias: [
+				{ find: /^@earendil-works\/pi-coding-agent$/, replacement: workspaceSourcePaths.codingAgentIndex },
+				{ find: /^@earendil-works\/pi-client$/, replacement: clientIndex },
+			],
 		},
 	}),
 );

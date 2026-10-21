@@ -1,14 +1,21 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { stripVTControlCharacters } from "node:util";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { InteractiveMode, RemoteSessionFacade } from "@earendil-works/pi-client";
 import {
 	type AgentSession,
-	AgentSessionRuntime,
 	type AgentSessionServices,
-	InteractiveMode,
+	type CreateAgentSessionResult,
 	SessionManager,
+	SettingsManager,
 	createAgentSessionFromServices,
 } from "@earendil-works/pi-coding-agent";
+import { type PiServer, SessionRegistry, startServer } from "@earendil-works/pi-server";
+import { PiServerClient } from "@earendil-works/pi-server/client";
+import type { ProgramStatus } from "@earendil-works/pi-tui";
 import { Levenshtein } from "autoevals";
 import { createJudge, describeEval } from "vitest-evals";
 import { createPiDocumentationEvalHarness, type PiCodingAgentInput } from "../src/harness.ts";
@@ -50,6 +57,7 @@ class RecordingTerminal {
 	clearScreen(): void {}
 	setTitle(_title: string): void {}
 	setProgress(_active: boolean): void {}
+	setProgramStatus(_status: ProgramStatus): void {}
 
 	requestResize(): void {
 		this.resizeHandler?.();
@@ -110,6 +118,49 @@ function createContextMessage(model: NonNullable<AgentSession["model"]>, percent
 	};
 }
 
+/**
+ * The oracle session and the server that hosts it.
+ *
+ * The terminal UI never hosts the agent runtime any more: it drives the session through
+ * the facade of a server. The oracle therefore runs in an embedded server, and the client
+ * reaches it over HTTP and SSE.
+ */
+interface EmbeddedOracle {
+	server: PiServer;
+	sessionId: string;
+	agentDir: string;
+}
+
+async function startEmbeddedOracle(
+	cwd: string,
+	services: AgentSessionServices,
+	oracle: CreateAgentSessionResult,
+): Promise<EmbeddedOracle> {
+	const agentDir = await mkdtemp(join(tmpdir(), "pi-tui-footer-eval-"));
+	const settingsManager = SettingsManager.create(cwd, agentDir);
+	// The server never prompts, so the oracle project has to be trusted up front.
+	settingsManager.setDefaultProjectTrust("always");
+	const registry = new SessionRegistry({
+		agentDir,
+		settingsManager,
+		createRuntime: async () => ({
+			session: oracle.session,
+			services,
+			extensionsResult: oracle.extensionsResult,
+			diagnostics: [],
+		}),
+	});
+	const server = await startServer({
+		port: 0,
+		agentDir,
+		cwd,
+		password: "pi-tui-footer-eval",
+		registry,
+	});
+	const serverSession = await registry.create(cwd);
+	return { server, sessionId: serverSession.id, agentDir };
+}
+
 async function inspectContextFooter(session: AgentSession, agentDir: string): Promise<TuiFooterOutput> {
 	const activeModel = session.model;
 	if (!activeModel) throw new Error("TUI footer oracle requires an active model.");
@@ -122,22 +173,17 @@ async function inspectContextFooter(session: AgentSession, agentDir: string): Pr
 		resourceLoader: session.resourceLoader,
 		diagnostics: [],
 	};
-	const oracleSession = (
-		await createAgentSessionFromServices({
-			services,
-			sessionManager: SessionManager.inMemory(services.cwd),
-			model,
-			thinkingLevel: "high",
-			noTools: "all",
-		})
-	).session;
-	const runtime = new AgentSessionRuntime(oracleSession, services, async () => {
-		throw new Error("The TUI footer oracle does not replace sessions.");
+	const oracle = await createAgentSessionFromServices({
+		services,
+		sessionManager: SessionManager.inMemory(services.cwd),
+		model,
+		thinkingLevel: "high",
+		noTools: "all",
 	});
-	const terminal = new RecordingTerminal();
-	const mode = new InteractiveMode(runtime, { tuiMode: "regular", terminal });
+	const oracleSession = oracle.session;
 	const previousOffline = process.env.PI_OFFLINE;
 	process.env.PI_OFFLINE = "1";
+	const embedded = await startEmbeddedOracle(services.cwd, services, oracle);
 	try {
 		oracleSession.sessionManager.appendMessage({
 			...createContextMessage(model, 0),
@@ -150,37 +196,57 @@ async function inspectContextFooter(session: AgentSession, agentDir: string): Pr
 				cost: { input: 1.008, output: 0, cacheRead: 0, cacheWrite: 0, total: 1.008 },
 			},
 		});
-		let builtInStatusLine: string | null = null;
-		const observations: TuiFooterOutput["observations"] = [];
-		for (const [index, { percent }] of CONTEXT_FIXTURES.entries()) {
-			oracleSession.agent.state.messages = [createContextMessage(model, percent)];
-			if (index === 0) await mode.init();
-			else terminal.requestResize();
-			const renders = await terminal.takeRenders();
-			if (index === 0) {
-				builtInStatusLine = renders.flatMap(lines).find((line) => BUILT_IN_CONTEXT_PATTERN.test(line)) ?? null;
+		const client = new PiServerClient({ url: embedded.server.url, password: embedded.server.password });
+		const facade = new RemoteSessionFacade(client, embedded.sessionId, services.cwd, {
+			agentDir,
+			modelRuntime: session.modelRuntime,
+		});
+		await facade.load();
+		const terminal = new RecordingTerminal();
+		const mode = new InteractiveMode(facade, { tuiMode: "regular", terminal });
+		try {
+			let builtInStatusLine: string | null = null;
+			const observations: TuiFooterOutput["observations"] = [];
+			for (const [index, { percent }] of CONTEXT_FIXTURES.entries()) {
+				const fixture = createContextMessage(model, percent);
+				oracleSession.agent.state.messages = [fixture];
+				// The context usage of a session comes from its entries, so the fixture has
+				// to be part of the transcript for the server to report its percentage.
+				oracleSession.sessionManager.appendMessage(fixture);
+				if (index === 0) {
+					await mode.init();
+				} else {
+					// The footer reads the context usage of the server, so the client has to
+					// pick up the new snapshot before the next frame is rendered.
+					await facade.load();
+					terminal.requestResize();
+				}
+				const renders = await terminal.takeRenders();
+				if (index === 0) {
+					builtInStatusLine = renders.flatMap(lines).find((line) => BUILT_IN_CONTEXT_PATTERN.test(line)) ?? null;
+				}
+				observations.push({
+					percent,
+					renderedOutput: renders.at(-1) ?? "",
+					contextUsage: facade.contextUsage ?? null,
+				});
 			}
-			observations.push({
-				percent,
-				renderedOutput: renders.at(-1) ?? "",
-				contextUsage: oracleSession.getContextUsage() ?? null,
-			});
+			return {
+				builtInStatusLine,
+				observations,
+				extensionErrors: session.resourceLoader.getExtensions().errors.map(({ error }) => error),
+			};
+		} finally {
+			mode.stop("resume-hint");
+			facade.dispose();
 		}
-		return {
-			builtInStatusLine,
-			observations,
-			extensionErrors: session.resourceLoader.getExtensions().errors.map(({ error }) => error),
-		};
 	} finally {
 		try {
-			mode.stop("resume-hint");
+			await embedded.server.close();
 		} finally {
-			try {
-				await runtime.dispose();
-			} finally {
-				if (previousOffline === undefined) delete process.env.PI_OFFLINE;
-				else process.env.PI_OFFLINE = previousOffline;
-			}
+			await rm(embedded.agentDir, { recursive: true, force: true });
+			if (previousOffline === undefined) delete process.env.PI_OFFLINE;
+			else process.env.PI_OFFLINE = previousOffline;
 		}
 	}
 }
