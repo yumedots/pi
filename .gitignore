@@ -48,9 +48,4 @@ plans/
 collect.sh
 packages/agent/docs/extensions/pi-server-artifact/index.md
 bench/.hyperfine-*.json
-scripts/parity/out/
-scripts/parity/screens/out/
-rpi/target-agents/
-# The port's own runtime state: the sessions the test runs write.
-.rpi/
 

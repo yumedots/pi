@@ -1,6 +1,0 @@
---- ts/export-dialog.txt
-+++ rust/export-dialog.txt
--
-+ Exported session to
-- Session exported to: pi-session-<timestamp>_01a15be6-bd21-7033-88c9-416f3816d92e.html
-+ /private/tmp/pi-screens/work/export-dialog/<uuid>.md
