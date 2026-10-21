@@ -263,6 +263,10 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Start a new session"
     },
+    "app.sidebar.toggle": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Show or hide the session sidebar"
+    },
     "app.session.tree": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Open session tree"

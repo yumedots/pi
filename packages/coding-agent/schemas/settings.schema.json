@@ -686,6 +686,34 @@
       "description": "Cache-warming profile. \"idle\" also warms between agent runs. Global only because each refresh costs money.",
       "default": "streaming"
     },
+    "showSessionSidebar": {
+      "type": "boolean",
+      "description": "Show the session sidebar beside the conversation.",
+      "default": false
+    },
+    "server": {
+      "type": "object",
+      "properties": {
+        "idleTimeoutMs": {
+          "type": "number",
+          "minimum": 0,
+          "description": "How long the server stays up without a connected client, in milliseconds. 0 disables it.",
+          "default": 600000
+        },
+        "port": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "The port the server binds. 0 picks a free port.",
+          "default": 4096
+        },
+        "hostname": {
+          "type": "string",
+          "description": "The interface the server binds.",
+          "default": "127.0.0.1"
+        }
+      }
+    },
     "websocketConnectTimeoutMs": {
       "anyOf": [
         {

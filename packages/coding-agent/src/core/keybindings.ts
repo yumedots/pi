@@ -77,6 +77,10 @@ const APP_KEYBINDINGS = {
 		description: "Paste files on macOS, images, or text from clipboard",
 	},
 	"app.session.new": { defaultKeys: [], description: "Start a new session" },
+	"app.sidebar.toggle": {
+		defaultKeys: "ctrl+shift+b",
+		description: "Show or hide the session sidebar",
+	},
 	"app.session.tree": { defaultKeys: [], description: "Open session tree" },
 	"app.session.fork": { defaultKeys: [], description: "Fork current session" },
 	"app.session.resume": { defaultKeys: [], description: "Resume a session" },

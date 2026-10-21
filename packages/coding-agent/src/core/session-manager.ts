@@ -996,6 +996,7 @@ export class SessionManager {
 	private labelsById: Map<string, string> = new Map();
 	private labelTimestampsById: Map<string, string> = new Map();
 	private leafId: string | null = null;
+	private continuedExistingSession = false;
 
 	private constructor(
 		cwd: string,
@@ -1015,6 +1016,7 @@ export class SessionManager {
 		if (sessionFile) {
 			this._setSessionFile(sessionFile, preloadedFileEntries);
 		} else if (preloadedFileEntries?.length) {
+			this.continuedExistingSession = true;
 			this._loadEntries(preloadedFileEntries, newSessionOptions);
 		} else {
 			this.newSession(newSessionOptions);
@@ -1045,6 +1047,7 @@ export class SessionManager {
 				return;
 			}
 
+			this.continuedExistingSession = true;
 			this._loadEntries(entries);
 			this.flushed = true;
 		} else {
@@ -1135,6 +1138,14 @@ export class SessionManager {
 
 	isPersisted(): boolean {
 		return this.persist;
+	}
+
+	/**
+	 * True when the session continues an existing conversation: it was loaded
+	 * from a session file that already had content, instead of starting fresh.
+	 */
+	isContinuation(): boolean {
+		return this.continuedExistingSession;
 	}
 
 	getCwd(): string {

@@ -168,6 +168,30 @@ const CodemodeSettingsSchema = Type.Object({
 	),
 });
 
+const ServerSettingsSchema = Type.Object({
+	idleTimeoutMs: Type.Optional(
+		Type.Number({
+			minimum: 0,
+			description: "How long the server stays up without a connected client, in milliseconds. 0 disables it.",
+			default: SETTINGS_DEFAULTS.server.idleTimeoutMs,
+		}),
+	),
+	port: Type.Optional(
+		Type.Number({
+			minimum: 0,
+			maximum: 65535,
+			description: "The port the server binds. 0 picks a free port.",
+			default: SETTINGS_DEFAULTS.server.port,
+		}),
+	),
+	hostname: Type.Optional(
+		Type.String({
+			description: "The interface the server binds.",
+			default: SETTINGS_DEFAULTS.server.hostname,
+		}),
+	),
+});
+
 const PackageSourceSchema = Type.Union(
 	[
 		Type.String({ description: "Load all resources from the package." }),
@@ -417,6 +441,13 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.cacheWarming,
 			}),
 		),
+		showSessionSidebar: Type.Optional(
+			Type.Boolean({
+				description: "Show the session sidebar beside the conversation.",
+				default: SETTINGS_DEFAULTS.showSessionSidebar,
+			}),
+		),
+		server: Type.Optional(ServerSettingsSchema),
 		websocketConnectTimeoutMs: Type.Optional(
 			timeoutSetting({
 				description: 'WebSocket connect or open handshake timeout in milliseconds; 0 or "disabled" disables it.',

@@ -53,6 +53,24 @@ export type {
 /** Cache-warming profile. "idle" also warms between agent runs. */
 export const CACHE_WARMING_MODES = ["off", "streaming", "idle"] as const satisfies readonly CacheWarmingMode[];
 
+/** The idle timeouts the settings UI offers for the server. */
+export const SERVER_IDLE_TIMEOUT_CHOICES = [
+	{ label: "5m", timeoutMs: 300_000 },
+	{ label: "10m", timeoutMs: 600_000 },
+	{ label: "30m", timeoutMs: 1_800_000 },
+	{ label: "1h", timeoutMs: 3_600_000 },
+	{ label: "never", timeoutMs: 0 },
+] as const;
+
+/**
+ * The label of an idle timeout.
+ */
+export function formatServerIdleTimeout(timeoutMs: number): string {
+	const choice = SERVER_IDLE_TIMEOUT_CHOICES.find((item) => item.timeoutMs === timeoutMs);
+	if (choice) return choice.label;
+	return `${Math.round(timeoutMs / 1000)}s`;
+}
+
 const DEFAULT_COMPACTION_TOKEN_SETTINGS: Required<CompactionModelOverride> = {
 	reserveTokens: SETTINGS_DEFAULTS.compaction.reserveTokens,
 	keepRecentTokens: SETTINGS_DEFAULTS.compaction.keepRecentTokens,
@@ -944,6 +962,58 @@ export class SettingsManager {
 	setCacheWarmingMode(mode: CacheWarmingMode): void {
 		this.globalSettings.cacheWarming = mode;
 		this.markModified("cacheWarming");
+		this.save();
+	}
+
+	/** Whether the session sidebar is shown beside the conversation. */
+	getShowSessionSidebar(): boolean {
+		return this.settings.showSessionSidebar ?? SETTINGS_DEFAULTS.showSessionSidebar;
+	}
+
+	setShowSessionSidebar(value: boolean): void {
+		this.globalSettings.showSessionSidebar = value;
+		this.markModified("showSessionSidebar");
+		this.save();
+	}
+
+	/** How long the server stays up without a connected client, in milliseconds. */
+	getServerIdleTimeoutMs(): number {
+		const value = this.settings.server?.idleTimeoutMs;
+		return typeof value === "number" && value >= 0 ? value : SETTINGS_DEFAULTS.server.idleTimeoutMs;
+	}
+
+	setServerIdleTimeoutMs(ms: number): void {
+		if (!Number.isFinite(ms) || ms < 0) {
+			throw new Error(`Invalid server idle timeout: ${String(ms)}`);
+		}
+		this.globalSettings.server = { ...this.globalSettings.server, idleTimeoutMs: Math.floor(ms) };
+		this.markModified("server");
+		this.save();
+	}
+
+	/** The port the server binds. */
+	getServerPort(): number {
+		const value = this.settings.server?.port;
+		return typeof value === "number" && value >= 0 && value <= 65535 ? value : SETTINGS_DEFAULTS.server.port;
+	}
+
+	setServerPort(port: number): void {
+		if (!Number.isInteger(port) || port < 0 || port > 65535) {
+			throw new Error(`Invalid server port: ${String(port)}`);
+		}
+		this.globalSettings.server = { ...this.globalSettings.server, port };
+		this.markModified("server");
+		this.save();
+	}
+
+	/** The interface the server binds. */
+	getServerHostname(): string {
+		return this.settings.server?.hostname ?? SETTINGS_DEFAULTS.server.hostname;
+	}
+
+	setServerHostname(host: string): void {
+		this.globalSettings.server = { ...this.globalSettings.server, hostname: host };
+		this.markModified("server");
 		this.save();
 	}
 

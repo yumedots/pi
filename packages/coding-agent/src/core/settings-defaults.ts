@@ -66,4 +66,10 @@ export const SETTINGS_DEFAULTS = {
 	fullscreenScrollbar: "auto",
 	fullscreenCopyOnSelect: true,
 	fullscreenWheelScrollLines: 1,
+	showSessionSidebar: false,
+	server: {
+		idleTimeoutMs: 600000,
+		port: 4096,
+		hostname: "127.0.0.1",
+	},
 } as const;
