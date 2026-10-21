@@ -247,6 +247,7 @@ export type {
 export { DefaultPackageManager } from "./core/package-manager.ts";
 export type { ResourceCollision, ResourceDiagnostic, ResourceLoader } from "./core/resource-loader.ts";
 export { DefaultResourceLoader, loadProjectContextFiles } from "./core/resource-loader.ts";
+export { BUILTIN_SLASH_COMMANDS, type BuiltinSlashCommand } from "./core/slash-commands.ts";
 // SDK for programmatic usage
 export {
 	AgentSessionRuntime,
@@ -412,6 +413,8 @@ export {
 // Built-in extensions. The CLI loads them; SDK sessions add them to their extension factories.
 export { type CodemodeExtensionOptions, createCodemodeExtension } from "./extensions/codemode/index.ts";
 export type { CodemodeStoreEntryData, CodemodeToolDetails } from "./extensions/codemode/tool.ts";
+// Built-in extensions. The CLI and the server load them into every session.
+export { builtInExtensions } from "./extensions/index.ts";
 export type { LoadedMcpConfig, McpExposure, McpServerConfig, McpServerEntry } from "./extensions/mcp/config.ts";
 export { createMcpExtension, type McpExtensionOptions, type McpTransportFactory } from "./extensions/mcp/index.ts";
 export { createToolSearchExtension } from "./extensions/tool-search/index.ts";
