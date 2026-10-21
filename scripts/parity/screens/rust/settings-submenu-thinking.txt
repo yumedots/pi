@@ -1,6 +1,6 @@
 # screen: settings-submenu-thinking
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/settings-submenu-thinking' && HOME='/tmp/pi-screens/home/rust/settings-submenu-thinking' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/settings-submenu-thinking' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/settings-submenu-thinking' && HOME='/tmp/pi-screens/home/rust/settings-submenu-thinking' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/settings-submenu-thinking' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /settings Enter thinking Enter
 # note: /settings: the Default thinking level per model submenu.
 
@@ -33,4 +33,4 @@
   Hide thinking blocks in assistant responses
 
   Type to search · Enter/Space to change · Esc to cancel
-mock/mock-1 / ░░░░░░░░░░ ?/128,000 tokens       …/tmp/pi-screens/work/rust/settings-submenu-thinking
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens        /private/tmp/pi-screens/work/settings-submenu-thinking

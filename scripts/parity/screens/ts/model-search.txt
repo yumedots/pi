@@ -1,8 +1,9 @@
 # screen: model-search
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/model-search' && HOME='/tmp/pi-screens/home/ts/model-search' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/model-search' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/model-search' && HOME='/tmp/pi-screens/home/ts/model-search' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/model-search' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: /model mock Enter
 # note: /model mock: the model selector with a search term.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -32,4 +33,4 @@
 
 > /model mock/mock-1
 
-mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                  /private/tmp/pi-screens/work/ts/model-search
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                     /private/tmp/pi-screens/work/model-search

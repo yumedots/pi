@@ -1707,3 +1707,158 @@ interactive mode's half of the `ts -> rust` blocker, and it is **settled**.
 The file round trip going green is necessary and not sufficient: the pane is what the
 user sees, and the import path (`rpi-cli/src/interactive_tui/sessions.rs`,
 `render_session_history`) is the port's own renderer, not the live one.
+
+---
+
+## 12. The 20:35 re-measurement — 14 of 16 steps identical
+
+Re-measured on the agents' binary (`rpi/target-agents/debug/rpi`, with
+`PI_PARITY_RUST_BIN` exported) against the current tree, after the header rewrite,
+the autocomplete move and the `set_streaming(false)` fix.
+
+| scenario | 19:21 | **20:35** |
+|---|---|---|
+| startup | 2 / 2 | **2 / 2** |
+| panels | 5 / 5 | **5 / 5** |
+| prompt | 2 / 2 | **2 / 2** |
+| tool | 1 / 3 | **3 / 3** |
+| thinking | 1 / 2 | 1 / 2 |
+| markdown | 1 / 2 | **2 / 2** |
+
+**14 of 16 steps are byte-identical to the goldens taken from the original.** The
+markdown pane is identical line for line (0 differing rows), so the one-line viewport
+offset is gone as well. The tool scenario is now identical in both of its differing
+steps, so the blank line before a tool call row is gone.
+
+**One difference remains in the whole capture set, and it is a regression rather than
+a wording difference:** the port **no longer renders the collapsed thinking summary at
+all**.
+
+```
+pi   (thinking answer)                     port (thinking answer)
+ 12 ' hello world'                           12 ' hello world'
+ 13 ''                                        13 ''
+ 14 ''                                        14 ''
+ 15 ' + Thought · 0.1s'                      15 ' Hello from the parity mock.'
+ 16 ''                                        16 ''
+ 17 ' Hello from the parity mock.'
+```
+
+A search over all 30 visible rows of the port's pane finds no "Thought" at all. At
+19:21 the port rendered `+ Thought · 0.0s` there, so the line disappeared in this
+stretch. The renderer is still present (`rpi-tui/src/assistant_message.rs:461`
+`thought_summary` → `format_thought_summary`) and `hide_thinking_block` defaults to
+`false` (`rpi-cli/src/settings.rs:310`, `:831`), so the path is being **skipped**
+rather than switched off.
+
+**So the three items this section listed as outstanding are now closed** — the blank
+line before a tool call row, the markdown's one-line viewport offset, and the thinking
+duration (superseded by the regression above) — and the only thing left in the capture
+set is the missing summary line.
+
+**Not measured, and it needs a live run:** the jump-to-latest pill's label. The pane
+does not carry the pill's hover state, so it has to be read from a scroll-and-hover
+run rather than from a capture.
+
+---
+
+## 13. The probe — the missing thinking summary, settled as far as the message
+
+The port rendered no thinking summary at all (§12). The port's own bisect pointed at
+one thing — *does the decoded assistant message still carry its thinking content?* —
+and that question is answerable **without changing any code**, because the port writes
+its own session file.
+
+**The probe.** Run the port against the mock's `thinking` scenario with a session
+enabled, then read the file it wrote:
+
+```
+/tmp/pi-parity/agent/sessions/--private-tmp-pi-parity-work--/2026-10-21T00-44-12-393Z_01a15bea-….jsonl
+
+1 session
+2 message user 'hello world'
+3 message assistant [('thinking', 'The parity mock thinks before it answers.'),
+                    ('text',    'Hello from the parity mock.')]
+```
+
+**The thinking content is in the message.** So the probe comes back non-empty, and this
+rules out a whole layer:
+
+* the provider decodes `reasoning_content` — `rpi-ai/src/providers/openai_completions.rs:785`
+  reads `delta.get("reasoning_content")` → `push_thinking` (`:836`), which pushes
+  `Content::Thinking` into the message's content (`:844`) and appends the text (`:859`);
+* the **`role`-discriminator work did not drop it** — the persisted message still has
+  the thinking block, and it is the same message the agent loop emits as `MessageEnd`
+  (`rpi-agent/src/agent_loop.rs:607-620`);
+* the port's mapping is intact — `rpi-cli/src/session_driver.rs:172-186` maps
+  `Content::Thinking(t) => AssistantBlock::Thinking(t.thinking.clone())`, and the text
+  is non-empty, so the component's `joined.is_empty()` guard
+  (`rpi-tui/src/assistant_message.rs:362`) does not skip the run.
+
+**So the cause is in the live render path, not upstream of the message.** The two
+candidates that remain are both in the interactive mode's own files:
+
+1. **The component on screen is not the one being updated.** `finalize_assistant_blocks`
+   (`rpi-cli/src/transcript_view.rs:292-297`) does `set_streaming(false)` and
+   `update_blocks(blocks)` on `self.current_assistant`; `MessageEnd` calls it with
+   `assistant_blocks(a)` (`rpi-cli/src/interactive_tui/events.rs:344-347`). If the
+   component actually **in the chat container** is not the one `current_assistant`
+   points at — or it was **replaced** after `AssistantStart` — the thinking lands on a
+   component nobody is looking at.
+2. **The component drops the final blocks.** If `update_blocks` early-returns when it
+   thinks the content is unchanged, and the streaming-state change already rebuilt it
+   from an earlier snapshot without the thinking, the final rebuild can be skipped.
+
+The cheapest way to separate them: at `MessageEnd`, print the `blocks` handed to
+`finalize_assistant_blocks` (the `AssistantBlock::Thinking` count and the joined text)
+and then the **rendered lines** of `self.current_assistant` immediately after. Blocks
+carry the thinking and the rendered lines do not ⇒ candidate 2. Blocks are empty ⇒
+candidate 1.
+
+**A second, separate difference the probe turned up.** The port's session file for
+that run holds only `session`, `message user` and `message assistant` — **no `system`
+entry, no `model_change`, no `thinking_level_change`**. The original writes a `system`
+entry (role='system', keys `content, role, sections, timestamp, toolsAdded`) and the two
+state entries. So the port writes less than pi into the session file, and it renders
+the state entries as **transcript notes** when it reads them back (§11.1) where the
+original applies them silently. The write side is the sessions lead's file; the render
+side is the interactive mode's.
+
+---
+
+## 14. The final measurement — 15 of 16 steps identical
+
+The tree went green at 20:46 and the port's fix landed. Re-captured on the agents'
+binary (`rpi/target-agents/debug/rpi`, `PI_PARITY_RUST_BIN` exported) and diffed
+against the goldens taken from the original:
+
+| scenario | 20:35 | **20:47** |
+|---|---|---|
+| startup | 2 / 2 | **2 / 2** |
+| panels | 5 / 5 | **5 / 5** |
+| prompt | 2 / 2 | **2 / 2** |
+| tool | 3 / 3 | **3 / 3** |
+| thinking | 1 / 2 | **1 / 2** |
+| markdown | 2 / 2 | **2 / 2** |
+
+**15 of 16 steps are byte-identical to the original.** The thinking summary is back —
+the regression in §12 was a live-render-path fault, and the port found it from the
+probe's evidence.
+
+**The one difference left in the whole capture set is the measured duration of the
+thinking run:**
+
+```
+pi   row 15: ' + Thought · 0.1s'
+port row 15: ' + Thought · 0.0s'
+```
+
+Same label, same shape, same position — the port's elapsed measurement reads 0 where
+the original's reads 0.1 s. The port's own bisect had it right: the value comes from
+the **thinking block's timing**, not from the label — `thought_summary`
+(`rpi-tui/src/assistant_message.rs:461-474`) reads `thinking_run_timings`, which
+`track_thinking_run` fills while the run streams. So the remaining work is in the
+timing capture, not in the rendering.
+
+**So the interactive mode's screen set is now the original's, with one number out of
+place on one screen.**

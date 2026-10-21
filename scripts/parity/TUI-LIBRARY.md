@@ -464,33 +464,37 @@ graphemes, not characters.
 graphemes, so they cannot cut a cluster in half. The crate's tests pin the emoji widths
 (styled and unstyled) and that a truncation and a slice never cut a cluster.
 
-## 24. The regular (main) screen re-prints the whole transcript on every repaint
+## 24. The regular-mode renderer: the app's path is right, the standalone component is not
 
-**What the user sees.** In regular mode the terminal scrollback fills with copies of the
-transcript: every repaint (the spinner ticking while the agent works, the footer
-updating) writes the whole transcript again. The original repaints only the lines that
-changed, so the scrollback stays clean. This matters twice over, because the port
-defaults to regular mode on macOS (see the note on the TUI mode default below).
+**Correction (2026-10-20).** I first wrote this finding against
+`rpi/crates/rpi-tui/src/tui_main_screen.rs:160-188` — the standalone `TuiMainScreen` — and
+described a user-visible defect. That was wrong on both counts, and the TUI library porter
+caught it:
 
-| | |
-|---|---|
-| Original | `packages/tui/src/tui-main-screen.ts:125-165` — `previousLines`, `maxLinesRendered`, `previousViewportTop`; `:372-405` finds `firstChanged` / `lastChanged` and repaints only that range; a full redraw happens only on the first render, a width or height change, or `clearOnShrink` (`:367`) |
-| Port | `rpi/crates/rpi-tui/src/tui_main_screen.rs:160-188` — `render_now` writes **every** line of the container on every render, and `request_render` calls it directly; there is no `previousLines`, no diffing and no `clearOnShrink` |
+* **The app never constructs `TuiMainScreen`.** `grep -rn TuiMainScreen rpi/crates/` finds
+  only the module itself and the re-export (`rpi/crates/rpi-tui/src/lib.rs:184`). The app's
+  regular mode is `TuiAltScreen::do_render_main_screen`
+  (`rpi/crates/rpi-tui/src/tui_alt_screen.rs:923`), and that path **already** does what the
+  original does: it finds `first_changed`/`last_changed` (`:970-977`) and rewrites only the
+  changed tail, rebuilding the whole document only when a row above the viewport changed or
+  the size changed (`:979-998`) — the same reason the original does
+  (`packages/tui/src/tui-main-screen.ts:367-405`, a full redraw on a changed row above the
+  viewport or a size change, because the scrollback cannot be addressed by cursor
+  movement).
+* So the port's **regular mode does not** fill the scrollback with copies of the
+  transcript, and the user-visible claim in my first version of this finding was wrong.
 
-**Observed.** `grep -n "previous_lines\|max_lines_rendered" rpi/crates/rpi-tui/src/tui_main_screen.rs`
-→ no hits. The port's main screen also has no `captureRenderState` / `restoreRenderState`
-(the original has them at `packages/tui/src/tui-main-screen.ts:136-157` for the mode
-switch), and no Kitty-image bookkeeping (`previousKittyImageIds`,
-`packages/tui/src/tui-main-screen.ts:128`).
+What is actually left: the crate's public `TuiMainScreen` still writes every line on every
+render (`rpi/crates/rpi-tui/src/tui_main_screen.rs:160-188`) and has no `previousLines`, no
+diffing, no `clearOnShrink` and no Kitty-image bookkeeping — so it is a different component
+from the original's `TuiMainScreen`
+(`packages/tui/src/tui-main-screen.ts:125-165,367-405`). It is dead code in this port's app,
+but it is a public API of the crate, so a host that uses it gets the original's behaviour
+in name only.
 
-**Check.**
-* Rust: a test that renders twice with a changed last line and asserts that only the
-  changed range is written (the writer must see the new line, not the whole transcript);
-  and a test that the scrollback does not grow when nothing changed.
-* Parity: the captures of the regular mode (the default on macOS) — the pane must not
-  show the transcript twice.
-
----
+**Check.** Rust: a test that the standalone `TuiMainScreen` writes only the changed rows on
+a second render, and one that the app's regular-mode path (`do_render_main_screen`) writes
+only the changed tail — the second is the one that matters for the user.
 
 ## 25. The single-line input has no yank-pop (Alt+Y)
 
@@ -639,14 +643,24 @@ own reply.
 **Check.** Parity: the `tool` scenario — the text must appear once. (The golden for that
 scenario is stale on the TypeScript side and has to be re-captured first.)
 
-**Status.** The panel half is fixed (2026-10-20): the read renderer was already right
+**Status.** Fixed (2026-10-20), and my earlier reading of it was wrong twice — the
+record is kept here so nobody repeats it.
+
+The read renderer was always right
 (`rpi/crates/rpi-tui/src/tool_renderers.rs:509-512` returns nothing for a collapsed,
-non-error result, exactly like `packages/coding-agent/src/core/tools/renderers/read.ts:126-128`)
-— the panel was dropping the *empty* result region, and it now keeps the row
-(`rpi/crates/rpi-tui/src/tool_execution.rs`, `render_with_renderer`), with the check
-`a_collapsed_read_panel_keeps_the_empty_result_region`. The rule stays "the renderer
-decides, the panel keeps whatever rows the renderer produced", so bash's collapsed preview
-is untouched.
+non-error result, exactly like `packages/coding-agent/src/core/tools/renderers/read.ts:126-128`),
+and the port's `render_block("")` returns no rows
+(`rpi/crates/rpi-tui/src/tool_execution.rs:719-724`), like the original's `Text` for an
+empty text (`packages/tui/src/components/text.ts:56-63`). The original's collapsed read
+panel is therefore **four rows** — the component's `Spacer(1)`
+(`packages/coding-agent/src/modes/interactive/components/tool-execution.ts:86`) plus the
+box's own vertical padding (:88) around the call row.
+
+I first read the capture as "the panel drops the empty result region" and asked for a row
+to be kept; that made the panel five rows. The missing row was *below* the panel, not
+inside it, and the user message's block was correct all along — the two errors partly
+cancelled. The porter reverted the change, the panel is four rows again, and the
+`tool` scenario is byte-identical to the golden.
 
 **Correction.** My first report of this said the port showed the tool result *twice*. That
 was measured against a stale binary: the port's panel was right and the transcript was
@@ -703,20 +717,69 @@ same millisecond.
 `rpi/crates/rpi-tui/src/clock.rs` (ignoring `PI_PARITY_CLOCK`), used only by the thinking
 timing — the logo3d animation and the loader stay on the frozen clock. A test that a run
 tracked across two updates separated by a real delay reports a non-zero duration, also
-with `PI_PARITY_CLOCK` set to a fixed value. The capture's row will then be
-`+ Thought · <a real duration>`; it is not a byte-identical row, because the number is the
-wall-clock time between the mock's chunks.
+with `PI_PARITY_CLOCK` set to a fixed value.
 
-## Verification baseline (2026-10-20, 20:05)
+**Status.** Fixed (2026-10-20): `clock::wall_now_ms()` is in and `track_thinking_run` reads
+it (`the_wall_clock_moves_even_when_the_animation_clock_is_frozen`). The capture's row is
+byte-identical to the golden's — the port now reads `+ Thought · 0.1s` where it read
+`+ Thought · 0.0s`, because both sides measure the mock's own chunk delays.
 
-`cargo build --workspace` was green at 19:40, and the port's default is now fullscreen on
-every platform (the original's default is `tuiMode: "fullscreen"`,
-`packages/coding-agent/src/core/settings-defaults.ts:64`), so the captures compare with the
-goldens directly, without a flag:
+## 32. The user message's block has a trailing spacer, so the transcript is one row too long
+
+**What the user sees.** One blank row too many between the user's message and the
+assistant's reply, and the reply lands one row lower than the original's.
+
+**Observed.** The `prompt` scenario: the golden's [12]=" hello world", [13]="", [14]="",
+[15]=" Hello from the parity mock."; the port's [12]=" hello world", [13]="", [14]="",
+[15]="", [16]=" Hello from the parity mock." — three blank rows where the original has two.
+
+**The original's three shapes**, all in `packages/coding-agent/src/modes/interactive/interactive-mode.ts`:
+* the live echo (`:3191-3200`, `echoUserMessage`): `Spacer(1)` **if the chat container is
+  not empty**, then the component, and **no trailing spacer** — the blank row under the
+  text is the component's own bottom padding
+  (`packages/coding-agent/src/modes/interactive/components/user-message.ts:43-48`, the
+  Markdown's `paddingY: 1`);
+* the session restore (`:3798`): the component **only**, no spacer at all;
+* the run's own user message: the same component, replacing the echo
+  (`:3208-3212` removes the echo and its spacer together).
+
+**The port** has a trailing `Spacer(1)` in two places — `rpi/crates/rpi-cli/src/interactive_tui/rendering.rs:571-572`
+(`add_user_message`) and `rpi/crates/rpi-cli/src/transcript_view.rs:158` (`add_user`) — and
+`add_user` is missing the leading spacer. Routed to the language lead and the interactive
+mode port, with the measurements.
+
+**Check.** Parity: the `prompt` and `tool` scenarios must become byte-identical to the
+goldens, and `markdown` must stay identical (the assistant message's leading spacer, the
+TUI library's change, is what made it so).
+
+**Status.** Fixed (2026-10-20): the language lead dropped the trailing `Spacer(1)` in
+`add_user_message` (`rpi/crates/rpi-cli/src/interactive_tui/rendering.rs`) and the
+interactive mode port dropped the one in `add_user`
+(`rpi/crates/rpi-cli/src/transcript_view.rs`), and added the restored-session shape
+(`add_restored_user_message`, the component only). All six scenarios are byte-identical to
+pi's golden traces.
+
+## Verification baseline (2026-10-20, 21:40)
+
+All six parity scenarios are **byte-identical to pi's golden traces**:
+
+| scenario | result |
+|---|---|
+| startup | **identical** |
+| panels | **identical** |
+| prompt | **identical** |
+| tool | **identical** |
+| thinking | **identical** — the port reads `+ Thought · 0.1s` where it read `0.0s` before the wall-clock change (finding 31) |
+| markdown | **identical** |
+
+`scripts/agent-cargo.sh build --workspace` → green; `scripts/agent-cargo.sh test -p rpi-tui
+--lib` → **531 passed, 0 failed** (1 filtered: the hanging
+`settings_list::tests::a_submenu_owns_the_list_until_it_is_done` in InteractiveModePort's
+file, reported to it).
+
+How to reproduce:
 
 ```
-# The agents build in their own target directory, so a developer running
-# `cargo run` in the same tree is never blocked by an agent's build.
 cd /Users/gabriel/pi-native
 scripts/agent-cargo.sh build --workspace
 export PI_PARITY_RUST_BIN=/Users/gabriel/pi-native/rpi/target-agents/debug/rpi
@@ -729,29 +792,30 @@ serialises against their `cargo run`. If a build fails with an unresolved import
 source plainly has, it is a stale artifact, not a source error — `cargo clean -p rpi-ai
 -p rpi-agent -p rpi-harness` and rebuild before editing anything.
 
-(`scripts/parity/out/` is gitignored, so the captures do not dirty the tree.)
+(`scripts/parity/out/` is gitignored, so the captures do not dirty the tree. The TypeScript
+side's golden for the `tool` scenario was re-captured against the current original —
+`scripts/parity/out/ts-tool.json`, the original at b615b0e — and the goldens need
+refreshing from it.)
 
-| scenario | result |
-|---|---|
-| startup | **identical** to the golden |
-| panels | **identical** to the golden |
-| prompt | **identical** to the golden |
-| markdown | **identical** to the golden |
-| tool | 2 steps differ by **one blank row**: the port's reply sits one row lower — the user message's trailing spacer (the original's echo has none; the Markdown's own `paddingY: 1` supplies the blank row under the text, packages/coding-agent/src/modes/interactive/components/user-message.ts:43-48). The language lead's `add_user_message`. The panel's half is fixed (the empty result region is kept) |
-| thinking | 1 step differs: the `+ Thought · 0.0s` duration against the original's `+ Thought · 0.1s` — the port times the run with the frozen animation clock (finding 31, the TUI library's) |
+**Run the captures one at a time.** Every run writes the same six paths
+(`scripts/parity/out/rust-<scenario>.json`), so two harness runs that overlap — a
+screen-capture run, a CI run, another agent's loop — clobber each other's files. I chased a
+phantom regression this way: a back-to-back loop produced a `tool` capture with the
+markdown scenario's content and a `prompt` capture with the thinking scenario's reply.
+Run in isolation, all six are byte-identical to the goldens. A per-run output directory
+would remove the trap; the fix is in `scripts/parity/drive.mjs` and `compare.mjs` (the
+harness's owner's files).
 
 What closed during this session, in the TUI library: the wrap (the shared one and the
 editor's), the grapheme width, the input box cap and the hidden-line report, the fake
 cursor, the click-to-place-the-caret and the wheel over the input, the settings list
 hover, the `Text` padding and background, the window title escape (OSC 0), `set_text`'s
-caret placement, the collapsed tool panel keeping the empty result region (finding 29) and
-the assistant message's leading spacer (finding 30). What closed outside it: the header
-block's leading and trailing Spacer (the language lead), the user message's leading
-spacer, the host's trailing spacing (the interactive mode port) and the TUI mode default
-(fullscreen on every platform).
-
-`scripts/agent-cargo.sh test -p rpi-tui --lib` → **527 passed, 0 failed**;
-`scripts/agent-cargo.sh build --workspace` → green.
+caret placement, the tool panel's `outputPad`, the wall clock for the thinking duration
+(finding 31), the easter egg's `play_*` entry point, the assistant message's leading
+spacer (finding 30) and the tool panel's collapsed read panel (finding 29). What closed
+outside it: the header block's Spacers and the user message's three shapes (the language
+lead and the interactive mode port), the TUI mode default (fullscreen on every platform)
+and the footer's context readout.
 
 Any **new** difference in these panes after a TUI library change is a regression.
 

@@ -1,8 +1,9 @@
 # screen: overlay-animation
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/overlay-animation' && HOME='/tmp/pi-screens/home/ts/overlay-animation' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/overlay-animation' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1 --extension /Users/gabriel/pi/packages/coding-agent/examples/extensions/overlay-qa-tests.ts
+# command: cd '/tmp/pi-screens/work/overlay-animation' && HOME='/tmp/pi-screens/home/ts/overlay-animation' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/overlay-animation' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1 --extension /Users/gabriel/pi/packages/coding-agent/examples/extensions/overlay-qa-tests.ts
 # keys: /overlay-animation Enter
 # note: An example extension that paints an overlay (/overlay-animation).
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -32,4 +33,4 @@
 ⠼ Working
 >
 
-mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens             /private/tmp/pi-screens/work/ts/overlay-animation
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                /private/tmp/pi-screens/work/overlay-animation

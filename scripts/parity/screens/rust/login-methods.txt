@@ -1,6 +1,6 @@
 # screen: login-methods
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/login-methods' && HOME='/tmp/pi-screens/home/rust/login-methods' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/login-methods' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/login-methods' && HOME='/tmp/pi-screens/home/rust/login-methods' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/login-methods' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /login Enter
 # note: /login: the authentication method selector.
 
@@ -33,4 +33,4 @@ Type to filter providers · Enter selects · Esc cancels
   fireworks                       Not configured · API key / FIREWORKS_API_KEY
   github-copilot                  Not configured · API key / COPILOT_GITHUB_TOKEN
   (1/40)
-mock/mock-1 / ░░░░░░░░░░ ?/128,000 tokens            /private/tmp/pi-screens/work/rust/login-methods
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                    /private/tmp/pi-screens/work/login-methods

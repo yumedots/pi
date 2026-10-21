@@ -1,6 +1,6 @@
 # screen: model-no-models
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/model-no-models' && HOME='/tmp/pi-screens/home/rust/model-no-models' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/model-no-models' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/model-no-models' && HOME='/tmp/pi-screens/home/rust/model-no-models' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/model-no-models' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: (none)
 # note: No models available at all: the original refuses to start and prints this.
 

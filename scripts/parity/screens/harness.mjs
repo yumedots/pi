@@ -14,7 +14,7 @@ export const RUST_ROOT = process.env.PI_SCREENS_RUST_ROOT ?? "/Users/gabriel/pi-
 export const RUST_BIN =
 	process.env.PI_PARITY_RUST_BIN ??
 	process.env.PI_SCREENS_RUST_BIN ??
-	join(RUST_ROOT, "rpi/target/debug/rpi");
+	join(RUST_ROOT, "rpi/target-agents/debug/rpi");
 export const SCRATCH = process.env.PI_SCREENS_SCRATCH ?? "/tmp/pi-screens";
 
 export function tmux(args, options = {}) {
@@ -94,7 +94,11 @@ export function runScreen({ side, spec, mockBaseUrl }) {
 	killSession(session);
 	const home = join(SCRATCH, "home", side, spec.name);
 	const agentDir = join(SCRATCH, "agent", side, spec.name);
-	const workDir = join(SCRATCH, "work", side, spec.name);
+	// The work directory is the same path on both sides: the pane shows it (in
+	// the footer and in the trust screens) and the port right-aligns that path
+	// to the pane's edge, so a path of a different length would shift the
+	// whole footer by a column and look like a difference.
+	const workDir = join(SCRATCH, "work", spec.name);
 	rmSync(agentDir, { recursive: true, force: true });
 	rmSync(workDir, { recursive: true, force: true });
 	// The home directory is per screen too: a leftover settings.json in it would

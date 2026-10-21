@@ -45,9 +45,9 @@
 -› • assistant: Hello from the parity mock.
 +
 -  (3/3)
-+→ message #2                      01a15bb0-f6a
++→ message #2                      01a15bef-2ec
 -
-+  message #9 (current)            01a15bb0-f71
++  message #9 (current)            01a15bef-2f2
 -────────────────────────────────────────────────────────────────────────────────────────────────────
-+mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens               /private/tmp/pi-screens/work/session-tree
--mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens                 /private/tmp/pi-screens/work/session-tree
++mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens                    /private/tmp/pi-screens/work/session-tree
+-mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens                    /private/tmp/pi-screens/work/session-tree

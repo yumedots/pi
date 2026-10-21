@@ -1,6 +1,6 @@
 # screen: login-providers-oauth
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/login-providers-oauth' && HOME='/tmp/pi-screens/home/rust/login-providers-oauth' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/login-providers-oauth' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/login-providers-oauth' && HOME='/tmp/pi-screens/home/rust/login-providers-oauth' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/login-providers-oauth' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /login Enter Enter
 # note: /login: the OAuth provider list (Sign in with an account).
 
@@ -33,4 +33,4 @@ API key for ant-ling
 Enter saves to auth.json · Esc cancels
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-mock/mock-1 / ░░░░░░░░░░ ?/128,000 tokens    /private/tmp/pi-screens/work/rust/login-providers-oauth
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens            /private/tmp/pi-screens/work/login-providers-oauth

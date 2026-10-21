@@ -1,6 +1,6 @@
 # screen: quit-confirm
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/quit-confirm' && HOME='/tmp/pi-screens/home/rust/quit-confirm' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/quit-confirm' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/quit-confirm' && HOME='/tmp/pi-screens/home/rust/quit-confirm' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/quit-confirm' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: C-c
 # note: Ctrl+C: the quit confirmation banner.
 
@@ -33,4 +33,4 @@
 
 >
 
-mock/mock-1 / ░░░░░░░░░░ ?/128,000 tokens             /private/tmp/pi-screens/work/rust/quit-confirm
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                     /private/tmp/pi-screens/work/quit-confirm

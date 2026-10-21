@@ -1,8 +1,9 @@
 # screen: settings-submenu-theme
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/settings-submenu-theme' && HOME='/tmp/pi-screens/home/ts/settings-submenu-theme' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/settings-submenu-theme' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/settings-submenu-theme' && HOME='/tmp/pi-screens/home/ts/settings-submenu-theme' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/settings-submenu-theme' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: /settings Enter theme Enter
 # note: /settings: the Theme submenu.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -32,4 +33,4 @@ Select a theme, or choose automatic to follow terminal appearance.
 
   Enter to select · Esc to go back
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens        /private/tmp/pi-screens/work/ts/settings-submenu-theme
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens           /private/tmp/pi-screens/work/settings-submenu-theme

@@ -1,6 +1,6 @@
 # screen: login-oauth-browser
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/login-oauth-browser' && HOME='/tmp/pi-screens/home/rust/login-oauth-browser' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/login-oauth-browser' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/login-oauth-browser' && HOME='/tmp/pi-screens/home/rust/login-oauth-browser' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/login-oauth-browser' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /login Enter Down Down Enter Enter
 # note: /login: the OAuth browser step, the sign-in URL is shown (Radius).
 
@@ -33,4 +33,4 @@ API key for azure
 Enter saves to auth.json · Esc cancels
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-mock/mock-1 / ░░░░░░░░░░ ?/128,000 tokens      /private/tmp/pi-screens/work/rust/login-oauth-browser
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens              /private/tmp/pi-screens/work/login-oauth-browser

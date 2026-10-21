@@ -14,7 +14,7 @@
 +
 -→ Trust
 +
--  Trust parent folder (/private/tmp/pi-screens/work/ts)
+-  Trust parent folder (/private/tmp/pi-screens/work)
 + Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
 -  Trust (this session only)
 + on` to ~/.tmux.conf and restart tmux.
@@ -40,4 +40,4 @@
 +
 +>
 +
-+mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens             /private/tmp/pi-screens/work/trust-prompt
++mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                     /private/tmp/pi-screens/work/trust-prompt

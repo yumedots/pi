@@ -140,13 +140,63 @@ port had the field and the expansion but consulted neither. The setting is now
 read at startup (`TuiStartupSettings::enable_skill_commands`) and the skill
 rows are only added to the command list when it is on.
 
-## 6. Checks
+## 6. The mentions and the files are offered together
+
+For one `@` query the original shows the skill mentions **and** the file
+completions, the mentions first
+(`packages/tui/src/autocomplete.ts:330-345`):
+
+```ts
+const mentionSuggestions = this.getMentionSuggestions(rawPrefix);
+const fileSuggestions = await this.getFuzzyFileSuggestions(rawPrefix, {…});
+const suggestions = [...mentionSuggestions, ...fileSuggestions];
+```
+
+The port splits the original's single provider in two, and the chain returns
+the **first** provider that answers
+(`rpi/crates/rpi-tui/src/autocomplete.rs`, `CombinedAutocompleteProvider`), so a
+matching skill hid the files for the same query. The mention provider now takes
+the file provider and merges its rows into the same list, mentions first. The
+file rows are rebased onto the mention's span and carry the `@` in their value,
+which is what the original's `buildCompletionValue` does
+(`packages/tui/src/autocomplete.ts:143-160`).
+
+## 7. The counter, the wrap-around and the path rows
+
+**The popup is a `SelectList`.** The original builds the popup's list as a
+`SelectList` with the layout options
+(`packages/tui/src/components/editor.ts:2451-2452`), so the popup shows the
+same `(n/m)` counter, the same label column and the same wrap-around as every
+other list. The port's popup rendered its own `Text` rows, so it had no counter
+and its ↑/↓ stopped at the ends. It now renders through the tui library's
+`SelectList`:
+
+* the counter is the library's (`packages/tui/src/components/select-list.ts:126-131`);
+* the ↑/↓ navigation wraps (`packages/tui/src/components/select-list.ts:196-212`):
+  `↓` past the last entry returns to the first, `↑` before the first goes to the last;
+* the command list gets the narrower column
+  (`packages/tui/src/components/editor.ts:2451`), the other lists keep the default.
+
+The **selection stays single-sourced**: the rows come from the provider and the
+highlight from `state.autocomplete_selection`, and the list is given that index
+before it renders. The row the popup highlights is therefore the row the accept
+path takes — the agreement that the Enter bug was about.
+
+**The path rows carry the path.** The original's rows carry the path
+(`packages/tui/src/autocomplete.ts:143-160`, `buildCompletionValue`), so
+accepting one does not drop the directory the user typed. The port's rows
+carried the bare file name, so accepting a completion replaced the whole path
+with the name — a correctness bug, not a difference in look. The provider now
+keeps the directory part of the prefix in the row.
+
+## 8. Checks
 
 ```
 cd /Users/gabriel/pi-native
-scripts/agent-cargo.sh test -p rpi-tui --lib autocomplete   # 9 passed
+scripts/agent-cargo.sh test -p rpi-tui --lib autocomplete   # 11 passed
 scripts/agent-cargo.sh test -p rpi-tui --lib select_list      # 11 passed
-scripts/agent-cargo.sh test -p rpi-cli --lib autocomplete      # the accept-path tests
+scripts/agent-cargo.sh test -p rpi-cli --lib autocomplete      # 17 passed
+scripts/agent-cargo.sh test -p rpi-cli --lib skill_autocomplete # 3 passed
 ```
 
 `rpi/crates/rpi-tui/src/autocomplete.rs`:
@@ -156,6 +206,8 @@ scripts/agent-cargo.sh test -p rpi-cli --lib autocomplete      # the accept-path
 * `the_provider_row_carries_the_argument_hint`
 * `a_skill_is_matched_by_its_bare_name_first`
 * `a_skill_full_name_match_comes_after_the_bare_ones`
+* `a_path_row_carries_the_whole_path`
+* `a_path_row_keeps_the_directory_part`
 
 `rpi/crates/rpi-tui/src/select_list.rs`:
 
@@ -173,6 +225,9 @@ scripts/agent-cargo.sh test -p rpi-cli --lib autocomplete      # the accept-path
   completion, so Enter sends the message.
 * `escape_closes_the_autocomplete_without_changing_the_text` — the draft is
   untouched and a dismissed list does not accept.
+* `the_popup_shows_the_counter` — the popup shows the original's `(n/m)`.
+* `the_popup_wraps_around` — `↓` past the last entry returns to the first and
+  `↑` before the first goes to the last.
 
 `rpi/crates/rpi-cli/src/interactive_tui/autocomplete.rs` (unit tests):
 
@@ -181,7 +236,13 @@ scripts/agent-cargo.sh test -p rpi-cli --lib autocomplete      # the accept-path
 * `apply_completion_keeps_a_directory_open_for_more_completion`
 * `only_a_command_a_mention_or_a_path_is_an_explicit_completion`
 
-## 7. An architectural difference worth writing down
+`rpi/crates/rpi-cli/src/interactive_tui/skill_autocomplete.rs`:
+
+* `a_skill_and_a_file_are_both_offered_the_skill_first`
+* `a_file_alone_is_offered`
+* `the_mentions_are_offered_without_the_files`
+
+## 9. An architectural difference worth writing down
 
 The original's editor holds the suggestion list as **state**
 (`autocompleteState`, `autocompleteList`, `autocompletePrefix`), so "the list
@@ -202,12 +263,8 @@ Two consequences:
   `close_autocomplete` does. Anyone changing the dismissal logic should read
   this paragraph first.
 
-## 8. Known gaps in this area (not fixed here)
+## 10. Known gaps in this area (not fixed here)
 
-* The list renders its own rows (`Text` + `→`), so it has no `(n/m)` counter
-  and no wrap-around, while the port's `SelectList` has both. The original's
-  list is a `SelectList` (`packages/tui/src/components/select-list.ts:128`).
-  Routing the list through `SelectList` would close this gap.
 * The list shows the leading slash (`/model`); the original lists bare names
   (`model`).
 * No argument completions: typing `/model ` opens no list of models in the
@@ -216,14 +273,8 @@ Two consequences:
 * The port has a `/help` command that the original does not; the language
   lead is deciding whether it stays. The port's `/` list and its `/help`
   listing have to agree either way.
-* The path provider's rows carry the **bare** file name, so accepting one
-  replaces the whole path with the name (`/tmp/x/man` → `manual.txt`). The
-  original's rows carry the path, so the directory survives
-  (`packages/tui/src/autocomplete.ts:143-160`). The accept path itself is
-  correct — the text it writes is the provider's text — but the provider's
-  text is short.
 
-## 9. The model picker
+## 11. The model picker
 
 The model picker itself is a `SearchableSelectList`
 (`rpi/crates/rpi-tui/src/searchable_select.rs`) whose rows come from a

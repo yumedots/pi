@@ -1,6 +1,6 @@
 # screen: hotkeys
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/hotkeys' && HOME='/tmp/pi-screens/home/ts/hotkeys' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/hotkeys' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/hotkeys' && HOME='/tmp/pi-screens/home/ts/hotkeys' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/hotkeys' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: /hotkeys Enter
 # note: /hotkeys: the keyboard shortcut list.
 
@@ -33,4 +33,4 @@
 
 >
 
-mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                       /private/tmp/pi-screens/work/ts/hotkeys
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                          /private/tmp/pi-screens/work/hotkeys

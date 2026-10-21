@@ -1,6 +1,6 @@
 # screen: model-no-match
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/model-no-match' && HOME='/tmp/pi-screens/home/rust/model-no-match' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/model-no-match' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/model-no-match' && HOME='/tmp/pi-screens/home/rust/model-no-match' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/model-no-match' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /model gpt Enter
 # note: /model gpt: the model selector with a search term that matches nothing.
 
@@ -33,4 +33,4 @@ Type to filter by name, provider, or id
 > gpt
 
   No matching commands
-mock/mock-1 / ░░░░░░░░░░ ?/128,000 tokens           /private/tmp/pi-screens/work/rust/model-no-match
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                   /private/tmp/pi-screens/work/model-no-match

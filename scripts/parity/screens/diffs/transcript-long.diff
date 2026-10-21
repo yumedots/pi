@@ -1,9 +1,0 @@
---- ts/transcript-long.txt
-+++ rust/transcript-long.txt
-->
-+
--
-+>
--mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens              /private/tmp/pi-screens/work/transcript-long
-+
-+mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens            /private/tmp/pi-screens/work/transcript-long

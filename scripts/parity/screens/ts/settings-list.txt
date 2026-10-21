@@ -1,6 +1,6 @@
 # screen: settings-list
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/settings-list' && HOME='/tmp/pi-screens/home/ts/settings-list' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/settings-list' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/settings-list' && HOME='/tmp/pi-screens/home/ts/settings-list' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/settings-list' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: /settings Enter
 # note: /settings: the settings list.
 
@@ -33,4 +33,4 @@
 
   Type to search · Enter/Space to change · Esc to cancel
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                 /private/tmp/pi-screens/work/ts/settings-list
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                    /private/tmp/pi-screens/work/settings-list

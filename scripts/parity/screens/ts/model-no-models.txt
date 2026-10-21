@@ -1,6 +1,6 @@
 # screen: model-no-models
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/model-no-models' && HOME='/tmp/pi-screens/home/ts/model-no-models' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/model-no-models' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/model-no-models' && HOME='/tmp/pi-screens/home/ts/model-no-models' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/model-no-models' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: (none)
 # note: No models available at all: the original refuses to start and prints this.
 

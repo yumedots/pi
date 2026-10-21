@@ -1,8 +1,9 @@
 # screen: scoped-models
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/scoped-models' && HOME='/tmp/pi-screens/home/ts/scoped-models' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/scoped-models' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/scoped-models' && HOME='/tmp/pi-screens/home/ts/scoped-models' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/scoped-models' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: /scoped-models Enter
 # note: /scoped-models: the scoped model selector.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -32,4 +33,4 @@ Session-only. Ctrl+S to save to settings.
   Enter toggle · Ctrl+A all · Ctrl+X clear · Ctrl+P provider · Option+Up/Option+Down reorder ·
 Ctrl+S save · all enabled
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                 /private/tmp/pi-screens/work/ts/scoped-models
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                    /private/tmp/pi-screens/work/scoped-models

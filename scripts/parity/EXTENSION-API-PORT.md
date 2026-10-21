@@ -144,6 +144,11 @@ the `source` and `sourceInfo` the original carries. `ui.getAllThemes()` and
 `ui.getTheme(name)` answer the port's three presets (`dark`, `light`,
 `monochrome`) in the original's `{name, path}` shape.
 
+The session's copies are the answer, and the host falls back to the file and
+the preset list when the session has none: an **empty** copy is not the same
+as an absent one, and shadowing the fallback with an empty object is what
+left the settings and the themes empty.
+
 ## The extension's own tools
 
 A tool an extension registers has to be in the session's tool set, or the
@@ -153,6 +158,15 @@ schema the extension gave it, and calling it runs the extension's own
 `execute` (`JsExtensions::call_tool`). The TUI adds them to the harness's
 tool set and to the active tool names when the extensions load
 (`interactive_tui.rs`).
+
+**The order matters, and it was wrong.** The `session_start` dispatch used
+to run on the TUI's own thread, before the tool wiring and before the
+command list was published. A handler that reads the session — the active
+tools, the commands, the settings — blocked the thread that was supposed to
+fill them in, so the wiring never ran and the handler saw an empty session.
+The dispatch now goes out last (after the tools and the commands are in the
+session) and does not block the TUI: the handler may open a dialog, which
+the TUI has to present.
 
 ## The provider hooks
 
@@ -165,6 +179,16 @@ JavaScript extensions had no hooks at all and the events never fired. The
 hooks now also come up for the JavaScript extensions
 (`ExtensionProviderHooks::for_javascript`), and the TUI installs them when
 the extensions load.
+
+`before_provider_request` publishes the **wire payload** — the request the
+provider is about to send, in the provider's own field names (`model`,
+`messages`, `tools`, `stream`, `max_completion_tokens`,
+`prompt_cache_key`, `prompt_cache_retention`, `store`, `stream_options`) —
+the way the original does. The native handlers keep the port's own internal
+request: the native ABI is the port's contract, and an extension written
+against pi watches the wire payload. What is still missing is the *replacement*:
+the original's handler's return value becomes the payload that is sent, and
+the port's hook can only observe.
 
 ## What still differs
 
@@ -213,76 +237,36 @@ a JavaScript event no longer waits for the extension
 
 ## The module surface
 
-The port publishes a **subset** of each of pi's packages:
+The port now publishes **pi's own modules** to the extensions.
 
 | module | the original | the port now |
 | --- | --- | --- |
-| `@earendil-works/pi-coding-agent` | `packages/coding-agent/src/index.ts` — the package entry, 154 runtime exports | `packages/coding-agent/src/core/extensions/types.ts` — the contract's 10 (`defineTool` and the type guards) |
-| `@earendil-works/pi-tui` | `packages/tui/src/index.ts` — 92 exports | `rpi/crates/rpi-js/js/pi-tui.ts` — 20, the parts that render |
-| `@earendil-works/pi-ai` (and `/compat`) | `packages/ai/src/compat.ts` | `rpi/crates/rpi-js/js/pi-ai.ts` — 1 (`Type`) |
-| `@earendil-works/pi-agent-core` | `packages/agent/src/index.ts` | `rpi/crates/rpi-js/js/pi-agent-core.ts` — 1 (`AGENT_RUNTIME_AVAILABLE`) |
+| `@earendil-works/pi-coding-agent` | `packages/coding-agent/src/index.ts` — the package entry, 154 runtime exports | `rpi/crates/rpi-js/js/pi-coding-agent.ts` — pi's real modules, re-exported |
+| `@earendil-works/pi-tui` | `packages/tui/src/index.ts` — 92 exports | `rpi/crates/rpi-js/js/pi-tui.ts` — pi's own TUI code |
+| `@earendil-works/pi-ai` (and `/compat`) | `packages/ai/src/compat.ts` | `rpi/crates/rpi-js/js/pi-ai.ts` — pi's own |
+| `@earendil-works/pi-agent-core` | `packages/agent/src/index.ts` | `rpi/crates/rpi-js/js/pi-agent-core.ts` — pi's own |
 
-**The fix is known: point the map at the vendored pi sources.** The port
-vendors pi's packages (`/Users/gabriel/pi-native/packages/`), and the
-vendored files are byte-identical to the original's — `diff
-packages/coding-agent/src/index.ts` against the original's is empty.
+**The bundle is 1.6 MB**, and six blockers had to be cleared to get there.
+Each of them was a value crossing a boundary in a form the other side cannot
+use, and each is now a rule in the tree:
 
-**Two blockers were found and one of them is fixed.**
+| blocker | the fix |
+| --- | --- |
+| no npm package resolved (the bundler runs with `platform: "neutral"`, whose `mainFields` is empty) | `mainFields: ["module", "main"]` and `nodePaths` in the bundler |
+| almost no node builtins | ~40 shims in `rpi/crates/rpi-js/js/shims/`, all published to the extensions |
+| `process.env` arrived as null | the environment is read when it is used, and the bundler defines `process` as the host's object |
+| `graceful-fs` patches the `fs` module | the `fs` shim is a mutable CommonJS module (`export =`) |
+| `createRequire` threw when it was *obtained* | the shim answers for the modules the host has and throws only when they are *used* |
+| `import.meta.url` | defined in the bundler |
+| pi's `config.ts` reads the package directory at import time | the bundler substitutes the port's module (`rpi/crates/rpi-js/js/pi-config.ts`) for pi's; the vendored package's README and package directory are baked in at bundle time |
+| the network layer (`undici`) | the components and the tools are imported one by one — the barrels pull the ones that reach for the session — and `cli/args.ts` (→ `core/settings-manager.ts` → `core/http-dispatcher.ts`) is gone |
 
-1. **Fixed: esbuild resolved no npm package.** The bundler runs with
-   `platform: "neutral"`, whose `mainFields` is empty, so a package with only
-   a `main` field (`which`, `graceful-fs`, `hosted-git-info`,
-   `standardwebhooks` — the port's own dependencies) never resolved, from the
-   vendored sources *or* anywhere. `scripts/build-extension-host-bundle.mjs`
-   now sets `mainFields: ["module", "main"]` and `nodePaths`, and the npm
-   packages resolve.
-
-2. **Fixed: the embedded host had almost no node builtins.** The shims in
-   `rpi/crates/rpi-js/js/shims/` now cover `node:path`, `node:fs`,
-   `node:fs/promises`, `node:os`, `node:url`, `node:perf_hooks`,
-   `node:child_process`, `node:events`, `node:worker_threads`, `node:module`,
-   `node:timers/promises`, `node:crypto`, `node:util`, `node:readline`,
-   `node:readline/promises`, `node:stream`, `node:stream/promises`,
-   `node:stream/web`, `node:zlib`, `node:http`, `node:string_decoder`,
-   `node:process`, `node:assert`, `node:buffer`, `node:vm`, `node:net`,
-   `node:tls`, `node:tty`, `node:async_hooks`, `node:diagnostics_channel`,
-   `node:v8`, `node:sqlite`, `node:querystring`, `node:dns`, `node:http2`,
-   `node:inspector`, `node:cluster`, `node:dgram`, `node:punycode`,
-   `node:sys`, `node:trace_events`, `node:console` and `node:timers`, and the
-   bundler aliases them. With those in place **34 of pi's own modules bundle
-   cleanly** — `config.ts`, `core/sdk.ts`, `core/tools/index.ts`,
-   `core/extensions/index.ts`, `core/compaction/index.ts`,
-   `core/session-manager.ts`, `core/model-registry.ts`,
-   `modes/interactive/components/index.ts`,
-   `modes/interactive/theme/theme.ts`, `core/skills.ts`,
-   `core/settings-manager.ts`, `core/trust-manager.ts`, `core/package-manager.ts`
-   and the rest.
-
-**What is left, and why the package entry is not the answer.** Pointing
-`@earendil-works/pi-coding-agent` at the package entry pulls the **whole CLI**
-into the bundle (13.5 MB), and the bundle then replaces the global `process`
-at load: `which/which.js` then reads `process.env.OSTYPE` off a null `env`,
-and every extension fails to load. So the package entry cannot be bundled
-whole. The next step is to bundle the **individual pi modules** the examples
-need — the list is below — and re-export them from a port-side module.
-
-That module is written: `rpi/crates/rpi-js/js/pi-coding-agent.ts` re-exports
-the pieces of pi's package entry that an extension can use, from the same
-source files (the tool factories, the components, the themes, the frontmatter
-helpers, the session manager, the compaction helpers, the skill helpers).
-**It is not wired into the virtual module map yet**, because two runtime
-problems remain, both measured:
-
-1. `which/which.js` reads `process.env.OSTYPE` and finds `process.env` null:
-   the bundle replaces the global `process` when it loads. The port's node
-   surface publishes `globalThis.process` (`node_surfaces.js:145`) before the
-   bundle runs, so something in the bundle overwrites it — that is what to
-   find.
-2. `packages/coding-agent/src/config.ts` calls
-   `fileURLToPath(import.meta.url)`, and the url shim's `fileURLToPath`
-   cannot read what the bundle hands it (the error is
-   `Cannot read properties of undefined (reading 'pathname')`). The url shim
-   needs to accept the bundle's `import.meta.url` as well as a `URL`.
+**The rule the whole thing follows, from the shims up:** an import must never
+throw, and a call must either work or throw *visibly* to the caller. Two
+shims broke it — `createRequire` (threw when obtained, and a module-scope call
+took the whole host with it) and `fs` (reported success and wrote nothing) —
+and both are fixed, with `every_shim_is_reachable_by_an_extension` walking
+the shim directory so a shim that is not published fails there.
 
 **A subpath the host does not publish no longer kills the extension.** An
 import of `@earendil-works/pi-ai/providers/anthropic` resolves to an empty

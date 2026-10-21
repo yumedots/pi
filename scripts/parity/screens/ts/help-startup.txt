@@ -1,6 +1,6 @@
 # screen: help-startup
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/help-startup' && HOME='/tmp/pi-screens/home/ts/help-startup' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/help-startup' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/help-startup' && HOME='/tmp/pi-screens/home/ts/help-startup' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/help-startup' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: C-o
 # note: Ctrl+O: the expanded startup help.
 
@@ -33,4 +33,4 @@
 
 >
 
-mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                  /private/tmp/pi-screens/work/ts/help-startup
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                     /private/tmp/pi-screens/work/help-startup

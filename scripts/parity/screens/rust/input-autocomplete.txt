@@ -1,6 +1,6 @@
 # screen: input-autocomplete
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/input-autocomplete' && HOME='/tmp/pi-screens/home/rust/input-autocomplete' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/input-autocomplete' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/input-autocomplete' && HOME='/tmp/pi-screens/home/rust/input-autocomplete' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/input-autocomplete' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /
 # note: The input box with the autocomplete open.
 
@@ -24,13 +24,13 @@
 
 
 
-
- → help           Show available commands
-   clear          Clear the conversation
-   new            Start a new session
-   quit           Quit pi
-   version        Show version information
+→ settings       Open settings menu
+  model          <provider/model> — Select model (opens selector UI)
+  tree           Navigate session tree (switch branches)
+  thinking       <level> — Set thinking level
+  scoped-models  Enable/disable models for Ctrl+P cycling
+  (1/29)
 
 > /
 
-mock/mock-1 / ░░░░░░░░░░ ?/128,000 tokens       /private/tmp/pi-screens/work/rust/input-autocomplete
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens               /private/tmp/pi-screens/work/input-autocomplete

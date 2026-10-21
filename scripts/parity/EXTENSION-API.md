@@ -30,12 +30,25 @@ original's resets, and **all 90** host operations answered — the session-backe
 session's real data. The check for the operation count is a test that reads the bundle
 (`rpi/crates/rpi-js/src/host.rs:274`), and it is green.
 
-**The remaining gap is the events.** Measured live on 2026-10-20 at 19:40, in one prompt run
-with a tool call: **the original fires 23 of the 41 categories, the port fires 13** — and ten of
-the forty-one still do not fire (section B.1), while three fire with a payload that has fewer
-keys than the original's (`input` has no `streamingBehavior`, `tool_execution_end` has no
-`durationMs`, `tool_result` has no `details` and no `usage`). The module surface is still short
-(section I).
+**The remaining gap is the events.** Measured live on 2026-10-20 at 20:55, **with one mock per
+side** (the mock serves its scripted turns in order, so a mock shared by both sides hands the
+second side the scenario's *second* turn — the parity harness has always started one per side):
+**the original fires 23 of the 41 categories, the port fires 18.** The four tool events
+(`tool_call`, `tool_result`, `tool_execution_start`, `tool_execution_end`) fire when the port's
+agent reaches the tool call, and they do — the port parses the call, executes the tool, sends
+the result back and makes a second request.
+
+Five never fire: `after_provider_response`,
+`provider_stream_event`, `agent_before_settle`, `agent_settled`, `resources_discover`. Two fire
+with fewer payload keys than the original's: `before_agent_start` has no `images`, and `input`
+has no `streamingBehavior` (the original only carries it when the input arrives while the agent
+is streaming, so a single-prompt run cannot tell a missing key from a run-shape difference).
+
+The five that never fire are the same in both runs: `after_provider_response`,
+`provider_stream_event`, `agent_before_settle`, `agent_settled`, `resources_discover`.
+
+The module surface is still short (section I): `createBashTool` and `CustomEditor` are still
+`undefined`, and three of pi's own examples do not load because of it.
 
 **And two calls freeze the port** rather than merely differ: a load-time `pi.registerProvider`
 / `registerMcpServer` / `registerVirtualModel`, and a dialog (`ctx.ui.select` and its
@@ -323,6 +336,71 @@ same check.
 | `input` | `types.ts:1171-1181` — `{type, text, images?, source: "interactive"\|"rpc"\|"extension", streamingBehavior?}` | `js_extensions.rs:337` — source `"user"`, no `streamingBehavior`, `images: null` | `source` is outside the published enum; `streamingBehavior` is missing | probe `input`; parity `input-transform.ts`, `input-transform-streaming.ts` |
 
 ---
+
+## B.3 The provider events publish a different object, and cannot patch it
+
+`before_provider_request` is documented as *"Fired before a provider request is sent. **Can
+replace the payload**"* (`types.ts:900-904`), and the original's runner honours it: the
+handler's return value becomes the payload that is sent (`runner.ts:1380-1381`).
+
+Two things differ on the port:
+
+| | the original | the port |
+| --- | --- | --- |
+| the payload | the **wire payload** — `messages, model, tools, stream, max_completion_tokens, prompt_cache_key, prompt_cache_retention, store, stream_options` | the provider's **internal request** — `apiKey, baseUrl, headers, maxTokens, messages, metadata, model, pricingAvailable, provider, reasoning, temperature, timeoutMs` (no `tools` key at all) |
+| can a handler change it | yes — the return value replaces the payload | no — the provider hooks are observer semantics (`rpi/crates/rpi-extensions/src/provider_hooks.rs:6-12`: "the SDK `EventHandlerFn` returns `i32` (no result payload) … the `before_request` hook therefore returns `None` (no patch)") |
+
+So an extension that rewrites a provider request — the permission and prompt-rewriting
+extensions are written against that — works on the original and cannot on the port. The same
+holds for the response side: `after_provider_response` is documented as carrying the response's
+`status` and `headers` (`types.ts:918`), and the port answers `status: 200` and no headers,
+because the provider layer does not surface the HTTP response to the hooks.
+
+**The check:** the probe records the request's keys and the tool names it carries, and the
+message's content block types. Measured on 2026-10-20, one prompt run that triggers a tool
+call:
+
+```
+the original   before_provider_request ×2   tools: ["read","bash","edit","write"]
+               message_end ×5                system · user(text) · assistant(toolCall "read")
+                                             · toolResult(text) · assistant(text)
+the port       before_provider_request ×1   tools: []
+               message_end ×1                assistant(text)
+```
+
+**The mock must be per side.** The parity mock serves its scripted turns in order and clamps to
+the last one, so a mock shared by both sides hands the second side the scenario's *second* turn.
+`scripts/parity/run-all.mjs` already starts a separate mock per side for this reason; the
+extension API's event probe did not, and the first measurement was confounded by it. With one
+mock per side (the measurement above), the port's single request **is** served the tool-call
+turn, and the port's provider still answers with a text message.
+
+With one mock per side the port does the whole thing — it parses the tool call, executes the
+tool, sends the result back and makes a second request:
+
+```
+the original   before_provider_request ×2   tools: ["read","bash","edit","write"]
+               message_end ×5                system · user(text) · assistant(toolCall "read")
+                                             · toolResult(text) · assistant(text)
+the port       before_provider_request ×2   tools: ["read","bash","edit","write","grep","find","ls"]
+               message_end ×3                assistant(toolCall "read")
+                                             · toolResult(text) · assistant(text)
+```
+
+So the provider's parsing is **not** the defect. What is left, in this area:
+
+1. **The extension's own tool is missing from the request's tools** — the port's request carries
+   the built-ins and not `probe_tool`, although the extension registered it and
+   `pi.getActiveTools()` lists it. The model is never offered the extension's tool. That is the
+   registration path (`rpi/crates/rpi-cli/src/interactive_tui.rs:1483-1515`, the interactive
+   mode port's file).
+2. **The port's request carries `grep`, `find` and `ls`** where pi's carries only `read`, `bash`,
+   `edit`, `write` — the active tool set (section C).
+3. **The port fires `message_end` three times where the original fires it five** — the original's
+   also covers the system and the user message.
+4. **The tool result's error text differs**: the original's is
+   `ENOENT: no such file or directory, access '…'` and the port's is
+   `tool error: not_found: No such file or directory (os error 2) (path: …)`.
 
 # C. The `pi.*` methods that throw
 
@@ -710,13 +788,16 @@ fresh `rpi/target/debug/rpi`, in the same tmux harness:
 
 ```
 # the extension API: original vs port
-same: 110   different: 9
+same: 111   different: 8
 
-## different values (9)              the shape differences and the empty answers, listed below
+## different values (8)              the shape differences and the wrong contents, listed below
 ```
 
-9 differences in total, down from 65 when this was first measured. The two freezes are fixed and
-the three load-time registrations now work. The event side is still the
+Eight differences in total, down from 65 when this was first measured — and **two of the eight
+are artefacts of the harness** (the two runs use different agent directories and different mock
+ports), so the real remainder is **six**. The two freezes are fixed, the three load-time
+registrations work, the extension's own tool is declared to the model, the settings and the
+themes answer, and the dialogs return a promise like the original's. The event side is still the
 bigger gap: **the original fires 23 of the 41 categories in one prompt run, the port fires 13**
 (the table in section B.0 is the reference). The ten that do not fire are
 `after_provider_response`, `agent_before_settle`, `agent_settled`, `before_agent_start`,
@@ -764,18 +845,34 @@ The other differences are shape or value, and they are listed in
 | row | the original | the port |
 | --- | --- | --- |
 | `ctx.getSystemPrompt()` | the prompt, a string | `"[object Object]"` — the port returns an object where the original returns a string |
-| `pi.getActiveTools()` | `["read","bash","edit","write","probe_tool"]` — the extension's own tool is in the active set, so the model can call it | `["read","bash","edit","write","grep","find","ls"]` — **without the extension's own tool**: a tool an extension registers is still not declared to the model. Two defects, one proved, below |
-| `pi.getThinkingLevel()` | `"off"` | `{"level":"medium"}` — an object, and a different value |
-| `ctx.thinkingLevel` | a string | an object |
-| `pi.getSettings()` | the merged settings | `{}` |
-| `pi.getCommands()` | the command list, with `source` and `sourceInfo` — the extension's own command is in it | `[]` — the session's command list is never filled, so the extension's own command is missing too |
-| `ui.getAllThemes()` | the three themes with their paths | `[]` |
-| `ui.getTheme(name)` | the theme | `null` |
-| `ui.getToolsExpanded()` | `false` | `true` |
-| `ui.custom()` | a promise (the overlay with keyboard focus) | `null` — the other four dialogs return a promise now, this one does not |
-| `pi.getMcpServers()` | the server with its `extensionPath` | the server with an **empty** `extensionPath` |
-| `pi.getSessionName()` | `undefined` | `null` |
-| `ui.setWorkingIndicator()` | `undefined` | `null` — the port's host operation answers `null` where the original answers `undefined` |
+| row | the original | the port |
+| --- | --- | --- |
+| `pi.getAllTools()` — the extension's own tool | `{"name":"probe_tool","description":"probe","parameters":{…},"promptGuidelines":["probe guideline"],"exposure":"direct","namespace":{"name":"probe_ns","description":"ns"},"annotations":{"readOnlyHint":true},"sourceInfo":{"path":"…/agent-ts/extensions/probe.ts","source":"auto","scope":"user","origin":"top-level","baseDir":"…/agent-ts"}}` | `{"name":"probe_tool",…,"promptSnippet":null,"promptGuidelines":[],"exposure":"direct","namespace":null,"annotations":null,"sourceInfo":{"path":"","source":"builtin","scope":"user","origin":"top-level"}}` — **the keys are there, the values are lost**: the tool's own `promptGuidelines`, `namespace` and `annotations`, and its `sourceInfo` path and `source`. The port also adds a `promptSnippet` key pi's `ToolInfo` does not have, and its list lacks `powershell`, `codemode` and `tool_search` |
+| `pi.getCommands()` | `probe-cmd`, `llama`, `mcp` — the **extension-registered** commands, with no leading slash | the TUI's own slash commands (`/help`, `/clear`, …) **with** a leading slash, the extension's command **twice** (`/probe-cmd` and `probe-cmd`), and pi's extension-registered `llama` and `mcp` missing |
+| `pi.getSettings()` | the **file's** content — `{"threeDEmptySession":true,"lastChangelogVersion":"1.3.0"}` | the **effective** set — `transport`, `sessionShareDestination`, `steeringMode`, `followUpMode`, `compaction`, … |
+| `ui.getAllThemes()` | `[{name:"system"},{name:"dark",path:"…/dark.json"},{name:"light",path:"…/light.json"}]` | `[{name:"dark",path:null},{name:"light",path:null},{name:"monochrome",path:null}]` — no `system`, an extra `monochrome`, and null paths |
+| `ui.getTheme("dark")` | the theme instance — `name`, `mode`, `fgAnsi`, `bgAnsi`, `concreteColors`, … | `{"name":"dark","path":null}` — a name and a null path, not a theme |
+| `ctx.getSystemPrompt()` | pi's prompt | the port's own — **the language area's**, the shape is right |
+
+(`ctx.model` and `pi.getMcpServers()` are the two harness artefacts: the two runs use different
+mock ports and different agent directories, so the values differ by construction. `ctx.model` is
+otherwise identical, and `pi.getMcpServers()` now carries the registering extension's path on both
+sides.)
+
+**Why the extension's own tool still does not reach the model.** The active set is right — the
+port's `pi.getActiveTools()` is now `["read","bash","edit","write","probe_tool"]`, the original's
+exactly — but the **provider request** carries only `["read","bash","edit","write"]`. So the tool
+list the request is built from is not the session's active list. That is
+`rpi/crates/rpi-cli/src/interactive_tui.rs:1483-1515` (the interactive mode port's file): either
+that block runs after the prompt is queued, or the tool list it installs is not the one the
+request is built from. The port's request carries the tools in the wire payload
+(`before_provider_request`), so this is visible directly.
+
+(The history, for the record: the dispatch at `:1450` used to run **synchronously on the main
+thread**, and the tool wiring (`:1456-1502`) and the command publication (`:1562`) were
+**after** it — so a handler that opened a dialog stopped both from ever running, and the pull
+for the tool list (`extensions.tools()`) blocked on the runtime thread that was running the
+handler. Both are fixed. What is left is that the request is built from a different list.)
 
 ### A note on the probe's history (why the first baseline had 19 rows in it)
 

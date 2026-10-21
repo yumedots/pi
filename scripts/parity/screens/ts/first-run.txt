@@ -1,6 +1,6 @@
 # screen: first-run
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/first-run' && env PI_EXPERIMENTAL='1' HOME='/tmp/pi-screens/home/ts/first-run'  PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/first-run' && env PI_EXPERIMENTAL='1' HOME='/tmp/pi-screens/home/ts/first-run'  PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: (none)
 # note: First run: the theme picker (PI_EXPERIMENTAL=1, no agent dir override, no settings.json).
 

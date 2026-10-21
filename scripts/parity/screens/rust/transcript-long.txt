@@ -1,8 +1,9 @@
 # screen: transcript-long
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/transcript-long' && HOME='/tmp/pi-screens/home/rust/transcript-long' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/transcript-long' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/transcript-long' && HOME='/tmp/pi-screens/home/rust/transcript-long' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/transcript-long' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: show me a long answer Enter
 # note: A long answer that scrolls the transcript.
+
 
  This paragraph is deliberately long so the transcript scrolls and the viewport has to drop the top
  of the answer.
@@ -30,7 +31,6 @@
  Even more text. The point of this answer is to be taller than the thirty row pane.
 
 
-
 >
 
-mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens            /private/tmp/pi-screens/work/rust/transcript-long
+mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                 /private/tmp/pi-screens/work/transcript-long

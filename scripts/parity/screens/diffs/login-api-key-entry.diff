@@ -16,5 +16,3 @@
 +Enter saves to auth.json · Esc cancels
 - (escape/ctrl+c to cancel, enter to submit)
 +
--mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens           /private/tmp/pi-screens/work/login-api-key-entry
-+mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens      /private/tmp/pi-screens/work/login-api-key-entry

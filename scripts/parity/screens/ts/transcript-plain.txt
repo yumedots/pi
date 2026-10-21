@@ -1,6 +1,6 @@
 # screen: transcript-plain
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/transcript-plain' && HOME='/tmp/pi-screens/home/ts/transcript-plain' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/transcript-plain' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/transcript-plain' && HOME='/tmp/pi-screens/home/ts/transcript-plain' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/transcript-plain' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: hello world Enter
 # note: A plain answer in the transcript.
 
@@ -33,4 +33,4 @@
 
 >
 
-mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens             /private/tmp/pi-screens/work/ts/transcript-plain
+mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                /private/tmp/pi-screens/work/transcript-plain

@@ -1,6 +1,6 @@
 # screen: session-tree
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/session-tree' && HOME='/tmp/pi-screens/home/ts/session-tree' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/session-tree' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline  --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/session-tree' && HOME='/tmp/pi-screens/home/ts/session-tree' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/session-tree' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline  --provider mock --model mock/mock-1
 # keys: hello world Enter /tree Enter
 # note: /tree: the session tree, with one entry in it.
 
@@ -33,4 +33,4 @@
   (3/3)
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                 /private/tmp/pi-screens/work/ts/session-tree
+mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                    /private/tmp/pi-screens/work/session-tree

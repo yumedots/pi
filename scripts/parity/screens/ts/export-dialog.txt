@@ -1,8 +1,9 @@
 # screen: export-dialog
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/export-dialog' && HOME='/tmp/pi-screens/home/ts/export-dialog' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/export-dialog' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline  --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/export-dialog' && HOME='/tmp/pi-screens/home/ts/export-dialog' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/export-dialog' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline  --provider mock --model mock/mock-1
 # keys: hello world Enter /export Enter
 # note: /export: the export dialog.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -20,7 +21,7 @@
 
  Hello from the parity mock.
 
- Session exported to: pi-session-2026-10-20T22-48-52-353Z_01a15b80-d581-75ac-b717-fb42cfd76b89.html
+ Session exported to: pi-session-2026-10-21T00-40-10-785Z_01a15be6-bd21-7033-88c9-416f3816d92e.html
 
 
 
@@ -32,4 +33,4 @@
 
 >
 
-mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                /private/tmp/pi-screens/work/ts/export-dialog
+mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                   /private/tmp/pi-screens/work/export-dialog

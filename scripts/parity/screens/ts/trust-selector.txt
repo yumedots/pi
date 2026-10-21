@@ -1,8 +1,9 @@
 # screen: trust-selector
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/trust-selector' && HOME='/tmp/pi-screens/home/ts/trust-selector' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/trust-selector' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/trust-selector' && HOME='/tmp/pi-screens/home/ts/trust-selector' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/trust-selector' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: /trust Enter
 # note: The /trust selector inside the interactive session.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -20,16 +21,16 @@
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
  Project trust
- /private/tmp/pi-screens/work/ts/trust-selector
+ /private/tmp/pi-screens/work/trust-selector
 
  Saved decision: none
  Current session: trusted
 
  →   Trust
-     Trust parent folder (/private/tmp/pi-screens/work/ts)
+     Trust parent folder (/private/tmp/pi-screens/work)
      Do not trust
 
  ↑↓ navigate  enter save  escape/ctrl+c cancel
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                /private/tmp/pi-screens/work/ts/trust-selector
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                   /private/tmp/pi-screens/work/trust-selector

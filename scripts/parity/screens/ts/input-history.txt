@@ -1,8 +1,9 @@
 # screen: input-history
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/input-history' && HOME='/tmp/pi-screens/home/ts/input-history' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/input-history' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/input-history' && HOME='/tmp/pi-screens/home/ts/input-history' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/input-history' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: hello world Enter Up
 # note: The input box with the prompt history open.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -32,4 +33,4 @@
 
 > hello world
 
-mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                /private/tmp/pi-screens/work/ts/input-history
+mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                   /private/tmp/pi-screens/work/input-history

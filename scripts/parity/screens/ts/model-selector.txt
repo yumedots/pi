@@ -1,8 +1,9 @@
 # screen: model-selector
 # side: ts
-# command: cd '/tmp/pi-screens/work/ts/model-selector' && HOME='/tmp/pi-screens/home/ts/model-selector' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/model-selector' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
+# command: cd '/tmp/pi-screens/work/model-selector' && HOME='/tmp/pi-screens/home/ts/model-selector' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/ts/model-selector' PI_PARITY_CLOCK='/tmp/pi-screens/clock' bun --preload '/Users/gabriel/pi-native/scripts/parity/clock-preload.mjs' '/Users/gabriel/pi/packages/coding-agent/src/cli.ts' --offline --no-session --provider mock --model mock/mock-1
 # keys: /model Enter
 # note: /model: the model selector.
+
 
  ▀▀█  v1.3.0
  █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
@@ -32,4 +33,4 @@
 → ✓ mock-1                        [mock]
   Model catalogs refreshed.
   Enter to select · Ctrl+S to set as default · Escape/Ctrl+C to cancel
-mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                /private/tmp/pi-screens/work/ts/model-selector
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                   /private/tmp/pi-screens/work/model-selector

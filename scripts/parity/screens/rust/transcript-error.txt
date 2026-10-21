@@ -1,6 +1,6 @@
 # screen: transcript-error
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/transcript-error' && HOME='/tmp/pi-screens/home/rust/transcript-error' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/transcript-error' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/transcript-error' && HOME='/tmp/pi-screens/home/rust/transcript-error' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/transcript-error' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: hello world Enter
 # note: An error in the transcript (the provider endpoint is not listening).
 
@@ -33,4 +33,4 @@
 
 >
 
-mock/mock-1 / ░░░░░░░░░░ ?/128,000 tokens         /private/tmp/pi-screens/work/rust/transcript-error
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                 /private/tmp/pi-screens/work/transcript-error

@@ -1,44 +1,42 @@
 --- ts/overlay-doom.txt
 +++ rust/overlay-doom.txt
 - ▀▀█  v1.3.0
-+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
-- █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
-+
-- Press ctrl+o to show full startup help.
-+
--
 + Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
-- Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+- █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more
 + on` to ~/.tmux.conf and restart tmux.
--
+- Press ctrl+o to show full startup help.
 + Failed to load extension
 -
 + "/Users/gabriel/pi/packages/coding-agent/examples/extensions/doom-overlay/index.ts": javascript
-- Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
-+ error: SyntaxError: Cannot use 'import.meta' outside a module
-- on` to ~/.tmux.conf and restart tmux.
+- Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
++ error: SyntaxError: Identifier '__dirname' has already been declared
+-
 +     at new Function (<anonymous>)
 -
-+     at loadModule (eval at globalThis.__piRun (unknown source), <anonymous>:14542:21)
++     at loadModule (eval at globalThis.__piRun (unknown source), <anonymous>:44079:21)
+- Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
++     at resolveModule (eval at globalThis.__piRun (unknown source), <anonymous>:44066:14)
+- on` to ~/.tmux.conf and restart tmux.
++     at eval (eval at globalThis.__piRun (unknown source), <anonymous>:44091:22)
 -
-+     at resolveModule (eval at globalThis.__piRun (unknown source), <anonymous>:14529:14)
++     at eval (eval at loadModule (eval at globalThis.__piRun (unknown source)), <anonymous>:9:23)
+-
++     at loadModule (eval at globalThis.__piRun (unknown source), <anonymous>:44089:5)
 - /doom-overlay
-+     at eval (eval at globalThis.__piRun (unknown source), <anonymous>:14553:22)
++     at loadExtension (eval at globalThis.__piRun (unknown source), <anonymous>:44394:21)
 -
-+     at eval (eval at loadModule (eval at globalThis.__piRun (unknown source)), <anonymous>:6:23)
++     at globalThis.__piCall (eval at globalThis.__piRun (unknown source), <anonymous>:270:24)
+- Loading DOOM from
++
+- /Users/gabriel/pi/packages/coding-agent/examples/extensions/doom-overlay/doom1.wad...
++
 -
-+     at loadModule (eval at globalThis.__piRun (unknown source), <anonymous>:14551:5)
-- Loading DOOM...
-+     at loadExtension (eval at globalThis.__piRun (unknown source), <anonymous>:14849:21)
--
-+     at globalThis.__piCall (eval at globalThis.__piRun (unknown source), <anonymous>:265:24)
++ /doom-overlay
 -
 + /doom-overlay
 -
 + Error: http transport error: error sending request for url
 -
 + (http://127.0.0.1:9/v1/chat/completions)
--⠹ Working
+-⠋ Working
 +
--mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                  /private/tmp/pi-screens/work/overlay-doom
-+mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens             /private/tmp/pi-screens/work/overlay-doom

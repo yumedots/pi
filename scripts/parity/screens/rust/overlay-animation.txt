@@ -1,6 +1,6 @@
 # screen: overlay-animation
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/overlay-animation' && HOME='/tmp/pi-screens/home/rust/overlay-animation' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/overlay-animation' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key --extension /Users/gabriel/pi/packages/coding-agent/examples/extensions/overlay-qa-tests.ts
+# command: cd '/tmp/pi-screens/work/overlay-animation' && HOME='/tmp/pi-screens/home/rust/overlay-animation' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/overlay-animation' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key --extension /Users/gabriel/pi/packages/coding-agent/examples/extensions/overlay-qa-tests.ts
 # keys: /overlay-animation Enter
 # note: An example extension that paints an overlay (/overlay-animation).
 
@@ -15,8 +15,8 @@
  Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
  on` to ~/.tmux.conf and restart tmux.
  Error: Extension command failed: javascript error: Error: unknown command: /overlay-animation
-     at runCommand (eval at globalThis.__piRun (unknown source), <anonymous>:14939:11)
-     at globalThis.__piCall (eval at globalThis.__piRun (unknown source), <anonymous>:265:24)
+     at runCommand (eval at globalThis.__piRun (unknown source), <anonymous>:44484:11)
+     at globalThis.__piCall (eval at globalThis.__piRun (unknown source), <anonymous>:270:24)
 
 
 
@@ -33,4 +33,4 @@
 
 >
 
-mock/mock-1 / ░░░░░░░░░░ ?/128,000 tokens        /private/tmp/pi-screens/work/rust/overlay-animation
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                /private/tmp/pi-screens/work/overlay-animation

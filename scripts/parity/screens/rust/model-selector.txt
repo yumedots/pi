@@ -1,6 +1,6 @@
 # screen: model-selector
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/model-selector' && HOME='/tmp/pi-screens/home/rust/model-selector' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/model-selector' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/model-selector' && HOME='/tmp/pi-screens/home/rust/model-selector' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/model-selector' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline --no-session --provider mock --model mock/mock-1 --api-key parity-key
 # keys: /model Enter
 # note: /model: the model selector.
 
@@ -33,4 +33,4 @@ Type to filter by name, provider, or id
 >
 
 → ✓ mock-1                        [mock]
-mock/mock-1 / ░░░░░░░░░░ ?/128,000 tokens           /private/tmp/pi-screens/work/rust/model-selector
+mock/mock-1 / ░░░░░░░░░░ 0.0% 0 tokens                   /private/tmp/pi-screens/work/model-selector

@@ -1,6 +1,6 @@
 # screen: export-dialog
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/export-dialog' && HOME='/tmp/pi-screens/home/rust/export-dialog' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/export-dialog' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline  --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/export-dialog' && HOME='/tmp/pi-screens/home/rust/export-dialog' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/export-dialog' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline  --provider mock --model mock/mock-1 --api-key parity-key
 # keys: hello world Enter /export Enter
 # note: /export: the export dialog.
 
@@ -20,9 +20,9 @@
 
 
  Hello from the parity mock.
-
  Exported session to
- /private/tmp/pi-screens/work/rust/export-dialog/01a15bb1-f50b-72cc-8270-06463818037d.md
+ /private/tmp/pi-screens/work/export-dialog/01a15bf0-2d18-7685-92a1-93511478b19b.md
+
 
 
 
@@ -33,4 +33,4 @@
 
 >
 
-mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens              /private/tmp/pi-screens/work/rust/export-dialog
+mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                   /private/tmp/pi-screens/work/export-dialog

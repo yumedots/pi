@@ -22,7 +22,7 @@ Every screen of the TypeScript original and of the Rust port, captured as exact 
 - The port's panes were captured against the binary below; the original's
   against the TypeScript tree in `packages/coding-agent/src/cli.ts`.
 
-  - port: `/Users/gabriel/pi-native/rpi/target-agents/debug/rpi (mtime 2026-10-20T23:48:59.275Z)`
+  - port: `/Users/gabriel/pi-native/rpi/target-agents/debug/rpi (mtime 2026-10-21T00:54:02.977Z)`
   - original: `/Users/gabriel/pi/packages/coding-agent/src/cli.ts` (run with bun)
 
   The port's tree is edited in place, so re-run
@@ -31,8 +31,8 @@ Every screen of the TypeScript original and of the Rust port, captured as exact 
 
 | Screen | Keys (ts) | Keys (rust) | Match | First differing line | Port file |
 |---|---|---|---|---|---|
-| `startup` |  |  | differs | line 29: ts "mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                       /private/tmp/pi-screens/work/startup" vs rust "mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens                  /private/tmp/pi-screens/work/startup" | rpi-cli/src/interactive_tui/rendering.rs (add_welcome_message), rpi-tui/src/editor.rs (render_card), rpi-tui/src/footer.rs |
-| `startup-3d` |  |  | differs | line 6: ts "                                        ⢰⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⡆" vs rust "" | rpi-tui/src/empty_session.rs (EmptySessionScreen), rpi-tui/src/logo3d.rs (Logo3d) |
+| `startup` |  |  | match |  | rpi-cli/src/interactive_tui/rendering.rs (add_welcome_message), rpi-tui/src/editor.rs (render_card), rpi-tui/src/footer.rs |
+| `startup-3d` |  |  | differs | line 2: ts "" vs rust "(missing)" | rpi-tui/src/empty_session.rs (EmptySessionScreen), rpi-tui/src/logo3d.rs (Logo3d) |
 | `first-run` |  |  | match |  | rpi-tui/src/first_run.rs (FirstRunDialog) |
 | `trust-prompt` |  |  | differs | line 1: ts "  Trust project folder?" vs rust " ▀▀█  v1.3.0" | not implemented - rpi-cli/src/config.rs (the port does not gate project resources behind trust, so there is no prompt) |
 | `trust-selector` | /trust Enter | /trust Enter | differs | line 10: ts "" vs rust " Current project marked trusted." | not implemented as a selector - rpi-cli/src/interactive_tui/commands.rs (TrustCommand only writes a note) |
@@ -61,23 +61,23 @@ Every screen of the TypeScript original and of the Rust port, captured as exact 
 | `session-menu` | hello world Enter /resume Enter | hello world Enter /resume Enter | differs | line 21: ts "  Sessions" vs rust "" | rpi-cli/src/interactive_tui/selectors.rs (open_session_selector), rpi-cli/src/interactive_tui/selector_keys.rs (session_menu_items), rpi-tui/src/searchable_select.rs |
 | `session-search` | hello world Enter /resume Enter hello | hello world Enter /resume Enter hello | differs | line 21: ts "  Sessions" vs rust "" | rpi-tui/src/searchable_select.rs (SearchableSelectList); rpi-cli/src/interactive_tui/session_search.rs holds the query language but has no caller |
 | `session-tree` | hello world Enter /tree Enter | hello world Enter /tree Enter | differs | line 1: ts " █▀ █ escape interrupt · ctrl+c twice to exit · / commands · ! bash · ctrl+o more" vs rust " ▀▀█  v1.3.0" | rpi-cli/src/interactive_tui/selectors.rs (open_tree_selector), rpi-cli/src/interactive_tui/selector_keys.rs (tree_menu_items) |
-| `help-startup` | C-o | C-o | differs | line 1: ts " ctrl+c twice to exit" vs rust " ▀▀█  v1.3.0" | rpi-cli/src/interactive_tui/rendering.rs (compact_hints, add_welcome_message) |
-| `hotkeys` | /hotkeys Enter | /hotkeys Enter | differs | line 30: ts "mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                       /private/tmp/pi-screens/work/hotkeys" vs rust "mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens                  /private/tmp/pi-screens/work/hotkeys" | rpi-cli/src/interactive_tui/rendering.rs (add_hotkeys_message), rpi-tui/src/markdown.rs |
-| `changelog` | /changelog Enter | /changelog Enter | differs | line 30: ts "mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                     /private/tmp/pi-screens/work/changelog" vs rust "mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens                /private/tmp/pi-screens/work/changelog" | rpi-cli/src/interactive_tui/rendering.rs (add_changelog_message), rpi-tui/src/markdown.rs |
+| `help-startup` | C-o | C-o | match |  | rpi-cli/src/interactive_tui/rendering.rs (compact_hints, add_welcome_message) |
+| `hotkeys` | /hotkeys Enter | /hotkeys Enter | match |  | rpi-cli/src/interactive_tui/rendering.rs (add_hotkeys_message), rpi-tui/src/markdown.rs |
+| `changelog` | /changelog Enter | /changelog Enter | match |  | rpi-cli/src/interactive_tui/rendering.rs (add_changelog_message), rpi-tui/src/markdown.rs |
 | `version` |  |  | not reachable | the original has no /version command; the version is printed in the startup header (see the startup screen) and `pi --version` exits before the TUI opens |  |
-| `quit-confirm` | C-c | C-c | differs | line 29: ts "mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                  /private/tmp/pi-screens/work/quit-confirm" vs rust "mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens             /private/tmp/pi-screens/work/quit-confirm" | rpi-cli/src/interactive_tui.rs (the ctrl+c handler), rpi-cli/src/interactive_tui/state.rs (show_warning) |
-| `export-dialog` | hello world Enter /export Enter | hello world Enter /export Enter | differs | line 17: ts " Session exported to: pi-session-<timestamp>_01a15b80-d581-75ac-b717-fb42cfd76b89.html" vs rust " Exported session to" | rpi-cli/src/interactive_tui/commands.rs (ExportCommand), rpi-cli/src/interactive_tui.rs (ExportSession), rpi-cli/src/export.rs |
-| `transcript-plain` | hello world Enter | hello world Enter | differs | line 29: ts "mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens             /private/tmp/pi-screens/work/transcript-plain" vs rust "mock/mock-1 / ▏░░░░░░░░░ 0.0% <n> tokens           /private/tmp/pi-screens/work/transcript-plain" | rpi-cli/src/interactive_tui/rendering.rs (add_user_message), rpi-tui/src/user_message.rs, rpi-tui/src/assistant_message.rs |
-| `transcript-tool` | read the fixture Enter | read the fixture Enter | differs | line 16: ts " read tool-input.txt" vs rust "" | rpi-tui/src/tool_execution.rs (ToolExecutionComponent), rpi-tui/src/tool_renderers.rs |
-| `transcript-thinking` | hello world Enter | hello world Enter | differs | line 14: ts "" vs rust " + Thought · <duration>" | rpi-tui/src/assistant_message.rs (AssistantBlock::Thinking) |
-| `transcript-long` | show me a long answer Enter | show me a long answer Enter | differs | line 27: ts ">" vs rust "" | rpi-tui/src/assistant_message.rs, rpi-tui/src/scroll_view.rs |
+| `quit-confirm` | C-c | C-c | match |  | rpi-cli/src/interactive_tui.rs (the ctrl+c handler), rpi-cli/src/interactive_tui/state.rs (show_warning) |
+| `export-dialog` | hello world Enter /export Enter | hello world Enter /export Enter | differs | line 16: ts "" vs rust " Exported session to" | rpi-cli/src/interactive_tui/commands.rs (ExportCommand), rpi-cli/src/interactive_tui.rs (ExportSession), rpi-cli/src/export.rs |
+| `transcript-plain` | hello world Enter | hello world Enter | match |  | rpi-cli/src/interactive_tui/rendering.rs (add_user_message), rpi-tui/src/user_message.rs, rpi-tui/src/assistant_message.rs |
+| `transcript-tool` | read the fixture Enter | read the fixture Enter | match |  | rpi-tui/src/tool_execution.rs (ToolExecutionComponent), rpi-tui/src/tool_renderers.rs |
+| `transcript-thinking` | hello world Enter | hello world Enter | match |  | rpi-tui/src/assistant_message.rs (AssistantBlock::Thinking) |
+| `transcript-long` | show me a long answer Enter | show me a long answer Enter | match |  | rpi-tui/src/assistant_message.rs, rpi-tui/src/scroll_view.rs |
 | `transcript-error` | hello world Enter | hello world Enter | differs | line 14: ts "" vs rust " Error: http transport error: error sending request for url" | rpi-cli/src/interactive_tui/rendering.rs (add_error_message) |
-| `input-empty` |  |  | differs | line 29: ts "mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                   /private/tmp/pi-screens/work/input-empty" vs rust "mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens              /private/tmp/pi-screens/work/input-empty" | rpi-tui/src/editor.rs (Editor::render, render_card) |
-| `input-text` | hello world | hello world | differs | line 29: ts "mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                    /private/tmp/pi-screens/work/input-text" vs rust "mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens               /private/tmp/pi-screens/work/input-text" | rpi-tui/src/editor.rs (Editor::render, render_card) |
-| `input-autocomplete` | / | / | differs | line 20: ts "→ settings       Open settings menu" vs rust "" | rpi-cli/src/interactive_tui/autocomplete.rs (render_autocomplete), rpi-tui/src/autocomplete.rs |
-| `input-history` | hello world Enter Up | hello world Enter Up | differs | line 14: ts "" vs rust " Hello from the parity mock." | rpi-tui/src/editor.rs (EditorState.history, Editor::handle_key) |
+| `input-empty` |  |  | match |  | rpi-tui/src/editor.rs (Editor::render, render_card) |
+| `input-text` | hello world | hello world | match |  | rpi-tui/src/editor.rs (Editor::render, render_card) |
+| `input-autocomplete` | / | / | differs | line 25: ts "  (1/31)" vs rust "  (1/29)" | rpi-cli/src/interactive_tui/autocomplete.rs (render_autocomplete), rpi-tui/src/autocomplete.rs |
+| `input-history` | hello world Enter Up | hello world Enter Up | differs | line 15: ts " Hello from the parity mock." vs rust " hello world" | rpi-tui/src/editor.rs (EditorState.history, Editor::handle_key) |
 | `overlay-animation` | /overlay-animation Enter | /overlay-animation Enter | differs | line 7: ts "                         ╭────────────────────────────────────────────────╮" vs rust "" | rpi-tui/src/overlay.rs (OverlayManager); rpi-cli/src/js_extensions.rs (ui.custom installs an editor component, not a real overlay) |
-| `overlay-doom` | /doom-overlay Enter | /doom-overlay Enter | differs | line 1: ts " ▀▀█  v1.3.0" vs rust " Pi can explain its own features and look up its docs. Ask it how to use or extend Pi." | rpi-tui/src/overlay.rs (OverlayManager); rpi-cli/src/js_extensions.rs (ui.custom installs an editor component, not a real overlay) |
+| `overlay-doom` | /doom-overlay Enter | /doom-overlay Enter | differs | line 1: ts " ▀▀█  v1.3.0" vs rust " Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys" | rpi-tui/src/overlay.rs (OverlayManager); rpi-cli/src/js_extensions.rs (ui.custom installs an editor component, not a real overlay) |
 
-1 match, 38 differ, 8 not reachable.
+12 match, 27 differ, 8 not reachable.
 

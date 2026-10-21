@@ -1,6 +1,6 @@
 # screen: session-tree
 # side: rust
-# command: cd '/tmp/pi-screens/work/rust/session-tree' && HOME='/tmp/pi-screens/home/rust/session-tree' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/session-tree' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline  --provider mock --model mock/mock-1 --api-key parity-key
+# command: cd '/tmp/pi-screens/work/session-tree' && HOME='/tmp/pi-screens/home/rust/session-tree' PI_CODING_AGENT_DIR='/tmp/pi-screens/agent/rust/session-tree' PI_PARITY_CLOCK='/tmp/pi-screens/clock' '/Users/gabriel/pi-native/rpi/target-agents/debug/rpi' --offline  --provider mock --model mock/mock-1 --api-key parity-key
 # keys: hello world Enter /tree Enter
 # note: /tree: the session tree, with one entry in it.
 
@@ -31,6 +31,6 @@ Type to filter by entry type, sequence, or id
 
 >
 
-→ message #2                      01a15bb0-f6a
-  message #9 (current)            01a15bb0-f71
-mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens               /private/tmp/pi-screens/work/rust/session-tree
+→ message #2                      01a15bef-2ec
+  message #9 (current)            01a15bef-2f2
+mock/mock-1 / ▏░░░░░░░░░ 0.0% 49 tokens                    /private/tmp/pi-screens/work/session-tree

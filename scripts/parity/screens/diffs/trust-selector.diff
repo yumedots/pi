@@ -14,7 +14,7 @@
 +
 - →   Trust
 +
--     Trust parent folder (/private/tmp/pi-screens/work/ts)
+-     Trust parent folder (/private/tmp/pi-screens/work)
 +
 -     Do not trust
 +
@@ -24,5 +24,3 @@
 +>
 -────────────────────────────────────────────────────────────────────────────────────────────────────
 +
--mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens                /private/tmp/pi-screens/work/trust-selector
-+mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens           /private/tmp/pi-screens/work/trust-selector

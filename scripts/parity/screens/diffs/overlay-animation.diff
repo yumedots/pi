@@ -9,9 +9,9 @@
 -                         │ Frame: <n>                                     │
 + Error: Extension command failed: javascript error: Error: unknown command: /overlay-animation
 -                         │ FPS: 30                                        │
-+     at runCommand (eval at globalThis.__piRun (unknown source), <anonymous>:14939:11)
++     at runCommand (eval at globalThis.__piRun (unknown source), <anonymous>:44484:11)
 - /overlay-animation      │                                                │
-+     at globalThis.__piCall (eval at globalThis.__piRun (unknown source), <anonymous>:265:24)
++     at globalThis.__piCall (eval at globalThis.__piRun (unknown source), <anonymous>:270:24)
 -                         │  ██████████                                    │
 +
 -                         │ Spinner: ◓                                     │
@@ -34,5 +34,3 @@
 +
 -⠼ Working
 +
--mock/mock-1 / ░░░░░░░░░░ 0.0% <n> tokens             /private/tmp/pi-screens/work/overlay-animation
-+mock/mock-1 / ░░░░░░░░░░ ?/<n> tokens        /private/tmp/pi-screens/work/overlay-animation
