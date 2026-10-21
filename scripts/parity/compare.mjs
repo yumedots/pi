@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const OUT = join(HERE, "out");
+const OUT = process.env.PI_PARITY_OUT ?? join(HERE, "out");
 const GOLDEN = join(HERE, "golden");
 
 const RULES = [

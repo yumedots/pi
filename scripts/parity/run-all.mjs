@@ -7,7 +7,7 @@ import { startMockServerProcess } from "./mock-server.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
-const OUT = join(HERE, "out");
+const OUT = process.env.PI_PARITY_OUT ?? join(HERE, "out");
 const GOLDEN = join(HERE, "golden");
 
 const WORK = WORK_DIR;

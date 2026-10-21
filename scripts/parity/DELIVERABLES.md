@@ -40,6 +40,13 @@ Two rules the harness needed to become a gate rather than a noisy report:
   animation's own frames are pinned by the Rust tests, which render at fixed
   times, and by the 3dicon script, which renders the TypeScript original at the
   same fixed times.
+- **Each run gets its own directories.** Two runs that share the output directory
+  overwrite each other's captures, and the result is a difference that belongs to
+  neither run — it looks exactly like a port regression. `PI_PARITY_OUT` chooses
+  the directory the captures land in (`drive.mjs` writes there, `compare.mjs` reads
+  there) and `PI_PARITY_HOME` chooses the work and agent directories. Set both to
+  a directory of your own when another run may be in flight; the defaults are the
+  shared `scripts/parity/out` and `/tmp/pi-parity`.
 - **A capture waits for the settled screen.** The app paints in pieces and
   repaints while the logo animates, so a read can land between two of them. The
   capture reads until two reads a good while apart agree.
