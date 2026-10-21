@@ -248,7 +248,6 @@ export { DefaultPackageManager } from "./core/package-manager.ts";
 export type { ResourceCollision, ResourceDiagnostic, ResourceLoader } from "./core/resource-loader.ts";
 export { DefaultResourceLoader, loadProjectContextFiles } from "./core/resource-loader.ts";
 export { buildSessionOptions, createRuntimeFactory, type RuntimeFactoryOptions } from "./core/runtime-factory.ts";
-export { BUILTIN_SLASH_COMMANDS, type BuiltinSlashCommand } from "./core/slash-commands.ts";
 // SDK for programmatic usage
 export {
 	AgentSessionRuntime,
@@ -278,11 +277,11 @@ export {
 	createWriteTool,
 	type PromptTemplate,
 } from "./core/sdk.ts";
+// Session controller and runtime factory: the pieces a host process (the server) drives.
+export { SessionController, type SessionControllerHooks } from "./core/session-controller.ts";
 export {
 	type BranchSummaryEntry,
 	buildContextEntries,
-// Session controller and runtime factory: the pieces a host process (the server) drives.
-export { SessionController, type SessionControllerHooks } from "./core/session-controller.ts";
 	buildSessionContext,
 	buildSessionProjection,
 	type CompactionEntry,
@@ -335,7 +334,23 @@ export {
 	type Skill,
 	type SkillFrontmatter,
 } from "./core/skills.ts";
+export { BUILTIN_SLASH_COMMANDS, type BuiltinSlashCommand } from "./core/slash-commands.ts";
 export { createSyntheticSourceInfo } from "./core/source-info.ts";
+// Theme utilities for custom tools and extensions
+export {
+	getLanguageFromPath,
+	getMarkdownTheme,
+	getSelectListTheme,
+	getSettingsListTheme,
+	highlightCode,
+	initTheme,
+	Theme,
+	type ThemeAppearance,
+	type ThemeBg,
+	type ThemeColor,
+	type ThemeStyle,
+	type ThemeToken,
+} from "./core/theme/theme.ts";
 export { type EditDiffResult, generateDiffString, generateUnifiedPatch } from "./core/tools/edit-diff.ts";
 // Tools
 export {
@@ -403,6 +418,20 @@ export {
 	type ProjectTrustStoreEntry,
 	type ProjectTrustUpdate,
 } from "./core/trust-manager.ts";
+// Shared render helpers for custom tools and extensions
+export {
+	type RenderDiffOptions,
+	renderDiff,
+} from "./core/ui/diff.ts";
+export {
+	keyHint,
+	keyText,
+	rawKeyHint,
+} from "./core/ui/keybinding-hints.ts";
+export {
+	truncateToVisualLines,
+	type VisualTruncateResult,
+} from "./core/ui/visual-truncate.ts";
 export {
 	type ModelRoute,
 	type ModelRouteReason,
@@ -420,11 +449,9 @@ export type { LoadedMcpConfig, McpExposure, McpServerConfig, McpServerEntry } fr
 export { createMcpExtension, type McpExtensionOptions, type McpTransportFactory } from "./extensions/mcp/index.ts";
 export { createToolSearchExtension } from "./extensions/tool-search/index.ts";
 // Main entry point
-export { type MainOptions, main } from "./main.ts";
+export { type InteractiveStartContext, type MainOptions, main } from "./main.ts";
 // Run modes for programmatic SDK usage
 export {
-	InteractiveMode,
-	type InteractiveModeOptions,
 	type JsonAgentSessionEvent,
 	type ModelInfo,
 	type PrintModeOptions,
@@ -436,64 +463,10 @@ export {
 	type RpcExtensionUIResponse,
 	type RpcResponse,
 	type RpcSessionState,
+	type RpcSlashCommand,
 	runPrintMode,
 	runRpcMode,
 } from "./modes/index.ts";
-// UI components for extensions
-export {
-	ArminComponent,
-	AssistantMessageComponent,
-	BashExecutionComponent,
-	BorderedLoader,
-	BranchSummaryMessageComponent,
-	CompactionSummaryMessageComponent,
-	CustomEditor,
-	type CustomEditorOptions,
-	CustomMessageComponent,
-	DynamicBorder,
-	ExtensionEditorComponent,
-	ExtensionInputComponent,
-	ExtensionSelectorComponent,
-	FooterComponent,
-	keyHint,
-	keyText,
-	LoginDialogComponent,
-	ModelSelectorComponent,
-	OAuthSelectorComponent,
-	type RenderDiffOptions,
-	rawKeyHint,
-	renderDiff,
-	type SettingsCallbacks,
-	type SettingsConfig,
-	SettingsSelectorComponent,
-	ShowImagesSelectorComponent,
-	SkillInvocationMessageComponent,
-	ThemeSelectorComponent,
-	type RpcSlashCommand,
-	ThinkingSelectorComponent,
-	ToolExecutionComponent,
-	type ToolExecutionOptions,
-	TreeSelectorComponent,
-	truncateToVisualLines,
-	UserMessageComponent,
-	UserMessageSelectorComponent,
-	type VisualTruncateResult,
-} from "./modes/interactive/components/index.ts";
-// Theme utilities for custom tools and extensions
-export {
-	getLanguageFromPath,
-	getMarkdownTheme,
-	getSelectListTheme,
-	getSettingsListTheme,
-	highlightCode,
-	initTheme,
-	Theme,
-	type ThemeAppearance,
-	type ThemeBg,
-	type ThemeColor,
-	type ThemeStyle,
-	type ThemeToken,
-} from "./modes/interactive/theme/theme.ts";
 // Clipboard utilities
 export { copyToClipboard } from "./utils/clipboard.ts";
 export { parseFrontmatter, stripFrontmatter } from "./utils/frontmatter.ts";

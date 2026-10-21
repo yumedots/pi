@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
 import chalk from "chalk";
 import lockfile from "proper-lockfile";
-import { selectConfig } from "./cli/config-selector.ts";
-import { createProjectTrustContext } from "./cli/project-trust.ts";
+import { getConfigSelector } from "./cli/config-selector-host.ts";
+import { createTuiProjectTrustContext } from "./cli/project-trust-tui.ts";
 import {
 	APP_NAME,
 	CONFIG_DIR_NAME,
@@ -727,7 +727,7 @@ async function createCommandSettingsManager(options: {
 		trustOverride: options.projectTrustOverride,
 		defaultProjectTrust: settingsManager.getDefaultProjectTrust(),
 		extensionsResult,
-		projectTrustContext: createProjectTrustContext({
+		projectTrustContext: createTuiProjectTrustContext({
 			cwd: options.cwd,
 			mode: appMode,
 			settingsManager,
@@ -803,6 +803,17 @@ export async function handleConfigCommand(
 	const projectResolvedPaths = settingsManager.isProjectTrusted()
 		? await new DefaultPackageManager({ cwd, agentDir, settingsManager, builtinExtensions }).resolve()
 		: globalResolvedPaths;
+
+	const selectConfig = getConfigSelector();
+	if (!selectConfig) {
+		console.error(
+			chalk.red(
+				`The interactive config editor is part of the pi client. Run "${CONFIG_COMMAND_USAGE}" with the pi client installed.`,
+			),
+		);
+		process.exitCode = 1;
+		return true;
+	}
 
 	await selectConfig({
 		resolvedPaths: { global: globalResolvedPaths, project: projectResolvedPaths },

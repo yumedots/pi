@@ -5,8 +5,8 @@ import { resetCapabilitiesCache, setCapabilityOverrides } from "@earendil-works/
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { setThemeJsonValidator } from "../src/modes/interactive/theme/theme.ts";
-import { validateThemeJson } from "../src/modes/interactive/theme/theme-schema.ts";
+import { setThemeJsonValidator } from "../src/core/theme/theme.ts";
+import { validateThemeJson } from "../src/core/theme/theme-schema.ts";
 
 setThemeJsonValidator(validateThemeJson);
 
@@ -31,7 +31,7 @@ describe("DefaultResourceLoader theme color mode", () => {
 		mkdirSync(cwd, { recursive: true });
 
 		themeJson = JSON.parse(
-			readFileSync(join(process.cwd(), "src", "modes", "interactive", "theme", "dark.json"), "utf-8"),
+			readFileSync(join(process.cwd(), "src", "core", "theme", "dark.json"), "utf-8"),
 		) as TestThemeJson;
 		themeJson.name = "capability-test";
 		themeJson.colors.userMessageBg = "#3c3544";

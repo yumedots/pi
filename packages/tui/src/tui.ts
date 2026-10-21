@@ -130,6 +130,8 @@ export interface Component {
 	 */
 	renderOverlayAbove?(width: number): string[];
 
+	getBoxHeight?(): number;
+
 	/**
 	 * Row inside the component's box where the overlay's bottom edge sits. Defaults to 0,
 	 * meaning the overlay is painted directly above the box.
@@ -517,6 +519,12 @@ export class Container implements Component {
 	/** Row inside this container where the overlay's bottom edge sits. */
 	getOverlayRow(): number {
 		return this.overlayRow;
+	}
+
+	getBoxHeight(): number {
+		const first = this.children[0];
+		if (!first) return 0;
+		return first.getBoxHeight?.() ?? this.mouseLayout?.children[0]?.height ?? 0;
 	}
 }
 

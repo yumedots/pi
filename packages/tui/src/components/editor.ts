@@ -510,6 +510,10 @@ export class Editor implements Component, Focusable {
 		this.setAutocompleteTriggerCharacters(provider.triggerCharacters ?? []);
 	}
 
+	getBoxHeight(): number {
+		return this.renderedBoxHeight;
+	}
+
 	/**
 	 * Add a prompt to history for up/down arrow navigation.
 	 * Called after successful submission.

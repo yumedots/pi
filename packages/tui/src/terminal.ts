@@ -45,6 +45,10 @@ export function isAppleTerminalSession(): boolean {
 	return process.platform === "darwin" && process.env.TERM_PROGRAM === "Apple_Terminal";
 }
 
+export function getTerminalRows(): number {
+	return process.stdout.rows || Number(process.env.LINES) || 24;
+}
+
 /**
  * Refresh terminal dimensions on POSIX platforms by sending SIGWINCH to this process.
  * Best-effort: some environments (restricted seccomp or LSM policies) return EACCES
@@ -534,7 +538,7 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	get rows(): number {
-		return process.stdout.rows || Number(process.env.LINES) || 24;
+		return getTerminalRows();
 	}
 
 	moveBy(lines: number): void {

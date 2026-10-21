@@ -4,8 +4,8 @@ import type { TerminalColorMode } from "@earendil-works/pi-tui";
 import { detectCapabilities, getTerminalColorMode } from "@earendil-works/pi-tui/terminal-capabilities";
 import chalk from "chalk";
 import { CONFIG_DIR_NAME } from "../config.ts";
-import { loadThemeFromPath, type Theme } from "../modes/interactive/theme/theme.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
+import { loadThemeFromPath, type Theme } from "./theme/theme.ts";
 
 export type { ResourceCollision, ResourceDiagnostic } from "./diagnostics.ts";
 

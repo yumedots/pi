@@ -6,7 +6,7 @@
  */
 
 import { createInterface } from "node:readline";
-import { type ImageContent, modelsAreEqual } from "@earendil-works/pi-ai";
+import type { ImageContent } from "@earendil-works/pi-ai";
 import { setCapabilityOverrides } from "@earendil-works/pi-tui/terminal-capabilities";
 import chalk from "chalk";
 import { type Args, type Mode, normalizeSessionName, parseArgs, printHelp } from "./cli/args.ts";
@@ -28,31 +28,23 @@ import {
 } from "./cli/auth-command.ts";
 import { resolveCredentialForPrint } from "./cli/credential-print.ts";
 import { processFileArguments } from "./cli/file-processor.ts";
-import { shouldRunFirstTimeSetup } from "./cli/first-time-setup.ts";
 import { buildInitialMessage } from "./cli/initial-message.ts";
 import { listModels } from "./cli/list-models.ts";
-import { createProjectTrustContext } from "./cli/project-trust.ts";
-import { loadSessionPicker } from "./cli/session-picker.lazy.ts";
-import { loadStartupUi } from "./cli/startup-ui.lazy.ts";
+import { createTuiProjectTrustContext } from "./cli/project-trust-tui.ts";
 import { APP_NAME, ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";
 import { type CreateAgentSessionRuntimeFactory, createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
-import {
-	type AgentSessionRuntimeDiagnostic,
-	createAgentSessionFromServices,
-	createAgentSessionServices,
-} from "./core/agent-session-services.ts";
+import type { AgentSessionRuntimeDiagnostic } from "./core/agent-session-services.ts";
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
 import { AuthStorage, ReadOnlyAuthStorage } from "./core/auth-storage.ts";
 import { exportFromFile } from "./core/export-html/index.ts";
 import type { InlineExtension } from "./core/extensions/types.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "./core/http-dispatcher.ts";
 import { cleanupManagedInstall } from "./core/managed-install.ts";
-import { resolveCliModel, resolveModelScope, type ScopedModel } from "./core/model-resolver.ts";
 import { ModelRuntime } from "./core/model-runtime.ts";
 import { restoreStdout, takeOverStdout } from "./core/output-guard.ts";
 import { isConfigCommand, isPackageCommand } from "./core/package-commands.ts";
-import { type AppMode, resolveProjectTrusted } from "./core/project-trust.ts";
-import type { CreateAgentSessionOptions } from "./core/sdk.ts";
+import type { AppMode } from "./core/project-trust.ts";
+import { createRuntimeFactory } from "./core/runtime-factory.ts";
 import {
 	formatMissingSessionCwdPrompt,
 	getMissingSessionCwdIssue,
@@ -62,14 +54,13 @@ import {
 import { assertValidSessionId, SessionManager } from "./core/session-manager.ts";
 import { collectSettingsDiagnostics, deduplicateDiagnostics } from "./core/settings-diagnostics.ts";
 import { SettingsManager } from "./core/settings-manager.ts";
+import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./core/theme/theme.ts";
+import { validateThemeJson } from "./core/theme/theme-schema.ts";
 import { printTimings, resetTimings, time } from "./core/timings.ts";
-import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
+import { ProjectTrustStore } from "./core/trust-manager.ts";
 import { builtInExtensions } from "./extensions/index.ts";
 import { loadMcpCommand } from "./extensions/mcp/cli.lazy.ts";
 import { runMigrations, showDeprecationWarnings } from "./migrations.ts";
-import { loadInteractiveMode } from "./modes/interactive/interactive-mode.lazy.ts";
-import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./modes/interactive/theme/theme.ts";
-import { validateThemeJson } from "./modes/interactive/theme/theme-schema.ts";
 import { runPrintMode } from "./modes/print-mode.ts";
 import { runRpcMode } from "./modes/rpc/rpc-mode.ts";
 import { loadPackageManagerCli } from "./package-manager-cli.lazy.ts";
@@ -364,7 +355,7 @@ export async function createSessionManager(
 	parsed: Args,
 	cwd: string,
 	sessionDir: string | undefined,
-	settingsManager: SettingsManager,
+	handleResume = true,
 ): Promise<SessionManager> {
 	if (parsed.noSession || parsed.help || parsed.listModels !== undefined) {
 		return SessionManager.inMemory(cwd, parsed.sessionId !== undefined ? { id: parsed.sessionId } : undefined);
@@ -418,21 +409,13 @@ export async function createSessionManager(
 	}
 
 	if (parsed.resume) {
-		try {
-			const { selectSession } = await loadSessionPicker();
-			const selectedPath = await selectSession(
-				(onProgress, signal) => SessionManager.list(cwd, sessionDir, onProgress, signal),
-				(onProgress, signal) => SessionManager.listAll(sessionDir, onProgress, signal),
-				settingsManager,
-			);
-			if (!selectedPath) {
-				console.log(chalk.dim("No session selected"));
-				process.exit(0);
-			}
-			return SessionManager.open(selectedPath, sessionDir);
-		} finally {
-			stopThemeWatcher();
+		if (!handleResume) {
+			// The client owns the session picker; it opens the picked session on the server.
+			return SessionManager.create(cwd, sessionDir);
 		}
+		// Without a terminal there is nothing to pick with, so the most recent session
+		// is continued. The client owns the picker and opens the picked session itself.
+		return SessionManager.continueRecent(cwd, sessionDir);
 	}
 
 	if (parsed.continue) {
@@ -454,128 +437,51 @@ export async function createSessionManager(
 	return SessionManager.create(cwd, sessionDir, { id: parsed.sessionId });
 }
 
-function buildSessionOptions(
-	parsed: Args,
-	scopedModels: ScopedModel[],
-	hasExistingSession: boolean,
-	modelRuntime: ModelRuntime,
-	settingsManager: SettingsManager,
-): {
-	options: CreateAgentSessionOptions;
-	cliThinkingFromModel: boolean;
-	diagnostics: AgentSessionRuntimeDiagnostic[];
-} {
-	const options: CreateAgentSessionOptions = {};
-	const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
-	let cliThinkingFromModel = false;
-
-	// Model from CLI
-	// - supports --provider <name> --model <pattern>
-	// - supports --model <provider>/<pattern>
-	if (parsed.provider && !parsed.model) {
-		diagnostics.push({
-			type: "error",
-			message: `--provider requires --model (for example: --provider ${parsed.provider} --model <pattern>)`,
-		});
-	}
-	if (parsed.model) {
-		const resolved = resolveCliModel({
-			cliProvider: parsed.provider,
-			cliModel: parsed.model,
-			cliThinking: parsed.thinking,
-			inlineApiKey: Boolean(parsed.apiKey),
-			modelRuntime,
-		});
-		if (resolved.warning) {
-			diagnostics.push({ type: "warning", message: resolved.warning });
-		}
-		if (resolved.error) {
-			diagnostics.push({ type: "error", message: resolved.error });
-		}
-		if (resolved.model) {
-			options.model = resolved.model;
-			// Allow "--model <pattern>:<thinking>" as a shorthand.
-			// Explicit --thinking still takes precedence (applied later).
-			if (!parsed.thinking && resolved.thinkingLevel) {
-				options.thinkingLevel = resolved.thinkingLevel;
-				cliThinkingFromModel = true;
-			}
-		}
-	}
-
-	if (!options.model && scopedModels.length > 0 && !hasExistingSession) {
-		// Check if saved default is in scoped models - use it if so, otherwise first scoped model
-		const savedProvider = settingsManager.getDefaultProvider();
-		const savedModelId = settingsManager.getDefaultModel();
-		const savedModel = savedProvider && savedModelId ? modelRuntime.getModel(savedProvider, savedModelId) : undefined;
-		const savedInScope = savedModel ? scopedModels.find((sm) => modelsAreEqual(sm.model, savedModel)) : undefined;
-
-		if (savedInScope) {
-			options.model = savedInScope.model;
-			// Use thinking level from scoped model config if explicitly set
-			if (!parsed.thinking && savedInScope.thinkingLevel) {
-				options.thinkingLevel = savedInScope.thinkingLevel;
-			}
-		} else {
-			options.model = scopedModels[0].model;
-			// Use thinking level from first scoped model if explicitly set
-			if (!parsed.thinking && scopedModels[0].thinkingLevel) {
-				options.thinkingLevel = scopedModels[0].thinkingLevel;
-			}
-		}
-	}
-
-	// Thinking level from CLI (takes precedence over scoped model thinking levels set above)
-	if (parsed.thinking) {
-		options.thinkingLevel = parsed.thinking;
-	}
-
-	// Scoped models for Ctrl+P cycling
-	// Keep thinking level undefined when not explicitly set in the model pattern.
-	// Undefined means "inherit current session thinking level" during cycling.
-	if (scopedModels.length > 0) {
-		options.scopedModels = scopedModels.map((sm) => ({
-			model: sm.model,
-			thinkingLevel: sm.thinkingLevel,
-		}));
-	}
-
-	// API key from CLI - set as a non-persistent runtime override
-	// (handled by caller before createAgentSession)
-
-	// Tools
-	if (parsed.noTools) {
-		options.noTools = "all";
-	} else if (parsed.noBuiltinTools) {
-		options.noTools = "builtin";
-	}
-	if (parsed.tools) {
-		options.tools = [...parsed.tools];
-	}
-	if (parsed.excludeTools) {
-		options.excludeTools = [...parsed.excludeTools];
-	}
-
-	return { options, cliThinkingFromModel, diagnostics };
-}
-
 function resolveCliPaths(cwd: string, paths: string[] | undefined): string[] | undefined {
 	return paths?.map((value) => (isLocalPath(value) ? resolvePath(value, cwd) : value));
 }
 
-async function promptForMissingSessionCwd(
-	issue: SessionCwdIssue,
-	settingsManager: SettingsManager,
-): Promise<string | undefined> {
-	const { showStartupSelector } = await loadStartupUi();
-	return showStartupSelector(settingsManager, formatMissingSessionCwdPrompt(issue), [
-		{ label: "Continue", value: issue.fallbackCwd },
-		{ label: "Cancel", value: undefined },
-	]);
+/**
+ * The directory to use when a session's own directory is gone.
+ *
+ * This package has no terminal of its own any more, so there is nothing to ask with: the
+ * fallback directory is used and the client asks the user when it opens the session.
+ */
+function resolveMissingSessionCwd(issue: SessionCwdIssue): string {
+	console.error(chalk.yellow(formatMissingSessionCwdPrompt(issue)));
+	return issue.fallbackCwd;
 }
 
 export interface MainOptions {
 	extensionFactories?: InlineExtension[];
+	/**
+	 * Starts the interactive mode.
+	 *
+	 * The interactive mode lives in the client package, which drives a server over HTTP.
+	 * The client passes its bootstrap here; without it, the interactive mode is not
+	 * available in this package.
+	 */
+	onInteractive?: (context: InteractiveStartContext) => Promise<void>;
+}
+
+/** What the interactive mode needs to start. */
+export interface InteractiveStartContext {
+	/** The raw command line. */
+	args: string[];
+	/** The parsed command line. */
+	parsed: Args;
+	/** The working directory. */
+	cwd: string;
+	/** The agent directory. */
+	agentDir: string;
+	/** The session directory, when one is configured. */
+	sessionDir: string | undefined;
+	/** The settings manager of the startup directory. */
+	settingsManager: SettingsManager;
+	/** The initial message to send on startup. */
+	initialMessage?: string;
+	/** The images to attach to the initial message. */
+	initialImages?: ImageContent[];
 }
 
 export async function main(args: string[], options?: MainOptions) {
@@ -665,6 +571,14 @@ export async function main(args: string[], options?: MainOptions) {
 	}
 
 	let appMode = resolveAppMode(parsed, process.stdin.isTTY, process.stdout.isTTY);
+	// The client package owns the terminal and the session: it drives a server over HTTP.
+	// In that path this package does not create a runtime, does not prompt for anything
+	// and hands the start context to the client.
+	const interactiveClient =
+		appMode === "interactive" &&
+		options?.onInteractive !== undefined &&
+		!parsed.help &&
+		parsed.listModels === undefined;
 	const shouldTakeOverStdout = appMode !== "interactive" && !isPlainRuntimeMetadataCommand(parsed);
 	if (shouldTakeOverStdout) {
 		takeOverStdout();
@@ -679,7 +593,7 @@ export async function main(args: string[], options?: MainOptions) {
 	validateSessionIdFlags(parsed);
 
 	// Run migrations (pass cwd for project-local migrations)
-	const { migratedAuthProviders: migratedProviders, deprecationWarnings } = runMigrations(cwd);
+	const { deprecationWarnings } = runMigrations(cwd);
 	time("runMigrations");
 
 	const startupSettingsManager = SettingsManager.create(cwd, agentDir);
@@ -687,12 +601,6 @@ export async function main(args: string[], options?: MainOptions) {
 
 	// Experimental first-time setup: theme choice and analytics opt-in.
 	// Runs before any runtime services are created so the chosen settings apply everywhere.
-	if (appMode === "interactive" && !parsed.help && parsed.listModels === undefined && shouldRunFirstTimeSetup()) {
-		const { showFirstTimeSetup } = await loadStartupUi();
-		await showFirstTimeSetup(startupSettingsManager);
-		time("firstTimeSetup");
-	}
-
 	if (appMode === "interactive" && parsed.useTheme !== undefined) {
 		startupSettingsManager.applyOverrides({ theme: parsed.useTheme });
 	}
@@ -707,14 +615,11 @@ export async function main(args: string[], options?: MainOptions) {
 		(parsed.sessionDir ? normalizePath(parsed.sessionDir) : undefined) ??
 		(envSessionDir ? expandTildePath(envSessionDir) : undefined) ??
 		startupSettingsManager.getSessionDir();
-	let sessionManager = await createSessionManager(parsed, cwd, sessionDir, startupSettingsManager);
+	let sessionManager = await createSessionManager(parsed, cwd, sessionDir, !interactiveClient);
 	const missingSessionCwdIssue = getMissingSessionCwdIssue(sessionManager, cwd);
 	if (missingSessionCwdIssue) {
 		if (appMode === "interactive") {
-			const selectedCwd = await promptForMissingSessionCwd(missingSessionCwdIssue, startupSettingsManager);
-			if (!selectedCwd) {
-				process.exit(0);
-			}
+			const selectedCwd = resolveMissingSessionCwd(missingSessionCwdIssue);
 			sessionManager = SessionManager.open(missingSessionCwdIssue.sessionFile!, sessionDir, selectedCwd);
 		} else {
 			console.error(chalk.red(new MissingSessionCwdError(missingSessionCwdIssue).message));
@@ -732,150 +637,49 @@ export async function main(args: string[], options?: MainOptions) {
 	time("createSessionManager");
 
 	const trustStore = new ProjectTrustStore(agentDir);
-	const sessionCwd = sessionManager.getCwd();
-	const autoTrustOnReloadCwd =
-		parsed.projectTrustOverride === undefined && !hasTrustRequiringProjectResources(sessionCwd)
-			? sessionCwd
-			: undefined;
 	const trustPromptMode: AppMode = parsed.help || parsed.listModels !== undefined ? "print" : appMode;
-	const projectTrustByCwd = new Map<string, boolean>();
 
 	const resolvedExtensionPaths = resolveCliPaths(cwd, parsed.extensions);
 	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
-	const createRuntime: CreateAgentSessionRuntimeFactory = async ({
-		cwd,
+	const createRuntime: CreateAgentSessionRuntimeFactory = createRuntimeFactory({
 		agentDir,
-		sessionManager,
-		sessionStartEvent,
-		projectTrustContext,
-	}) => {
-		const isInitialRuntime = sessionStartEvent === undefined;
-		const projectTrustDiagnostics: AgentSessionRuntimeDiagnostic[] = [];
-		const cachedProjectTrust = projectTrustByCwd.get(cwd);
-		const hasTrustRequiringResources = hasTrustRequiringProjectResources(cwd);
-		const shouldResolveProjectTrust =
-			parsed.projectTrustOverride === undefined && cachedProjectTrust === undefined && hasTrustRequiringResources;
-		const projectTrusted = shouldResolveProjectTrust
-			? false
-			: (cachedProjectTrust ??
-				parsed.projectTrustOverride ??
-				(!hasTrustRequiringResources || trustStore.get(cwd) === true));
-		const runtimeSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted });
-		const services = await createAgentSessionServices({
-			cwd,
-			agentDir,
-			settingsManager: runtimeSettingsManager,
-			modelRuntimeSignal: AbortSignal.timeout(15_000),
-			extensionFlagValues: parsed.unknownFlags,
-			resourceLoaderReloadOptions: shouldResolveProjectTrust
-				? {
-						resolveProjectTrust: async ({ extensionsResult }) => {
-							const trusted = await resolveProjectTrusted({
-								cwd,
-								trustStore,
-								trustOverride: parsed.projectTrustOverride,
-								defaultProjectTrust: startupSettingsManager.getDefaultProjectTrust(),
-								extensionsResult,
-								projectTrustContext:
-									projectTrustContext ??
-									createProjectTrustContext({
-										cwd,
-										mode: isInitialRuntime ? trustPromptMode : appMode,
-										settingsManager: startupSettingsManager,
-										hasUI: isInitialRuntime && trustPromptMode === "interactive",
-									}),
-								onExtensionError: (message) => projectTrustDiagnostics.push({ type: "warning", message }),
-							});
-							projectTrustByCwd.set(cwd, trusted);
-							return trusted;
-						},
-					}
-				: undefined,
-			resourceLoaderOptions: {
-				additionalExtensionPaths: resolvedExtensionPaths,
-				additionalSkillPaths: resolvedSkillPaths,
-				additionalPromptTemplatePaths: resolvedPromptTemplatePaths,
-				additionalThemePaths: resolvedThemePaths,
-				noExtensions: parsed.noExtensions,
-				disabledBuiltinExtensions: parsed.noMcp ? ["mcp"] : undefined,
-				noSkills: parsed.noSkills,
-				noPromptTemplates: parsed.noPromptTemplates,
-				noThemes: parsed.noThemes,
-				noContextFiles: parsed.noContextFiles,
-				systemPrompt: parsed.systemPrompt,
-				appendSystemPrompt: parsed.appendSystemPrompt,
-				extensionFactories,
-			},
-		});
-		const { settingsManager, modelRuntime, resourceLoader } = services;
-		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
-			...projectTrustDiagnostics,
-			...services.diagnostics,
-			...collectSettingsDiagnostics(settingsManager),
-			...resourceLoader.getExtensions().errors.map(({ path, error }) => ({
-				type: "error" as const,
-				message: `Failed to load extension "${path}": ${error}`,
-			})),
-			...(resourceLoader.getExtensions().warnings ?? []).map(({ path, warning }) => ({
-				type: "warning" as const,
-				message: `Extension package "${path}": ${warning}`,
-			})),
-		];
-
-		const modelPatterns = parsed.models ?? settingsManager.getEnabledModels();
-		const scopedModels =
-			modelPatterns && modelPatterns.length > 0
-				? await resolveModelScope(modelPatterns, modelRuntime, { signal: AbortSignal.timeout(15_000) })
-				: [];
-		const {
-			options: sessionOptions,
-			cliThinkingFromModel,
-			diagnostics: sessionOptionDiagnostics,
-		} = buildSessionOptions(
+		parsed,
+		startupSettingsManager,
+		trustStore,
+		appMode: () => appMode,
+		trustPromptMode,
+		extensionFactories,
+		resolvedExtensionPaths,
+		resolvedSkillPaths,
+		resolvedPromptTemplatePaths,
+		resolvedThemePaths,
+		projectTrustContextFactory: (trustCwd, mode, hasUI) =>
+			createTuiProjectTrustContext({ cwd: trustCwd, mode, settingsManager: startupSettingsManager, hasUI }),
+	});
+	if (interactiveClient) {
+		// The client owns the terminal and the session: it starts a server, opens a
+		// session there and drives it. This package hands over the start context.
+		setCapabilityOverrides(startupSettingsManager.getTerminalCapabilityOverrides());
+		applyHttpProxySettings(startupSettingsManager.getGlobalSettings().httpProxy);
+		configureHttpDispatcher(startupSettingsManager.getHttpIdleTimeoutMs());
+		initTheme(startupSettingsManager.getTheme(), true);
+		const { initialMessage, initialImages } = await prepareInitialMessage(parsed, undefined);
+		printTimings();
+		await options!.onInteractive!({
+			args,
 			parsed,
-			scopedModels,
-			sessionManager.buildSessionContext().messages.length > 0,
-			modelRuntime,
-			settingsManager,
-		);
-		diagnostics.push(...sessionOptionDiagnostics);
-
-		if (parsed.apiKey) {
-			if (!sessionOptions.model) {
-				diagnostics.push({
-					type: "error",
-					message: "--api-key requires a model to be specified via --model, --provider/--model, or --models",
-				});
-			} else {
-				await modelRuntime.setRuntimeApiKey(sessionOptions.model.provider, parsed.apiKey);
-			}
-		}
-
-		const created = await createAgentSessionFromServices({
-			services,
-			sessionManager,
-			sessionStartEvent,
-			model: sessionOptions.model,
-			thinkingLevel: sessionOptions.thinkingLevel,
-			scopedModels: sessionOptions.scopedModels,
-			tools: sessionOptions.tools,
-			excludeTools: sessionOptions.excludeTools,
-			noTools: sessionOptions.noTools,
-			customTools: sessionOptions.customTools,
+			cwd: sessionManager.getCwd(),
+			agentDir,
+			sessionDir,
+			settingsManager: startupSettingsManager,
+			initialMessage,
+			initialImages,
 		});
-		const cliThinkingOverride = parsed.thinking !== undefined || cliThinkingFromModel;
-		if (created.session.model && cliThinkingOverride) {
-			created.session.setThinkingLevel(created.session.thinkingLevel);
-		}
+		return;
+	}
 
-		return {
-			...created,
-			services,
-			diagnostics,
-		};
-	};
 	time("createRuntime");
 	const runtime = await createAgentSessionRuntime(createRuntime, {
 		cwd: sessionManager.getCwd(),
@@ -883,7 +687,7 @@ export async function main(args: string[], options?: MainOptions) {
 		sessionManager,
 	});
 	time("createAgentSessionRuntime");
-	const { services, session, modelFallbackMessage } = runtime;
+	const { services, session } = runtime;
 	const { settingsManager, modelRuntime, resourceLoader } = services;
 	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
 	applyHttpProxySettings(settingsManager.getGlobalSettings().httpProxy);
@@ -964,41 +768,21 @@ export async function main(args: string[], options?: MainOptions) {
 		printTimings();
 		await runRpcMode(runtime);
 	} else if (appMode === "interactive") {
-		// The interactive mode carries the terminal interface. It is loaded here so the
-		// other modes do not pay for it.
-		const { InteractiveMode } = await loadInteractiveMode();
-		const interactiveMode = new InteractiveMode(runtime, {
-			migratedProviders,
-			startupDiagnostics,
-			modelFallbackMessage,
-			autoTrustOnReloadCwd,
-			initialMessage,
-			initialImages,
-			initialMessages: parsed.messages,
-			verbose: parsed.verbose,
-			tuiMode: parsed.tuiMode,
-			initialThemeSetting: parsed.useTheme,
-		});
-		if (startupBenchmark) {
-			await interactiveMode.init();
-			time("interactiveMode.init");
-			// Give the TUI's stdin handler a brief chance to consume terminal query replies
-			// (Kitty keyboard protocol, device attributes, cell size) before restoring the terminal.
-			await new Promise((resolve) => setTimeout(resolve, 150));
-			interactiveMode.stop();
-			stopThemeWatcher();
-			printTimings();
-			if (process.stdout.writableLength > 0) {
-				await new Promise<void>((resolve) => process.stdout.once("drain", resolve));
-			}
-			if (process.stderr.writableLength > 0) {
-				await new Promise<void>((resolve) => process.stderr.once("drain", resolve));
-			}
-			return;
+		// The terminal interface lives in the client package, which drives a server over
+		// HTTP. It asks this package for the start context and takes it from there.
+		if (!options?.onInteractive) {
+			console.error(chalk.red("Error: interactive mode requires @earendil-works/pi-client"));
+			process.exit(1);
 		}
-
 		printTimings();
-		await interactiveMode.run();
+		await options.onInteractive({
+			args,
+			parsed,
+			cwd: sessionManager.getCwd(),
+			agentDir,
+			sessionDir,
+			settingsManager: startupSettingsManager,
+		});
 	} else {
 		printTimings();
 		const exitCode = await runPrintMode(runtime, {

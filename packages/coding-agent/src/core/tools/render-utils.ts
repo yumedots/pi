@@ -3,11 +3,11 @@ import { pathToFileURL } from "node:url";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { getCapabilities } from "@earendil-works/pi-tui/terminal-capabilities";
 import { getImageDimensions, hyperlink, imageFallback } from "@earendil-works/pi-tui/terminal-image";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
 import { resolvePath } from "../../utils/paths.ts";
 import { sanitizeBinaryOutput } from "../../utils/shell.ts";
 import type { ToolRenderContext } from "../extensions/types.ts";
+import type { Theme } from "../theme/theme.ts";
 
 export function shortenPath(path: unknown): string {
 	if (typeof path !== "string") return "";

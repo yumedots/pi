@@ -1,0 +1,210 @@
+import { setKeybindings } from "@earendil-works/pi-tui";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { KeybindingsManager } from "../../coding-agent/src/core/keybindings.ts";
+import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
+import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
+import { createHarness, type Harness } from "../../coding-agent/test/suite/harness.ts";
+import {
+	type SettingsCallbacks,
+	type SettingsConfig,
+	SettingsSelectorComponent,
+} from "../src/components/settings-selector.ts";
+
+describe("SettingsSelectorComponent", () => {
+	let harness: Harness | undefined;
+	beforeAll(() => {
+		initTheme("dark");
+		setKeybindings(new KeybindingsManager());
+	});
+
+	afterEach(() => {
+		harness?.cleanup();
+		harness = undefined;
+	});
+
+	it("cycles through fullscreen settings", () => {
+		const onExitOutputChange = vi.fn();
+		const onScrollbarChange = vi.fn();
+		const onCopyOnSelectChange = vi.fn();
+		const onWheelScrollLinesChange = vi.fn();
+		const config = {
+			// The default value; the row stays in the menu so it can be turned on.
+			fullscreenExitOutput: "resume-hint",
+			fullscreenScrollbar: "auto",
+			fullscreenCopyOnSelect: true,
+			fullscreenWheelScrollLines: 7,
+			warnings: {},
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			availableThinkingLevels: [],
+			modelThinkingLevels: {},
+			availableThemes: [],
+		} as unknown as SettingsConfig;
+		const callbacks = {
+			onFullscreenExitOutputChange: onExitOutputChange,
+			onFullscreenScrollbarChange: onScrollbarChange,
+			onFullscreenCopyOnSelectChange: onCopyOnSelectChange,
+			onFullscreenWheelScrollLinesChange: onWheelScrollLinesChange,
+		} as unknown as SettingsCallbacks;
+
+		const cycle = (label: string, count: number) => {
+			const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+			for (const character of label) list.handleInput(character);
+			for (let i = 0; i < count; i++) list.handleInput("\r");
+		};
+
+		cycle("Fullscreen exit output", 2);
+		expect(onExitOutputChange.mock.calls.flat()).toEqual(["transcript", "resume-hint"]);
+		cycle("Fullscreen scrollbar", 3);
+		expect(onScrollbarChange.mock.calls.flat()).toEqual(["always", "hidden", "auto"]);
+		cycle("Fullscreen copy on select", 2);
+		expect(onCopyOnSelectChange.mock.calls.flat()).toEqual([false, true]);
+		// #9758: custom values from settings.json stay in the cycle.
+		cycle("Fullscreen wheel scrolling", 3);
+		expect(onWheelScrollLinesChange.mock.calls.flat()).toEqual([10, "auto", 1]);
+	});
+
+	it("lists the fullscreen exit output while it holds the default", () => {
+		const config = {
+			fullscreenExitOutput: "resume-hint",
+			warnings: {},
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			availableThinkingLevels: [],
+			modelThinkingLevels: {},
+			availableThemes: [],
+		} as unknown as SettingsConfig;
+		const callbacks = { onFullscreenExitOutputChange: vi.fn() } as unknown as SettingsCallbacks;
+
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+		for (const character of "Fullscreen exit output") list.handleInput(character);
+		const output = stripAnsi(list.render(120).join("\n"));
+		expect(output).not.toContain("No matching settings");
+		expect(output).toContain("Print the transcript or only a session resume hint");
+	});
+
+	it("cycles through share destinations", () => {
+		const onSessionShareDestinationChange = vi.fn();
+		const config = {
+			sessionShareDestination: "auto",
+			warnings: {},
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			availableThinkingLevels: [],
+			modelThinkingLevels: {},
+			availableThemes: [],
+		} as unknown as SettingsConfig;
+		const callbacks = {
+			onSessionShareDestinationChange,
+		} as unknown as SettingsCallbacks;
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+		list.selectItem("share-destination");
+
+		for (let i = 0; i < 3; i++) list.handleInput("\r");
+
+		expect(onSessionShareDestinationChange.mock.calls.flat()).toEqual(["gist", "radius", "auto"]);
+	});
+
+	it("cycles the autocomplete position", () => {
+		const onAutocompletePositionChange = vi.fn();
+		const config = {
+			autocompletePosition: "above",
+			warnings: {},
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			availableThinkingLevels: [],
+			modelThinkingLevels: {},
+			availableThemes: [],
+		} as unknown as SettingsConfig;
+		const callbacks = {
+			onAutocompletePositionChange,
+		} as unknown as SettingsCallbacks;
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+		list.selectItem("autocomplete-position");
+
+		for (let i = 0; i < 3; i++) list.handleInput("\r");
+
+		expect(onAutocompletePositionChange.mock.calls.flat()).toEqual(["below", "above", "below"]);
+	});
+
+	it("keeps the configured fixed theme marked while browsing", () => {
+		const config = {
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			modelThinkingLevels: {},
+			currentTheme: "dark",
+			terminalTheme: "dark",
+			availableThemes: ["system", "dark", "light"],
+			warnings: {},
+		} as unknown as SettingsConfig;
+		const callbacks = { onThemePreview: vi.fn(), onCancel: () => {} } as unknown as SettingsCallbacks;
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+
+		list.selectItem("theme");
+		list.handleInput("\r");
+		let output = stripAnsi(list.render(120).join("\n"));
+		expect(output).toMatch(
+			/ {4}system +Follows the terminal's light or dark mode\n {4}automatic +Use separate themes/,
+		);
+		expect(output).toContain("→ ✓ dark");
+
+		list.handleInput("\x1b[B");
+		output = stripAnsi(list.render(120).join("\n"));
+		expect(output).toContain("  ✓ dark");
+		expect(output).toContain("→   light");
+	});
+
+	it("keeps a configured automatic theme marked while browsing", () => {
+		const config = {
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			modelThinkingLevels: {},
+			currentTheme: "light/dark",
+			terminalTheme: "dark",
+			availableThemes: ["dark", "light", "other"],
+			warnings: {},
+		} as unknown as SettingsConfig;
+		const callbacks = { onThemePreview: vi.fn(), onCancel: () => {} } as unknown as SettingsCallbacks;
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+
+		list.selectItem("theme");
+		list.handleInput("\r");
+		list.handleInput("\r");
+		let output = stripAnsi(list.render(120).join("\n"));
+		expect(output).toContain("→ ✓ light");
+
+		list.handleInput("\x1b[B");
+		output = stripAnsi(list.render(120).join("\n"));
+		expect(output).toContain("  ✓ light");
+		expect(output).toContain("→   other");
+	});
+
+	it("keeps the configured per-model thinking level marked while browsing", async () => {
+		harness = await createHarness({
+			models: [{ id: "thinking-model", reasoning: true }],
+		});
+		const model = harness.getModel("thinking-model")!;
+		const modelKey = `${model.provider}/${model.id}`;
+		const config = {
+			defaultModel: modelKey,
+			availableDefaultModels: [model],
+			thinkingLevel: "high",
+			modelThinkingLevels: { [modelKey]: "medium" },
+		} as unknown as SettingsConfig;
+		const callbacks = { onCancel: () => {} } as unknown as SettingsCallbacks;
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+
+		list.selectItem("model-thinking");
+		list.handleInput("\r");
+		list.handleInput("\r");
+
+		let output = stripAnsi(list.render(120).join("\n"));
+		expect(output).toContain("→ ✓ medium");
+		expect(output).toContain("    (clear override)");
+
+		list.handleInput("\x1b[B");
+		output = stripAnsi(list.render(120).join("\n"));
+		expect(output).toContain("  ✓ medium");
+		expect(output).toContain("→   high");
+	});
+});

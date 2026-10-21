@@ -1,0 +1,32 @@
+import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
+import { type Component, spinnerFrame } from "@earendil-works/pi-tui";
+
+export { spinnerFrame };
+
+/** The sign and the space behind it. */
+const SIGN_WIDTH = 2;
+
+/**
+ * A component with an animated braille sign in front of it.
+ *
+ * The frame comes from the clock at render time, so the sign moves with the terminal's redraws
+ * and needs no timer of its own. That matters for rows that are rebuilt on every stream chunk:
+ * a timer-owning sign would be recreated constantly and leave intervals behind.
+ */
+export class SignedRow implements Component {
+	private readonly child: Component;
+
+	constructor(child: Component) {
+		this.child = child;
+	}
+
+	render(width: number): string[] {
+		const sign = theme.fg("accent", spinnerFrame(Date.now()));
+		const lines = this.child.render(Math.max(1, width - SIGN_WIDTH));
+		return lines.map((line, index) => (index === 0 ? `${sign} ${line}` : `  ${line}`));
+	}
+
+	invalidate(): void {
+		this.child.invalidate();
+	}
+}

@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ToolRenderContext } from "../../../src/core/extensions/types.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
+import { initTheme, theme } from "../../../src/core/theme/theme.ts";
 import { createMcpExtension } from "../../../src/extensions/mcp/index.ts";
-import { initTheme, theme } from "../../../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 import { createHarness } from "../harness.ts";
 

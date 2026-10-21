@@ -28,6 +28,7 @@ const WORKSPACE = {
 	"@earendil-works/pi-tui": "packages/tui/src",
 	"@earendil-works/pi-coding-agent": "packages/coding-agent/src",
 	"@earendil-works/pi-server": "packages/server/src",
+	"@earendil-works/pi-client": "packages/client/src",
 };
 
 /**

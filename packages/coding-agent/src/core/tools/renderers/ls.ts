@@ -7,9 +7,9 @@
  */
 
 import { Text } from "@earendil-works/pi-tui/components/text";
-import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
-import type { Theme } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
+import type { Theme } from "../../theme/theme.ts";
+import { keyHint } from "../../ui/keybinding-hints.ts";
 import type { LsToolDetails } from "../ls.ts";
 import { getTextOutput, renderToolPath, str } from "../render-utils.ts";
 import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";

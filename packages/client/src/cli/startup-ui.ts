@@ -1,0 +1,201 @@
+import { getAgentDir } from "@earendil-works/pi-coding-agent/config";
+import { KeybindingsManager } from "@earendil-works/pi-coding-agent/core/keybindings";
+import { DefaultPackageManager, type ResolvedResource } from "@earendil-works/pi-coding-agent/core/package-manager";
+import { SettingsManager } from "@earendil-works/pi-coding-agent/core/settings-manager";
+import {
+	getTerminalTheme,
+	initTheme,
+	loadThemeFromPath,
+	resolveThemeSetting,
+	SYSTEM_THEME_NAME,
+	setRegisteredThemes,
+	setTerminalColors,
+	setTheme,
+	type Theme,
+} from "@earendil-works/pi-coding-agent/core/theme/theme";
+import { requestTerminalColors } from "@earendil-works/pi-coding-agent/core/theme/theme-controller";
+import {
+	ProcessTerminal,
+	setCapabilityOverrides,
+	setKeybindings,
+	type TUI,
+	TuiMainScreen,
+} from "@earendil-works/pi-tui";
+import { ExtensionInputComponent } from "../components/extension-input.ts";
+import { ExtensionSelectorComponent } from "../components/extension-selector.ts";
+import { FirstTimeSetupComponent, type FirstTimeSetupResult } from "../components/first-time-setup.ts";
+
+function loadThemes(resources: ResolvedResource[]): Theme[] {
+	const themes: Theme[] = [];
+	const seen = new Set<string>();
+	for (const resource of resources) {
+		if (!resource.enabled) continue;
+		try {
+			const loadedTheme = loadThemeFromPath(resource.path);
+			if (loadedTheme.name) {
+				if (seen.has(loadedTheme.name)) continue;
+				seen.add(loadedTheme.name);
+			}
+			themes.push(loadedTheme);
+		} catch {
+			// Startup prompts should not fail because a theme is broken. The normal
+			// resource loader reports theme diagnostics later in startup.
+		}
+	}
+	return themes;
+}
+
+async function loadStartupThemes(settingsManager: SettingsManager): Promise<Theme[]> {
+	const globalSettingsManager = SettingsManager.inMemory(settingsManager.getGlobalSettings(), {
+		projectTrusted: false,
+	});
+	const packageManager = new DefaultPackageManager({
+		cwd: process.cwd(),
+		agentDir: getAgentDir(),
+		settingsManager: globalSettingsManager,
+	});
+	const resolvedPaths = await packageManager.resolve(async () => "skip");
+	return loadThemes(resolvedPaths.themes);
+}
+
+export async function createStartupTui(settingsManager: SettingsManager): Promise<TUI> {
+	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
+	setRegisteredThemes(await loadStartupThemes(settingsManager));
+	initTheme(resolveThemeSetting(settingsManager.getThemeSetting(), getTerminalTheme()) ?? SYSTEM_THEME_NAME);
+	setKeybindings(KeybindingsManager.create());
+	const ui: TUI = new TuiMainScreen(new ProcessTerminal(), settingsManager.getShowHardwareCursor(), getAgentDir());
+	ui.setClearOnShrink(settingsManager.getClearOnShrink());
+	return ui;
+}
+
+export function startStartupTui(ui: TUI, settingsManager: SettingsManager): void {
+	ui.start();
+	const themeSetting = settingsManager.getThemeSetting();
+	queryStartupTerminalColors(ui, () => {
+		setTheme(resolveThemeSetting(themeSetting, getTerminalTheme()) ?? SYSTEM_THEME_NAME);
+	});
+}
+
+/**
+ * Query the terminal's colors without waiting for them. When they arrive, including after the timeout,
+ * record them for the "" (terminal default) tokens and the light/dark detection, run `onColors`, and
+ * re-render.
+ */
+function queryStartupTerminalColors(ui: TUI, onColors: () => void): void {
+	void requestTerminalColors(ui, (colors) => {
+		setTerminalColors(colors);
+		onColors();
+		ui.invalidate();
+		ui.requestRender();
+	});
+}
+
+async function clearStartupTui(ui: TUI): Promise<void> {
+	ui.clear();
+	ui.requestRender();
+	await new Promise((resolve) => setTimeout(resolve, 25));
+}
+
+export async function showStartupSelector<T>(
+	settingsManager: SettingsManager,
+	title: string,
+	options: Array<{ label: string; value: T }>,
+): Promise<T | undefined> {
+	const ui = await createStartupTui(settingsManager);
+	return new Promise((resolve) => {
+		let settled = false;
+		const finish = async (result: T | undefined) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			await clearStartupTui(ui);
+			ui.stop();
+			resolve(result);
+		};
+
+		const selector = new ExtensionSelectorComponent(
+			title,
+			options.map((option) => option.label),
+			(option) => void finish(options.find((entry) => entry.label === option)?.value),
+			() => void finish(undefined),
+			{ tui: ui },
+		);
+		ui.addChild(selector);
+		ui.setFocus(selector);
+		startStartupTui(ui, settingsManager);
+	});
+}
+
+/** Show the first-time setup dialog and persist the result */
+export async function showFirstTimeSetup(settingsManager: SettingsManager): Promise<void> {
+	const ui = await createStartupTui(settingsManager);
+	return new Promise((resolve) => {
+		let settled = false;
+		const finish = async (result: FirstTimeSetupResult | undefined) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			if (result) {
+				settingsManager.setTheme(result.theme);
+				await settingsManager.flush();
+			}
+			await clearStartupTui(ui);
+			ui.stop();
+			resolve();
+		};
+
+		ui.start();
+		let previewTheme = SYSTEM_THEME_NAME;
+		setTheme(previewTheme);
+		const component = new FirstTimeSetupComponent({
+			onThemePreview: (themeName) => {
+				previewTheme = themeName;
+				setTheme(themeName);
+				ui.requestRender();
+			},
+			onSubmit: (result) => void finish(result),
+			onCancel: () => void finish(undefined),
+		});
+		ui.addChild(component);
+		ui.setFocus(component);
+		ui.requestRender();
+		// The terminal's colors can change the theme; re-rendering rebuilds the dialog with it.
+		queryStartupTerminalColors(ui, () => setTheme(previewTheme));
+	});
+}
+
+export async function showStartupInput(
+	settingsManager: SettingsManager,
+	title: string,
+	placeholder?: string,
+): Promise<string | undefined> {
+	const ui = await createStartupTui(settingsManager);
+	return new Promise((resolve) => {
+		let settled = false;
+		const finish = async (result: string | undefined) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			input.dispose();
+			await clearStartupTui(ui);
+			ui.stop();
+			resolve(result);
+		};
+
+		const input = new ExtensionInputComponent(
+			title,
+			placeholder,
+			(value) => void finish(value),
+			() => void finish(undefined),
+			{
+				tui: ui,
+			},
+		);
+		ui.addChild(input);
+		ui.setFocus(input);
+		startStartupTui(ui, settingsManager);
+	});
+}

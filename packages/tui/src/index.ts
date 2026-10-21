@@ -118,7 +118,7 @@ export { SPINNER_FRAME_INTERVAL_MS, SPINNER_FRAMES, spinnerFrame } from "./spinn
 // Input buffering for batch splitting
 export { StdinBuffer, type StdinBufferEventMap, type StdinBufferOptions } from "./stdin-buffer.ts";
 // Terminal interface and implementations
-export { isAppleTerminalSession, ProcessTerminal, type Terminal } from "./terminal.ts";
+export { getTerminalRows, isAppleTerminalSession, ProcessTerminal, type Terminal } from "./terminal.ts";
 // Terminal colors
 export {
 	parseTerminalColorSchemeReport,

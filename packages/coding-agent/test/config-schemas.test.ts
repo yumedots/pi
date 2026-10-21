@@ -8,7 +8,7 @@ import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { ModelConfig } from "../src/core/model-config.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { SettingsSchema } from "../src/core/settings-schema.ts";
-import { validateThemeJson } from "../src/modes/interactive/theme/theme-schema.ts";
+import { validateThemeJson } from "../src/core/theme/theme-schema.ts";
 
 const schemaBaseUrl = "https://pi.dev/schemas";
 const temporaryDirectories: string[] = [];
@@ -303,7 +303,7 @@ describe("generated configuration schemas", () => {
 
 	it("accepts $schema in themes and rejects malformed themes", () => {
 		const builtIn = JSON.parse(
-			readFileSync(new URL("../src/modes/interactive/theme/dark.json", import.meta.url), "utf-8"),
+			readFileSync(new URL("../src/core/theme/dark.json", import.meta.url), "utf-8"),
 		) as Record<string, unknown>;
 		expect(validateThemeJson("custom", { ...builtIn, $schema: schemaUrl("theme"), name: "custom" }).name).toBe(
 			"custom",

@@ -9,10 +9,10 @@
 import { Spacer } from "@earendil-works/pi-tui/components/spacer";
 import { Text } from "@earendil-works/pi-tui/components/text";
 import { Container } from "@earendil-works/pi-tui/tui";
-import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
-import { VisualLinePreview } from "../../../modes/interactive/components/visual-truncate.ts";
-import { theme } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
+import { theme } from "../../theme/theme.ts";
+import { keyHint } from "../../ui/keybinding-hints.ts";
+import { VisualLinePreview } from "../../ui/visual-truncate.ts";
 import type { BashToolDetails } from "../bash.ts";
 import { getTextOutput, invalidArgText, startToolTimer, str, toolTimerText } from "../render-utils.ts";
 import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";
