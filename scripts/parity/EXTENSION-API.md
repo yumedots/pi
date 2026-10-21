@@ -382,23 +382,29 @@ tool, sends the result back and makes a second request:
 the original   before_provider_request ×2   tools: ["read","bash","edit","write"]
                message_end ×5                system · user(text) · assistant(toolCall "read")
                                              · toolResult(text) · assistant(text)
-the port       before_provider_request ×2   tools: ["read","bash","edit","write","grep","find","ls"]
-               message_end ×3                assistant(toolCall "read")
+the port       before_provider_request ×2   tools: ["read","bash","edit","write"]
+               message_end ×4                user(text) · assistant(toolCall "read")
                                              · toolResult(text) · assistant(text)
 ```
 
-So the provider's parsing is **not** the defect. What is left, in this area:
+So the provider's parsing is **not** the defect, and the active tool set now matches pi's. What
+is left, in this area:
 
 1. **The extension's own tool is missing from the request's tools** — the port's request carries
    the built-ins and not `probe_tool`, although the extension registered it and
    `pi.getActiveTools()` lists it. The model is never offered the extension's tool. That is the
    registration path (`rpi/crates/rpi-cli/src/interactive_tui.rs:1483-1515`, the interactive
    mode port's file).
-2. **The port's request carries `grep`, `find` and `ls`** where pi's carries only `read`, `bash`,
-   `edit`, `write` — the active tool set (section C).
-3. **The port fires `message_end` three times where the original fires it five** — the original's
-   also covers the system and the user message.
-4. **The tool result's error text differs**: the original's is
+2. **The port fires `message_end` four times where the original fires it five** — the missing one
+   is the **system** message, and it is a two-part gap in the session port's area: the port now
+   **writes** the `system` entry into the session file (the original's shape —
+   `{"type":"message",…,"message":{"role":"system","content":…}}`), but the entry is written
+   **outside** the agent loop, so no agent event is emitted for it and the extension host never
+   sees a `message_end` for it. On pi the system message is part of the message list the loop
+   processes (`packages/agent/src/agent-loop.ts:110-115`), so the pair fires for it.
+   **The probe must not use `--no-session` for this to be visible** — the entry is written to the
+   session file, and an ephemeral session has no file and therefore no system entry.
+3. **The tool result's error text differs**: the original's is
    `ENOENT: no such file or directory, access '…'` and the port's is
    `tool error: not_found: No such file or directory (os error 2) (path: …)`.
 

@@ -57,22 +57,36 @@ eyes before it is called done.
 
 ---
 
-## 0. Status — re-verified against the green binary (18:48 build)
+## 0. Status — the command surface, re-verified 2026-10-21
 
-The tree moved a long way while this document was written, and the first
-`cargo build --workspace` that succeeded landed at **18:48:27**. Everything
-below was **re-captured against that binary** (`rpi/target/debug/rpi`,
-mtime 18:48) and is the current truth. Rows marked **CLOSED** were fixed
-while this document was being written — do not re-do them.
+**This section replaces the 18:48 status below it**, which described the port
+before the command surface was ported over. The older table is kept for the
+picker chrome it covers; everything it says about the **command set**, the
+**`/` list** and **`/hotkeys`** is superseded by the tables here.
 
-**One harness note first, because it will bite the next person:** the port
-now reads **pi's** agent directory, so the Rust side is driven with
-`PI_CODING_AGENT_DIR`, **not** `RPI_CODING_AGENT_DIR` (the repo's
-`scripts/parity/drive.mjs` is already correct at `:208`/`:218`;
-`scripts/parity/session-compat.mjs:147` and `scripts/parity/settings-parity.mjs:251`
-still pass the old variable and will silently capture a port with no models).
+### CLOSED in this pass
 
-### CLOSED since the first captures
+| Was reported | Now |
+|---|---|
+| the port's `/` list carried nine commands the original does not have: `/help`, `/?`, `/clear`, `/version`, `/v`, `/provider`, `/tools`, `/images`, `/usage` (§1.2, §1.3) | **CLOSED.** All nine are gone from the registry, so they are neither listed nor dispatched: `/help` and `/version` are ordinary messages again and reach the model. The port's own `/new` is the original's `/new` (`Start a new session`) and is no longer an alias of `/clear`. |
+| the `/` list was in the port's own order, not the original's (§1.2) | **CLOSED.** The registry is registered in the original's order (`packages/coding-agent/src/core/slash-commands.ts:21-52`), so the list reads `settings, model, tree, thinking, scoped-models, skills, theme, export, import, share, bug, copy, name, stats, changelog, hotkeys, fork, clone, trust, login, logout, new, compact, resume, reload, quit`. |
+| the original's alias rows were missing from the list (`history`, `sessions`, `exit` — §1.3) | **CLOSED.** Each alias is its own row right after the command it points at, the way the original's picker builds it (`interactive-mode.ts:722-733`): `resume, history, sessions` and `quit, exit`. The port's own aliases (`/q`, `/m`, `/think`, `/session`) stay off the list. |
+| the list showed the leading slash (§3.4) | **CLOSED.** The rows show the bare name (`settings`, `model`, `hotkeys`); the slash stays in the row's value, so accepting a row still writes the dispatched name. |
+| the `/hotkeys` table had no `Extensions` section (§4.10) | **CLOSED** for the extensions that register shortcuts natively: the section renders the original's table — the `**Extensions**` heading, the `| Key | Action |` table, the capitalised key and the description, or the extension's name when the shortcut has none (`interactive-mode.ts:6892-6903`). **Still open:** the JS (Bun) extension host keeps `registerShortcut` calls in a JS-side map and never exports them, so a JS extension's shortcut does not reach the table — and the extension shown is its display name, not its path. |
+| `/exit` with text quit the app | **CLOSED.** The original rewrites a bare alias only (`packages/coding-agent/src/core/slash-commands.ts:56-68`), so `/exit some text` is a message again, like `/history some text`. |
+| the `app.session.new` keybinding did nothing | **CLOSED.** It pointed at the removed `/clear`; it now runs `/new`, the command the original's keybinding runs (`interactive-mode.ts:2879`). |
+
+### STILL OPEN — the live gaps
+
+| § | Gap | State now |
+|---|---|---|
+| §1 | the `/` list is two entries short of the original's | the original's picker shows **31** entries, the port's **29**: the original's built-in extensions add `llama` (`Manage llama.cpp router models`) and `mcp` (`Manage MCP servers…`). The port has neither feature, so it lists neither command. |
+| §4.8 | `/new` does not start a session | the command is dispatched and answers `A new session is not created by this command yet; the current session continues.` The port has no session-*create* entry point (`switch_to_session` opens an existing session), so this needs the session area, not the command surface. |
+| — | the provider add/remove form has no entry point | the `/provider` command is gone, and the provider selector it opened is the only door to the form. The form's code is still there; nothing opens it. |
+| §3.3 | no argument completions | typing `/model ` opens no completion list; the original shows the catalog. |
+| §2 | the port's own aliases | `/q`, `/m`, `/think` and `/session` are still registered (off the list), so `/m` runs `/model` where the original sends `/m` to the model. |
+
+### CLOSED since the first captures (18:48)
 
 | Was reported | Now — verified on the 18:48 binary |
 |---|---|
@@ -86,12 +100,19 @@ still pass the old variable and will silently capture a port with no models).
 | the Chinese login strings | **CLOSED** — `Not configured` / `Configured · API key` now. |
 | the startup header | **CLOSED** — the port now shows pi's header, its ` v1.3.0` and pi's tmux warning. |
 
-### STILL OPEN — these are the live gaps
+**One harness note first, because it will bite the next person:** the port
+now reads **pi's** agent directory, so the Rust side is driven with
+`PI_CODING_AGENT_DIR`, **not** `RPI_CODING_AGENT_DIR` (the repo's
+`scripts/parity/drive.mjs` is already correct at `:208`/`:218`;
+`scripts/parity/session-compat.mjs:147` and `scripts/parity/settings-parity.mjs:251`
+still pass the old variable and will silently capture a port with no models).
+
+### STILL OPEN — the picker chrome (the 18:48 list)
 
 | § | Gap | State on the 18:48 binary |
 |---|---|---|
-| §1 | the command set is still not the original's | the port's list is now `/help, /clear, /new, /quit, /version, /changelog, /model, /provider, /thinking, /tools, /images, /resume, /theme, /compact, /copy, /hotkeys, /usage, /name, /settings, /scoped-models, /export, /import, /share, /fork, /clone, /tree, /trust, /login, /logout, /reload, /skills, /bug, /stats` — 33 entries. **Still missing:** `/history` and `/sessions` (the original's aliases of `/resume`), `/llama` and `/mcp` (the original's built-in-extension commands), and the original's `/exit` (the port lists only `/quit`). **Still port-only:** `/help`, `/?`, `/clear`, `/version`, `/v`, `/provider`, `/tools`, `/images`, `/usage`. |
-| §3.1 | the `/` list has no `(n/m)` counter and does not wrap | **OPEN.** The list still prints five rows with no counter, and `↓` still clamps on the last entry instead of wrapping to the first. The port's `SelectList` *does* have the counter (`rpi-tui/src/select_list.rs:682`) — the login list shows `(1/40)` — so only the autocomplete path is missing it. |
+| §1 | the command set is still not the original's | **superseded — see §0.** The port's list is the original's 26 commands plus the original's three alias rows, in the original's order; only the original's built-in-extension commands (`/llama`, `/mcp`) are missing. |
+| §3.1 | the `/` list has no `(n/m)` counter and does not wrap | **CLOSED.** The popup renders through the tui library's `SelectList`, so it prints the counter — the captured port pane reads `(1/29)` against the original's `(1/31)` — and `↓`/`↑` wrap. |
 | §3.3 | no argument completions | **OPEN.** Typing `/model ` still opens no completion list; the original shows `→ mock-1   mock`. |
 | §4.1 | `/name` with no argument | **OPEN** — the port prints `ℹ Usage: /name <display name> — sets the current session's name.`, the original `Warning: Usage: /name <name>`. |
 | §4.2 | `/copy` with no reply | **OPEN** — the port prints `ℹ Nothing to copy yet — no assistant reply captured.`, the original `Error: No agent messages to copy yet.` (info vs error). |
@@ -170,76 +191,56 @@ The original also dispatches three commands that are **not** in the list:
 
 ### 1.2 What the port offers
 
-Re-verified on the **18:48 green binary** by walking the `/` list with `↓` and
-reading every row. The registry is `rpi-cli/src/interactive_tui/commands.rs:851-884`
-(`build_builtin_registry`); the list shows **33** rows. The table below folds
-the visible alias rows into their command (the list prints `/clear` **and**
-`/new` as two rows, and `/quit` as one), so the table has 32 lines for the
-33 rows on screen.
+The registry is `rpi-cli/src/interactive_tui/commands.rs` (`build_builtin_registry`).
+The list shows **29** rows: the original's 26 commands and the original's three
+alias rows, in the original's order. The port's own `/context` is registered but
+hidden from the list.
 
-| # | Name | Aliases | Description (the exact text in the picker) | Impl |
-|---|---|---|---|---|
-| 1 | `/help` | `/?` | Show available commands | `commands.rs:7` |
-| 2 | `/clear` | `/new` | Clear the conversation | `commands.rs:24` |
-| 3 | `/quit` | | Quit pi | `commands.rs:44` |
-| 4 | `/version` | `/v` | Show version information | `commands.rs:65` |
-| 5 | `/changelog` | | Show changelog entries | `commands.rs:82` |
-| 6 | `/model` | | `<provider/model>` — Select model (opens selector UI) | `commands.rs:149` |
-| 7 | `/provider` | | Switch provider now, or add/remove provider configuration | `commands.rs:190` |
-| 8 | `/thinking` | | `<level>` — Set thinking level | `commands.rs:220` |
-| 9 | `/tools` | | Toggle tools on/off | `commands.rs:272` |
-| 10 | `/images` | | Toggle inline images | `commands.rs:292` |
-| 11 | `/resume` | | Resume a different session | `commands.rs:311` |
-| 12 | `/theme` | | `<name>` — Change the color theme | `commands.rs:334` |
-| 13 | `/compact` | | Manually compact the session context | `commands.rs:372` |
-| 14 | `/copy` | | Copy last agent message to clipboard | `commands.rs:385` |
-| 15 | `/hotkeys` | | Show all keyboard shortcuts | `commands.rs:135` |
-| 16 | `/usage` | | Show token, cost, and cache totals for this session | `commands.rs:775` |
-| 17 | `/name` | | Set session display name | `commands.rs:648` |
-| 18 | `/settings` | | Open settings menu | `commands.rs:692` |
-| 19 | `/scoped-models` | | Enable/disable models for Ctrl+P cycling | `commands.rs:717` |
-| 20 | `/export` | | Export session (HTML default, or specify path: .html/.jsonl) | `commands.rs:398` |
-| 21 | `/import` | | Import and resume a session from a JSONL file | `commands.rs:670` |
-| 22 | `/share` | | Share session via a Radius artifact or a GitHub gist | `commands.rs:739` |
-| 23 | `/fork` | | Create a new fork from a previous user message | `commands.rs:432` |
-| 24 | `/clone` | | Duplicate the current session at the current position | `commands.rs:448` |
-| 25 | `/tree` | | Navigate session tree (switch branches) | `commands.rs:461` |
-| 26 | `/trust` | | Save project trust decision for future sessions | `commands.rs:611` |
-| 27 | `/login` | | `<provider>` — Configure provider authentication | `commands.rs:474` |
-| 28 | `/logout` | | Remove provider authentication | `commands.rs:573` |
-| 29 | `/reload` | | Reload keybindings, extensions, skills, prompts, themes, and context files | `commands.rs:799` |
-| 30 | `/skills` | | Browse and run a skill | `commands.rs` |
-| 31 | `/bug` | | `<description>` — Report a bug to the Pi developers | `commands.rs` |
-| 32 | `/stats` | | Show session info and stats | `commands.rs:122` |
+| # | Name | Aliases | Description (the exact text in the picker) |
+|---|---|---|---|
+| 1 | `settings` | | Open settings menu |
+| 2 | `model` | | `<provider/model>` — Select model (opens selector UI) |
+| 3 | `tree` | | Navigate session tree (switch branches) |
+| 4 | `thinking` | | `<level>` — Set thinking level |
+| 5 | `scoped-models` | | Enable/disable models for Ctrl+P cycling |
+| 6 | `skills` | | Browse and run a skill |
+| 7 | `theme` | | `<name>` — Change the color theme |
+| 8 | `export` | | Export session (HTML default, or specify path: .html/.jsonl) |
+| 9 | `import` | | Import and resume a session from a JSONL file |
+| 10 | `share` | | Share session via a Radius artifact or a GitHub gist |
+| 11 | `bug` | | `<description> — Report a bug to the Pi developers |
+| 12 | `copy` | | Copy last agent message to clipboard |
+| 13 | `name` | | Set session display name |
+| 14 | `stats` | | Show session info and stats |
+| 15 | `changelog` | | Show changelog entries |
+| 16 | `hotkeys` | | Show all keyboard shortcuts |
+| 17 | `fork` | | Create a new fork from a previous user message |
+| 18 | `clone` | | Duplicate the current session at the current position |
+| 19 | `trust` | | Save project trust decision for future sessions |
+| 20 | `login` | | `<provider> — Configure provider authentication |
+| 21 | `logout` | | Remove provider authentication |
+| 22 | `new` | | Start a new session |
+| 23 | `compact` | | Manually compact the session context |
+| 24 | `resume` | `history`, `sessions` | Resume a different session |
+| 25 | `reload` | | Reload keybindings, extensions, skills, prompts, themes, and context files |
+| 26 | `quit` | `exit` | Quit pi |
 
-`/context` (`commands.rs:755`) is registered but hidden from the list, and
-`/exit` is **no longer listed** — the port now lists `/quit` where the
-original lists **both** `/quit` and its alias `/exit`.
+Each alias is its own row right after the command it points at, the way the
+original's picker builds it (`interactive-mode.ts:722-733`), so the list reads
+`resume, history, sessions` and `quit, exit`. The alias row carries the
+command's description and **no** argument hint of its own.
+
+The port keeps four aliases of its own, all off the list: `/q` (of `/quit`),
+`/m` (of `/model`), `/think` (of `/thinking`) and `/session` (of `/resume`).
+They are the port's own, not the original's.
 
 ### 1.3 The delta
 
 | | Commands |
 |---|---|
-| **Original only** | `history`, `sessions` (the original's aliases of `resume`), `llama`, `mcp` (the original's built-in-extension commands) |
-| **Port only** | `help`, `?`, `clear`, `version`, `v`, `provider`, `tools`, `images`, `usage` |
-| **Both, different meaning** | `new` — the original **starts a new session** (`interactive-mode.ts:3068` → `:6914` `runtimeHost.newSession()`); the port aliases it to `/clear` (`commands.rs:24-42`), which only empties the transcript |
-| **Both, but the port's is inert** | `stats` — in the port's list and dispatching, but it prints nothing at all (§4.6a) |
-
-`/skills`, `/bug` and `/stats` were **missing from the port entirely** when
-this document was first written; they have landed since, and the port's
-descriptions now match the original's wording exactly.
-
-`/new` deserves a note of its own, because it is the one name that appears in
-**both** lists with a **different description and a different effect**:
-
-```
-  new            Start a new session          (original)
-  /new Clear the conversation                (port)
-```
-
-The port's `/new` is `ClearChatCommand`'s visible alias
-(`commands.rs:29-33`, `alias_visible`), so the picker promises "Start a new
-session" in the original's voice and delivers "Clear the conversation".
+| **Original only** | `llama`, `mcp` — the original's built-in-extension commands. The port has neither feature, so it lists neither. |
+| **Port only** | none in the list. (Off the list, the port still answers `/q`, `/m`, `/think` and `/session`, and it has its own hidden `/context`.) |
+| **Both, different meaning** | `new` — the original **starts a new session** (`interactive-mode.ts:3068` → `:6914` `runtimeHost.newSession()`); the port answers `A new session is not created by this command yet; the current session continues.` — the port has no session-*create* entry point. |
 
 ---
 
@@ -317,12 +318,18 @@ the whole of it.
 | Original | `interactive-mode.ts:734-790` gives `model`, `thinking` and `login` a `getArgumentCompletions`; typing `/model ` opens a live list of the catalog: `→ mock-1    mock` |
 | Port | no argument completions at all. Typing `/model ` leaves the command list in place (`→ /model Select model (opens selector UI)`) |
 
-### 3.4 The list shows the leading slash
+### 3.4 The list shows the leading slash — **CLOSED**
 
-The original lists bare names (`settings`, `model`, `tree`); the port lists
-`/help`, `/clear`, `/model`. The port's descriptions were re-worded to the
-original's during the audit, so the difference is now only the leading `/` and
-the missing hint/counter/completions.
+The original lists bare names (`settings`, `model`, `tree`); the port now does
+too. The row's **label** is the bare name and the row's **value** keeps the
+slash, so accepting a row still writes the name the dispatcher matches on
+(`packages/tui/src/autocomplete.ts:352-360` uses the bare `cmd.name` as the
+label). The captured panes agree:
+
+```
+→ settings       Open settings menu          (original)
+→ settings       Open settings menu          (port)
+```
 
 ### 3.5 Extension commands work on both sides
 
@@ -331,10 +338,10 @@ shows in **both** lists with the same description:
 
 ```
 → hello       Say hello from an extension          (original)
-→ /hello Say hello from an extension               (port)
+→ hello       Say hello from an extension          (port)
 ```
 
-Original: `interactive-mode.ts:795-812`. Port: `commands.rs:838-861`.
+Original: `interactive-mode.ts:795-812`. Port: `commands.rs` (`register_extension_commands`).
 
 ---
 
@@ -477,39 +484,48 @@ The original's dispatcher matches `/changelog` **exactly**
 (`interactive-mode.ts:3027`), so `/changelog all` in the original is *not* a
 command and is sent to the model — the opposite of the port's behaviour.
 
-### 4.8 `/new`
+### 4.8 `/new` — the name is the original's, the effect is not there yet
 
 | | |
 |---|---|
 | Original | `interactive-mode.ts:3068` → `handleClearCommand` (`:6914`) → `runtimeHost.newSession()` — a **new session**: a new session id/file, and the footer's counters reset |
-| Port | `commands.rs:24-42` → `TuiMessage::ClearChat` → `rpi-cli/src/interactive_tui.rs:3466-3469` — `chat_container.clear()`; the session and its usage survive |
+| Port | `commands.rs` (`NewSessionCommand`) → `TuiMessage::NewSession` → the transcript is not cleared and no session is created: the command answers `A new session is not created by this command yet; the current session continues. Use /session to switch to another one.` |
 
 **Observed live.** After one prompt and then `/new`: the original's footer
 reads `0.0% 0 tokens`; the port's still reads `0.0% 49 tokens`.
 
-### 4.9 `/help`
+The name, the description and the dispatch are the original's now — the port
+has no session-*create* entry point (`switch_to_session` opens an existing
+session), so the effect is a session-area task, not a command-surface one.
+
+### 4.9 `/help` — **CLOSED**
 
 The original has **no** `/help` — it is not a command and is sent to the model.
-The port prints an `📚 Available Commands` table
-(`rpi-cli/src/interactive_tui/rendering.rs:232-268`), and the language lead has
-already re-worded it to the original's descriptions (`LANGUAGE.md` §5). The
-listing now carries **25** entries; it still omits four of the port's own
-commands — `/usage`, `/provider`, `/tools`, `/images` — and the original's
-aliases `history` and `sessions`. (The original lists **both** `quit` and its
-alias `exit`; the port lists only `exit`, where `quit` is a hidden alias.)
+The port had one (an `📚 Available Commands` table) and it is gone: `/help` and
+`/?` are no longer registered, so they are ordinary messages again and reach
+the model, like the original's. The original's help is the expanded startup
+screen (Ctrl+O) and the `/hotkeys` table.
 
 ### 4.10 `/hotkeys`
 
-The port's list was rewritten during the audit into a live, registry-driven
-three-section markdown table (`rpi-cli/src/interactive_tui/rendering.rs:375-499`:
-`**Navigation**`, `**Editing**`, `**Other**`, `| Key | Action |`), which is the
-original's shape (`interactive-mode.ts:6799-6905`). Three gaps remain:
+The port's list is a live, registry-driven markdown table
+(`rpi-cli/src/interactive_tui/rendering.rs`: `**Navigation**`, `**Editing**`,
+`**Other**`, `| Key | Action |`), which is the original's shape
+(`interactive-mode.ts:6799-6905`).
 
-| Missing from the port | Original |
-|---|---|
-| `Ctrl+C \| Exit (press twice)` | `app.quit` (`packages/coding-agent/src/core/keybindings.ts:30`) — the port **has** the binding (`rpi-tui/src/keybindings.rs:163-167`) but does not list it |
-| `Jump forward to character` / `Jump backward to character` | `tui.editor.jumpForward` / `jumpBackward` (`packages/tui/src/keybindings.ts:115`) — the port has them (`rpi-tui/src/keybindings.rs:586-598`) but does not list them |
-| the **Extensions** section (the extension-registered shortcuts) | `interactive-mode.ts:6884-6900` |
+**The `Extensions` section is landed.** The renderer appends it when the
+loaded extensions registered shortcuts, exactly as the original does
+(`interactive-mode.ts:6892-6903`): the `**Extensions**` heading, the
+`| Key | Action |` table, the capitalised key and the shortcut's description
+— or the extension it belongs to when the shortcut has none. The list reaches
+the renderer from the extension registry's snapshot
+(`interactive_tui.rs`: `CommandContext::extension_shortcuts`).
+
+**Still open on this table:** the JS (Bun) extension host keeps
+`registerShortcut` calls in a JS-side map and never exports them to the host,
+so a JS extension's shortcut does not reach the table; and the extension shown
+in the fallback column is its display name, not its path, because the native
+plugin API only carries the name.
 
 ### 4.11 `/trust`
 
@@ -792,18 +808,20 @@ PD_HOME=/tmp/<you> PD_SOCKET=pi-<you> node run.mjs /tmp/<you>.json
 
 | # | Check | Expectation |
 |---|---|---|
-| 1 | type `/`, then `↓` 31 times, capture at each step | the original shows `(1/31)` and wraps to `settings`; the port shows no counter and stops at the last entry |
+| 1 | type `/`, then `↓` 29 times, capture at each step | the original shows `(1/31)` and wraps to `settings`; the port shows `(1/29)` and wraps to `settings` — the two entries it lacks are `llama` and `mcp` |
 | 2 | type `/model ` (with the trailing space) | the original opens a completion list (`→ mock-1   mock`); the port does not |
 | 3 | type `/stats`, Enter | the original prints `Session Stats`; the port echoes `/stats` as a user message and calls the model |
 | 4 | type `/thinking high`, Enter | the original errors (`Available levels: off.`); the port sets it (`Thinking set to high.`) |
 | 5 | open `/model`, press `Ctrl+S` | the original closes the picker and prints `Default model: mock/mock-1`; the port does nothing |
 | 6 | type `/logout`, Enter | the original prints the two-line "No stored credentials to remove…" explanation; the port prints one info line |
 | 7 | type `/copy` with no reply | the original prints an **Error**; the port prints an **info** note |
-| 8 | type `/help`, Enter | the port prints its table; assert it lists all 31 registered commands, not 15 |
-| 9 | type `/hotkeys`, Enter | the original's table has the `Exit (press twice)`, `Jump forward/backward` and `Extensions` rows |
+| 8 | type `/help`, Enter | the original sends it to the model; the port does the same — `/help` is not a command on either side |
+| 9 | type `/hotkeys`, Enter | the original's table has the `Extensions` section; the port's does too, for the extensions that register shortcuts natively |
 | 10 | a unit test in `rpi-ai`: a model with `reasoning: false` and no `thinking_level_map` | `supported_thinking_levels()` returns `["off"]` |
 | 11 | a unit test in `rpi-cli`: the autocomplete list | the counter `(n/m)` is present and `↓` wraps |
-| 12 | a unit test in `rpi-cli`: `build_builtin_registry()` | the registry contains the original's 26 built-ins plus `llama` and `mcp`, with the aliases `history`, `sessions`, `exit` |
+| 12 | a unit test in `rpi-cli`: `build_builtin_registry()` | the registry holds the original's 26 built-ins with the aliases `history`, `sessions`, `exit`; `llama` and `mcp` are the original's built-in-extension commands and the port has neither feature |
+| 13 | a unit test in `rpi-cli`: `the_slash_list_is_the_originals_list` | the visible list is the original's 26 commands plus its three alias rows, in the original's order, with the original's descriptions and argument hints |
+| 14 | a unit test in `rpi-cli`: `a_registered_command_never_reaches_the_model` | a registered command resolves; `/help`, `/?`, `/clear`, `/version`, `/v`, `/provider`, `/tools`, `/images` and `/usage` do not, so they reach the model |
 
 ---
 

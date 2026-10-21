@@ -163,13 +163,17 @@ which is what the original's `buildCompletionValue` does
 
 ## 7. The counter, the wrap-around and the path rows
 
-**The popup is a `SelectList`.** The original builds the popup's list as a
-`SelectList` with the layout options
-(`packages/tui/src/components/editor.ts:2451-2452`), so the popup shows the
-same `(n/m)` counter, the same label column and the same wrap-around as every
-other list. The port's popup rendered its own `Text` rows, so it had no counter
-and its ↑/↓ stopped at the ends. It now renders through the tui library's
-`SelectList`:
+**The popup is a `SelectList`, rendered at the width the layout gives it.**
+The original builds the popup's list as a `SelectList` with the layout options
+(`packages/tui/src/components/editor.ts:2451-2452`) and renders it at the
+editor's own width, so the popup shows the same `(n/m)` counter, the same label
+column and the same wrap-around as every other list. The port's popup rendered
+its own `Text` rows, so it had no counter and its ↑/↓ stopped at the ends.
+
+The rows are **not** pre-rendered into the container: a row laid out at one
+width and drawn at another wraps, and the popup then shows a broken row instead
+of the list. The popup is a component that renders its own `SelectList` at the
+width the layout hands it.
 
 * the counter is the library's (`packages/tui/src/components/select-list.ts:126-131`);
 * the ↑/↓ navigation wraps (`packages/tui/src/components/select-list.ts:196-212`):
@@ -188,6 +192,25 @@ accepting one does not drop the directory the user typed. The port's rows
 carried the bare file name, so accepting a completion replaced the whole path
 with the name — a correctness bug, not a difference in look. The provider now
 keeps the directory part of the prefix in the row.
+
+### The evidence: the user's own view
+
+`scripts/parity/screens/run.mjs rust input-autocomplete`, diffed against pi's
+capture of the same screen:
+
+```
+→ settings       Open settings menu
+  model          <provider/model> — Select model (opens selector UI)
+  tree           Navigate session tree (switch branches)
+  thinking       <level> — Set thinking level
+  scoped-models  Enable/disable models for Ctrl+P cycling
+  (1/29)
+```
+
+The rows are byte-identical to pi's: the bare names, the padded column, the
+`<hint> — <description>` format and the `(n/m)` counter. The only difference is
+the counter's total — pi `(1/31)`, the port `(1/29)` — because the port's `/`
+list has two fewer commands. That is the command set, not the list's rendering.
 
 ## 8. Checks
 
@@ -228,6 +251,11 @@ scripts/agent-cargo.sh test -p rpi-cli --lib skill_autocomplete # 3 passed
 * `the_popup_shows_the_counter` — the popup shows the original's `(n/m)`.
 * `the_popup_wraps_around` — `↓` past the last entry returns to the first and
   `↑` before the first goes to the last.
+* `the_popup_renders_its_rows_in_the_dock` — the popup renders its rows in the
+  real dock at the width the layout gives it: the rows, the descriptions and
+  the counter are all there. This is the test that catches a row laid out at
+  one width and drawn at another, which is what made the popup show only its
+  `→` marker.
 
 `rpi/crates/rpi-cli/src/interactive_tui/autocomplete.rs` (unit tests):
 
