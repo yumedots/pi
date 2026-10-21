@@ -67,9 +67,10 @@ bun run check
 Both must pass. The toolchain is [Bun](https://bun.sh); `make check` and
 `make test` run the same commands.
 
-Do not edit `CHANGELOG.md`. Changelog entries are added by maintainers.
+Changelog entries and README updates are written when a maintainer asks for
+them, not by default.
 
-If you are adding a new provider to `packages/ai`, see `AGENTS.md` for required tests.
+If you are adding a new provider to `packages/ai`, see `.pi/skills/add-llm-provider.md` for the required tests.
 
 ## Questions?
 

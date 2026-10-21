@@ -1894,26 +1894,9 @@ Update `src/cli/args.ts`:
 
 - Add environment variable documentation in the help text
 
-Update `README.md`:
+#### 7. Documentation and Changelog
 
-- Add the provider to the providers section with setup instructions
-
-#### 7. Documentation
-
-Update `packages/ai/README.md`:
-
-- Add to the Supported Providers table
-- Document any provider-specific options or authentication requirements
-- Add environment variable to the Environment Variables section
-
-#### 8. Changelog
-
-Add an entry to `packages/ai/CHANGELOG.md` under `## [Unreleased]`:
-
-```markdown
-### Added
-- Added support for [Provider Name] provider ([#PR](link) by [@author](link))
-```
+Only when the user asks for them: the providers table and the options, auth and env vars in this file, the setup instructions in `packages/coding-agent/README.md`, `packages/coding-agent/docs/providers.md`, and the entry in `packages/ai/CHANGELOG.md` under `## [Unreleased]`.
 
 ## License
 
