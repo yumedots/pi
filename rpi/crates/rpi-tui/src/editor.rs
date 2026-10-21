@@ -347,6 +347,18 @@ fn insert_cursor_marker(text: &str, column: usize) -> String {
     out
 }
 
+/// The caret must never sit inside a folded-paste marker: the marker is one
+/// atomic unit, like the original's `segmentWithMarkers`
+/// (packages/tui/src/components/editor.ts:60-115).
+fn snap_out_of_paste_marker(line: &str, col: usize) -> usize {
+    for capture in paste_marker_regex().find_iter(line) {
+        if col > capture.start() && col < capture.end() {
+            return capture.start();
+        }
+    }
+    col
+}
+
 /// A rendered row of the editor: one wrapped chunk of a logical line.
 struct LayoutChunk {
     /// The logical row the chunk belongs to.
@@ -737,6 +749,7 @@ impl Editor {
         if let Ok(mut state) = self.state.lock() {
             let row = row.min(state.lines.len().saturating_sub(1));
             let col = snap_boundary(&state.lines[row], col);
+            let col = snap_out_of_paste_marker(&state.lines[row], col);
             state.cursor_row = row;
             state.cursor_col = col;
             state.selection_anchor = None;
@@ -1642,6 +1655,8 @@ impl Editor {
         if let Ok(mut guard) = self.state.lock() {
             guard.cursor_row = chunk.row;
             guard.cursor_col = chunk.start + target_index;
+            guard.cursor_col =
+                snap_out_of_paste_marker(&guard.lines[chunk.row], guard.cursor_col);
             guard.selection_anchor = None;
         }
         if let Ok(mut guard) = self.scroll_pinned.lock() {
@@ -2755,6 +2770,24 @@ l12",
         let end = content.find(crate::ansi::FAKE_CURSOR_END).unwrap();
         let between = &content[start + crate::ansi::FAKE_CURSOR_START.len()..end];
         assert_eq!(between, " ");
+    }
+
+    #[test]
+    fn the_caret_never_lands_inside_a_folded_paste_marker() {
+        let editor = Editor::simple();
+        let payload = "x".repeat(2000);
+        editor.handle_paste(&payload);
+        let text = editor.get_text();
+        let marker_start = text.find("[paste #").expect("a folded marker");
+        let marker_end = marker_start + text[marker_start..].find(']').unwrap() + 1;
+        editor.set_cursor(0, marker_start + 3);
+        assert_eq!(
+            editor.cursor_position().1,
+            marker_start,
+            "the caret snaps to the start of the marker"
+        );
+        editor.set_cursor(0, marker_end);
+        assert_eq!(editor.cursor_position().1, marker_end);
     }
 
     #[test]

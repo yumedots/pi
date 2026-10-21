@@ -87,6 +87,11 @@ pub struct JsonlSessionStorage {
     /// Not `&self` across await points, so each mutating op holds it for its
     /// full duration.
     tail: Mutex<()>,
+    /// The header of a session whose file does not exist yet. The original
+    /// writes the file only once there is a turn
+    /// (`packages/coding-agent/src/core/session-manager.ts:1160-1190`), so the
+    /// header is written with the first entry.
+    pending_header: Mutex<Option<SessionFileHeader>>,
 }
 
 impl JsonlSessionStorage {
@@ -105,6 +110,7 @@ impl JsonlSessionStorage {
             clock,
             ids,
             tail: Mutex::new(()),
+            pending_header: Mutex::new(None),
         }
     }
 
@@ -117,17 +123,23 @@ impl JsonlSessionStorage {
         clock: Arc<dyn Clock>,
         ids: Arc<dyn IdGenerator>,
     ) -> SessionResult<Self> {
-        file_result(
-            fs.write_file(path, FileContent::Text(encode_header(&header)), None)
-                .await,
-            &format!("Failed to initialize session {path}"),
-        )?;
-        let info = file_result(
-            fs.file_info(path, None).await,
-            &format!("Failed to read session metadata {path}"),
-        )?;
-        let metadata = metadata_from_header(&header, path, info.mtime_ms);
-        Ok(Self::new(fs, metadata, clock, ids))
+        let created_at = crate::session::types::ms_from_iso_timestamp(&header.timestamp)
+            .unwrap_or_else(|| clock.now_ms());
+        let metadata = JsonlSessionMetadata {
+            id: header.id.clone(),
+            created_at,
+            cwd: header.cwd.clone(),
+            path: path.to_string(),
+            modified_at: created_at,
+            source_format: crate::session::jsonl::types::JsonlSourceFormat::V3,
+            parent_session_id: header
+                .parent_session
+                .as_deref()
+                .and_then(crate::session::jsonl::codec::session_id_from_path),
+        };
+        let storage = Self::new(fs, metadata, clock, ids);
+        *storage.pending_header.lock().await = Some(header);
+        Ok(storage)
     }
 
     /// Load + replay an existing session file, repairing a torn tail if the
@@ -245,7 +257,13 @@ impl JsonlSessionStorage {
             let ids = ids.clone();
             Box::pin(async move {
                 let target =
-                    JsonlSessionStorage::create(fs.clone(), temp_path, header, clock, ids).await?;
+                    JsonlSessionStorage::create(fs.clone(), temp_path, header.clone(), clock, ids)
+                        .await?;
+                file_result(
+                    fs.write_file(temp_path, FileContent::Text(encode_header(&header)), None)
+                        .await,
+                    &format!("Failed to initialize session {temp_path}"),
+                )?;
                 for mutation in &mutations {
                     let Some(entry) = mutation_entry(mutation) else {
                         continue;
@@ -284,6 +302,30 @@ impl JsonlSessionStorage {
     ) -> SessionResult<T> {
         let _g = self.tail.lock().await;
         op.await
+    }
+
+    /// Write the session file's header when the file does not exist yet.
+    ///
+    /// The original creates the file only once the session has a turn
+    /// (`packages/coding-agent/src/core/session-manager.ts:1160-1190`), so a
+    /// session that is opened and closed without chatting leaves no file
+    /// behind.
+    async fn flush_pending_header(&self) -> SessionResult<()> {
+        let header = self.pending_header.lock().await.take();
+        let Some(header) = header else {
+            return Ok(());
+        };
+        file_result(
+            self.fs
+                .write_file(
+                    &self.metadata.path,
+                    FileContent::Text(encode_header(&header)),
+                    None,
+                )
+                .await,
+            &format!("Failed to initialize session {}", self.metadata.path),
+        )?;
+        Ok(())
     }
 
     /// Append an entry line to the file (no in-memory apply).
@@ -414,6 +456,7 @@ impl SessionStorage for JsonlSessionStorage {
             entry: full.clone(),
         };
         drop(state);
+        self.flush_pending_header().await?;
         self.append_entry_line(&full).await?;
         let mut state = self.state.lock().await;
         state.apply_mutation(mutation)?;

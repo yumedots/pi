@@ -219,15 +219,23 @@ impl FilePathAutocompleteProvider {
     fn get_path_completions(&self, prefix: &str) -> Vec<AutocompleteItem> {
         let mut items = Vec::new();
 
-        // Determine the directory to search
-        let (dir, partial) = if prefix.contains('/') || prefix.contains('\\') {
+        // Determine the directory to search, and the part of the prefix that
+        // is the directory: the row carries the whole path, so accepting it
+        // does not drop the directory part of what the user typed.
+        let (dir, display_dir, partial) = if prefix.contains('/') || prefix.contains('\\') {
             let path = Path::new(prefix);
             let parent = path.parent().unwrap_or(Path::new("."));
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            (parent.to_path_buf(), file_name.to_string())
+            // The directory part of the prefix, with its trailing separator.
+            let display_dir = match prefix.rfind(['/', '\\']) {
+                Some(index) => prefix[..=index].to_string(),
+                None => String::new(),
+            };
+            (parent.to_path_buf(), display_dir, file_name.to_string())
         } else {
             (
                 self.root_path.clone().unwrap_or_else(|| PathBuf::from(".")),
+                String::new(),
                 prefix.to_string(),
             )
         };
@@ -246,7 +254,11 @@ impl FilePathAutocompleteProvider {
                     }
 
                     let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-                    let text = if is_dir { format!("{}/", name) } else { name };
+                    let text = if is_dir {
+                        format!("{display_dir}{name}/")
+                    } else {
+                        format!("{display_dir}{name}")
+                    };
 
                     items.push(
                         AutocompleteItem::new(&text)
@@ -543,6 +555,40 @@ mod tests {
 
         assert_eq!(item.text, "test.txt");
         assert!(item.is_directory);
+    }
+
+    #[test]
+    fn a_path_row_carries_the_whole_path() {
+        // The original's rows carry the path
+        // (`packages/tui/src/autocomplete.ts:143-160`, `buildCompletionValue`),
+        // so accepting one does not drop the directory the user typed.
+        let dir = std::env::temp_dir().join("rpi-path-row-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("manual.txt"), "x").unwrap();
+        let provider = FilePathAutocompleteProvider::with_root(dir.clone());
+        let suggestions = provider.get_suggestions("man", 3).expect("a suggestion");
+        assert_eq!(suggestions.items[0].text, "manual.txt");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_path_row_keeps_the_directory_part() {
+        let dir = std::env::temp_dir().join("rpi-path-row-subdir-test");
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("sub").join("manual.txt"), "x").unwrap();
+        let provider = FilePathAutocompleteProvider::with_root(dir.clone());
+        // A prefix with a separator is resolved as a path, so the row carries
+        // the whole path — the directory the user typed survives the accept.
+        let prefix = format!("{}/sub/man", dir.display());
+        let suggestions = provider
+            .get_suggestions(&prefix, prefix.len())
+            .expect("a suggestion");
+        assert_eq!(
+            suggestions.items[0].text,
+            format!("{}/sub/manual.txt", dir.display()),
+            "the row must carry the whole path"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

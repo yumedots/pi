@@ -130,7 +130,7 @@ pub(super) async fn switch_to_session(
                 return false;
             }
             chat.clear();
-            add_welcome_message(chat);
+            add_startup_header(chat, &state.startup_header);
             render_session_history(
                 harness,
                 chat,
@@ -261,7 +261,7 @@ pub(super) async fn fork_session(
         return;
     }
     chat.clear();
-    add_welcome_message(chat);
+    add_startup_header(chat, &state.startup_header);
     render_session_history(
         harness,
         chat,

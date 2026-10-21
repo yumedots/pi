@@ -4,36 +4,6 @@ use super::*;
 
 // ---- Built-in command implementations ----
 
-pub(super) struct HelpCommand;
-impl SlashCommand for HelpCommand {
-    fn name(&self) -> &'static str {
-        "/help"
-    }
-    fn aliases(&self) -> &'static [&'static str] {
-        &["/?"]
-    }
-    fn description(&self) -> &'static str {
-        "Show available commands"
-    }
-    fn execute(&self, ctx: &CommandContext, _args: &str) {
-        add_help_message(&ctx.chat);
-        ctx.tui.request_render(false);
-    }
-}
-
-pub(super) struct ClearChatCommand;
-impl SlashCommand for ClearChatCommand {
-    fn name(&self) -> &'static str {
-        "/clear"
-    }
-    fn description(&self) -> &'static str {
-        "Clear the conversation"
-    }
-    fn execute(&self, ctx: &CommandContext, _args: &str) {
-        let _ = ctx.tx.send(TuiMessage::ClearChat);
-    }
-}
-
 /// The original's `/new`: start a new session. The original has no `/clear`.
 pub(super) struct NewSessionCommand;
 impl SlashCommand for NewSessionCommand {
@@ -63,23 +33,6 @@ impl SlashCommand for ExitCommand {
     fn execute(&self, ctx: &CommandContext, _args: &str) {
         ctx.state.cancel_js_preparation();
         let _ = ctx.tx.send(TuiMessage::Exit);
-    }
-}
-
-pub(super) struct VersionCommand;
-impl SlashCommand for VersionCommand {
-    fn name(&self) -> &'static str {
-        "/version"
-    }
-    fn aliases(&self) -> &'static [&'static str] {
-        &["/v"]
-    }
-    fn description(&self) -> &'static str {
-        "Show version information"
-    }
-    fn execute(&self, ctx: &CommandContext, _args: &str) {
-        add_version_message(&ctx.chat);
-        ctx.tui.request_render(false);
     }
 }
 
@@ -207,36 +160,6 @@ impl SlashCommand for ModelCommand {
     }
 }
 
-pub(super) struct ProviderCommand;
-impl SlashCommand for ProviderCommand {
-    fn name(&self) -> &'static str {
-        "/provider"
-    }
-    fn description(&self) -> &'static str {
-        "Switch provider now, or add/remove provider configuration"
-    }
-    fn execute(&self, ctx: &CommandContext, args: &str) {
-        let term = args.trim();
-        if term == "add" || term == "new" {
-            begin_provider_form(&ctx.state, &ctx.editor_container, &ctx.editor, &ctx.tui);
-            return;
-        }
-        if let Some(id) = term.strip_prefix("remove ") {
-            match remove_provider(id) {
-                Ok(note) => add_note_message(&ctx.chat, &note),
-                Err(error) => add_error_message(&ctx.chat, &error),
-            }
-            ctx.tui.request_render(false);
-            return;
-        }
-        if !term.is_empty() {
-            let _ = ctx.tx.send(TuiMessage::SwitchProvider(term.to_string()));
-            return;
-        }
-        let _ = ctx.tx.send(TuiMessage::OpenProviderSelector);
-    }
-}
-
 pub(super) struct ThinkingCommand;
 impl SlashCommand for ThinkingCommand {
     fn name(&self) -> &'static str {
@@ -287,45 +210,6 @@ impl SlashCommand for ThinkingCommand {
                 .read()
                 .unwrap_or_else(|error| error.into_inner()),
             &current_id,
-            &ctx.chat,
-        );
-    }
-}
-
-pub(super) struct ToolsCommand;
-impl SlashCommand for ToolsCommand {
-    fn name(&self) -> &'static str {
-        "/tools"
-    }
-    fn description(&self) -> &'static str {
-        "Toggle tools on/off"
-    }
-    fn execute(&self, ctx: &CommandContext, _args: &str) {
-        open_tools_selector(
-            &ctx.state,
-            &ctx.editor_container,
-            &ctx.editor,
-            &ctx.tui,
-            &ctx.lane,
-            &ctx.chat,
-        );
-    }
-}
-
-pub(super) struct ImagesCommand;
-impl SlashCommand for ImagesCommand {
-    fn name(&self) -> &'static str {
-        "/images"
-    }
-    fn description(&self) -> &'static str {
-        "Toggle inline images"
-    }
-    fn execute(&self, ctx: &CommandContext, _args: &str) {
-        open_images_selector(
-            &ctx.state,
-            &ctx.editor_container,
-            &ctx.editor,
-            &ctx.tui,
             &ctx.chat,
         );
     }
@@ -797,23 +681,6 @@ impl SlashCommand for ContextCommand {
     }
 }
 
-/// `/usage` — token/cost/cache totals read through the product-layer
-/// `AgentSession`. This is the same numbers the footer shows, but expanded and
-/// with the cache-hit breakdown that the one-line footer cannot fit.
-pub(super) struct UsageCommand;
-impl SlashCommand for UsageCommand {
-    fn name(&self) -> &'static str {
-        "/usage"
-    }
-    fn description(&self) -> &'static str {
-        "Show token, cost, and cache totals for this session"
-    }
-    fn execute(&self, ctx: &CommandContext, _args: &str) {
-        let _ = ctx.tx.send(TuiMessage::ShowUsage);
-        ctx.tui.request_render(false);
-    }
-}
-
 /// `/reload` — re-run extension + resource discovery into the LIVE harness
 /// (B5d): reload the cdylib plugins, invalidate the old `ActionBridge` +
 /// registry snapshot, rebuild skills/prompts/context/SYSTEM.md/APPEND_SYSTEM.md
@@ -848,24 +715,17 @@ impl SlashCommand for ReloadCommand {
 /// via template expansion, not this registry).
 pub(super) fn build_builtin_registry() -> CommandRegistry {
     let mut r = CommandRegistry::new();
-    r.register(Arc::new(HelpCommand));
-    r.register(Arc::new(ClearChatCommand));
     r.register(Arc::new(NewSessionCommand));
     r.register(Arc::new(ExitCommand));
-    r.register(Arc::new(VersionCommand));
     r.register(Arc::new(ChangelogCommand));
     r.register(Arc::new(ModelCommand));
-    r.register(Arc::new(ProviderCommand));
     r.register(Arc::new(ThinkingCommand));
-    r.register(Arc::new(ToolsCommand));
-    r.register(Arc::new(ImagesCommand));
     r.register(Arc::new(SessionCommand));
     r.register(Arc::new(ThemeCommand));
     r.register(Arc::new(CompactCommand));
     r.register(Arc::new(CopyCommand));
     r.register(Arc::new(HotkeysCommand));
     r.register(Arc::new(ContextCommand));
-    r.register(Arc::new(UsageCommand));
     // Recognized but inert in v1 (one struct backs them all). The TS builtins
     // out of v1 scope; each carries a description so autocomplete surfaces its
     // existence even though running it reports "not supported".
