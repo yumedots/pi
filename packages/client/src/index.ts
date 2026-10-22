@@ -53,7 +53,7 @@ export {
 	SERVER_START_TIMEOUT_MS,
 } from "./server-launcher.ts";
 export { type SessionConnection, STATE_REFRESHING_EVENTS } from "./session-connection.ts";
-export type { SessionFacade } from "./session-facade.ts";
+export type { SessionFacade, SessionModelRuntime } from "./session-facade.ts";
 export {
 	createShareTrailingEntries,
 	exportSessionForShare,

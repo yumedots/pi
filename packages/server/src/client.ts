@@ -13,7 +13,13 @@ import type {
 	RpcResponse,
 } from "@earendil-works/pi-coding-agent";
 import { basicAuthHeader } from "./auth.ts";
+import type { OpencodeModelInfo } from "./routes/opencode-shapes.ts";
 import type { PiServerInfo, SessionStateSnapshot } from "./types.ts";
+
+export { basicAuthHeader } from "./auth.ts";
+export type { ServerRegistration } from "./registration.ts";
+export type { OpencodeModelInfo } from "./routes/opencode-shapes.ts";
+export type { SessionStateSnapshot } from "./types.ts";
 
 /** How long the client waits before it reconnects to the event stream. */
 const RECONNECT_DELAY_MS = 1000;
@@ -101,6 +107,17 @@ export class PiServerClient {
 	async listSessions(cwd?: string): Promise<RemoteSessionInfo[]> {
 		const query = cwd ? `?directory=${encodeURIComponent(cwd)}` : "";
 		const body = await this.request<{ data: RemoteSessionInfo[] }>("GET", `/pi/session${query}`);
+		return body.data;
+	}
+
+	/**
+	 * The models the server offers.
+	 *
+	 * The server owns the catalog: the client asks it for the list instead of building a
+	 * catalog of its own.
+	 */
+	async listModels(): Promise<OpencodeModelInfo[]> {
+		const body = await this.request<{ data: OpencodeModelInfo[] }>("GET", "/api/model");
 		return body.data;
 	}
 

@@ -1,10 +1,10 @@
 import { type Model, modelsAreEqual } from "@earendil-works/pi-ai";
-import type { ModelRuntime } from "@earendil-works/pi-coding-agent/core/model-runtime";
 import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import { keyDisplayText } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import { getKeybindings, type Input, type TUI } from "@earendil-works/pi-tui";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
+import type { SessionModelRuntime } from "../session-facade.ts";
 import { MenuComponent, type MenuItem } from "./menu.ts";
 
 interface ModelItem {
@@ -31,7 +31,7 @@ type ModelScope = "all" | "scoped";
 export class ModelSelectorComponent extends MenuComponent<ModelItem> {
 	private readonly tui: TUI;
 	private readonly currentModel: Model<any> | undefined;
-	private readonly modelRuntime: ModelRuntime;
+	private readonly modelRuntime: SessionModelRuntime;
 	private readonly defaultModel: DefaultModelReference | undefined;
 	private readonly onSelectAsDefaultCallback?: (model: Model<any>) => void;
 	private scopedModels: ReadonlyArray<ScopedModelItem>;
@@ -48,7 +48,7 @@ export class ModelSelectorComponent extends MenuComponent<ModelItem> {
 	constructor(
 		tui: TUI,
 		currentModel: Model<any> | undefined,
-		modelRuntime: ModelRuntime,
+		modelRuntime: SessionModelRuntime,
 		scopedModels: ReadonlyArray<ScopedModelItem>,
 		onSelect: (model: Model<any>) => void,
 		onCancel: () => void,

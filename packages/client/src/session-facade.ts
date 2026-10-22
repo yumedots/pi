@@ -11,7 +11,22 @@
  */
 
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { ImageContent, Model, Transport } from "@earendil-works/pi-ai";
+import type {
+	AuthCheck,
+	AuthInteraction,
+	AuthOperationOptions,
+	AuthResult,
+	AuthType,
+	Credential,
+	CredentialInfo,
+	ImageContent,
+	LoginOptions,
+	Model,
+	ModelsRefreshOptions,
+	ModelsRefreshResult,
+	Provider,
+	Transport,
+} from "@earendil-works/pi-ai";
 import type {
 	AgentSessionEvent,
 	CacheWarmingMode,
@@ -21,7 +36,6 @@ import type {
 	ExtensionUIContext,
 	InputSource,
 	ModelCycleResult,
-	ModelRuntime,
 	PromptOptions,
 	ResourceDiagnostic,
 	RpcExtensionUIRequest,
@@ -34,9 +48,58 @@ import type {
 	ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { BashResult } from "@earendil-works/pi-coding-agent/core/bash-executor";
-import type { SessionStateSnapshot } from "@earendil-works/pi-server";
-import type { RemoteSessionInfo } from "@earendil-works/pi-server/client";
+import type { ModelRuntime, ModelRuntimeAuthOverrides } from "@earendil-works/pi-coding-agent/core/model-runtime";
+import type { AuthStatus } from "@earendil-works/pi-coding-agent/core/provider-composer";
+import type {
+	RemoteSessionInfo,
+	SessionStateSnapshot,
+} from "@earendil-works/pi-server/client";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
+
+/**
+ * The model surface the terminal UI reads.
+ *
+ * The models themselves come from the server: the server owns the catalog, and the client
+ * asks it for the list instead of building a catalog of its own. The provider and the
+ * credential surface stays with the client, because the login menu runs the provider
+ * login flows in this process.
+ */
+export interface SessionModelRuntime {
+	/** The models the user can pick from. */
+	getAvailableSnapshot(): readonly Model<any>[];
+	/** The models of one provider, or of every provider. */
+	getModels(providerId?: string): readonly Model<any>[];
+	/** One model of one provider. */
+	getModel(providerId: string, modelId: string): Model<any> | undefined;
+	/** The providers the client knows. */
+	getProviders(): readonly Provider[];
+	/** One provider. */
+	getProvider(providerId: string): Provider | undefined;
+	/** Whether the provider has credentials, and where they come from. */
+	getProviderAuthStatus(providerId: string): AuthStatus;
+	/** Whether the provider is used with OAuth. */
+	isUsingOAuth(providerId: string): boolean;
+	/** Whether the provider is used with a subscription. */
+	isUsingSubscription(providerId: string): boolean;
+	/** Whether the provider has a complete configuration. */
+	hasConfiguredAuth(providerId: string): boolean;
+	/** The providers an extension registered. */
+	getRegisteredProviderIds(): readonly string[];
+	/** Check the credentials of a provider. */
+	checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined>;
+	/** The credential of a provider. */
+	getAuth(providerId: string, overrides?: ModelRuntimeAuthOverrides): Promise<AuthResult | undefined>;
+	/** The stored credentials. */
+	listCredentials(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]>;
+	/** Log a provider in and store its credential. */
+	login(providerId: string, type: AuthType, interaction: AuthInteraction, options?: LoginOptions): Promise<Credential>;
+	/** Remove the stored credential of a provider. */
+	logout(providerId: string, options?: AuthOperationOptions): Promise<void>;
+	/** Reload the model list of the server. */
+	refresh(options?: ModelsRefreshOptions): Promise<ModelsRefreshResult>;
+	/** The error of the last load, if there was one. */
+	getError(): string | undefined;
+}
 
 /** How a queued user input was handled. */
 export type QueuedInputDisposition = "handled" | "queued";
@@ -497,10 +560,14 @@ export interface SessionFacade {
 	// --- Client-local and server resources ---
 
 	/**
-	 * The model catalog of the client.
+	 * The model surface of the client.
 	 *
-	 * The client builds its own runtime from the same agent directory. It never changes
-	 * the model the server runs with.
+	 * The models come from the server, so the client never builds a catalog of its own.
+	 * The provider and credential surface is the client's own, and it never changes the
+	 * model the server runs with.
+	 *
+	 * The type is the one of the coding agent: the bug report reads the providers from
+	 * it, and the coding agent describes them with its own model runtime.
 	 */
 	readonly modelRuntime: ModelRuntime;
 	/** The extension commands of the session. */

@@ -31,22 +31,15 @@ import { homedir, networkInterfaces } from "node:os";
 import { delimiter, dirname, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import {
-	type CreateAgentSessionRuntimeFactory,
-	createRuntimeFactory,
-	getAgentDir,
-	type InteractiveStartContext,
-	main,
-	ProjectTrustStore,
-	parseArgs,
-	SessionManager,
-	SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { parseArgs } from "@earendil-works/pi-coding-agent/cli/args";
 import { setConfigSelector } from "@earendil-works/pi-coding-agent/cli/config-selector-host";
-import { readSelfInstallManifest, type SelfInstallManifest } from "@earendil-works/pi-coding-agent/config";
-import type { SessionStateSnapshot } from "@earendil-works/pi-server";
-import { basicAuthHeader, createPairingCode, startServer } from "@earendil-works/pi-server";
-import { PiServerClient } from "@earendil-works/pi-server/client";
+import { getAgentDir, readSelfInstallManifest, type SelfInstallManifest } from "@earendil-works/pi-coding-agent/config";
+import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent/core/agent-session-runtime";
+import { SessionManager } from "@earendil-works/pi-coding-agent/core/session-manager";
+import { SettingsManager } from "@earendil-works/pi-coding-agent/core/settings-manager";
+import { ProjectTrustStore } from "@earendil-works/pi-coding-agent/core/trust-manager";
+import { type InteractiveStartContext, main } from "@earendil-works/pi-coding-agent/main";
+import { basicAuthHeader, PiServerClient, type SessionStateSnapshot } from "@earendil-works/pi-server/client";
 import { RemoteSessionFacade } from "./remote-facade.ts";
 import { ensureServer, isServerAlive, readServerRegistration } from "./server-launcher.ts";
 
@@ -112,6 +105,9 @@ function registerConfigEditor(): void {
 
 /**
  * Start the server in the foreground and stay alive until the process is asked to stop.
+ *
+ * The server runtime is loaded here and not at the top of the module: the interactive
+ * client never needs it, and the server package carries the whole agent runtime.
  */
 async function runServe(args: string[]): Promise<void> {
 	const flags = parseFlags(args);
@@ -125,6 +121,9 @@ async function runServe(args: string[]): Promise<void> {
 
 	const exited = Promise.withResolvers<void>();
 
+	// The server runtime is the whole agent runtime: only "pi serve" needs it, so the
+	// interactive client never loads it.
+	const { startServer } = await import("@earendil-works/pi-server");
 	const server = await startServer({
 		hostname,
 		port,
@@ -132,7 +131,7 @@ async function runServe(args: string[]): Promise<void> {
 		agentDir,
 		cwd,
 		idleTimeoutMs,
-		createRuntime: createServerRuntimeFactory(agentDir, settingsManager),
+		createRuntime: await createServerRuntimeFactory(agentDir, settingsManager),
 		onIdle: () => exited.resolve(),
 	});
 
@@ -842,9 +841,9 @@ async function requestPairingCode(url: string): Promise<string> {
 			if (body.code) return body.code;
 		}
 	} catch {}
-	const pairing = createPairingCode();
-	console.log("The server did not hand out a pairing code; this one only works on a server that knows it.");
-	return pairing.code;
+	// The server owns the pairing codes: a code the server does not know cannot be
+	// redeemed, so there is nothing the client could offer instead.
+	throw new Error("The server did not hand out a pairing code.");
 }
 
 /**
@@ -877,11 +876,15 @@ function lanAddress(): string | undefined {
 
 /**
  * The runtime factory the foreground server uses.
+ *
+ * The factory builds the agent runtime, so it is loaded with the server: the interactive
+ * client never needs it.
  */
-function createServerRuntimeFactory(
+async function createServerRuntimeFactory(
 	agentDir: string,
 	settingsManager: SettingsManager,
-): CreateAgentSessionRuntimeFactory {
+): Promise<CreateAgentSessionRuntimeFactory> {
+	const { createRuntimeFactory } = await import("@earendil-works/pi-coding-agent/core/runtime-factory");
 	return createRuntimeFactory({
 		agentDir,
 		parsed: parseArgs([]),

@@ -3,15 +3,31 @@
  *
  * The facade implements the TUI's session contract on top of the pi server: the state
  * comes from the server's snapshot, the commands travel over HTTP, and the resources come
- * from the server's resource snapshot. The model catalog and the settings stay in the
- * client, because they are the client's own business.
+ * from the server's resource snapshot. The models come from the server too: the server
+ * owns the catalog. The settings and the provider credentials stay in the client,
+ * because they are the client's own business.
  */
 
 import { constants, copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, parse, resolve } from "node:path";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { ImageContent, Model, Transport } from "@earendil-works/pi-ai";
+import type {
+	AuthCheck,
+	AuthInteraction,
+	AuthOperationOptions,
+	AuthResult,
+	AuthType,
+	Credential,
+	CredentialInfo,
+	ImageContent,
+	LoginOptions,
+	Model,
+	ModelsRefreshOptions,
+	ModelsRefreshResult,
+	Provider,
+	Transport,
+} from "@earendil-works/pi-ai";
 import type {
 	AgentSessionEvent,
 	CacheWarmingMode,
@@ -32,40 +48,43 @@ import type {
 	SourceInfo,
 	ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import {
-	buildContextEntries,
-	getAgentDir,
-	ModelRuntime,
-	SessionManager,
-	SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent/config";
 import type { BashResult } from "@earendil-works/pi-coding-agent/core/bash-executor";
-import type { SessionStateSnapshot } from "@earendil-works/pi-server";
-import type { PiServerClient, RemoteSessionInfo } from "@earendil-works/pi-server/client";
+import type { ModelRuntime, ModelRuntimeAuthOverrides } from "@earendil-works/pi-coding-agent/core/model-runtime";
+import type { AuthStatus } from "@earendil-works/pi-coding-agent/core/provider-composer";
+import { buildContextEntries, SessionManager } from "@earendil-works/pi-coding-agent/core/session-manager";
+import { SettingsManager } from "@earendil-works/pi-coding-agent/core/settings-manager";
+import type {
+	OpencodeModelInfo,
+	PiServerClient,
+	RemoteSessionInfo,
+	SessionStateSnapshot,
+} from "@earendil-works/pi-server/client";
 import { RemoteSessionConnection } from "./remote-session.ts";
 import { STATE_REFRESHING_EVENTS } from "./session-connection.ts";
-import type {
-	PromptDisposition,
-	QueuedInputDisposition,
-	SessionAgentView,
-	SessionCommand,
-	SessionExecuteBashOptions,
-	SessionExtensionBindings,
-	SessionExtensionInfo,
-	SessionExtensionRunner,
-	SessionFacade,
-	SessionForkResult,
-	SessionManagerView,
-	SessionModelMutationOptions,
-	SessionNavigateTreeOptions,
-	SessionNavigateTreeResult,
-	SessionNewOptions,
-	SessionPromptTemplate,
-	SessionReplacementResult,
-	SessionResourceLoader,
-	SessionSkill,
-	SessionStateView,
-	SessionTool,
+import {
+	type PromptDisposition,
+	type QueuedInputDisposition,
+	type SessionAgentView,
+	type SessionCommand,
+	type SessionExecuteBashOptions,
+	type SessionExtensionBindings,
+	type SessionExtensionInfo,
+	type SessionExtensionRunner,
+	type SessionFacade,
+	type SessionForkResult,
+	type SessionManagerView,
+	type SessionModelMutationOptions,
+	type SessionModelRuntime,
+	type SessionNavigateTreeOptions,
+	type SessionNavigateTreeResult,
+	type SessionNewOptions,
+	type SessionPromptTemplate,
+	type SessionReplacementResult,
+	type SessionResourceLoader,
+	type SessionSkill,
+	type SessionStateView,
+	type SessionTool,
 } from "./session-facade.ts";
 
 /** How long {@link RemoteSessionFacade.waitForIdle} waits before it gives up. */
@@ -76,12 +95,154 @@ type RpcSuccessResponse = Extract<RpcResponse, { success: true }>;
 
 /** The options of {@link RemoteSessionFacade}. */
 export interface RemoteSessionFacadeOptions {
-	/** The agent directory, used for the client-local model runtime and the settings. */
+	/** The agent directory, used for the client-local credentials and the settings. */
 	agentDir?: string;
 	/** How long {@link RemoteSessionFacade.waitForIdle} waits before it gives up. */
 	idleTimeoutMs?: number;
-	/** The model runtime of the client. One is built from the agent directory when omitted. */
+	/** The model surface of the client. One is built from the agent directory when omitted. */
 	modelRuntime?: ModelRuntime;
+}
+
+/**
+ * A model of the server, as the client reads it.
+ *
+ * The server owns the catalog, so the client learns a model from the opencode shape the
+ * server publishes. The api and the base url are placeholders: the client never calls a
+ * provider, the server does.
+ */
+function toModel(info: OpencodeModelInfo): Model<any> {
+	const cost = info.cost[0];
+	return {
+		id: info.modelID,
+		name: info.name,
+		provider: info.providerID,
+		api: "openai-completions",
+		baseUrl: "",
+		input: ["text"],
+		cost: {
+			input: cost?.input ?? 0,
+			output: cost?.output ?? 0,
+			cacheRead: cost?.cacheRead ?? 0,
+			cacheWrite: cost?.cacheWrite ?? 0,
+		},
+		reasoning: info.capabilities?.reasoning !== false,
+		contextWindow: info.limit?.context ?? 0,
+		maxTokens: info.limit?.output ?? 0,
+	};
+}
+
+/**
+ * The model surface of the client.
+ *
+ * The models come from the server: it owns the catalog, and the client asks it for the
+ * list instead of building a catalog of its own. The provider and the credential surface
+ * is the client's own, because the login menu runs the provider login flows in this
+ * process.
+ */
+class ClientModelRuntime implements SessionModelRuntime {
+	private readonly serverModels: () => readonly Model<any>[];
+	private readonly localRuntime: () => SessionModelRuntime | undefined;
+	private readonly reloadServerModels: () => Promise<void>;
+
+	constructor(
+		serverModels: () => readonly Model<any>[],
+		localRuntime: () => SessionModelRuntime | undefined,
+		reloadServerModels: () => Promise<void>,
+	) {
+		this.serverModels = serverModels;
+		this.localRuntime = localRuntime;
+		this.reloadServerModels = reloadServerModels;
+	}
+
+	getAvailableSnapshot(): readonly Model<any>[] {
+		return this.serverModels();
+	}
+
+	getModels(providerId?: string): readonly Model<any>[] {
+		const runtime = this.localRuntime();
+		if (runtime) return runtime.getModels(providerId);
+		const models = this.serverModels();
+		return providerId ? models.filter((model) => model.provider === providerId) : models;
+	}
+
+	getModel(providerId: string, modelId: string): Model<any> | undefined {
+		const model = this.serverModels().find(
+			(candidate) => candidate.provider === providerId && candidate.id === modelId,
+		);
+		if (model) return model;
+		return this.localRuntime()?.getModel(providerId, modelId);
+	}
+
+	getProviders(): readonly Provider[] {
+		return this.localRuntime()?.getProviders() ?? [];
+	}
+
+	getProvider(providerId: string): Provider | undefined {
+		return this.localRuntime()?.getProvider(providerId);
+	}
+
+	getProviderAuthStatus(providerId: string): AuthStatus {
+		return this.localRuntime()?.getProviderAuthStatus(providerId) ?? { configured: false };
+	}
+
+	isUsingOAuth(providerId: string): boolean {
+		return this.localRuntime()?.isUsingOAuth(providerId) ?? false;
+	}
+
+	isUsingSubscription(providerId: string): boolean {
+		return this.localRuntime()?.isUsingSubscription(providerId) ?? false;
+	}
+
+	hasConfiguredAuth(providerId: string): boolean {
+		return this.localRuntime()?.hasConfiguredAuth(providerId) ?? false;
+	}
+
+	getRegisteredProviderIds(): readonly string[] {
+		return this.localRuntime()?.getRegisteredProviderIds() ?? [];
+	}
+
+	async checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined> {
+		return this.localRuntime()?.checkAuth(providerId, options);
+	}
+
+	async getAuth(providerId: string, overrides?: ModelRuntimeAuthOverrides): Promise<AuthResult | undefined> {
+		return this.localRuntime()?.getAuth(providerId, overrides);
+	}
+
+	async listCredentials(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
+		return (await this.localRuntime()?.listCredentials(options)) ?? [];
+	}
+
+	async login(
+		providerId: string,
+		type: AuthType,
+		interaction: AuthInteraction,
+		options?: LoginOptions,
+	): Promise<Credential> {
+		const runtime = this.localRuntime();
+		if (!runtime) throw new Error("The provider runtime of the client was not built yet");
+		return runtime.login(providerId, type, interaction, options);
+	}
+
+	async logout(providerId: string, options?: AuthOperationOptions): Promise<void> {
+		const runtime = this.localRuntime();
+		if (!runtime) throw new Error("The provider runtime of the client was not built yet");
+		return runtime.logout(providerId, options);
+	}
+
+	async refresh(options?: ModelsRefreshOptions): Promise<ModelsRefreshResult> {
+		const errors = new Map<string, Error>();
+		try {
+			await this.reloadServerModels();
+		} catch (error) {
+			errors.set("server", error instanceof Error ? error : new Error(String(error)));
+		}
+		return { aborted: options?.signal?.aborted === true, errors };
+	}
+
+	getError(): string | undefined {
+		return this.localRuntime()?.getError();
+	}
 }
 
 /** The resources of a session, as the facade reads them. */
@@ -154,7 +315,7 @@ export class RemoteSessionFacade implements SessionFacade {
 	private readonly client: PiServerClient;
 	private readonly agentDirectory: string;
 	private readonly idleTimeoutMs: number;
-	private readonly modelRuntimeOption: ModelRuntime | undefined;
+	private readonly modelRuntimeOption: SessionModelRuntime | undefined;
 	private readonly connection: RemoteSessionConnection;
 	private readonly listeners = new Set<(event: AgentSessionEvent) => void>();
 	private readonly extensionUiListeners = new Set<(request: RpcExtensionUIRequest) => void>();
@@ -162,7 +323,10 @@ export class RemoteSessionFacade implements SessionFacade {
 	private readonly resourceLoaderView: SessionResourceLoader;
 	private readonly sessionManagerView: SessionManagerView;
 	private readonly agentView: SessionAgentView;
+	private readonly modelSurface: ClientModelRuntime;
+	private serverModels: Model<any>[] = [];
 	private modelRuntimeInstance: ModelRuntime | undefined;
+	private modelRuntimeLoad: Promise<void> | undefined;
 	private settings: SettingsManager | undefined;
 	private snapshot: SessionStateSnapshot | undefined;
 	private resources: FacadeResources | undefined;
@@ -223,19 +387,24 @@ export class RemoteSessionFacade implements SessionFacade {
 				this.settings?.setTransport(transport);
 			},
 		);
+		this.modelSurface = new ClientModelRuntime(
+			() => this.serverModels,
+			() => this.modelRuntimeOption ?? this.modelRuntimeInstance,
+			() => this.loadServerModels(),
+		);
 	}
 
 	/**
-	 * Build the client-local model runtime and load the session.
+	 * Load the session and the models the server offers.
+	 *
+	 * The models come from the server: it owns the catalog, so the client asks it for the
+	 * list. The provider runtime the login menu needs is built in the background, because
+	 * the session does not wait for it.
 	 */
 	async load(): Promise<void> {
-		this.modelRuntimeInstance =
-			this.modelRuntimeOption ??
-			(await ModelRuntime.create({
-				authPath: join(this.agentDirectory, "auth.json"),
-				modelsPath: join(this.agentDirectory, "models.json"),
-			}));
+		await this.loadServerModels();
 		await this.loadSession();
+		this.startModelRuntime();
 	}
 
 	/**
@@ -782,11 +951,15 @@ export class RemoteSessionFacade implements SessionFacade {
 
 	// --- Client-local and server resources ---
 
+	/**
+	 * The model surface of the client.
+	 *
+	 * The models come from the server; the providers and the credentials are the
+	 * client's own. The type is the one of the coding agent, because the bug report
+	 * reads the providers from it.
+	 */
 	get modelRuntime(): ModelRuntime {
-		if (!this.modelRuntimeInstance) {
-			throw new Error("The model runtime of the client was not built yet");
-		}
-		return this.modelRuntimeInstance;
+		return this.modelSurface as unknown as ModelRuntime;
 	}
 
 	get extensionRunner(): SessionExtensionRunner {
@@ -911,20 +1084,52 @@ export class RemoteSessionFacade implements SessionFacade {
 
 	private resolveModel(value: string | undefined): Model<any> | undefined {
 		if (!value) return undefined;
-		const runtime = this.modelRuntimeInstance;
-		if (!runtime) return undefined;
 		const separator = value.indexOf("/");
 		if (separator > 0) {
-			const model = runtime.getModel(value.slice(0, separator), value.slice(separator + 1));
+			const model = this.modelSurface.getModel(value.slice(0, separator), value.slice(separator + 1));
 			if (model) return model;
 		}
-		for (const provider of runtime.getProviders()) {
+		for (const provider of this.modelSurface.getProviders()) {
 			const prefix = `${provider.id}/`;
 			if (!value.startsWith(prefix)) continue;
-			const model = runtime.getModel(provider.id, value.slice(prefix.length));
+			const model = this.modelSurface.getModel(provider.id, value.slice(prefix.length));
 			if (model) return model;
 		}
 		return undefined;
+	}
+
+	/**
+	 * Read the models the server offers.
+	 *
+	 * The server owns the catalog. A server that cannot answer leaves the client with
+	 * the models it already knows, so a hiccup does not empty the model picker.
+	 */
+	private async loadServerModels(): Promise<void> {
+		try {
+			this.serverModels = (await this.client.listModels()).map(toModel);
+		} catch {
+			return;
+		}
+	}
+
+	/**
+	 * Build the provider runtime the login menu needs.
+	 *
+	 * The runtime carries the provider login flows, which run in this process, so the
+	 * client builds it in the background: the session does not wait for it, and the
+	 * models the terminal UI shows come from the server either way.
+	 */
+	private startModelRuntime(): void {
+		if (this.modelRuntimeOption || this.modelRuntimeLoad) return;
+		this.modelRuntimeLoad = (async () => {
+			const { ModelRuntime } = await import("@earendil-works/pi-coding-agent/core/model-runtime");
+			this.modelRuntimeInstance = await ModelRuntime.create({
+				authPath: join(this.agentDirectory, "auth.json"),
+				modelsPath: join(this.agentDirectory, "models.json"),
+			});
+		})().catch(() => {
+			this.modelRuntimeLoad = undefined;
+		});
 	}
 
 	private async refreshResources(): Promise<void> {
@@ -1111,7 +1316,9 @@ export class RemoteSessionFacade implements SessionFacade {
 		}
 		if (withMessages) {
 			try {
-				await this.refreshMessages();
+				// The entries of the session come with the messages: the terminal UI reads
+				// the token and cost totals from them, and they have to follow the turn.
+				await Promise.all([this.refreshMessages(), this.refreshEntries()]);
 			} catch {
 				return;
 			}

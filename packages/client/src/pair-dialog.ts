@@ -11,7 +11,7 @@
  */
 
 import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { basicAuthHeader } from "@earendil-works/pi-server";
+import { basicAuthHeader } from "@earendil-works/pi-server/client";
 import { type Component, truncateToWidth } from "@earendil-works/pi-tui";
 import { renderQr } from "./qr.ts";
 
