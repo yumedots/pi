@@ -23,6 +23,9 @@ export {
 	startStartupTui,
 } from "./cli/startup-ui.ts";
 export { runClient, SERVER_COMMAND } from "./cli.ts";
+export type { ClientExtensionUIContext, ClientWidgetOptions } from "./client-extension-ui.ts";
+export { ClientSettings } from "./client-settings.ts";
+export { ClientState } from "./client-state.ts";
 export * from "./components/index.ts";
 export {
 	type ExternalEditorOptions,
@@ -35,6 +38,17 @@ export {
 	InteractiveMode,
 	type InteractiveModeOptions,
 } from "./interactive-mode.ts";
+export {
+	assertManifestMatches,
+	collectClientExtensions,
+	compareExtensionSets,
+	type ExtensionMismatch,
+	type ExtensionMismatchKind,
+	extensionFileHash,
+	formatExtensionMismatches,
+	ManifestMismatchError,
+	type PiExtensionInfo,
+} from "./manifest-check.ts";
 export { refreshModelCatalogs } from "./model-catalog-refresh.ts";
 export {
 	getModelSearchText,

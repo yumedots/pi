@@ -1,8 +1,8 @@
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { copyToClipboard } from "@earendil-works/pi-coding-agent/utils/clipboard";
-import { openBrowser } from "@earendil-works/pi-coding-agent/utils/open-browser";
 import type { Terminal, WheelScrollLines } from "@earendil-works/pi-tui";
 import { ProcessTerminal, type TUI, TuiAltScreen, TuiMainScreen } from "@earendil-works/pi-tui";
+import { copyToClipboard } from "./client-support/clipboard.ts";
+import { openBrowser } from "./client-support/open-browser.ts";
+import { theme } from "./client-theme.ts";
 
 export interface InteractiveTuiOptions {
 	readonly tuiMode: "regular" | "fullscreen";

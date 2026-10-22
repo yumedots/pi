@@ -1,19 +1,11 @@
-import { getAgentDir } from "@earendil-works/pi-coding-agent/config";
-import { KeybindingsManager } from "@earendil-works/pi-coding-agent/core/keybindings";
-import { DefaultPackageManager, type ResolvedResource } from "@earendil-works/pi-coding-agent/core/package-manager";
-import { SettingsManager } from "@earendil-works/pi-coding-agent/core/settings-manager";
-import {
-	getTerminalTheme,
-	initTheme,
-	loadThemeFromPath,
-	resolveThemeSetting,
-	SYSTEM_THEME_NAME,
-	setRegisteredThemes,
-	setTerminalColors,
-	setTheme,
-	type Theme,
-} from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { requestTerminalColors } from "@earendil-works/pi-coding-agent/core/theme/theme-controller";
+/**
+ * The startup screens of the client.
+ *
+ * The screens the client shows before a session runs: the session picker and the first
+ * time setup. They draw with the theme of the client and with the settings the client
+ * mirrors.
+ */
+
 import {
 	ProcessTerminal,
 	setCapabilityOverrides,
@@ -21,58 +13,71 @@ import {
 	type TUI,
 	TuiMainScreen,
 } from "@earendil-works/pi-tui";
+import type { ClientSettings } from "../client-settings.ts";
+import { getAgentDir } from "../client-support/config.ts";
+import { KeybindingsManager } from "../client-support/keybindings.ts";
+import { requestTerminalColors } from "../client-support/theme-controller.ts";
+import {
+	getThemeByName,
+	getThemeInstance,
+	setTerminalColors,
+	setThemeFromJson,
+	setThemeInstance,
+	THEME_TOKENS,
+} from "../client-theme.ts";
 import { ExtensionInputComponent } from "../components/extension-input.ts";
 import { ExtensionSelectorComponent } from "../components/extension-selector.ts";
 import { FirstTimeSetupComponent, type FirstTimeSetupResult } from "../components/first-time-setup.ts";
 
-function loadThemes(resources: ResolvedResource[]): Theme[] {
-	const themes: Theme[] = [];
-	const seen = new Set<string>();
-	for (const resource of resources) {
-		if (!resource.enabled) continue;
-		try {
-			const loadedTheme = loadThemeFromPath(resource.path);
-			if (loadedTheme.name) {
-				if (seen.has(loadedTheme.name)) continue;
-				seen.add(loadedTheme.name);
-			}
-			themes.push(loadedTheme);
-		} catch {
-			// Startup prompts should not fail because a theme is broken. The normal
-			// resource loader reports theme diagnostics later in startup.
-		}
+/**
+ * The theme the client draws with before the server sends its own.
+ *
+ * Every token uses the default colour of the terminal, so the client can draw before the
+ * manifest of the server arrives.
+ */
+function defaultThemeJson(): { colors: Record<string, string> } {
+	const colors: Record<string, string> = {};
+	for (const token of Object.keys(THEME_TOKENS)) colors[token] = "";
+	return { colors };
+}
+
+/**
+ * Install the theme the client draws with.
+ *
+ * The theme of the server wins, then the theme the settings name, and the default theme
+ * is the fallback, so the client can draw before the manifest of the server arrives.
+ */
+export function installTheme(settings?: ClientSettings, json?: unknown): void {
+	if (json !== undefined) {
+		setThemeFromJson(json);
+		return;
 	}
-	return themes;
+	const named = settings?.getThemeSetting();
+	const instance = named === undefined ? undefined : getThemeByName(named);
+	if (instance) {
+		setThemeInstance(instance);
+		return;
+	}
+	if (!getThemeInstance()) setThemeFromJson(defaultThemeJson());
 }
 
-async function loadStartupThemes(settingsManager: SettingsManager): Promise<Theme[]> {
-	const globalSettingsManager = SettingsManager.inMemory(settingsManager.getGlobalSettings(), {
-		projectTrusted: false,
-	});
-	const packageManager = new DefaultPackageManager({
-		cwd: process.cwd(),
-		agentDir: getAgentDir(),
-		settingsManager: globalSettingsManager,
-	});
-	const resolvedPaths = await packageManager.resolve(async () => "skip");
-	return loadThemes(resolvedPaths.themes);
-}
-
-export async function createStartupTui(settingsManager: SettingsManager): Promise<TUI> {
-	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
-	setRegisteredThemes(await loadStartupThemes(settingsManager));
-	initTheme(resolveThemeSetting(settingsManager.getThemeSetting(), getTerminalTheme()) ?? SYSTEM_THEME_NAME);
-	setKeybindings(KeybindingsManager.create());
-	const ui: TUI = new TuiMainScreen(new ProcessTerminal(), settingsManager.getShowHardwareCursor(), getAgentDir());
-	ui.setClearOnShrink(settingsManager.getClearOnShrink());
+/** Build the terminal UI of a startup screen. */
+export async function createStartupTui(settings: ClientSettings): Promise<TUI> {
+	installTheme(settings);
+	setCapabilityOverrides(settings.getTerminalCapabilityOverrides());
+	setKeybindings(new KeybindingsManager());
+	const ui: TUI = new TuiMainScreen(new ProcessTerminal(), settings.getShowHardwareCursor(), getAgentDir());
+	ui.setClearOnShrink(settings.getClearOnShrink());
 	return ui;
 }
 
-export function startStartupTui(ui: TUI, settingsManager: SettingsManager): void {
+/** Show a startup screen. */
+export function startStartupTui(ui: TUI, settings: ClientSettings, themeJson?: unknown): void {
+	installTheme(settings, themeJson);
 	ui.start();
-	const themeSetting = settingsManager.getThemeSetting();
-	queryStartupTerminalColors(ui, () => {
-		setTheme(resolveThemeSetting(themeSetting, getTerminalTheme()) ?? SYSTEM_THEME_NAME);
+	queryStartupTerminalColors(ui, settings, themeJson, () => {
+		ui.invalidate();
+		ui.requestRender();
 	});
 }
 
@@ -81,9 +86,10 @@ export function startStartupTui(ui: TUI, settingsManager: SettingsManager): void
  * record them for the "" (terminal default) tokens and the light/dark detection, run `onColors`, and
  * re-render.
  */
-function queryStartupTerminalColors(ui: TUI, onColors: () => void): void {
+function queryStartupTerminalColors(ui: TUI, settings: ClientSettings, themeJson: unknown, onColors: () => void): void {
 	void requestTerminalColors(ui, (colors) => {
 		setTerminalColors(colors);
+		installTheme(settings, themeJson);
 		onColors();
 		ui.invalidate();
 		ui.requestRender();
@@ -96,12 +102,13 @@ async function clearStartupTui(ui: TUI): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, 25));
 }
 
+/** Show a selector with the options of a startup screen. */
 export async function showStartupSelector<T>(
-	settingsManager: SettingsManager,
+	settings: ClientSettings,
 	title: string,
 	options: Array<{ label: string; value: T }>,
 ): Promise<T | undefined> {
-	const ui = await createStartupTui(settingsManager);
+	const ui = await createStartupTui(settings);
 	return new Promise((resolve) => {
 		let settled = false;
 		const finish = async (result: T | undefined) => {
@@ -123,13 +130,13 @@ export async function showStartupSelector<T>(
 		);
 		ui.addChild(selector);
 		ui.setFocus(selector);
-		startStartupTui(ui, settingsManager);
+		startStartupTui(ui, settings);
 	});
 }
 
 /** Show the first-time setup dialog and persist the result */
-export async function showFirstTimeSetup(settingsManager: SettingsManager): Promise<void> {
-	const ui = await createStartupTui(settingsManager);
+export async function showFirstTimeSetup(settings: ClientSettings): Promise<void> {
+	const ui = await createStartupTui(settings);
 	return new Promise((resolve) => {
 		let settled = false;
 		const finish = async (result: FirstTimeSetupResult | undefined) => {
@@ -138,8 +145,8 @@ export async function showFirstTimeSetup(settingsManager: SettingsManager): Prom
 			}
 			settled = true;
 			if (result) {
-				settingsManager.setTheme(result.theme);
-				await settingsManager.flush();
+				settings.setTheme(result.theme);
+				await settings.flush();
 			}
 			await clearStartupTui(ui);
 			ui.stop();
@@ -147,12 +154,9 @@ export async function showFirstTimeSetup(settingsManager: SettingsManager): Prom
 		};
 
 		ui.start();
-		let previewTheme = SYSTEM_THEME_NAME;
-		setTheme(previewTheme);
 		const component = new FirstTimeSetupComponent({
-			onThemePreview: (themeName) => {
-				previewTheme = themeName;
-				setTheme(themeName);
+			onThemePreview: () => {
+				installTheme(settings);
 				ui.requestRender();
 			},
 			onSubmit: (result) => void finish(result),
@@ -161,17 +165,17 @@ export async function showFirstTimeSetup(settingsManager: SettingsManager): Prom
 		ui.addChild(component);
 		ui.setFocus(component);
 		ui.requestRender();
-		// The terminal's colors can change the theme; re-rendering rebuilds the dialog with it.
-		queryStartupTerminalColors(ui, () => setTheme(previewTheme));
+		queryStartupTerminalColors(ui, settings, undefined, () => ui.requestRender());
 	});
 }
 
+/** Show an input of a startup screen. */
 export async function showStartupInput(
-	settingsManager: SettingsManager,
+	settings: ClientSettings,
 	title: string,
 	placeholder?: string,
 ): Promise<string | undefined> {
-	const ui = await createStartupTui(settingsManager);
+	const ui = await createStartupTui(settings);
 	return new Promise((resolve) => {
 		let settled = false;
 		const finish = async (result: string | undefined) => {
@@ -196,6 +200,6 @@ export async function showStartupInput(
 		);
 		ui.addChild(input);
 		ui.setFocus(input);
-		startStartupTui(ui, settingsManager);
+		startStartupTui(ui, settings);
 	});
 }

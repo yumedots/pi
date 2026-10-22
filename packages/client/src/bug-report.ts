@@ -1,24 +1,22 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getAuthCredential } from "@earendil-works/pi-coding-agent/cli/auth-command";
+import type { Container, EditorComponent, KeybindingsManager, TUI } from "@earendil-works/pi-tui";
+import { getAuthCredential } from "./client-support/auth-command.ts";
 import {
 	BUG_REPORT_CUSTOM_ENTRY_TYPE,
 	type BugReportBundle,
 	type BugReportSessionEntryData,
+	type BugReportSessionReader,
 	bugReportArchiveFileName,
 	collectBugReportDiagnostics,
 	collectBugReportMetadata,
 	writeBugReportArchive,
-} from "@earendil-works/pi-coding-agent/core/bug-report";
-import { uploadBugReport } from "@earendil-works/pi-coding-agent/core/bug-report-upload";
-import { clearCrashLog, readCrashLog } from "@earendil-works/pi-coding-agent/core/crash-log";
-import type { Extension } from "@earendil-works/pi-coding-agent/core/extensions/types";
-import type { KeybindingsManager } from "@earendil-works/pi-coding-agent/core/keybindings";
-import { getRadiusGatewayUrl, RADIUS_PROVIDER_ID } from "@earendil-works/pi-coding-agent/core/radius";
-import type { ReadonlySessionManager } from "@earendil-works/pi-coding-agent/core/session-manager";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import type { Container, EditorComponent, TUI } from "@earendil-works/pi-tui";
+} from "./client-support/bug-report.ts";
+import { uploadBugReport } from "./client-support/bug-report-upload.ts";
+import { clearCrashLog, readCrashLog } from "./client-support/crash-log.ts";
+import { getRadiusGatewayUrl, RADIUS_PROVIDER_ID } from "./client-support/radius.ts";
+import { theme } from "./client-theme.ts";
 import { BorderedLoader } from "./components/bordered-loader.ts";
 import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
@@ -154,7 +152,6 @@ async function buildBundle(
 	options: BugReportOptions,
 	summary: string | undefined,
 ): Promise<BugReportBundle> {
-	const extensions = session.sessionExtensions as unknown as Extension[];
 	return {
 		metadata: collectBugReportMetadata({
 			hint: options.hint,
@@ -166,7 +163,16 @@ async function buildBundle(
 			model: session.model,
 			modelRuntime: session.modelRuntime,
 			thinkingLevel: session.thinkingLevel,
-			extensions,
+			extensions: session.sessionExtensions.map((extension) => ({
+				path: extension.path,
+				...(extension.sourceInfo
+					? {
+							source: extension.sourceInfo.source,
+							scope: extension.sourceInfo.scope,
+							origin: extension.sourceInfo.origin,
+						}
+					: {}),
+			})),
 			extensionErrors: session.extensionErrors,
 			globalSettings: session.settingsManager.getGlobalSettings(),
 			projectSettings: session.settingsManager.getProjectSettings(),
@@ -183,11 +189,11 @@ async function buildBundle(
  * The collector only reads the entries and the id of the session; the rest of the store
  * lives in the server's process.
  */
-function readOnlySessionManager(session: SessionFacade): ReadonlySessionManager {
+function readOnlySessionManager(session: SessionFacade): BugReportSessionReader {
 	return {
 		getEntries: () => session.sessionManager.getEntries(),
 		getSessionId: () => session.sessionManager.getSessionId(),
-	} as unknown as ReadonlySessionManager;
+	};
 }
 
 /** The transcript of the session, with the presentation metadata of the shared viewer. */

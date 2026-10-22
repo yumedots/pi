@@ -1,6 +1,6 @@
-import { APP_NAME } from "@earendil-works/pi-coding-agent/config";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent/core/agent-session";
 import type { ProgramStatus, Terminal } from "@earendil-works/pi-tui";
+import { APP_NAME } from "./client-support/config.ts";
 
 export type BlockedStatus = { kind: NonNullable<ProgramStatus["kind"]>; message: string };
 

@@ -12,125 +12,17 @@ import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import type { AssistantMessage, ImageContent, Message, Model, Usage } from "@earendil-works/pi-ai/compat";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import {
-	APP_NAME,
-	APP_TITLE,
-	CONFIG_DIR_NAME,
-	detectInstallChange,
-	getAgentDir,
-	getAuthPath,
-	getDebugLogPath,
-	getDocsPath,
-	VERSION,
-} from "@earendil-works/pi-coding-agent/config";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent/core/agent-session";
 import type { AgentSessionRuntimeDiagnostic } from "@earendil-works/pi-coding-agent/core/agent-session-services";
-import {
-	CACHE_TTL_MS,
-	type CacheMiss,
-	collectCacheMisses,
-	computeCacheWaste,
-	detectCacheMiss,
-} from "@earendil-works/pi-coding-agent/core/cache-stats";
-import { formatCacheWarmingStatus, formatCacheWarmingUsage } from "@earendil-works/pi-coding-agent/core/cache-warmer";
-import {
-	findExtensionStackMatches,
-	recordCrash,
-	takeUnnotifiedCrash,
-} from "@earendil-works/pi-coding-agent/core/crash-log";
-import { CredentialSynchronizationError } from "@earendil-works/pi-coding-agent/core/credential-sync-error";
-import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "@earendil-works/pi-coding-agent/core/defaults";
 import type {
-	AutocompleteProviderFactory,
-	EditorFactory,
-	ExtensionUIContext,
 	ExtensionUIDialogOptions,
-	ExtensionWidgetOptions,
 	MarkdownTransformer,
 	WorkingIndicatorOptions,
 } from "@earendil-works/pi-coding-agent/core/extensions/index";
-import {
-	FooterDataProvider,
-	type ReadonlyFooterDataProvider,
-} from "@earendil-works/pi-coding-agent/core/footer-data-provider";
-import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "@earendil-works/pi-coding-agent/core/http-dispatcher";
-import { type AppKeybinding, KeybindingsManager } from "@earendil-works/pi-coding-agent/core/keybindings";
 import type { McpHttpServerConfig } from "@earendil-works/pi-coding-agent/core/mcp-servers";
-import { createCompactionSummaryMessage, createCustomMessage } from "@earendil-works/pi-coding-agent/core/messages";
-import {
-	defaultModelPerProvider,
-	findExactModelReferenceMatch,
-	resolveModelScopeFromModels,
-} from "@earendil-works/pi-coding-agent/core/model-resolver";
-import { DefaultPackageManager } from "@earendil-works/pi-coding-agent/core/package-manager";
-import { RADIUS_MCP_URL, RADIUS_PROVIDER_ID } from "@earendil-works/pi-coding-agent/core/radius";
 import type { ResourceDiagnostic } from "@earendil-works/pi-coding-agent/core/resource-loader";
-import {
-	formatMissingSessionCwdPrompt,
-	MissingSessionCwdError,
-} from "@earendil-works/pi-coding-agent/core/session-cwd";
-import { SessionImportFileNotFoundError } from "@earendil-works/pi-coding-agent/core/session-import-error";
-import {
-	type SessionEntry,
-	type SessionInfo,
-	SessionManager,
-	sessionEntryToContextMessages,
-	type UsageEntry,
-} from "@earendil-works/pi-coding-agent/core/session-manager";
-import {
-	type FullscreenExitOutput,
-	formatServerIdleTimeout,
-	type TuiMode,
-} from "@earendil-works/pi-coding-agent/core/settings-manager";
-import { parseSkillMessage } from "@earendil-works/pi-coding-agent/core/skill-message";
-import { BUILTIN_SLASH_COMMANDS, resolveBuiltinSlashAlias } from "@earendil-works/pi-coding-agent/core/slash-commands";
-import type { SourceInfo } from "@earendil-works/pi-coding-agent/core/source-info";
-import {
-	getAvailableThemes,
-	getAvailableThemesWithPaths,
-	getEditorTheme,
-	getMarkdownTheme,
-	getThemeByName,
-	onThemeChange,
-	SYSTEM_THEME_NAME,
-	stopThemeWatcher,
-	Theme,
-	theme,
-} from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { InteractiveThemeController } from "@earendil-works/pi-coding-agent/core/theme/theme-controller";
-import { withBuiltInRenderers } from "@earendil-works/pi-coding-agent/core/tools/renderers/index";
+import type { FullscreenExitOutput, TuiMode } from "@earendil-works/pi-coding-agent/core/settings-manager";
 import type { TruncationResult } from "@earendil-works/pi-coding-agent/core/tools/truncate";
-import {
-	hasTrustRequiringProjectResources,
-	ProjectTrustStore,
-} from "@earendil-works/pi-coding-agent/core/trust-manager";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
-import {
-	formatKeyText,
-	keyDisplayText,
-	keyHint,
-	keyText,
-	rawKeyHint,
-} from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
-import { getUsageCostBreakdown } from "@earendil-works/pi-coding-agent/core/usage-totals";
-import { addMcpServerConfig, loadMcpConfig } from "@earendil-works/pi-coding-agent/extensions/mcp/config";
-import {
-	getChangelogPath,
-	getNewEntries,
-	normalizeChangelogLinks,
-	parseChangelog,
-} from "@earendil-works/pi-coding-agent/utils/changelog";
-import {
-	copyToClipboard,
-	readClipboardFilePaths,
-	readClipboardText,
-} from "@earendil-works/pi-coding-agent/utils/clipboard";
-import { extensionForImageMimeType, readClipboardImage } from "@earendil-works/pi-coding-agent/utils/clipboard-image";
-import { ensurePngTranscoder } from "@earendil-works/pi-coding-agent/utils/image-convert";
-import { killTrackedDetachedChildren } from "@earendil-works/pi-coding-agent/utils/shell";
-import { loadAllHighlightLanguages } from "@earendil-works/pi-coding-agent/utils/syntax-highlight";
-import { ensureTool, type ToolStatus } from "@earendil-works/pi-coding-agent/utils/tools-manager";
-import { checkForNewPiVersion, type LatestPiRelease } from "@earendil-works/pi-coding-agent/utils/version-check";
 import type { ServerRegistration } from "@earendil-works/pi-server";
 import { PiServerClient, type RemoteSessionInfo } from "@earendil-works/pi-server/client";
 import type {
@@ -139,8 +31,6 @@ import type {
 	EditorComponent,
 	Keybinding,
 	MarkdownTheme,
-	OverlayHandle,
-	OverlayOptions,
 	SlashCommand,
 	TuiMainScreenRenderState,
 } from "@earendil-works/pi-tui";
@@ -153,7 +43,6 @@ import {
 	getCapabilities,
 	hyperlink,
 	Markdown,
-	matchesKey,
 	Spacer,
 	setCapabilityOverrides,
 	setKeybindings,
@@ -170,13 +59,79 @@ import {
 import { spawn } from "child_process";
 import { reportBug } from "./bug-report.ts";
 import { type ChatViewport, createChatViewport } from "./chat-viewport.ts";
+import type { ClientExtensionUIContext, ClientWidgetOptions } from "./client-extension-ui.ts";
 import {
-	type ClientExtensionCommand,
-	ClientExtensionRuntime,
-	createClientExtensionCommandContext,
-	createClientExtensionContext,
-} from "./client-extension-runtime.ts";
-import { loadClientExtensions } from "./client-extensions.ts";
+	CACHE_TTL_MS,
+	type CacheMiss,
+	collectCacheMisses,
+	computeCacheWaste,
+	detectCacheMiss,
+} from "./client-support/cache-stats.ts";
+import { formatCacheWarmingStatus, formatCacheWarmingUsage } from "./client-support/cache-warmer.ts";
+import {
+	getChangelogPath,
+	getNewEntries,
+	normalizeChangelogLinks,
+	parseChangelog,
+} from "./client-support/changelog.ts";
+import { copyToClipboard, readClipboardFilePaths, readClipboardText } from "./client-support/clipboard.ts";
+import { extensionForImageMimeType, readClipboardImage } from "./client-support/clipboard-image.ts";
+import {
+	APP_NAME,
+	APP_TITLE,
+	CONFIG_DIR_NAME,
+	detectInstallChange,
+	getAgentDir,
+	getAuthPath,
+	getDebugLogPath,
+	getDocsPath,
+	VERSION,
+} from "./client-support/config.ts";
+import { findExtensionStackMatches, recordCrash, takeUnnotifiedCrash } from "./client-support/crash-log.ts";
+import { CredentialSynchronizationError } from "./client-support/credential-sync-error.ts";
+import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "./client-support/defaults.ts";
+import { DynamicBorder } from "./client-support/dynamic-border.ts";
+import { FooterDataProvider } from "./client-support/footer-data-provider.ts";
+import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "./client-support/http-dispatcher.ts";
+import { formatServerIdleTimeout } from "./client-support/idle-timeout.ts";
+import { ensurePngTranscoder } from "./client-support/image-convert.ts";
+import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./client-support/keybinding-hints.ts";
+import { type AppKeybinding, KeybindingsManager } from "./client-support/keybindings.ts";
+import { addMcpServerConfig, loadMcpConfig } from "./client-support/mcp-config.ts";
+import { createCompactionSummaryMessage, createCustomMessage } from "./client-support/messages.ts";
+import {
+	defaultModelPerProvider,
+	findExactModelReferenceMatch,
+	resolveModelScopeFromModels,
+} from "./client-support/model-resolver.ts";
+import { RADIUS_MCP_URL, RADIUS_PROVIDER_ID } from "./client-support/radius.ts";
+import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "./client-support/session-cwd.ts";
+import { SessionImportFileNotFoundError } from "./client-support/session-import-error.ts";
+import {
+	type SessionEntry,
+	type SessionInfo,
+	sessionEntryToContextMessages,
+	type UsageEntry,
+} from "./client-support/session-manager.ts";
+import { killTrackedDetachedChildren } from "./client-support/shell.ts";
+import { parseSkillMessage } from "./client-support/skill-message.ts";
+import { BUILTIN_SLASH_COMMANDS, resolveBuiltinSlashAlias } from "./client-support/slash-commands.ts";
+import type { SourceInfo } from "./client-support/source-info.ts";
+import { InteractiveThemeController } from "./client-support/theme-controller.ts";
+import { withBuiltInRenderers } from "./client-support/tool-renderers/index.ts";
+import { ensureTool, type ToolStatus } from "./client-support/tools-manager.ts";
+import { hasTrustRequiringProjectResources } from "./client-support/trust.ts";
+import { getUsageCostBreakdown } from "./client-support/usage-totals.ts";
+import { checkForNewPiVersion, type LatestPiRelease } from "./client-support/version-check.ts";
+import {
+	getAvailableThemes,
+	getEditorTheme,
+	getMarkdownTheme,
+	onThemeChange,
+	SYSTEM_THEME_NAME,
+	stopThemeWatcher,
+	theme,
+} from "./client-theme.ts";
 import { ArminComponent } from "./components/armin.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
 import { BashExecutionComponent } from "./components/bash-execution.ts";
@@ -207,6 +162,7 @@ import { piLogoLines, piWordmark, supportsPiLogo } from "./components/pi-logo.ts
 import { AgentProgressBar } from "./components/progress-bar.ts";
 import { createLoginMenuSelector } from "./components/radius-login-selector.ts";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
+import { ServerDrawnComponent } from "./components/server-drawn.ts";
 import { SessionMenuComponent } from "./components/session-menu.ts";
 import { SessionSidebar, type SessionSidebarRow, type SessionSidebarSelection } from "./components/session-sidebar.ts";
 import { SettingsSelectorComponent } from "./components/settings-selector.ts";
@@ -461,6 +417,25 @@ const SESSION_LIST_REFRESH_INTERVAL_MS = 1000;
 /** How long a repeated click on the same sidebar row is ignored. */
 const SIDEBAR_SELECTION_DEBOUNCE_MS = 500;
 
+/**
+ * The session of the server, as the session menu draws it.
+ *
+ * The server owns the sessions: it lists them and it says when they changed.
+ */
+function toSessionInfo(session: RemoteSessionInfo): SessionInfo {
+	return {
+		id: session.id,
+		path: session.path,
+		cwd: session.cwd,
+		name: session.name,
+		created: new Date(session.created),
+		modified: new Date(session.modified),
+		messageCount: session.messageCount,
+		firstMessage: session.firstMessage,
+		allMessagesText: session.allMessagesText,
+	};
+}
+
 function createFuzzyAutocompleteItems<T>(
 	items: T[],
 	prefix: string,
@@ -572,9 +547,6 @@ export class InteractiveMode {
 	private statusContainer: Container;
 	private defaultEditor: CustomEditor;
 	private editor: ActiveEditor;
-	private editorComponentFactory: EditorFactory | undefined;
-	private autocompleteProvider: AutocompleteProvider | undefined;
-	private autocompleteProviderWrappers: AutocompleteProviderFactory[] = [];
 	private fdPath: string | undefined;
 	private editorContainer: Container;
 	/** The spinning logo above a centered input box, shown while the session is empty. */
@@ -683,6 +655,8 @@ export class InteractiveMode {
 	private extensionSelector: ExtensionSelectorComponent | undefined = undefined;
 	private extensionInput: ExtensionInputComponent | undefined = undefined;
 	private extensionEditor: ExtensionEditorComponent | undefined = undefined;
+	/** The piece the server drew, while it is on the screen. */
+	private serverDrawnComponent: ServerDrawnComponent | undefined = undefined;
 	private extensionTerminalInputSubscriptions = new Set<{
 		handler: (data: string) => { consume?: boolean; data?: string } | undefined;
 		unsubscribe: () => void;
@@ -704,6 +678,8 @@ export class InteractiveMode {
 
 	// Built-in header (logo + keybinding hints + changelog)
 	private builtInHeader: Component | undefined = undefined;
+	/** The lines the server drew for the header of an extension. */
+	private extensionHeaderLines: string[] | undefined = undefined;
 
 	// Custom header from extension (undefined = use built-in header)
 	private customHeader: (Component & { dispose?(): void }) | undefined = undefined;
@@ -714,14 +690,6 @@ export class InteractiveMode {
 	};
 	private autoTrustOnReloadCwd: string | undefined;
 	private themeController: InteractiveThemeController;
-
-	/**
-	 * The extensions the client loaded from its own directories.
-	 *
-	 * Only the rendering parts of an extension belong to the client. The tools and the event
-	 * handlers run in the server's process.
-	 */
-	private clientExtensions: ClientExtensionRuntime | undefined;
 
 	// Convenience accessors
 	private get agent() {
@@ -778,7 +746,7 @@ export class InteractiveMode {
 		this.widgetContainerAbove = new Container();
 		this.widgetContainerBelow = new Container();
 		this.warningContainer = new Container();
-		this.keybindings = KeybindingsManager.create();
+		this.keybindings = KeybindingsManager.fromManifest(this.facade.manifest?.keybindings);
 		setKeybindings(this.keybindings);
 		const editorPaddingX = this.settingsManager.getEditorPaddingX();
 		const autocompleteMaxVisible = this.settingsManager.getAutocompleteMaxVisible();
@@ -936,15 +904,6 @@ export class InteractiveMode {
 				getArgumentCompletions: cmd.getArgumentCompletions,
 			}));
 
-		// The commands of the client-side extensions run in the client.
-		const clientCommands: SlashCommand[] = (this.clientExtensions?.getCommands() ?? [])
-			.filter((cmd) => !builtinCommandNames.has(cmd.name))
-			.map((cmd) => ({
-				name: cmd.invocationName,
-				description: cmd.description,
-				getArgumentCompletions: cmd.getArgumentCompletions,
-			}));
-
 		// Skills are offered as "@name" mentions next to the file completions
 		const skillMentions: AutocompleteItem[] = this.facade.resourceLoader.getSkills().skills.map((skill) => ({
 			value: `@${skill.name}`,
@@ -953,7 +912,7 @@ export class InteractiveMode {
 		}));
 
 		return new CombinedAutocompleteProvider(
-			[...slashCommands, ...templateCommands, ...extensionCommands, ...clientCommands],
+			[...slashCommands, ...templateCommands, ...extensionCommands],
 			this.sessionManager.getCwd(),
 			this.fdPath,
 			skillMentions,
@@ -961,17 +920,7 @@ export class InteractiveMode {
 	}
 
 	private setupAutocompleteProvider(): void {
-		let provider = this.createBaseAutocompleteProvider();
-		const triggerCharacters: string[] = [];
-		for (const wrapProvider of this.autocompleteProviderWrappers) {
-			provider = wrapProvider(provider);
-			triggerCharacters.push(...(provider.triggerCharacters ?? []));
-		}
-		if (triggerCharacters.length > 0) {
-			provider.triggerCharacters = [...new Set(triggerCharacters)];
-		}
-
-		this.autocompleteProvider = provider;
+		const provider = this.createBaseAutocompleteProvider();
 		this.defaultEditor.setAutocompleteProvider(provider);
 		if (this.editor !== this.defaultEditor) {
 			this.editor.setAutocompleteProvider?.(provider);
@@ -1208,8 +1157,10 @@ export class InteractiveMode {
 
 		this.registerSignalHandlers();
 
-		// The extensions the client renders with are loaded before the first paint.
-		await this.loadClientExtensions();
+		// The extensions live in the server: it draws the header and the footer they ask
+		// for, and the client draws the lines.
+		await this.refreshExtensionChrome();
+		await this.refreshExtensionWidgets();
 
 		// Load changelog (only show new entries, skip for resumed sessions)
 		this.changelogMarkdown = this.getChangelogForDisplay();
@@ -1336,6 +1287,7 @@ export class InteractiveMode {
 			this.builtInHeader = new Text("", 0, 0);
 			this.headerContainer.addChild(this.builtInHeader);
 		}
+		this.applyExtensionHeader();
 		this.ui.requestRender();
 
 		// Ensure fd and rg are available after mounting the TUI (downloads if missing, adds to PATH via getBinDir)
@@ -1377,11 +1329,6 @@ export class InteractiveMode {
 		this.ui.renderNow();
 		// The sidebar lists the sessions the server knows about.
 		void this.refreshSessionList();
-		void loadAllHighlightLanguages().then(() => {
-			if (!this.isInitialized) return;
-			this.ui.invalidate();
-			this.ui.requestRender();
-		});
 	}
 
 	/**
@@ -1544,13 +1491,7 @@ export class InteractiveMode {
 		}
 
 		try {
-			const packageManager = new DefaultPackageManager({
-				cwd: this.sessionManager.getCwd(),
-				agentDir: getAgentDir(),
-				settingsManager: this.settingsManager,
-			});
-			const updates = await packageManager.checkForAvailableUpdates();
-			return updates.map((update) => update.displayName);
+			return await this.facade.packageUpdates();
 		} catch {
 			return [];
 		}
@@ -1864,18 +1805,13 @@ export class InteractiveMode {
 	}
 
 	/**
-	 * The diagnostics of the extensions the client loaded.
+	 * The diagnostics of the extensions.
 	 *
-	 * An extension that declares the server side is not an issue: it runs on the server and
-	 * the client does not render with it. Only the load errors and the "both" extensions the
-	 * server does not have are worth reporting.
+	 * The server loads the extensions, so the client has no extensions of its own to
+	 * report. The server's own diagnostics come with the resources of the session.
 	 */
 	private getClientExtensionDiagnostics(): ResourceDiagnostic[] {
-		const runtime = this.clientExtensions;
-		if (!runtime) return [];
-		const diagnostics: ResourceDiagnostic[] = [...runtime.diagnostics];
-		diagnostics.push(...runtime.getDiagnostics(this.facade.sessionExtensions));
-		return diagnostics;
+		return [];
 	}
 
 	/**
@@ -2040,33 +1976,17 @@ export class InteractiveMode {
 	 * Reads the sessions of the current directory and shows them in the sidebar.
 	 *
 	 * The list is the one of the session menu: the sessions of the directory the
-	 * client runs in, the newest activity first. The server adds the sessions it
-	 * hosts, so a session that has no file yet is in the list as well.
+	 * client runs in, the newest activity first. The server owns the sessions, so it
+	 * is the one that lists them.
 	 */
 	private async refreshSessionList(): Promise<void> {
 		const sidebar = this.sessionSidebar;
 		if (!sidebar) return;
 		const cwd = this.sessionManager.getCwd();
 		const currentId = this.sessionManager.getSessionId();
-		const [remote, local] = await Promise.all([
-			this.facade.listSessions(cwd).catch(() => [] as RemoteSessionInfo[]),
-			this.listSessionsOnDisk(cwd),
-		]);
+		const remote = await this.facade.listSessions(cwd).catch(() => [] as RemoteSessionInfo[]);
 		const sessions = new Map<string, { row: SessionSidebarRow; modified: number; path: string }>();
-		for (const session of local) {
-			sessions.set(session.id, {
-				row: {
-					id: session.id,
-					title: session.name || session.firstMessage || session.id,
-					directory: session.cwd,
-					busy: false,
-				},
-				modified: session.modified.getTime(),
-				path: session.path,
-			});
-		}
 		for (const session of remote) {
-			if (sessions.has(session.id)) continue;
 			sessions.set(session.id, {
 				row: {
 					id: session.id,
@@ -2104,18 +2024,6 @@ export class InteractiveMode {
 		const index = rows.findIndex((row) => row.id === currentId);
 		if (index !== -1) sidebar.selectedIndex = index;
 		this.ui.requestRender();
-	}
-
-	/** The sessions of the directory the client runs in, the same ones the session menu shows. */
-	private async listSessionsOnDisk(cwd: string): Promise<SessionInfo[]> {
-		try {
-			const sessionDir = this.sessionManager.getSessionDir();
-			// A session without a file has no directory, and the default one must not be created.
-			if (!sessionDir) return [];
-			return await SessionManager.list(cwd, sessionDir);
-		} catch {
-			return [];
-		}
 	}
 
 	/** Refreshes the session list while a turn runs, so the working marker follows the run. */
@@ -2349,97 +2257,16 @@ export class InteractiveMode {
 	}
 
 	private getMarkdownTransformers(): MarkdownTransformer[] {
-		return [this.mermaidMarkdownTransformer, ...(this.clientExtensions?.getMarkdownTransformers() ?? [])];
+		return [this.mermaidMarkdownTransformer];
 	}
 
 	/**
 	 * The renderers of a tool call.
 	 *
-	 * The client-side extensions get the first word, the built-in renderers are the fallback.
+	 * The client draws the tools it knows; the server draws the rest.
 	 */
 	private getToolRenderers(toolName: string) {
-		const builtIn = this.getRegisteredToolDefinition(toolName);
-		return this.clientExtensions?.resolveToolRenderers(toolName, () => builtIn) ?? builtIn;
-	}
-
-	/**
-	 * Load the extensions the client can use.
-	 *
-	 * The client loads them from its own directories, the same way the server does, and keeps
-	 * the ones that declared the client side.
-	 */
-	private async loadClientExtensions(): Promise<void> {
-		try {
-			const load = await loadClientExtensions({
-				cwd: this.sessionManager.getCwd(),
-				agentDir: this.facade.agentDir,
-				settingsManager: this.settingsManager,
-			});
-			this.clientExtensions = new ClientExtensionRuntime(load);
-			this.clientExtensions.registerThemes();
-			this.setupClientExtensionShortcuts();
-		} catch (error) {
-			this.showError(
-				`Failed to load the client extensions: ${error instanceof Error ? error.message : String(error)}`,
-			);
-		}
-	}
-
-	/**
-	 * Bind the shortcuts of the client-side extensions to the editor.
-	 */
-	private setupClientExtensionShortcuts(): void {
-		const shortcuts = this.clientExtensions?.getShortcuts(this.keybindings.getEffectiveConfig());
-		if (!shortcuts || shortcuts.size === 0) return;
-		this.defaultEditor.onExtensionShortcut = (data: string) => {
-			for (const [key, shortcut] of shortcuts) {
-				if (!matchesKey(data, key)) continue;
-				const context = createClientExtensionContext({
-					ui: this.createExtensionUIContext(),
-					facade: this.facade,
-					shutdown: () => {
-						void this.shutdown();
-					},
-				});
-				Promise.resolve(shortcut.handler(context)).catch((error) => {
-					this.showError(`Shortcut handler error: ${error instanceof Error ? error.message : String(error)}`);
-				});
-				return true;
-			}
-			return false;
-		};
-	}
-
-	/**
-	 * The client-side extension command the input runs, if there is one.
-	 */
-	private findClientExtensionCommand(text: string): { command: ClientExtensionCommand; args: string } | undefined {
-		if (!text.startsWith("/")) return undefined;
-		const spaceIndex = text.indexOf(" ");
-		const name = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
-		const args = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1);
-		const command = (this.clientExtensions?.getCommands() ?? []).find(
-			(candidate) => candidate.invocationName === name || candidate.name === name,
-		);
-		return command ? { command, args } : undefined;
-	}
-
-	/**
-	 * Run a command of a client-side extension.
-	 */
-	private async runClientExtensionCommand(command: ClientExtensionCommand, args: string): Promise<void> {
-		const context = createClientExtensionCommandContext({
-			ui: this.createExtensionUIContext(),
-			facade: this.facade,
-			shutdown: () => {
-				void this.shutdown();
-			},
-		});
-		try {
-			await command.handler(args, context);
-		} catch (error) {
-			this.showError(`Command error: ${error instanceof Error ? error.message : String(error)}`);
-		}
+		return this.getRegisteredToolDefinition(toolName);
 	}
 
 	/**
@@ -2526,14 +2353,12 @@ export class InteractiveMode {
 	}
 
 	/**
-	 * Set an extension widget (string array or custom component).
+	 * Set an extension widget.
+	 *
+	 * The extensions live in the server, so it draws the widget and sends the lines.
 	 */
-	private setExtensionWidget(
-		key: string,
-		content: string[] | ((tui: TUI, thm: Theme) => Component & { dispose?(): void }) | undefined,
-		options?: ExtensionWidgetOptions,
-	): void {
-		const placement = options?.placement ?? "aboveEditor";
+	private setExtensionWidget(key: string, content: string[] | undefined, options?: ClientWidgetOptions): void {
+		const placement = options?.placement === "below" ? "belowEditor" : "aboveEditor";
 		const removeExisting = (map: Map<string, Component & { dispose?(): void }>) => {
 			const existing = map.get(key);
 			if (existing?.dispose) existing.dispose();
@@ -2548,7 +2373,7 @@ export class InteractiveMode {
 			return;
 		}
 
-		let component: Component & { dispose?(): void };
+		let component: (Component & { dispose?(): void }) | undefined;
 
 		if (Array.isArray(content)) {
 			// Wrap string array in a Container with Text components
@@ -2561,12 +2386,16 @@ export class InteractiveMode {
 			}
 			component = container;
 		} else {
-			// Factory function - create component
-			component = content(this.ui, theme);
+			// The widget was taken away.
+			component = undefined;
 		}
 
 		const targetMap = placement === "belowEditor" ? this.extensionWidgetsBelow : this.extensionWidgetsAbove;
-		targetMap.set(key, component);
+		if (component) {
+			targetMap.set(key, component);
+		} else {
+			targetMap.delete(key);
+		}
 		this.renderWidgets();
 	}
 
@@ -2601,8 +2430,6 @@ export class InteractiveMode {
 		// The reset clears the footer statuses of the extensions, so the title is put back.
 		this.applyServerStatus();
 		this.footer.invalidate();
-		this.autocompleteProviderWrappers = [];
-		this.setCustomEditorComponent(undefined);
 		this.setupAutocompleteProvider();
 		this.defaultEditor.onExtensionShortcut = undefined;
 		this.updateTerminalTitle();
@@ -2654,26 +2481,67 @@ export class InteractiveMode {
 	}
 
 	/**
-	 * Set a custom footer component, or restore the built-in footer.
+	 * Set the custom header of the session, or restore the built-in one.
+	 *
+	 * The extensions live in the server, so it draws the header. The client asks for the
+	 * lines and draws them.
 	 */
-	private setExtensionFooter(
-		factory:
-			| ((tui: TUI, thm: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void })
-			| undefined,
-	): void {
-		// Dispose existing custom footer
+	private setExtensionHeader(lines: string[] | undefined): void {
+		this.extensionHeaderLines = lines;
+		this.applyExtensionHeader();
+	}
+
+	/**
+	 * Draw the header the server drew, over the built-in one.
+	 *
+	 * The header of the built-in one is created while the terminal UI starts, so the lines
+	 * the server sent are kept until it is there.
+	 */
+	private applyExtensionHeader(): void {
+		if (!this.builtInHeader) {
+			return;
+		}
+
+		if (this.customHeader?.dispose) {
+			this.customHeader.dispose();
+		}
+
+		const currentHeader = this.customHeader || this.builtInHeader;
+		const index = this.headerContainer.children.indexOf(currentHeader);
+
+		this.customHeader =
+			this.extensionHeaderLines && this.extensionHeaderLines.length > 0
+				? this.buildExtensionChrome(this.extensionHeaderLines)
+				: undefined;
+		if (this.customHeader) {
+			if (index !== -1) {
+				this.headerContainer.children[index] = this.customHeader;
+			} else {
+				this.headerContainer.children.unshift(this.customHeader);
+			}
+		} else if (index !== -1) {
+			this.headerContainer.children[index] = this.builtInHeader;
+		}
+
+		this.ui.requestRender();
+	}
+
+	/**
+	 * Set the custom footer of the session, or restore the built-in one.
+	 *
+	 * The extensions live in the server, so it draws the footer. The client asks for the
+	 * lines and draws them.
+	 */
+	private setExtensionFooter(lines: string[] | undefined): void {
 		if (this.customFooter?.dispose) {
 			this.customFooter.dispose();
 		}
 
 		this.footerContainer.clear();
-		if (factory) {
-			// Create and add custom footer, passing the data provider
-			this.customFooter = factory(this.ui, theme, this.footerDataProvider);
+		this.customFooter = lines && lines.length > 0 ? this.buildExtensionChrome(lines) : undefined;
+		if (this.customFooter) {
 			this.footerContainer.addChild(this.customFooter);
 		} else {
-			// Restore built-in footer
-			this.customFooter = undefined;
 			this.footerContainer.addChild(this.footer);
 		}
 
@@ -2681,47 +2549,72 @@ export class InteractiveMode {
 	}
 
 	/**
-	 * Set a custom header component, or restore the built-in header.
+	 * The lines the server drew, as a block of text.
 	 */
-	private setExtensionHeader(factory: ((tui: TUI, thm: Theme) => Component & { dispose?(): void }) | undefined): void {
-		// Header may not be initialized yet if called during early initialization
-		if (!this.builtInHeader) {
-			return;
+	private buildExtensionChrome(lines: string[]): Component {
+		const container = new Container();
+		for (const line of lines) {
+			container.addChild(new Text(line, 0, 0));
 		}
+		return container;
+	}
 
-		// Dispose existing custom header
-		if (this.customHeader?.dispose) {
-			this.customHeader.dispose();
-		}
+	/**
+	 * Show the custom dialog of an extension, as the server drew it.
+	 *
+	 * The extensions live in the server, so it draws the dialog. The client shows the
+	 * lines and closes them with the next key.
+	 */
+	private showServerCustomDialog(): void {
+		if (this.serverDrawnComponent) return;
+		void this.facade
+			.render({ kind: "custom" })
+			.then((rendered) => {
+				if (rendered.lines.length === 0) return;
+				this.serverDrawnComponent = new ServerDrawnComponent(rendered.lines, () => {
+					this.hideServerDrawnComponent();
+				});
+				this.disposeActiveSelector();
+				this.editorContainer.clear();
+				this.editorContainer.addChild(this.serverDrawnComponent);
+				this.ui.setFocus(this.serverDrawnComponent);
+				this.ui.requestRender();
+			})
+			.catch(() => undefined);
+	}
 
-		// Find the index of the current header in the header container
-		const currentHeader = this.customHeader || this.builtInHeader;
-		const index = this.headerContainer.children.indexOf(currentHeader);
-
-		if (factory) {
-			// Create and add custom header
-			this.customHeader = factory(this.ui, theme);
-			if (isExpandable(this.customHeader)) {
-				this.customHeader.setExpanded(this.toolOutputExpanded);
-			}
-			if (index !== -1) {
-				this.headerContainer.children[index] = this.customHeader;
-			} else {
-				// If not found (e.g. builtInHeader was never added), add at the top
-				this.headerContainer.children.unshift(this.customHeader);
-			}
-		} else {
-			// Restore built-in header
-			this.customHeader = undefined;
-			if (isExpandable(this.builtInHeader)) {
-				this.builtInHeader.setExpanded(this.toolOutputExpanded);
-			}
-			if (index !== -1) {
-				this.headerContainer.children[index] = this.builtInHeader;
-			}
-		}
-
+	/**
+	 * Close the piece the server drew.
+	 */
+	private hideServerDrawnComponent(): void {
+		if (!this.serverDrawnComponent) return;
+		this.editorContainer.clear();
+		this.editorContainer.addChild(this.editor);
+		this.serverDrawnComponent = undefined;
+		this.ui.setFocus(this.editor);
 		this.ui.requestRender();
+	}
+
+	/**
+	 * Ask the server for the header and the footer the extensions drew.
+	 */
+	private async refreshExtensionChrome(): Promise<void> {
+		const header = await this.facade.render({ kind: "header" }).catch(() => undefined);
+		const footer = await this.facade.render({ kind: "footer" }).catch(() => undefined);
+		this.setExtensionHeader(header?.lines);
+		this.setExtensionFooter(footer?.lines);
+	}
+
+	/**
+	 * Ask the server for the widgets the extensions set.
+	 */
+	private async refreshExtensionWidgets(): Promise<void> {
+		const widgets = await this.facade.extensionWidgets().catch(() => []);
+		for (const widget of widgets) {
+			this.setExtensionWidget(widget.key, widget.lines, {
+				placement: widget.placement === "belowEditor" ? "below" : "above",
+			});
+		}
 	}
 
 	private addExtensionTerminalInputListener(
@@ -2747,7 +2640,7 @@ export class InteractiveMode {
 		this.extensionTerminalInputSubscriptions.clear();
 	}
 
-	private createExtensionUIContext(): ExtensionUIContext {
+	private createExtensionUIContext(): ClientExtensionUIContext {
 		return {
 			select: (title, options, opts) => this.showExtensionSelector(title, options, opts),
 			confirm: (title, message, opts) => this.showExtensionConfirm(title, message, opts),
@@ -2765,39 +2658,17 @@ export class InteractiveMode {
 			setWorkingIndicator: (options) => this.setWorkingIndicator(options),
 			setHiddenThinkingLabel: (label) => this.setHiddenThinkingLabel(label),
 			setWidget: (key, content, options) => this.setExtensionWidget(key, content, options),
-			setFooter: (factory) => this.setExtensionFooter(factory),
-			setHeader: (factory) => this.setExtensionHeader(factory),
 			setTitle: (title) => this.ui.terminal.setTitle(title),
-			custom: (factory, options) => this.showExtensionCustom(factory, options),
 			pasteToEditor: (text) => this.editor.handleInput(`\x1b[200~${text}\x1b[201~`),
 			setEditorText: (text) => this.editor.setText(text),
 			getEditorText: () => this.editor.getExpandedText?.() ?? this.editor.getText(),
 			editor: (title, prefill) => this.showExtensionEditor(title, prefill),
-			addAutocompleteProvider: (factory) => {
-				this.autocompleteProviderWrappers.push(factory);
-				this.setupAutocompleteProvider();
+			extensionChromeChanged: () => {
+				void this.refreshExtensionChrome();
 			},
-			setEditorComponent: (factory) => this.setCustomEditorComponent(factory),
-			getEditorComponent: () => this.editorComponentFactory,
-			get theme() {
-				return theme;
+			extensionCustomDialog: () => {
+				this.showServerCustomDialog();
 			},
-			getAllThemes: () => getAvailableThemesWithPaths(),
-			getTheme: (name) => getThemeByName(name),
-			setTheme: (themeOrName) => {
-				if (themeOrName instanceof Theme) {
-					return this.themeController.setThemeInstance(themeOrName);
-				}
-				const result = this.themeController.setThemeName(themeOrName);
-				if (result.success) {
-					if (this.settingsManager.getTheme() !== themeOrName) {
-						this.settingsManager.setTheme(themeOrName);
-					}
-				}
-				return result;
-			},
-			getToolsExpanded: () => this.toolOutputExpanded,
-			setToolsExpanded: (expanded) => this.setToolsExpanded(expanded),
 		};
 	}
 
@@ -2986,84 +2857,6 @@ export class InteractiveMode {
 	}
 
 	/**
-	 * Set a custom editor component from an extension.
-	 * Pass undefined to restore the default editor.
-	 */
-	private setCustomEditorComponent(factory: EditorFactory | undefined): void {
-		this.editorComponentFactory = factory;
-
-		// Save text from current editor before switching
-		const currentText = this.editor.getText();
-
-		this.disposeActiveSelector();
-		this.editorContainer.clear();
-
-		if (factory) {
-			// Create the custom editor with tui, theme, and keybindings
-			const newEditor = factory(this.ui, getEditorTheme(), this.keybindings);
-
-			// Wire up callbacks from the default editor
-			newEditor.onSubmit = this.defaultEditor.onSubmit;
-			newEditor.onChange = this.defaultEditor.onChange;
-
-			// Copy text from previous editor
-			newEditor.setText(currentText);
-
-			// Copy appearance settings if supported
-			if (newEditor.borderColor !== undefined) {
-				newEditor.borderColor = this.defaultEditor.borderColor;
-			}
-			if (newEditor.setPaddingX !== undefined) {
-				newEditor.setPaddingX(this.defaultEditor.getPaddingX());
-			}
-			if (newEditor.setAutocompleteMaxVisible !== undefined) {
-				newEditor.setAutocompleteMaxVisible(this.defaultEditor.getAutocompleteMaxVisible());
-			}
-
-			// Set autocomplete if supported
-			if (newEditor.setAutocompleteProvider && this.autocompleteProvider) {
-				newEditor.setAutocompleteProvider(this.autocompleteProvider);
-			}
-
-			// If extending CustomEditor, copy app-level handlers
-			// Use duck typing since instanceof fails across jiti module boundaries
-			const customEditor = newEditor as unknown as Record<string, unknown>;
-			if ("actionHandlers" in customEditor && customEditor.actionHandlers instanceof Map) {
-				if (!customEditor.onEscape) {
-					customEditor.onEscape = () => this.defaultEditor.onEscape?.();
-				}
-				if (!customEditor.onCtrlD) {
-					customEditor.onCtrlD = () => this.defaultEditor.onCtrlD?.();
-				}
-				if (!customEditor.onPasteImage) {
-					customEditor.onPasteImage = () => this.defaultEditor.onPasteImage?.();
-				}
-				if (!customEditor.onExtensionShortcut) {
-					customEditor.onExtensionShortcut = (data: string) => this.defaultEditor.onExtensionShortcut?.(data);
-				}
-				// Copy action handlers (clear, suspend, model switching, etc.)
-				for (const [action, handler] of this.defaultEditor.actionHandlers) {
-					(customEditor.actionHandlers as Map<string, () => void>).set(action, handler);
-				}
-			}
-
-			this.editor = newEditor;
-		} else {
-			// Restore default editor with text from custom editor
-			this.defaultEditor.setText(currentText);
-			this.editor = this.defaultEditor;
-		}
-
-		this.editorContainer.addChild(this.editor as Component);
-		if (this.activeStatusIndicator) {
-			this.statusContainer.clear();
-			this.statusContainer.addChild(this.activeStatusIndicator);
-		}
-		this.ui.setFocus(this.editor as Component);
-		this.ui.requestRender();
-	}
-
-	/**
 	 * Show a notification for extensions.
 	 */
 	private showExtensionNotify(message: string, type?: "info" | "warning" | "error"): void {
@@ -3074,88 +2867,6 @@ export class InteractiveMode {
 		} else {
 			this.showStatus(message);
 		}
-	}
-
-	/** Show a custom component with keyboard focus. Overlay mode renders on top of existing content. */
-	private async showExtensionCustom<T>(
-		factory: (
-			tui: TUI,
-			theme: Theme,
-			keybindings: KeybindingsManager,
-			done: (result: T) => void,
-		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: {
-			overlay?: boolean;
-			overlayOptions?: OverlayOptions | (() => OverlayOptions);
-			onHandle?: (handle: OverlayHandle) => void;
-		},
-	): Promise<T> {
-		const savedText = this.editor.getText();
-		const isOverlay = options?.overlay ?? false;
-
-		const restoreEditor = () => {
-			this.editorContainer.clear();
-			this.editorContainer.addChild(this.editor);
-			this.editor.setText(savedText);
-			this.ui.setFocus(this.editor);
-			this.ui.requestRender();
-		};
-
-		return new Promise((resolve, reject) => {
-			let component: Component & { dispose?(): void };
-			let overlayHandle: OverlayHandle | undefined;
-			let closed = false;
-
-			const close = (result: T) => {
-				if (closed) return;
-				closed = true;
-				// Remove this overlay, not the topmost one: another overlay may have opened above it.
-				if (isOverlay) overlayHandle?.hide();
-				else restoreEditor();
-				// Note: both branches above already call requestRender
-				resolve(result);
-				try {
-					component?.dispose?.();
-				} catch {
-					/* ignore dispose errors */
-				}
-			};
-
-			Promise.resolve(factory(this.ui, theme, this.keybindings, close))
-				.then((c) => {
-					if (closed) return;
-					component = c;
-					if (isOverlay) {
-						// Resolve overlay options - can be static or dynamic function
-						const resolveOptions = (): OverlayOptions | undefined => {
-							if (options?.overlayOptions) {
-								const opts =
-									typeof options.overlayOptions === "function"
-										? options.overlayOptions()
-										: options.overlayOptions;
-								return opts;
-							}
-							// Fallback: use component's width property if available
-							const w = (component as { width?: number }).width;
-							return w ? { width: w } : undefined;
-						};
-						overlayHandle = this.ui.showOverlay(component, resolveOptions());
-						// Expose handle to caller for visibility control
-						options?.onHandle?.(overlayHandle);
-					} else {
-						this.disposeActiveSelector();
-						this.editorContainer.clear();
-						this.editorContainer.addChild(component);
-						this.ui.setFocus(component);
-						this.ui.requestRender();
-					}
-				})
-				.catch((err) => {
-					if (closed) return;
-					if (!isOverlay) restoreEditor();
-					reject(err);
-				});
-		});
 	}
 
 	// =========================================================================
@@ -3473,15 +3184,6 @@ export class InteractiveMode {
 			if (text === "/quit") {
 				this.editor.setText("");
 				await this.shutdown();
-				return;
-			}
-
-			// A command of a client-side extension runs in the client.
-			const clientCommand = this.findClientExtensionCommand(text);
-			if (clientCommand) {
-				this.editor.addToHistory?.(text);
-				this.editor.setText("");
-				await this.runClientExtensionCommand(clientCommand.command, clientCommand.args);
 				return;
 			}
 
@@ -4062,8 +3764,7 @@ export class InteractiveMode {
 	 * server for the rendering and repaints the row when the answer arrives.
 	 */
 	private addCustomEntryToChat(entry: Extract<SessionEntry, { type: "custom" }>): void {
-		const renderer = this.clientExtensions?.getEntryRenderer(entry.customType);
-		const component = new CustomEntryComponent(entry, renderer, this.outputPad, () => this.ui.requestRender());
+		const component = new CustomEntryComponent(entry, undefined, this.outputPad, () => this.ui.requestRender());
 		component.setExpanded(this.toolOutputExpanded);
 		this.chatContainer.addChild(component);
 	}
@@ -4093,7 +3794,7 @@ export class InteractiveMode {
 				if (message.display) {
 					const component = new CustomMessageComponent(
 						message,
-						this.clientExtensions?.getMessageRenderer(message.customType),
+						undefined,
 						this.getMarkdownThemeWithSettings(),
 						this.outputPad,
 						() => this.ui.requestRender(),
@@ -5561,35 +5262,27 @@ export class InteractiveMode {
 		if (!this.settingsManager.isProjectTrusted() || !hasTrustRequiringProjectResources(cwd)) {
 			return false;
 		}
-
-		const trustStore = new ProjectTrustStore(this.facade.agentDir);
-		try {
-			if (trustStore.get(cwd) !== null) {
-				this.autoTrustOnReloadCwd = undefined;
-				return false;
-			}
-			trustStore.set(cwd, true);
+		if (this.facade.trust.decided) {
 			this.autoTrustOnReloadCwd = undefined;
-			return true;
-		} catch (error) {
-			this.showWarning(
-				`Could not save project trust after reload: ${error instanceof Error ? error.message : String(error)}`,
-			);
 			return false;
 		}
+		void this.facade.setTrust(cwd, true);
+		this.autoTrustOnReloadCwd = undefined;
+		return true;
 	}
 
 	private showTrustSelector(): void {
 		const cwd = this.sessionManager.getCwd();
-		const trustStore = new ProjectTrustStore(this.facade.agentDir);
-		const savedDecision = trustStore.getEntry(cwd);
+		const savedDecision = this.facade.trust.decided ? { path: cwd, decision: this.facade.trust.trusted } : null;
 		this.showSelector((done) => {
 			const selector = new TrustSelectorComponent({
 				cwd,
 				savedDecision,
 				projectTrusted: this.settingsManager.isProjectTrusted(),
 				onSelect: (selection) => {
-					trustStore.setMany(selection.updates);
+					for (const update of selection.updates) {
+						void this.facade.setTrust(update.path, update.decision);
+					}
 					done();
 					this.showStatus(
 						`Saved trust decision: ${selection.trusted ? "trusted" : "untrusted"}. Restart ${APP_NAME} for this to take effect.`,
@@ -6067,17 +5760,9 @@ export class InteractiveMode {
 		this.showSelector(
 			(done) => {
 				const selector = new SessionMenuComponent({
-					currentLoad: (onProgress, signal) =>
-						SessionManager.list(
-							this.sessionManager.getCwd(),
-							this.sessionManager.getSessionDir(),
-							onProgress,
-							signal,
-						),
-					allLoad: (onProgress, signal) =>
-						this.sessionManager.usesDefaultSessionDir()
-							? SessionManager.listAll(onProgress, signal)
-							: SessionManager.listAll(this.sessionManager.getSessionDir(), onProgress, signal),
+					currentLoad: async () =>
+						(await this.facade.listSessions(this.sessionManager.getCwd())).map(toSessionInfo),
+					allLoad: async () => (await this.facade.listSessions()).map(toSessionInfo),
 					onSelect: (session) => {
 						done();
 						void this.handleResumeSession(session.path);
@@ -6090,8 +5775,7 @@ export class InteractiveMode {
 					renameSession: async (sessionFilePath: string, nextName: string | undefined) => {
 						const next = (nextName ?? "").trim();
 						if (!next) return;
-						const mgr = SessionManager.open(sessionFilePath);
-						mgr.appendSessionInfo(next);
+						await this.facade.renameSession(sessionFilePath, next);
 					},
 					currentSessionPath: this.sessionManager.getSessionFile(),
 					floating: true,
@@ -6814,14 +6498,14 @@ export class InteractiveMode {
 		try {
 			await this.facade.reload();
 			restoreChatBeforeSessionStart();
-			this.keybindings.reload();
+			this.keybindings.reload(this.facade.manifest?.keybindings);
 			const activeHeader = this.customHeader ?? this.builtInHeader;
 			if (isExpandable(activeHeader)) {
 				activeHeader.setExpanded(this.toolOutputExpanded);
 			}
 			this.applyRuntimeSettings();
 			this.themeController.applyFromSettings();
-			await this.loadClientExtensions();
+			await this.refreshExtensionChrome();
 			this.setupAutocompleteProvider();
 			this.showResourceDiagnostics();
 			const savedImplicitProjectTrust = this.maybeSaveImplicitProjectTrustAfterReload();

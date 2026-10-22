@@ -33,7 +33,6 @@ import type {
 	CacheWarmingStatus,
 	CompactionResult,
 	ContextUsage,
-	ExtensionUIContext,
 	InputSource,
 	ModelCycleResult,
 	PromptOptions,
@@ -43,7 +42,6 @@ import type {
 	SessionEntry,
 	SessionStats,
 	SessionTreeNode,
-	SettingsManager,
 	SourceInfo,
 	ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
@@ -51,12 +49,16 @@ import type { BashResult } from "@earendil-works/pi-coding-agent/core/bash-execu
 import type { ModelRuntime, ModelRuntimeAuthOverrides } from "@earendil-works/pi-coding-agent/core/model-runtime";
 import type { AuthStatus } from "@earendil-works/pi-coding-agent/core/provider-composer";
 import type {
+	PiManifest,
 	RemoteSessionInfo,
 	RenderRequest,
 	RenderResponse,
+	ServerTrustState,
 	SessionStateSnapshot,
 } from "@earendil-works/pi-server/client";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
+import type { ClientExtensionUIContext } from "./client-extension-ui.ts";
+import type { ClientSettings } from "./client-settings.ts";
 
 export type { RenderRequest, RenderResponse, RenderToolResult } from "@earendil-works/pi-server/client";
 
@@ -251,7 +253,7 @@ export interface SessionExtensionBindings {
 	 * The server sends the dialogs over the event stream; the client answers them with
 	 * the same UI the interactive mode uses.
 	 */
-	uiContext?: ExtensionUIContext;
+	uiContext?: ClientExtensionUIContext;
 	/** Called when the turn is aborted. */
 	abortHandler?: () => void;
 }
@@ -395,6 +397,16 @@ export interface SessionFacade {
 	 */
 	readonly cwd: string;
 
+	/**
+	 * The manifest of the server.
+	 *
+	 * The server describes itself with it: the theme it renders with, the settings it
+	 * runs on, the commands it offers, the keys it binds and the extensions it loaded.
+	 * The client draws with the theme and the settings of the manifest and compares the
+	 * extensions of the manifest with its own. It is undefined until the server answered.
+	 */
+	readonly manifest: PiManifest | undefined;
+
 	// --- Lifecycle ---
 
 	/** Build the client-local resources and load the session. */
@@ -496,6 +508,42 @@ export interface SessionFacade {
 	 * The list covers every project of the server unless a directory is given.
 	 */
 	listSessions(cwd?: string): Promise<RemoteSessionInfo[]>;
+
+	/**
+	 * The trust state of the directory of the server.
+	 *
+	 * The trust belongs to the server: it stores the decision and it refuses to open a
+	 * session in a directory the user did not trust.
+	 */
+	readonly trust: ServerTrustState;
+
+	/**
+	 * Store the trust decision of a directory in the trust store of the server.
+	 *
+	 * A decision of `null` removes the decision, so the server asks again.
+	 */
+	setTrust(cwd: string, trusted: boolean | null): Promise<void>;
+
+	/**
+	 * Give a session of the disk a name.
+	 *
+	 * The session files belong to the server, so the client asks it to rename one.
+	 */
+	renameSession(path: string, name: string): Promise<void>;
+
+	/**
+	 * The packages that have an update waiting.
+	 *
+	 * The packages belong to the server, so it is the one that looks for the updates.
+	 */
+	packageUpdates(): Promise<string[]>;
+
+	/**
+	 * The widgets the extensions of the session set.
+	 *
+	 * The extensions live in the server, so it is the one that holds the widgets.
+	 */
+	extensionWidgets(): Promise<Array<{ key: string; lines?: string[]; placement?: string }>>;
 	/** The queued steering messages. */
 	getSteeringMessages(): readonly string[];
 	/** The queued follow-up messages. */
@@ -630,8 +678,13 @@ export interface SessionFacade {
 	readonly promptTemplates: ReadonlyArray<SessionPromptTemplate>;
 	/** The session store, read-only. */
 	readonly sessionManager: SessionManagerView;
-	/** The settings of the client. */
-	readonly settingsManager: SettingsManager;
+	/**
+	 * The settings of the client.
+	 *
+	 * The settings belong to the server: the client keeps a mirror of them, fed by the
+	 * manifest, and hands every change back to the server.
+	 */
+	readonly settingsManager: ClientSettings;
 	/** The agent of the session, as the TUI sees it. */
 	readonly agent: SessionAgentView;
 }

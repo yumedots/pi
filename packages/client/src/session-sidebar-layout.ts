@@ -6,7 +6,6 @@
  * of chips above the conversation.
  */
 
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import {
 	type Component,
 	HStack,
@@ -18,6 +17,7 @@ import {
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type StackLayoutNode } from "@earendil-works/pi-tui/layout-node";
+import { theme } from "./client-theme.ts";
 import { NEW_SESSION_ROW_LABEL, type SessionSidebar, type SessionSidebarRow } from "./components/session-sidebar.ts";
 
 /** The narrowest terminal that still shows the sidebar as a column. */

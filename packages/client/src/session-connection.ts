@@ -11,7 +11,7 @@ import type {
 	RpcExtensionUIResponse,
 	RpcResponse,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionStateSnapshot } from "@earendil-works/pi-server";
+import type { SessionStateSnapshot } from "@earendil-works/pi-server/client";
 
 /**
  * A live connection to one session on the server.

@@ -2,14 +2,14 @@
  * TUI config selector for `pi config` command
  */
 
-import type { SettingsManager } from "@earendil-works/pi-coding-agent/core/settings-manager";
-import { initTheme, stopThemeWatcher } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import { ProcessTerminal, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
+import type { ClientSettings } from "../client-settings.ts";
 import { ConfigSelectorComponent, type ScopedResolvedPaths } from "../components/config-selector.ts";
+import { installTheme } from "./startup-ui.ts";
 
 export interface ConfigSelectorOptions {
 	resolvedPaths: ScopedResolvedPaths;
-	settingsManager: SettingsManager;
+	settingsManager: ClientSettings;
 	cwd: string;
 	agentDir: string;
 	writeScope: "global" | "project";
@@ -19,7 +19,7 @@ export interface ConfigSelectorOptions {
 /** Show TUI config selector and return when closed */
 export async function selectConfig(options: ConfigSelectorOptions): Promise<void> {
 	// Initialize theme before showing TUI
-	initTheme(options.settingsManager.getTheme(), true);
+	installTheme(options.settingsManager);
 
 	return new Promise((resolve) => {
 		const ui: TUI = new TuiMainScreen(
@@ -39,13 +39,11 @@ export async function selectConfig(options: ConfigSelectorOptions): Promise<void
 				if (!resolved) {
 					resolved = true;
 					ui.stop();
-					stopThemeWatcher();
 					resolve();
 				}
 			},
 			() => {
 				ui.stop();
-				stopThemeWatcher();
 				process.exit(0);
 			},
 			() => ui.requestRender(),

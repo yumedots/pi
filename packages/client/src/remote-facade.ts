@@ -8,7 +8,7 @@
  * because they are the client's own business.
  */
 
-import { constants, copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { constants, copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, parse, resolve } from "node:path";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -34,7 +34,6 @@ import type {
 	CacheWarmingStatus,
 	CompactionResult,
 	ContextUsage,
-	ExtensionUIContext,
 	InputSource,
 	ModelCycleResult,
 	PromptOptions,
@@ -48,18 +47,22 @@ import type {
 	SourceInfo,
 	ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { getAgentDir } from "@earendil-works/pi-coding-agent/config";
 import type { BashResult } from "@earendil-works/pi-coding-agent/core/bash-executor";
 import type { ModelRuntime, ModelRuntimeAuthOverrides } from "@earendil-works/pi-coding-agent/core/model-runtime";
 import type { AuthStatus } from "@earendil-works/pi-coding-agent/core/provider-composer";
-import { buildContextEntries, SessionManager } from "@earendil-works/pi-coding-agent/core/session-manager";
-import { SettingsManager } from "@earendil-works/pi-coding-agent/core/settings-manager";
 import type {
 	OpencodeModelInfo,
+	PiManifest,
 	PiServerClient,
 	RemoteSessionInfo,
+	ServerTrustState,
 	SessionStateSnapshot,
 } from "@earendil-works/pi-server/client";
+import type { ClientExtensionUIContext } from "./client-extension-ui.ts";
+import { ClientSettings } from "./client-settings.ts";
+import { getAgentDir } from "./client-support/config.ts";
+import { normalizePath, resolvePath } from "./client-support/paths.ts";
+import { buildContextEntries } from "./client-support/session-manager.ts";
 import { RemoteSessionConnection } from "./remote-session.ts";
 import { STATE_REFRESHING_EVENTS } from "./session-connection.ts";
 import {
@@ -104,7 +107,13 @@ export interface RemoteSessionFacadeOptions {
 	agentDir?: string;
 	/** How long {@link RemoteSessionFacade.waitForIdle} waits before it gives up. */
 	idleTimeoutMs?: number;
-	/** The model surface of the client. One is built from the agent directory when omitted. */
+	/**
+	 * The provider surface of the client.
+	 *
+	 * The models come from the server, so the client does not build a catalog. The
+	 * providers and the credentials are the caller's business: the login menu runs the
+	 * provider login flows in that process.
+	 */
 	modelRuntime?: ModelRuntime;
 }
 
@@ -141,8 +150,8 @@ function toModel(info: OpencodeModelInfo): Model<any> {
  *
  * The models come from the server: it owns the catalog, and the client asks it for the
  * list instead of building a catalog of its own. The provider and the credential surface
- * is the client's own, because the login menu runs the provider login flows in this
- * process.
+ * is the one of the caller, because the login menu runs the provider login flows in the
+ * process that owns them.
  */
 class ClientModelRuntime implements SessionModelRuntime {
 	private readonly serverModels: () => readonly Model<any>[];
@@ -331,9 +340,9 @@ export class RemoteSessionFacade implements SessionFacade {
 	private readonly renderProvider: ServerRenderProvider;
 	private readonly modelSurface: ClientModelRuntime;
 	private serverModels: Model<any>[] = [];
-	private modelRuntimeInstance: ModelRuntime | undefined;
-	private modelRuntimeLoad: Promise<void> | undefined;
-	private settings: SettingsManager | undefined;
+	private settings: ClientSettings | undefined;
+	private serverManifest: PiManifest | undefined;
+	private serverTrust: ServerTrustState = { required: false, decided: false, trusted: false };
 	private snapshot: SessionStateSnapshot | undefined;
 	private resources: FacadeResources | undefined;
 	private resolvedModel: Model<any> | undefined;
@@ -347,7 +356,7 @@ export class RemoteSessionFacade implements SessionFacade {
 	private refreshQueuedWithMessages = false;
 	private beforeSessionInvalidate: (() => void | Promise<void>) | undefined;
 	private rebindSession: (() => void | Promise<void>) | undefined;
-	private uiContext: ExtensionUIContext | undefined;
+	private uiContext: ClientExtensionUIContext | undefined;
 	private abortHandler: (() => void) | undefined;
 	private turnAbort = new AbortController();
 	private usesDefaultSessionDir = true;
@@ -398,7 +407,7 @@ export class RemoteSessionFacade implements SessionFacade {
 		setServerRenderProvider(this.renderProvider);
 		this.modelSurface = new ClientModelRuntime(
 			() => this.serverModels,
-			() => this.modelRuntimeOption ?? this.modelRuntimeInstance,
+			() => this.modelRuntimeOption,
 			() => this.loadServerModels(),
 		);
 	}
@@ -407,13 +416,12 @@ export class RemoteSessionFacade implements SessionFacade {
 	 * Load the session and the models the server offers.
 	 *
 	 * The models come from the server: it owns the catalog, so the client asks it for the
-	 * list. The provider runtime the login menu needs is built in the background, because
-	 * the session does not wait for it.
+	 * list. The provider runtime the login menu needs is the one of the caller, because
+	 * the client does not build a catalog of its own.
 	 */
 	async load(): Promise<void> {
 		await this.loadServerModels();
 		await this.loadSession();
-		this.startModelRuntime();
 	}
 
 	/**
@@ -681,6 +689,42 @@ export class RemoteSessionFacade implements SessionFacade {
 	 */
 	async listSessions(cwd?: string): Promise<RemoteSessionInfo[]> {
 		return this.client.listSessions(cwd);
+	}
+
+	/**
+	 * The trust state of the directory of the server.
+	 */
+	get trust(): ServerTrustState {
+		return this.serverTrust;
+	}
+
+	/**
+	 * Store the trust decision of a directory in the trust store of the server.
+	 */
+	async setTrust(cwd: string, trusted: boolean | null): Promise<void> {
+		await this.client.setTrust(cwd, trusted);
+		this.serverTrust = { ...this.serverTrust, decided: true, trusted: trusted === true };
+	}
+
+	/**
+	 * Give a session of the disk a name.
+	 */
+	async renameSession(path: string, name: string): Promise<void> {
+		await this.client.renameSession(path, name);
+	}
+
+	/**
+	 * The packages that have an update waiting.
+	 */
+	async packageUpdates(): Promise<string[]> {
+		return this.client.packageUpdates();
+	}
+
+	/**
+	 * The widgets the extensions of the session set.
+	 */
+	async extensionWidgets(): Promise<Array<{ key: string; lines?: string[]; placement?: string }>> {
+		return this.client.extensionWidgets(this.connection.sessionId);
 	}
 
 	getSteeringMessages(): readonly string[] {
@@ -977,7 +1021,7 @@ export class RemoteSessionFacade implements SessionFacade {
 	 * The model surface of the client.
 	 *
 	 * The models come from the server; the providers and the credentials are the
-	 * client's own. The type is the one of the coding agent, because the bug report
+	 * caller's. The type is the one of the coding agent, because the bug report
 	 * reads the providers from it.
 	 */
 	get modelRuntime(): ModelRuntime {
@@ -1012,11 +1056,21 @@ export class RemoteSessionFacade implements SessionFacade {
 		return this.sessionManagerView;
 	}
 
-	get settingsManager(): SettingsManager {
+	get settingsManager(): ClientSettings {
 		if (!this.settings) {
 			throw new Error("The settings of the client were not loaded yet");
 		}
 		return this.settings;
+	}
+
+	/**
+	 * The manifest of the server.
+	 *
+	 * The server describes itself with it: the theme it renders with, the settings it
+	 * runs on, the commands it offers, the keys it binds and the extensions it loaded.
+	 */
+	get manifest(): PiManifest | undefined {
+		return this.serverManifest;
 	}
 
 	get agent(): SessionAgentView {
@@ -1039,9 +1093,43 @@ export class RemoteSessionFacade implements SessionFacade {
 		const snapshot = await this.connection.load();
 		this.snapshot = snapshot;
 		this.applySnapshot();
-		this.settings = SettingsManager.create(snapshot.cwd, this.agentDirectory);
+		await this.refreshManifest();
 		this.usesDefaultSessionDir = this.computeUsesDefaultSessionDir();
 		await this.refreshSessionData();
+	}
+
+	/**
+	 * Read the manifest of the server and mirror its settings.
+	 *
+	 * The settings belong to the server: it reads them, it applies them and it writes
+	 * them. The client keeps a mirror of them, because it draws with them, and hands
+	 * every change back to the server.
+	 */
+	private async refreshManifest(): Promise<void> {
+		let manifest = this.serverManifest;
+		try {
+			manifest = await this.client.manifest(this.connection.sessionId);
+		} catch {
+			// A server that cannot describe itself leaves the client with the settings it
+			// already knows.
+		}
+		this.serverManifest = manifest;
+		try {
+			this.serverTrust = await this.client.handshake().then((handshake) => handshake.trust);
+		} catch {
+			// The trust state stays the one the client knows.
+		}
+		this.settings = new ClientSettings({
+			scopes: {
+				global: manifest?.settingsScopes?.global ?? {},
+				project: manifest?.settingsScopes?.project ?? {},
+			},
+			onChange: (key, value, scope) =>
+				this.client.setSetting(key, value, this.connection.sessionId, scope).then(
+					() => undefined,
+					() => undefined,
+				),
+		});
 	}
 
 	private async refreshSessionData(): Promise<void> {
@@ -1054,7 +1142,7 @@ export class RemoteSessionFacade implements SessionFacade {
 		if (result.cancelled) return result;
 		this.snapshot = await this.connection.refresh();
 		this.applySnapshot();
-		this.settings = SettingsManager.create(this.snapshot.cwd, this.agentDirectory);
+		await this.refreshManifest();
 		this.usesDefaultSessionDir = this.computeUsesDefaultSessionDir();
 		await this.refreshSessionData();
 		await this.rebindSession?.();
@@ -1091,14 +1179,14 @@ export class RemoteSessionFacade implements SessionFacade {
 		if (!cwd) return true;
 		const dir = this.sessionManagerView.getSessionDir();
 		if (!dir) return true;
-		return SessionManager.create(cwd, dir).usesDefaultSessionDir();
+		return normalizePath(dir) === defaultSessionDir(cwd, this.agentDirectory);
 	}
 
 	private isContinuation(): boolean {
 		const file = this.snapshot?.sessionFile;
 		if (!file) return false;
 		try {
-			return SessionManager.open(file).isContinuation();
+			return readFileSync(file, "utf-8").trim().length > 0;
 		} catch {
 			return false;
 		}
@@ -1132,26 +1220,6 @@ export class RemoteSessionFacade implements SessionFacade {
 		} catch {
 			return;
 		}
-	}
-
-	/**
-	 * Build the provider runtime the login menu needs.
-	 *
-	 * The runtime carries the provider login flows, which run in this process, so the
-	 * client builds it in the background: the session does not wait for it, and the
-	 * models the terminal UI shows come from the server either way.
-	 */
-	private startModelRuntime(): void {
-		if (this.modelRuntimeOption || this.modelRuntimeLoad) return;
-		this.modelRuntimeLoad = (async () => {
-			const { ModelRuntime } = await import("@earendil-works/pi-coding-agent/core/model-runtime");
-			this.modelRuntimeInstance = await ModelRuntime.create({
-				authPath: join(this.agentDirectory, "auth.json"),
-				modelsPath: join(this.agentDirectory, "models.json"),
-			});
-		})().catch(() => {
-			this.modelRuntimeLoad = undefined;
-		});
 	}
 
 	private async refreshResources(): Promise<void> {
@@ -1283,6 +1351,25 @@ export class RemoteSessionFacade implements SessionFacade {
 			case "set_editor_text":
 				ui.setEditorText(request.text);
 				return;
+			case "setWorkingMessage":
+				ui.setWorkingMessage(request.message);
+				return;
+			case "setWorkingVisible":
+				ui.setWorkingVisible(request.visible);
+				return;
+			case "setWorkingIndicator":
+				ui.setWorkingIndicator(request.options);
+				return;
+			case "setHiddenThinkingLabel":
+				ui.setHiddenThinkingLabel(request.label);
+				return;
+			case "setHeader":
+			case "setFooter":
+				ui.extensionChromeChanged();
+				return;
+			case "setCustom":
+				ui.extensionCustomDialog();
+				return;
 		}
 	}
 
@@ -1363,6 +1450,19 @@ function resolveInputPath(input: string): string {
 	if (input === "~") return homedir();
 	if (input.startsWith("~/")) return join(homedir(), input.slice(2));
 	return resolve(input);
+}
+
+/**
+ * The directory the sessions of a working directory live in by default.
+ *
+ * The directory encodes the working directory in a safe name under the sessions of the
+ * agent directory, the way the runtime names it.
+ */
+function defaultSessionDir(cwd: string, agentDir: string): string {
+	const resolvedCwd = resolvePath(cwd);
+	const resolvedAgentDir = resolvePath(agentDir);
+	const safePath = `--${resolvedCwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+	return join(resolvedAgentDir, "sessions", safePath);
 }
 
 /**

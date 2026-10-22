@@ -2,38 +2,54 @@
  * TUI session selector for --resume flag
  */
 
-import { KeybindingsManager } from "@earendil-works/pi-coding-agent/core/keybindings";
-import {
-	type SessionInfo,
-	type SessionListProgress,
-	SessionManager,
-} from "@earendil-works/pi-coding-agent/core/session-manager";
-import type { SettingsManager } from "@earendil-works/pi-coding-agent/core/settings-manager";
+import type { SessionInfo } from "@earendil-works/pi-coding-agent/core/session-manager";
+import type { PiServerClient } from "@earendil-works/pi-server/client";
 import { setKeybindings } from "@earendil-works/pi-tui";
+import type { ClientSettings } from "../client-settings.ts";
+import { KeybindingsManager } from "../client-support/keybindings.ts";
 import { SessionMenuComponent } from "../components/session-menu.ts";
 import { createStartupTui, startStartupTui } from "./startup-ui.ts";
 
-type SessionsLoader = (onProgress?: SessionListProgress, signal?: AbortSignal) => Promise<SessionInfo[]>;
+/**
+ * The sessions of the server, as the session menu draws them.
+ *
+ * The sessions belong to the server, so the client asks it for the list of the directory
+ * instead of reading the session files itself.
+ */
+async function listSessions(client: PiServerClient, directory?: string): Promise<SessionInfo[]> {
+	const sessions = await client.listSessions(directory);
+	return sessions.map((session) => ({
+		path: session.path,
+		id: session.id,
+		cwd: session.cwd,
+		...(session.name !== undefined ? { name: session.name } : {}),
+		created: new Date(session.created),
+		modified: new Date(session.modified),
+		messageCount: session.messageCount,
+		firstMessage: session.firstMessage,
+		allMessagesText: "",
+	}));
+}
 
 /** Show TUI session selector and return selected session path or null if cancelled */
 export async function selectSession(
-	currentSessionsLoader: SessionsLoader,
-	allSessionsLoader: SessionsLoader,
-	settingsManager: SettingsManager,
+	client: PiServerClient,
+	cwd: string,
+	settings: ClientSettings,
 ): Promise<string | null> {
-	const ui = await createStartupTui(settingsManager);
+	const ui = await createStartupTui(settings);
 	return new Promise((resolve) => {
-		const keybindings = KeybindingsManager.create();
+		const keybindings = new KeybindingsManager();
 		setKeybindings(keybindings);
 		let resolved = false;
 
 		const selector = new SessionMenuComponent({
-			currentLoad: currentSessionsLoader,
-			allLoad: allSessionsLoader,
-			renameSession: async (sessionFilePath: string, nextName: string | undefined) => {
+			currentLoad: () => listSessions(client, cwd),
+			allLoad: () => listSessions(client),
+			renameSession: async (sessionPath: string, nextName: string | undefined) => {
 				const next = (nextName ?? "").trim();
 				if (!next) return;
-				SessionManager.open(sessionFilePath).appendSessionInfo(next);
+				await client.renameSession(sessionPath, next);
 			},
 			onSelect: (session) => {
 				if (!resolved) {
@@ -55,6 +71,6 @@ export async function selectSession(
 
 		ui.addChild(selector);
 		ui.setFocus(selector);
-		startStartupTui(ui, settingsManager);
+		startStartupTui(ui, settings);
 	});
 }

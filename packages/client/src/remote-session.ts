@@ -12,8 +12,7 @@ import type {
 	RpcExtensionUIResponse,
 	RpcResponse,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionStateSnapshot } from "@earendil-works/pi-server";
-import type { PiServerClient } from "@earendil-works/pi-server/client";
+import type { PiServerClient, SessionStateSnapshot } from "@earendil-works/pi-server/client";
 import { type SessionConnection, STATE_REFRESHING_EVENTS } from "./session-connection.ts";
 
 /** How long the client waits before it refreshes the state again. */

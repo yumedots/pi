@@ -4,10 +4,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DEFAULT_RADIUS_GATEWAY } from "@earendil-works/pi-ai/providers/radius-config";
-import { getAuthCredential } from "@earendil-works/pi-coding-agent/cli/auth-command";
-import { getShareViewerUrl } from "@earendil-works/pi-coding-agent/config";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import { type Container, type EditorComponent, hyperlink, type TUI } from "@earendil-works/pi-tui";
+import { getAuthCredential } from "./client-support/auth-command.ts";
+import { getShareViewerUrl } from "./client-support/config.ts";
+import { theme } from "./client-theme.ts";
 import { BorderedLoader } from "./components/bordered-loader.ts";
 import type { SessionFacade } from "./session-facade.ts";
 

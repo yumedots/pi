@@ -31,17 +31,41 @@ import { homedir, networkInterfaces } from "node:os";
 import { delimiter, dirname, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { parseArgs } from "@earendil-works/pi-coding-agent/cli/args";
-import { setConfigSelector } from "@earendil-works/pi-coding-agent/cli/config-selector-host";
-import { getAgentDir, readSelfInstallManifest, type SelfInstallManifest } from "@earendil-works/pi-coding-agent/config";
 import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent/core/agent-session-runtime";
-import { SessionManager } from "@earendil-works/pi-coding-agent/core/session-manager";
-import { SettingsManager } from "@earendil-works/pi-coding-agent/core/settings-manager";
-import { ProjectTrustStore } from "@earendil-works/pi-coding-agent/core/trust-manager";
-import { type InteractiveStartContext, main } from "@earendil-works/pi-coding-agent/main";
-import { basicAuthHeader, PiServerClient, type SessionStateSnapshot } from "@earendil-works/pi-server/client";
+import {
+	basicAuthHeader,
+	type PiManifest,
+	PiServerClient,
+	type ServerHandshake,
+	type SessionStateSnapshot,
+} from "@earendil-works/pi-server/client";
+import { ClientSettings } from "./client-settings.ts";
+import {
+	type Args,
+	buildInitialMessage,
+	type InitialMessageResult,
+	normalizeSessionName,
+	parseArgs,
+	printHelp,
+	readFileArguments,
+} from "./client-support/args.ts";
+import {
+	ENV_SESSION_DIR,
+	getAgentDir,
+	readSelfInstallManifest,
+	type SelfInstallManifest,
+	VERSION,
+} from "./client-support/config.ts";
+import { normalizePath } from "./client-support/paths.ts";
+import { setAvailableThemes, setThemeFromJson } from "./client-theme.ts";
 import { RemoteSessionFacade } from "./remote-facade.ts";
-import { ensureServer, isServerAlive, readServerRegistration } from "./server-launcher.ts";
+import {
+	ensureServer,
+	isServerAlive,
+	readServerRegistration,
+	readServerSettings,
+	readSettingsRecord,
+} from "./server-launcher.ts";
 
 /** The command that starts a server process. */
 export const SERVER_COMMAND = "pi-server";
@@ -72,12 +96,77 @@ export async function runClient(args: string[]): Promise<void> {
 		case SELF_INSTALL_COMMAND:
 			await runSelfInstall(rest);
 			return;
+		case "config":
+			await runConfig(rest);
+			return;
 		default:
 			break;
 	}
-	registerConfigEditor();
-	if (args.includes("--help") || args.includes("-h")) printClientCommands();
-	await main(args, { onInteractive: startInteractive });
+
+	const parsed = parseArgs(args);
+	reportDiagnostics(parsed);
+	if (parsed.diagnostics.some((diagnostic) => diagnostic.type === "error")) {
+		process.exitCode = 1;
+		return;
+	}
+	if (parsed.help) {
+		printClientCommands();
+		printHelp();
+		return;
+	}
+	if (parsed.version) {
+		console.log(VERSION);
+		return;
+	}
+	if (parsed.print || parsed.mode === "json") {
+		process.exitCode = await runPrint(parsed);
+		return;
+	}
+	if (parsed.mode === "rpc") {
+		process.stderr.write("The rpc mode belongs to the server. Run pi-server --help for what it offers.\n");
+		process.exitCode = 1;
+		return;
+	}
+	await startInteractive(parsed);
+}
+
+/**
+ * The print mode.
+ *
+ * The client is a renderer, so a headless run is a run of the server: the client starts
+ * the server, opens the session, sends the prompt and prints the answer of the model.
+ */
+async function runPrint(parsed: Args): Promise<number> {
+	const agentDir = getAgentDir();
+	const server = await ensureServer({ agentDir });
+	const client = new PiServerClient({ url: server.url, password: server.password });
+	const handshake = await client.handshake();
+	await ensureProjectTrust(client, handshake);
+	const cwd = handshake.cwd;
+
+	const snapshot = await openRemoteSession({
+		url: server.url,
+		password: server.password,
+		sessionDir: resolveSessionDir(parsed),
+		title: parsed.name === undefined ? undefined : normalizeSessionName(parsed.name),
+		model: parsed.model,
+		thinkingLevel: parsed.thinking,
+		resume: await resolveResumeTarget(client, parsed, cwd, agentDir),
+	});
+
+	const { initialMessage, initialImages } = await buildInitialMessageFor(parsed);
+	const messages = initialMessage === undefined ? [...parsed.messages] : [initialMessage, ...parsed.messages];
+	if (messages.length === 0) {
+		process.stderr.write("There is nothing to send. Give a prompt with -p.\n");
+		return 1;
+	}
+
+	const { runPrintMode } = await import("./print-mode.ts");
+	return runPrintMode(client, snapshot.sessionId, {
+		mode: parsed.mode === "json" ? "json" : "text",
+		messages,
+		initialImages,
+	});
 }
 
 /** The commands the client adds to the ones of the coding agent. */
@@ -87,20 +176,65 @@ function printClientCommands(): void {
   pi pair                Print the LAN url and a pairing code
   pi service status      Show the registered server
   pi service stop        Stop the registered server
-  pi ${SELF_INSTALL_COMMAND}            Build the standalone binary and link it into a PATH directory
+  pi config              Open the TUI that enables and disables package resources
+  pi ${SELF_INSTALL_COMMAND}        Build the standalone binary and link it into a PATH directory
 `);
 }
 
 /**
- * Register the interactive config editor with the coding agent.
- *
- * The editor is a terminal UI, so it is loaded when the command runs, not at startup.
+ * Report the problems of the command line.
  */
-function registerConfigEditor(): void {
-	setConfigSelector(async (options) => {
-		const { selectConfig } = await import("./cli/config-selector.ts");
-		await selectConfig(options);
+function reportDiagnostics(parsed: Args): void {
+	for (const diagnostic of parsed.diagnostics) {
+		console.error(`${diagnostic.type === "error" ? "Error" : "Warning"}: ${diagnostic.message}`);
+	}
+}
+
+/**
+ * The `pi config` command.
+ *
+ * The resources belong to the server: it resolves them and it writes the settings that
+ * enable them. The client draws the editor and hands the changes over.
+ */
+async function runConfig(args: string[]): Promise<void> {
+	if (args.includes("--help") || args.includes("-h")) {
+		console.log(`Usage: pi config [-l]
+
+Opens the editor that enables and disables the resources of the server.
+
+Options:
+  -l, --local         Write to the project scope instead of the global one
+`);
+		return;
+	}
+	const local = args.includes("-l") || args.includes("--local");
+	const agentDir = getAgentDir();
+	const server = await ensureServer({ agentDir });
+	const client = new PiServerClient({ url: server.url, password: server.password });
+	const handshake = await client.handshake();
+	await ensureProjectTrust(client, handshake);
+	const cwd = handshake.cwd;
+
+	const changes: Promise<unknown>[] = [];
+	const settings = new ClientSettings({
+		scopes: { global: readSettingsRecord(cwd, agentDir) },
+		projectTrusted: handshake.trust.trusted,
+		onChange: (key, value, scope) => {
+			changes.push(client.setSetting(key, value, undefined, scope));
+		},
 	});
+
+	const { selectConfig } = await import("./cli/config-selector.ts");
+	await selectConfig({
+		resolvedPaths: await client.paths(),
+		settingsManager: settings,
+		cwd,
+		agentDir,
+		writeScope: local ? "project" : "global",
+		projectModeAvailable: handshake.trust.trusted,
+	});
+	await settings.flush();
+	await Promise.all(changes);
 }
 
 /**
@@ -113,11 +247,11 @@ async function runServe(args: string[]): Promise<void> {
 	const flags = parseFlags(args);
 	const agentDir = stringFlag(flags, "agent-dir") ?? getAgentDir();
 	const cwd = process.cwd();
-	const settingsManager = SettingsManager.create(cwd, agentDir);
+	const serverSettings = readServerSettings(cwd, agentDir);
 	const password = stringFlag(flags, "password") ?? randomBytes(16).toString("base64url");
-	const port = numberFlag(flags, "port") ?? settingsManager.getServerPort();
-	const hostname = stringFlag(flags, "hostname") ?? settingsManager.getServerHostname();
-	const idleTimeoutMs = numberFlag(flags, "idle-timeout-ms") ?? settingsManager.getServerIdleTimeoutMs();
+	const port = numberFlag(flags, "port") ?? serverSettings.port;
+	const hostname = stringFlag(flags, "hostname") ?? serverSettings.hostname;
+	const idleTimeoutMs = numberFlag(flags, "idle-timeout-ms") ?? serverSettings.idleTimeoutMs;
 
 	const exited = Promise.withResolvers<void>();
 
@@ -131,7 +265,7 @@ async function runServe(args: string[]): Promise<void> {
 		agentDir,
 		cwd,
 		idleTimeoutMs,
-		createRuntime: await createServerRuntimeFactory(agentDir, settingsManager),
+		createRuntime: await createServerRuntimeFactory(agentDir, cwd),
 		onIdle: () => exited.resolve(),
 	});
 
@@ -710,86 +844,132 @@ function resolvePhotonWasm(codingAgentDir: string): string | undefined {
  * The server is headless, so the client asks for the project trust, finds the server,
  * opens the session on it and hands the session to the terminal UI.
  */
-export async function startInteractive(context: InteractiveStartContext): Promise<void> {
-	await ensureProjectTrust(context);
-
-	const server = await ensureServer({ agentDir: context.agentDir });
+export async function startInteractive(parsed: Args): Promise<void> {
+	const agentDir = getAgentDir();
+	const server = await ensureServer({ agentDir });
 	const client = new PiServerClient({ url: server.url, password: server.password });
-	const resume = await resolveResumeTarget(context);
+	const handshake = await client.handshake();
+	await ensureProjectTrust(client, handshake);
+	const cwd = handshake.cwd;
+
+	const resume = await resolveResumeTarget(client, parsed, cwd, agentDir);
 	const snapshot = await openRemoteSession({
 		url: server.url,
 		password: server.password,
-		cwd: context.cwd,
-		sessionDir: context.sessionDir,
-		title: context.parsed.name,
-		model: context.parsed.model,
-		thinkingLevel: context.parsed.thinking,
+		sessionDir: resolveSessionDir(parsed),
+		title: parsed.name === undefined ? undefined : normalizeSessionName(parsed.name),
+		model: parsed.model,
+		thinkingLevel: parsed.thinking,
 		resume,
 	});
 
-	const facade = new RemoteSessionFacade(client, snapshot.sessionId, snapshot.cwd || context.cwd, {
-		agentDir: context.agentDir,
+	const facade = new RemoteSessionFacade(client, snapshot.sessionId, snapshot.cwd || cwd, {
+		agentDir,
 	});
 	await facade.load();
 
+	const manifest = await client.manifest(snapshot.sessionId);
+	installServerThemes(manifest);
+
+	const { initialMessage, initialImages } = await buildInitialMessageFor(parsed);
 	const { InteractiveMode } = await import("./interactive-mode.ts");
 	const mode = new InteractiveMode(facade, {
-		initialMessage: context.initialMessage,
-		initialImages: context.initialImages,
-		initialMessages: context.parsed.messages,
-		verbose: context.parsed.verbose,
-		tuiMode: context.parsed.tuiMode,
-		initialThemeSetting: context.parsed.useTheme,
+		initialMessage,
+		initialImages,
+		initialMessages: parsed.messages,
+		verbose: parsed.verbose,
+		tuiMode: parsed.tuiMode,
+		initialThemeSetting: parsed.useTheme,
 	});
 	await mode.run();
 }
 
 /**
- * Ask for the project trust when the policy is "ask" and the trust store has no decision.
+ * The first message of the session, with the files of the command line.
+ */
+async function buildInitialMessageFor(parsed: Args): Promise<InitialMessageResult> {
+	if (parsed.fileArgs.length === 0) return buildInitialMessage({ parsed });
+	const files = await readFileArguments(parsed.fileArgs);
+	return buildInitialMessage({ parsed, fileText: files.text, fileImages: files.images });
+}
+
+/**
+ * The directory the session file lives in.
+ *
+ * The flag wins over the environment, the way the coding agent resolves it.
+ */
+function resolveSessionDir(parsed: Args): string | undefined {
+	if (parsed.sessionDir) return normalizePath(parsed.sessionDir);
+	const fromEnvironment = process.env[ENV_SESSION_DIR];
+	return fromEnvironment ? normalizePath(fromEnvironment) : undefined;
+}
+
+/**
+ * Install the themes of the server.
+ *
+ * The themes belong to the server: it offers them in its manifest, so the client draws
+ * with the theme of the server and knows the ones the theme picker offers.
+ */
+function installServerThemes(manifest: PiManifest): void {
+	const themes = manifest.themes ?? [];
+	setAvailableThemes(
+		themes.map((entry) => ({ name: entry.name, path: undefined })),
+		Object.fromEntries(themes.map((entry) => [entry.name, entry.json])),
+	);
+	setThemeFromJson(manifest.theme.json);
+}
+
+/**
+ * Ask for the project trust when the project has resources that need trust and the trust
+ * store has no decision.
  *
  * The server never prompts. It reads the trust store, so the decision is written before
  * the session is opened.
  */
-async function ensureProjectTrust(context: InteractiveStartContext): Promise<void> {
-	if (context.settingsManager.getDefaultProjectTrust() !== "ask") return;
-	const trustStore = new ProjectTrustStore(context.agentDir);
-	if (trustStore.get(context.cwd) !== null) return;
-	const trusted = await askYesNo(`Trust the project folder ${context.cwd}?`);
-	trustStore.set(context.cwd, trusted);
+async function ensureProjectTrust(client: PiServerClient, handshake: ServerHandshake): Promise<void> {
+	const trust = handshake.trust;
+	if (!trust.required || trust.decided) return;
+	const trusted = await askYesNo(`Trust the project folder ${handshake.cwd}?`);
+	await client.setTrust(handshake.cwd, trusted);
 }
 
 /**
  * The session the command line asks for, as the server understands it.
  */
-async function resolveResumeTarget(context: InteractiveStartContext): Promise<"recent" | string | undefined> {
-	const target = context.parsed.session;
+async function resolveResumeTarget(
+	client: PiServerClient,
+	parsed: Args,
+	cwd: string,
+	agentDir: string,
+): Promise<"recent" | string | undefined> {
+	const target = parsed.session;
 	if (target !== undefined) {
 		if (target.endsWith(".jsonl") && existsSync(target)) return target;
-		return SessionManager.findById(context.cwd, target, context.sessionDir) ?? target;
+		return findSessionPath(client, cwd, target);
 	}
-	if (context.parsed.continue) return "recent";
-	if (!context.parsed.resume) return undefined;
-	return pickSessionPath(context.cwd, context.sessionDir);
+	if (parsed.continue) return "recent";
+	if (!parsed.resume) return undefined;
+	return pickSession(client, cwd, agentDir);
+}
+
+/**
+ * The path of the session with an id.
+ *
+ * The server owns the sessions, so the client asks it for the list of the directory.
+ */
+async function findSessionPath(client: PiServerClient, cwd: string, id: string): Promise<string> {
+	const sessions = await client.listSessions(cwd);
+	const match = sessions.find((session) => session.id === id) ?? sessions.find((session) => session.id.startsWith(id));
+	return match?.path ?? id;
 }
 
 /**
  * Ask which session to resume.
  */
-async function pickSessionPath(cwd: string, sessionDir: string | undefined): Promise<string | undefined> {
-	const sessions = await SessionManager.list(cwd, sessionDir);
-	if (sessions.length === 0) {
-		console.log("There is no session to resume.");
-		return undefined;
-	}
-	console.log("Sessions:");
-	for (const [index, session] of sessions.entries()) {
-		const label = session.name ?? session.firstMessage ?? session.id;
-		console.log(`  ${index + 1}) ${label}  ${session.path}`);
-	}
-	const answer = await askLine("Session number to resume (empty to cancel): ");
-	const number = Number.parseInt(answer.trim(), 10);
-	if (!Number.isFinite(number) || number < 1 || number > sessions.length) return undefined;
-	return sessions[number - 1]?.path;
+async function pickSession(client: PiServerClient, cwd: string, agentDir: string): Promise<string | undefined> {
+	const settings = new ClientSettings({ scopes: { global: readSettingsRecord(cwd, agentDir) } });
+	const { selectSession } = await import("./cli/session-picker.ts");
+	return (await selectSession(client, cwd, settings)) ?? undefined;
 }
 
 /**
@@ -798,7 +978,6 @@ async function pickSessionPath(cwd: string, sessionDir: string | undefined): Pro
 interface OpenSessionOptions {
 	url: string;
 	password: string;
-	cwd: string;
 	sessionDir: string | undefined;
 	title: string | undefined;
 	model: string | undefined;
@@ -808,9 +987,11 @@ interface OpenSessionOptions {
 
 /**
  * Open a session on the server.
+ *
+ * The body carries no working directory: the session runs in the directory of the server.
  */
 async function openRemoteSession(options: OpenSessionOptions): Promise<SessionStateSnapshot> {
-	const body: Record<string, unknown> = { cwd: options.cwd };
+	const body: Record<string, unknown> = {};
 	if (options.sessionDir !== undefined) body.sessionDir = options.sessionDir;
 	if (options.title !== undefined) body.title = options.title;
 	if (options.model !== undefined) body.model = options.model;
@@ -824,10 +1005,43 @@ async function openRemoteSession(options: OpenSessionOptions): Promise<SessionSt
 	});
 	if (!response.ok) {
 		const text = await response.text();
-		throw new Error(`The server refused to open the session: ${text}`);
+		throw sessionError(text);
 	}
 	const payload = (await response.json()) as { data: SessionStateSnapshot };
 	return payload.data;
+}
+
+/**
+ * The server refused to open the session because the project is not trusted.
+ *
+ * The server sends the message and the directory it refused, so the client says what the
+ * server said and stops.
+ */
+export class ProjectNotTrustedError extends Error {
+	/** The directory the server refused. */
+	readonly cwd: string | undefined;
+
+	constructor(message: string, cwd: string | undefined) {
+		super(message);
+		this.name = "ProjectNotTrustedError";
+		this.cwd = cwd;
+	}
+}
+
+/**
+ * The error of a session the server refused.
+ */
+function sessionError(text: string): Error {
+	try {
+		const body = JSON.parse(text) as { _tag?: string; message?: string; cwd?: string };
+		if (body._tag === "ProjectNotTrustedError") {
+			return new ProjectNotTrustedError(
+				body.message ?? "The project folder is not trusted.",
+				typeof body.cwd === "string" ? body.cwd : undefined,
+			);
+		}
+	} catch {}
+	return new Error(`The server refused to open the session: ${text}`);
 }
 
 /**
@@ -880,21 +1094,22 @@ function lanAddress(): string | undefined {
  * The factory builds the agent runtime, so it is loaded with the server: the interactive
  * client never needs it.
  */
-async function createServerRuntimeFactory(
-	agentDir: string,
-	settingsManager: SettingsManager,
-): Promise<CreateAgentSessionRuntimeFactory> {
-	const { createRuntimeFactory } = await import("@earendil-works/pi-coding-agent/core/runtime-factory");
+async function createServerRuntimeFactory(agentDir: string, cwd: string): Promise<CreateAgentSessionRuntimeFactory> {
+	const [{ createRuntimeFactory }, { SettingsManager }, { ProjectTrustStore }] = await Promise.all([
+		import("@earendil-works/pi-coding-agent/core/runtime-factory"),
+		import("@earendil-works/pi-coding-agent/core/settings-manager"),
+		import("@earendil-works/pi-coding-agent/core/trust-manager"),
+	]);
 	return createRuntimeFactory({
 		agentDir,
 		parsed: parseArgs([]),
-		startupSettingsManager: settingsManager,
+		startupSettingsManager: SettingsManager.create(cwd, agentDir),
 		trustStore: new ProjectTrustStore(agentDir),
 		appMode: () => "interactive",
 		trustPromptMode: "interactive",
 		extensionFactories: [],
-		projectTrustContextFactory: (cwd, mode, hasUI) => ({
-			cwd,
+		projectTrustContextFactory: (trustCwd, mode, hasUI) => ({
+			cwd: trustCwd,
 			mode: mode === "interactive" ? "tui" : mode,
 			hasUI,
 			ui: {

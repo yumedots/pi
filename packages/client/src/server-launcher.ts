@@ -9,8 +9,9 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { SettingsManager } from "@earendil-works/pi-coding-agent/core/settings-manager";
 import { basicAuthHeader, type ServerRegistration } from "@earendil-works/pi-server/client";
+import { CONFIG_DIR_NAME } from "./client-support/config.ts";
+import { SETTINGS_DEFAULTS } from "./client-support/settings-defaults.ts";
 
 /** How long the client waits for a freshly spawned server to answer. */
 export const SERVER_START_TIMEOUT_MS = 10_000;
@@ -152,10 +153,83 @@ export function resolveServerCommand(hostname: string = DEFAULT_SERVER_HOSTNAME)
  */
 export function resolveServerHostname(agentDir: string): string {
 	try {
-		return SettingsManager.create(process.cwd(), agentDir).getServerHostname();
+		return readServerSettings(process.cwd(), agentDir).hostname;
 	} catch {
 		return DEFAULT_SERVER_HOSTNAME;
 	}
+}
+
+/** The settings of the server, as the client reads them before it has a manifest. */
+export interface ServerSettings {
+	/** The port the server binds. */
+	port: number;
+	/** The interface the server listens on. */
+	hostname: string;
+	/** How long the server stays up without a client, in milliseconds. */
+	idleTimeoutMs: number;
+}
+
+/** Whether a value is a record of settings. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Read a settings file. A file that cannot be read holds no settings. */
+function readSettingsFile(path: string): Record<string, unknown> {
+	try {
+		const parsed = JSON.parse(readFileSync(path, "utf-8")) as unknown;
+		return isRecord(parsed) ? parsed : {};
+	} catch {
+		return {};
+	}
+}
+
+/** Merge two layers of settings, the way the server merges them. */
+function mergeSettings(base: Record<string, unknown>, overrides: Record<string, unknown>): Record<string, unknown> {
+	const merged = { ...base };
+	for (const [key, value] of Object.entries(overrides)) {
+		if (value === undefined) continue;
+		const current = merged[key];
+		merged[key] = isRecord(current) && isRecord(value) ? mergeSettings(current, value) : value;
+	}
+	return merged;
+}
+
+/**
+ * The settings of a directory, as the server reads them.
+ *
+ * The client starts the server before it has a manifest, so there is no mirror of the
+ * settings yet: the files are the source until the server answers.
+ */
+export function readSettingsRecord(cwd: string, agentDir: string): Record<string, unknown> {
+	const global = readSettingsFile(join(agentDir, "settings.json"));
+	const project = readSettingsFile(join(cwd, CONFIG_DIR_NAME, "settings.json"));
+	return mergeSettings(global, project);
+}
+
+/**
+ * The settings of the server, as the server reads them.
+ *
+ * The port, the interface and the idle timeout decide how the server starts, and the
+ * client has to know them before the server runs.
+ */
+export function readServerSettings(cwd: string, agentDir: string): ServerSettings {
+	const settings = readSettingsRecord(cwd, agentDir).server;
+	const server = isRecord(settings) ? settings : {};
+	const port = server.port;
+	const hostname = server.hostname;
+	const idleTimeoutMs = server.idleTimeoutMs;
+	return {
+		port: typeof port === "number" && port >= 0 && port <= 65535 ? port : SETTINGS_DEFAULTS.server.port,
+		hostname:
+			typeof hostname === "string" && hostname.trim().length > 0
+				? hostname.trim()
+				: SETTINGS_DEFAULTS.server.hostname,
+		idleTimeoutMs:
+			typeof idleTimeoutMs === "number" && idleTimeoutMs >= 0
+				? idleTimeoutMs
+				: SETTINGS_DEFAULTS.server.idleTimeoutMs,
+	};
 }
 
 /**
