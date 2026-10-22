@@ -103,6 +103,9 @@ function formatTypeList(types: string[]): string {
  *
  * The messages and the order match the ones TypeBox's generated validators report, so the
  * error text a model sees does not change when TypeBox is not loaded.
+ *
+ * A property that is not required and holds `undefined` counts as absent, the way TypeBox
+ * reads it: JSON has no `undefined`, and a repair may set an optional property to it.
  */
 function collectSchemaErrors(value: unknown, schema: JsonSchemaObject, path: string): SchemaError[] {
 	const errors: SchemaError[] = [];
@@ -245,7 +248,8 @@ function collectSchemaErrors(value: unknown, schema: JsonSchemaObject, path: str
 	if (isPlainObject(value)) {
 		const properties = schema.properties ?? {};
 		const patternProperties = schema.patternProperties ?? {};
-		const missing = (schema.required ?? []).filter((key) => !(key in value));
+		const required = new Set(schema.required ?? []);
+		const missing = [...required].filter((key) => !(key in value));
 		if (missing.length > 0) {
 			errors.push({
 				path,
@@ -256,6 +260,7 @@ function collectSchemaErrors(value: unknown, schema: JsonSchemaObject, path: str
 		}
 		for (const [key, propertySchema] of Object.entries(properties)) {
 			if (!(key in value)) continue;
+			if (value[key] === undefined && !required.has(key)) continue;
 			errors.push(...collectSchemaErrors(value[key], propertySchema, `${path}/${key}`));
 		}
 		for (const [pattern, propertySchema] of Object.entries(patternProperties)) {
