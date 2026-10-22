@@ -219,12 +219,10 @@ function reportLive(options) {
 			(row) => row.command.includes(binary) && !row.command.includes("pi-server") && !row.command.startsWith("tmux"),
 		);
 		// The server is a process of its own only when the client does not host it.
+		// The server is a process of its own only when the client started one instead of
+		// hosting it. It is the client's child.
 		const server = rows.find(
-			(row) =>
-				!row.command.startsWith("tmux") &&
-				row.pid !== client?.pid &&
-				row.rss > 20 * 1024 &&
-				/(^|\/)pi-server( |$)|server\/(src|dist)\/cli\.[jt]s/.test(row.command),
+			(row) => row.ppid === client?.pid && /(^|\/)pi-server( |$)|server\/(src|dist)\/cli\.[jt]s/.test(row.command),
 		);
 		const clientMb = client ? client.rss / 1024 : 0;
 		const serverMb = server ? server.rss / 1024 : 0;
