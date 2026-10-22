@@ -23,6 +23,7 @@ export const workspaceSourcePaths = {
 	codingAgentSrc: fileURLToPath(new URL("./packages/coding-agent/src", import.meta.url)),
 	serverIndex: fileURLToPath(new URL("./packages/server/src/index.ts", import.meta.url)),
 	serverClient: fileURLToPath(new URL("./packages/server/src/client.ts", import.meta.url)),
+	supportSrc: fileURLToPath(new URL("./packages/support/src", import.meta.url)),
 	tuiIndex: fileURLToPath(new URL("./packages/tui/src/index.ts", import.meta.url)),
 	tuiColors: fileURLToPath(new URL("./packages/tui/src/colors.ts", import.meta.url)),
 	tuiTerminalCapabilities: fileURLToPath(new URL("./packages/tui/src/terminal-capabilities.ts", import.meta.url)),
@@ -65,6 +66,7 @@ export default defineConfig({
 			},
 			{ find: /^@earendil-works\/pi-server$/, replacement: workspaceSourcePaths.serverIndex },
 			{ find: /^@earendil-works\/pi-server\/client$/, replacement: workspaceSourcePaths.serverClient },
+			{ find: /^@earendil-works\/pi-support\/(.+)$/, replacement: `${workspaceSourcePaths.supportSrc}/$1.ts` },
 			{ find: /^@earendil-works\/pi-tui$/, replacement: workspaceSourcePaths.tuiIndex },
 			{ find: /^@earendil-works\/pi-tui\/colors$/, replacement: workspaceSourcePaths.tuiColors },
 			{
