@@ -10,12 +10,7 @@ import type { ImageContent } from "@earendil-works/pi-ai";
 import { setCapabilityOverrides } from "@earendil-works/pi-tui/terminal-capabilities";
 import chalk from "chalk";
 import { type Args, type Mode, normalizeSessionName, parseArgs, printHelp } from "./cli/args.ts";
-import {
-	type AuthCheckResult,
-	checkProviderAuth,
-	createAuthCheckModelRuntime,
-	getProviderCredential,
-} from "./cli/auth-check.ts";
+import type { AuthCheckResult } from "./cli/auth-check.ts";
 import {
 	type AuthCommand,
 	AuthCommandError,
@@ -26,25 +21,18 @@ import {
 	printAuthCommandHelp,
 	validateAuthCommandArgs,
 } from "./cli/auth-command.ts";
-import { resolveCredentialForPrint } from "./cli/credential-print.ts";
-import { processFileArguments } from "./cli/file-processor.ts";
 import { buildInitialMessage } from "./cli/initial-message.ts";
-import { listModels } from "./cli/list-models.ts";
 import { createTuiProjectTrustContext } from "./cli/project-trust-tui.ts";
 import { APP_NAME, ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";
-import { type CreateAgentSessionRuntimeFactory, createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
+import type { CreateAgentSessionRuntimeFactory } from "./core/agent-session-runtime.ts";
 import type { AgentSessionRuntimeDiagnostic } from "./core/agent-session-services.ts";
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
-import { AuthStorage, ReadOnlyAuthStorage } from "./core/auth-storage.ts";
-import { exportFromFile } from "./core/export-html/index.ts";
 import type { InlineExtension } from "./core/extensions/types.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "./core/http-dispatcher.ts";
 import { cleanupManagedInstall } from "./core/managed-install.ts";
-import { ModelRuntime } from "./core/model-runtime.ts";
 import { restoreStdout, takeOverStdout } from "./core/output-guard.ts";
 import { isConfigCommand, isPackageCommand } from "./core/package-commands.ts";
 import type { AppMode } from "./core/project-trust.ts";
-import { createRuntimeFactory } from "./core/runtime-factory.ts";
 import {
 	formatMissingSessionCwdPrompt,
 	getMissingSessionCwdIssue,
@@ -58,11 +46,8 @@ import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./core/theme
 import { validateThemeJson } from "./core/theme/theme-schema.ts";
 import { printTimings, resetTimings, time } from "./core/timings.ts";
 import { ProjectTrustStore } from "./core/trust-manager.ts";
-import { builtInExtensions } from "./extensions/index.ts";
 import { loadMcpCommand } from "./extensions/mcp/cli.lazy.ts";
 import { runMigrations, showDeprecationWarnings } from "./migrations.ts";
-import { runPrintMode } from "./modes/print-mode.ts";
-import { runRpcMode } from "./modes/rpc/rpc-mode.ts";
 import { loadPackageManagerCli } from "./package-manager-cli.lazy.ts";
 import { isLocalPath, normalizePath, resolvePath } from "./utils/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
@@ -153,10 +138,16 @@ async function runAuthCommand(args: string[]): Promise<boolean> {
 	}
 	try {
 		if (parsed.diagnostics.length > 0) {
-			throw new AuthCommandError(parsed.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
+			throw new AuthCommandError(parsed.diagnostics.map((d) => d.message).join("\n"));
 		}
 		if (command.kind !== "check") {
 			const signal = AbortSignal.timeout(15_000);
+			// The model runtime and the credential printer are only needed by this command,
+			// so they load here instead of at startup.
+			const [{ ModelRuntime }, { resolveCredentialForPrint }] = await Promise.all([
+				import("./core/model-runtime.ts"),
+				import("./cli/credential-print.ts"),
+			]);
 			const modelRuntime = await ModelRuntime.create({ allowModelNetwork: false, signal });
 			const credential = await resolveCredentialForPrint(
 				parsed,
@@ -173,6 +164,10 @@ async function runAuthCommand(args: string[]): Promise<boolean> {
 		let result: AuthCheckResult;
 		let credential: string | undefined;
 		try {
+			const [
+				{ checkProviderAuth, createAuthCheckModelRuntime, getProviderCredential },
+				{ AuthStorage, ReadOnlyAuthStorage },
+			] = await Promise.all([import("./cli/auth-check.ts"), import("./core/auth-storage.ts")]);
 			const credentials = command.noRefresh ? new ReadOnlyAuthStorage() : AuthStorage.create();
 			const modelRuntime = await createAuthCheckModelRuntime(credentials);
 			result = await checkProviderAuth(parsed, modelRuntime, { refresh: !command.noRefresh });
@@ -216,6 +211,7 @@ async function prepareInitialMessage(
 	}
 
 	// AgentSession resizes these after extension hooks select the request model.
+	const { processFileArguments } = await import("./cli/file-processor.ts");
 	const { text, images } = await processFileArguments(parsed.fileArgs, { autoResizeImages: false });
 	return buildInitialMessage({
 		parsed,
@@ -488,7 +484,16 @@ export async function main(args: string[], options?: MainOptions) {
 	resetTimings();
 	// Commands and startup selectors can load user-authored themes before runtime creation.
 	setThemeJsonValidator(validateThemeJson);
-	const extensionFactories = [...builtInExtensions, ...(options?.extensionFactories ?? [])];
+	// The built-in extensions carry the whole extension runtime, so they load when a
+	// command or a session needs them and not at startup.
+	let extensionFactoriesPromise: Promise<InlineExtension[]> | undefined;
+	const loadExtensionFactories = (): Promise<InlineExtension[]> => {
+		extensionFactoriesPromise ??= import("./extensions/index.ts").then(({ builtInExtensions }) => [
+			...builtInExtensions,
+			...(options?.extensionFactories ?? []),
+		]);
+		return extensionFactoriesPromise;
+	};
 	const offlineMode = args.includes("--offline") || isTruthyEnvFlag(process.env.PI_OFFLINE);
 	if (offlineMode) {
 		process.env.PI_OFFLINE = "1";
@@ -510,25 +515,31 @@ export async function main(args: string[], options?: MainOptions) {
 	applyHttpProxySettings(bootstrapSettingsManager.getGlobalSettings().httpProxy);
 	configureHttpDispatcher();
 
-	if (
-		isPackageCommand(args) &&
-		(await (await loadPackageManagerCli()).handlePackageCommand(args, { extensionFactories }))
-	) {
-		const exitCode = process.exitCode ?? 0;
-		if (process.platform === "win32" && exitCode === 0 && args[0] === "update") {
-			// We normally prefer process.exit(0) for package commands so bad extensions cannot keep
-			// one-shot commands alive. On Windows, Node can assert after fetch() if process.exit(0)
-			// runs during teardown; let successful `pi update` drain naturally instead.
-			// https://github.com/nodejs/node/issues/56645
+	if (isPackageCommand(args)) {
+		const handled = await (await loadPackageManagerCli()).handlePackageCommand(args, {
+			extensionFactories: await loadExtensionFactories(),
+		});
+		if (handled) {
+			const exitCode = process.exitCode ?? 0;
+			if (process.platform === "win32" && exitCode === 0 && args[0] === "update") {
+				// We normally prefer process.exit(0) for package commands so bad extensions cannot keep
+				// one-shot commands alive. On Windows, Node can assert after fetch() if process.exit(0)
+				// runs during teardown; let successful `pi update` drain naturally instead.
+				// https://github.com/nodejs/node/issues/56645
+				return;
+			}
+			process.exit(exitCode);
 			return;
 		}
-		process.exit(exitCode);
-		return;
 	}
 
 	if (
 		isConfigCommand(args) &&
-		(await (await loadPackageManagerCli()).handleConfigCommand(args, { extensionFactories }))
+		(await (
+			await loadPackageManagerCli()
+		).handleConfigCommand(args, {
+			extensionFactories: await loadExtensionFactories(),
+		}))
 	) {
 		return;
 	}
@@ -560,6 +571,7 @@ export async function main(args: string[], options?: MainOptions) {
 		let result: string;
 		try {
 			const outputPath = parsed.messages.length > 0 ? parsed.messages[0] : undefined;
+			const { exportFromFile } = await import("./core/export-html/index.ts");
 			result = await exportFromFile(parsed.export, outputPath);
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : "Failed to export session";
@@ -643,24 +655,10 @@ export async function main(args: string[], options?: MainOptions) {
 	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
-	const createRuntime: CreateAgentSessionRuntimeFactory = createRuntimeFactory({
-		agentDir,
-		parsed,
-		startupSettingsManager,
-		trustStore,
-		appMode: () => appMode,
-		trustPromptMode,
-		extensionFactories,
-		resolvedExtensionPaths,
-		resolvedSkillPaths,
-		resolvedPromptTemplatePaths,
-		resolvedThemePaths,
-		projectTrustContextFactory: (trustCwd, mode, hasUI) =>
-			createTuiProjectTrustContext({ cwd: trustCwd, mode, settingsManager: startupSettingsManager, hasUI }),
-	});
 	if (interactiveClient) {
 		// The client owns the terminal and the session: it starts a server, opens a
 		// session there and drives it. This package hands over the start context.
+		// The runtime is never created here, so the runtime graph stays unloaded.
 		setCapabilityOverrides(startupSettingsManager.getTerminalCapabilityOverrides());
 		applyHttpProxySettings(startupSettingsManager.getGlobalSettings().httpProxy);
 		configureHttpDispatcher(startupSettingsManager.getHttpIdleTimeoutMs());
@@ -679,6 +677,28 @@ export async function main(args: string[], options?: MainOptions) {
 		});
 		return;
 	}
+
+	// The runtime graph is the heavy part of the CLI: it loads only when a mode
+	// actually creates a session.
+	const [{ createRuntimeFactory }, { createAgentSessionRuntime }] = await Promise.all([
+		import("./core/runtime-factory.ts"),
+		import("./core/agent-session-runtime.ts"),
+	]);
+	const createRuntime: CreateAgentSessionRuntimeFactory = createRuntimeFactory({
+		agentDir,
+		parsed,
+		startupSettingsManager,
+		trustStore,
+		appMode: () => appMode,
+		trustPromptMode,
+		extensionFactories: await loadExtensionFactories(),
+		resolvedExtensionPaths,
+		resolvedSkillPaths,
+		resolvedPromptTemplatePaths,
+		resolvedThemePaths,
+		projectTrustContextFactory: (trustCwd, mode, hasUI) =>
+			createTuiProjectTrustContext({ cwd: trustCwd, mode, settingsManager: startupSettingsManager, hasUI }),
+	});
 
 	time("createRuntime");
 	const runtime = await createAgentSessionRuntime(createRuntime, {
@@ -705,6 +725,7 @@ export async function main(args: string[], options?: MainOptions) {
 	if (parsed.listModels !== undefined) {
 		reportDiagnostics(startupSettingsDiagnostics);
 		const searchPattern = typeof parsed.listModels === "string" ? parsed.listModels : undefined;
+		const { listModels } = await import("./cli/list-models.ts");
 		await listModels(modelRuntime, searchPattern, AbortSignal.timeout(15_000));
 		process.exit(0);
 	}
@@ -766,6 +787,7 @@ export async function main(args: string[], options?: MainOptions) {
 
 	if (appMode === "rpc") {
 		printTimings();
+		const { runRpcMode } = await import("./modes/rpc/rpc-mode.ts");
 		await runRpcMode(runtime);
 	} else if (appMode === "interactive") {
 		// The terminal interface lives in the client package, which drives a server over
@@ -785,6 +807,7 @@ export async function main(args: string[], options?: MainOptions) {
 		});
 	} else {
 		printTimings();
+		const { runPrintMode } = await import("./modes/print-mode.ts");
 		const exitCode = await runPrintMode(runtime, {
 			mode: toPrintOutputMode(appMode),
 			messages: parsed.messages,
