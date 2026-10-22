@@ -5,11 +5,13 @@
 ### Breaking Changes
 
 - Removed the `enableInstallTelemetry` and `enableAnalytics` settings, the `PI_TELEMETRY` environment variable, the anonymous install/update ping to `pi.dev`, and the provider attribution headers they gated. The first-run setup no longer asks about usage data sharing
+- The `pi` binary moved to the `@earendil-works/pi-client` package. An install of the coding agent alone no longer puts `pi` on the PATH; install the client to get the terminal interface
 - Removed the `app.clear` action. No key clears the editor anymore
 - `parseSkillBlock()` is replaced by `parseSkillMessage()`. It returns the skill blocks of a message and the request that came with them, so a message can now carry more than one skill
 
 ### Added
 
+- `pi self-install` builds the standalone binary and links it into a directory on the PATH. The build produces the client and the server, and the client starts the `pi-server` binary that sits next to it
 - Extensions can declare the side they need with `pi.setSide("client" | "server" | "both")`. The default is `"server"`. A client-only extension is skipped on the server, and the session resources now report the side of every loaded extension
 - Added the `threeDEmptySession` setting. When it is on, a new session opens with the spinning 3D pi logo above a centered input box, and the screen gives way to the transcript as soon as the first message is sent
 - Added `/skills` to browse the loaded skills and run one from a picker
@@ -25,6 +27,8 @@
 
 ### Changed
 
+- `pi update` now updates the package that ships the running binary. A client install updates `@earendil-works/pi-client` and the coding agent arrives as its dependency; an install that only has the coding agent keeps updating the coding agent
+- The release binaries ship the client and the server. `pi` is the terminal interface, and `pi-server` is the runtime it drives
 - The terminal interface is loaded when the interactive mode runs, so `pi --version` and the headless modes use about 12 MB less memory
 - Thinking blocks now start collapsed. The transcript shows an animated braille sign in front of the `Thinking...` label while the model thinks, and a `+ Thought · 3.7s` summary once it is done. A shown block gets a `- Thought · 3.7s` header instead. Running tool calls show the same spinning sign. Set `hideThinkingBlock` to `false`, or press `Ctrl+T`, to show the thinking again
 - A skill invocation and the request typed alongside it now render as one message. The request appears on the same line as the mention
