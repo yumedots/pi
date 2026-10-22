@@ -363,13 +363,15 @@ export interface OpencodeProviderInfo {
 	id: string;
 	name: string;
 	activation: "auto" | "enabled" | "disabled";
+	/** The package the provider comes from. Pi's providers are built in. */
+	package: string;
 }
 
 /**
  * Map a pi provider to the opencode provider shape.
  */
 export function toProviderInfo(provider: { id: string; name: string }): OpencodeProviderInfo {
-	return { id: provider.id, name: provider.name, activation: "enabled" };
+	return { id: provider.id, name: provider.name, activation: "enabled", package: provider.id };
 }
 
 /** An opencode agent. */
@@ -378,10 +380,26 @@ export interface OpencodeAgentInfo {
 	name: string;
 	mode: "subagent" | "primary" | "all";
 	description: string;
+	/** The provider request the agent makes. */
+	request: { settings: Record<string, unknown>; headers: Record<string, string>; body: Record<string, unknown> };
+	/** Whether the agent is hidden from the agent list. */
+	hidden: boolean;
+	/** The permission rules of the agent. */
+	permissions: OpencodePermissionRule[];
+}
+
+/** One opencode permission rule. */
+export interface OpencodePermissionRule {
+	action: string;
+	resource: string;
+	effect: "allow" | "deny" | "ask";
 }
 
 /**
  * The single agent the server exposes.
+ *
+ * pi has one agent and no permission prompts, so the agent allows everything and
+ * carries no provider request of its own.
  */
 export function toAgentInfo(): OpencodeAgentInfo {
 	return {
@@ -389,6 +407,9 @@ export function toAgentInfo(): OpencodeAgentInfo {
 		name: OPENCODE_AGENT_ID,
 		mode: "all",
 		description: "The default coding agent",
+		request: { settings: {}, headers: {}, body: {} },
+		hidden: false,
+		permissions: [{ action: "*", resource: "*", effect: "allow" }],
 	};
 }
 

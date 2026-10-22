@@ -14,6 +14,7 @@ import { join } from "node:path";
 import type {
 	AgentSessionEvent,
 	CreateAgentSessionRuntimeFactory,
+	ModelRuntime,
 	RpcExtensionUIRequest,
 	RpcExtensionUIResponse,
 } from "@earendil-works/pi-coding-agent";
@@ -25,7 +26,7 @@ import { openSse, SSE_HEARTBEAT, type SseConnection, sseFrame } from "./http/sse
 import { IdleWatchdog } from "./idle.ts";
 import { resumeInterruptedSessions } from "./recovery.ts";
 import { clearRegistration, writeRegistration } from "./registration.ts";
-import { registerOpencodeRoutes } from "./routes/opencode.ts";
+import { registerOpencodeRoutes, setLocationModelRuntime } from "./routes/opencode.ts";
 import { type OpencodeEvent, toOpencodeEvent } from "./routes/opencode-shapes.ts";
 import { registerPiRoutes } from "./routes/pi.ts";
 import { EXTENSION_UI_TIMEOUT_MS, type ServerContext } from "./server-context.ts";
@@ -45,6 +46,14 @@ export interface PiServerOptions {
 	cwd?: string;
 	/** The factory that builds runtimes. */
 	createRuntime?: CreateAgentSessionRuntimeFactory;
+	/**
+	 * The model runtime of the server's own location.
+	 *
+	 * The opencode clients read the model catalog of a location, not of a session, so the
+	 * server answers with this runtime when no session is open. The server builds one
+	 * from the agent directory when this is omitted.
+	 */
+	modelRuntime?: ModelRuntime;
 	/** The registry to use. A new one is created when omitted. */
 	registry?: SessionRegistry;
 	/** The server version reported by `/api/info`. */
@@ -281,6 +290,7 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 		});
 	});
 
+	if (options.modelRuntime) setLocationModelRuntime(ctx, options.modelRuntime);
 	registerOpencodeRoutes(router, ctx);
 	registerPiRoutes(router, ctx);
 

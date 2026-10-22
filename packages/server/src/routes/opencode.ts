@@ -290,13 +290,25 @@ export function registerOpencodeRoutes(router: Router, ctx: ServerContext): void
 }
 
 /**
- * The models the server offers, taken from the model runtime of a session.
+ * The models the server offers.
+ *
+ * An open session knows its own catalog, so its runtime answers. Without a session the
+ * server answers the catalog of its own location, the way the opencode clients ask for
+ * it: they read the catalog of a directory, not of a session.
  */
 async function listModels(ctx: ServerContext): Promise<OpencodeModelInfo[]> {
 	const session = [...ctx.registry.sessions.values()][0];
-	if (!session) return [];
+	if (session) {
+		try {
+			return session.runtime.session.modelRuntime.getAvailableSnapshot().map(toModelInfo);
+		} catch {
+			return [];
+		}
+	}
+	const runtime = await locationRuntime(ctx);
+	if (!runtime) return [];
 	try {
-		return session.runtime.session.modelRuntime.getAvailableSnapshot().map(toModelInfo);
+		return runtime.getAvailableSnapshot().map(toModelInfo);
 	} catch {
 		return [];
 	}
