@@ -5,7 +5,7 @@
  * The registry owns the sessions, their controllers and their trust decisions.
  */
 
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type { AgentSessionEvent, RpcExtensionUIRequest, RpcExtensionUIResponse } from "@earendil-works/pi-coding-agent";
 import {
 	type AgentSessionRuntime,
@@ -116,23 +116,52 @@ export class SessionRegistry {
 	}
 
 	/**
-	 * List the sessions on disk.
+	 * List the sessions the server knows about.
+	 *
+	 * The sessions on disk, plus the ones the server hosts right now: a session that has not
+	 * written its file yet has no entry on disk, but the user is working in it.
 	 *
 	 * @param cwd When given, only the sessions of that directory are listed.
 	 */
 	async list(cwd?: string): Promise<ServerInfo[]> {
-		const sessions = cwd ? await SessionManager.list(cwd) : await SessionManager.listAll();
-		return sessions.map((session) => ({
-			id: session.id,
-			path: session.path,
-			cwd: session.cwd,
-			name: session.name,
-			created: session.created.getTime(),
-			modified: session.modified.getTime(),
-			messageCount: session.messageCount,
-			firstMessage: session.firstMessage,
-			busy: this.sessionMap.get(session.id)?.busy ?? false,
-		}));
+		// The sessions of the agent directory the registry was built with, not of whatever
+		// the environment points at.
+		const sessionsDir = join(this.deps.agentDir, "sessions");
+		const sessions = cwd ? await SessionManager.list(cwd, sessionsDir) : await SessionManager.listAll(sessionsDir);
+		const listed = new Map(
+			sessions.map((session) => [
+				session.id,
+				{
+					id: session.id,
+					path: session.path,
+					cwd: session.cwd,
+					name: session.name,
+					created: session.created.getTime(),
+					modified: session.modified.getTime(),
+					messageCount: session.messageCount,
+					firstMessage: session.firstMessage,
+					busy: this.sessionMap.get(session.id)?.busy ?? false,
+				},
+			]),
+		);
+
+		for (const session of this.sessionMap.values()) {
+			if (listed.has(session.id)) continue;
+			if (cwd !== undefined && session.cwd !== cwd) continue;
+			listed.set(session.id, {
+				id: session.id,
+				path: session.sessionFile ?? "",
+				cwd: session.cwd,
+				name: session.runtime.session.sessionName,
+				created: Date.now(),
+				modified: Date.now(),
+				messageCount: session.runtime.session.messages.length,
+				firstMessage: "",
+				busy: session.busy,
+			});
+		}
+
+		return [...listed.values()].sort((a, b) => b.modified - a.modified);
 	}
 
 	/**

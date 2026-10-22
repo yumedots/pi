@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { basename, dirname } from "node:path";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { Model } from "@earendil-works/pi-ai";
+import type { Model, Usage } from "@earendil-works/pi-ai";
 import type { AgentSessionEvent, SessionEntry } from "@earendil-works/pi-coding-agent";
 
 /** The opencode session info. */
@@ -43,6 +43,8 @@ export interface SessionSummary {
 	messageCount: number;
 	firstMessage: string;
 	busy: boolean;
+	/** The model of the session, when the server knows it live. */
+	model?: { id: string; providerID: string };
 }
 
 /** The agent the server exposes. */
@@ -76,14 +78,25 @@ export function usageTotals(entries: readonly SessionEntry[]): {
 } {
 	const totals = { input: 0, output: 0, reasoning: 0, read: 0, write: 0 };
 	let cost = 0;
+	const add = (usage: Usage | undefined): void => {
+		if (!usage) return;
+		totals.input += usage.input ?? 0;
+		totals.output += usage.output ?? 0;
+		totals.reasoning += usage.reasoning ?? 0;
+		totals.read += usage.cacheRead ?? 0;
+		totals.write += usage.cacheWrite ?? 0;
+		cost += usage.cost?.total ?? 0;
+	};
 	for (const entry of entries) {
-		if (entry.type !== "usage") continue;
-		totals.input += entry.usage.input ?? 0;
-		totals.output += entry.usage.output ?? 0;
-		totals.reasoning += entry.usage.reasoning ?? 0;
-		totals.read += entry.usage.cacheRead ?? 0;
-		totals.write += entry.usage.cacheWrite ?? 0;
-		cost += entry.usage.cost?.total ?? 0;
+		if (entry.type === "usage") {
+			add(entry.usage);
+			continue;
+		}
+		// A normal turn records its usage inside the assistant message; the `usage` entry
+		// is only written by the cache warmer.
+		if (entry.type === "message" && entry.message.role === "assistant") {
+			add(entry.message.usage);
+		}
 	}
 	return {
 		cost,
@@ -111,7 +124,7 @@ export function toSessionInfo(session: SessionSummary, entries: readonly Session
 		id: session.id,
 		projectID: toProjectID(session.path),
 		agent: OPENCODE_AGENT_ID,
-		model: lastModel(entries),
+		model: session.model ?? lastModel(entries),
 		cost: usage.cost,
 		tokens: usage.tokens,
 		outcome: session.busy ? "interrupted" : "succeeded",

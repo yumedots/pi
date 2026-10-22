@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
+import type { ServerResponse } from "node:http";
 import {
 	BUILTIN_SLASH_COMMANDS,
 	type RpcResponse,
@@ -16,6 +17,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { type RouteContext, type Router, sendError, sendJson } from "../http/router.ts";
 import type { ServerContext } from "../server-context.ts";
+import type { ServerSession } from "../session-registry.ts";
 import {
 	type OpencodeMessageInfo,
 	type OpencodeModelInfo,
@@ -38,7 +40,12 @@ export function registerOpencodeRoutes(router: Router, ctx: ServerContext): void
 		void ctx.registry.list(directory).then(
 			async (sessions) => {
 				const data = await Promise.all(
-					sessions.map(async (session) => toSessionInfo(session, entriesOf(session.path))),
+					sessions.map(async (session) =>
+						toSessionInfo(
+							{ ...session, model: liveModel(ctx.registry.get(session.id)) },
+							entriesOf(session.path),
+						),
+					),
 				);
 				sendJson(res, 200, { data, cursor: { previous: null, next: null } });
 			},
@@ -62,14 +69,17 @@ export function registerOpencodeRoutes(router: Router, ctx: ServerContext): void
 	});
 
 	router.add("GET", "/api/session/:id", async (route) => {
-		const session = ctx.registry.get(route.params.id ?? "");
+		const id = route.params.id ?? "";
+		const session = ctx.registry.get(id);
 		if (session) {
-			sendJson(route.res, 200, { data: toSessionInfo(await summaryOf(ctx, session.id)) });
+			const summary = await summaryOf(ctx, session.id);
+			const entries = session.sessionFile ? entriesOf(session.sessionFile) : [];
+			sendJson(route.res, 200, { data: toSessionInfo(summary, entries) });
 			return;
 		}
-		const path = await findSessionPath(route.params.id ?? "");
+		const path = await findSessionPath(id);
 		if (!path) {
-			sendError(route.res, 404, "NotFoundError", `Unknown session: ${route.params.id}`);
+			sendSessionNotFound(route.res, id);
 			return;
 		}
 		let summary: SessionSummary;
@@ -92,26 +102,26 @@ export function registerOpencodeRoutes(router: Router, ctx: ServerContext): void
 		}
 		const path = await findSessionPath(id);
 		if (!path) {
-			sendError(route.res, 404, "NotFoundError", `Unknown session: ${id}`);
+			sendSessionNotFound(route.res, id);
 			return;
 		}
 		rmSync(path, { force: true });
-		sendJson(route.res, 200, { data: true });
+		route.res.writeHead(204).end();
 	});
 
 	router.add("PATCH", "/api/session/:id", async (route) => {
 		const id = route.params.id ?? "";
 		const body = await readJson(route);
 		const title = stringField(body, "title");
-		const session = ctx.registry.get(id);
+		const session = await lookupSession(ctx, id).catch(() => undefined);
 		if (!session) {
-			sendError(route.res, 404, "NotFoundError", `Unknown session: ${id}`);
+			sendSessionNotFound(route.res, id);
 			return;
 		}
 		if (title && title.length > 0) {
 			session.runtime.session.setSessionName(title);
 		}
-		sendJson(route.res, 200, { data: toSessionInfo(await summaryOf(ctx, id)) });
+		route.res.writeHead(204).end();
 	});
 
 	router.add("POST", "/api/session/:id/prompt", async (route) => {
@@ -123,9 +133,9 @@ export function registerOpencodeRoutes(router: Router, ctx: ServerContext): void
 			return;
 		}
 		const messageId = stringField(body, "id") ?? randomUUID();
-		const session = await openSession(ctx, id).catch(() => undefined);
+		const session = await lookupSession(ctx, id).catch(() => undefined);
 		if (!session) {
-			sendError(route.res, 404, "NotFoundError", `Unknown session: ${id}`);
+			sendSessionNotFound(route.res, id);
 			return;
 		}
 		let response: RpcResponse | undefined;
@@ -140,7 +150,7 @@ export function registerOpencodeRoutes(router: Router, ctx: ServerContext): void
 			return;
 		}
 		if (response && "success" in response && response.success === false) {
-			sendError(route.res, 400, "BadRequestError", response.error ?? "The prompt was rejected");
+			sendError(route.res, 400, "BadRequestError", await promptFailure(session, response.error));
 			return;
 		}
 		sendJson(route.res, 200, {
@@ -154,9 +164,9 @@ export function registerOpencodeRoutes(router: Router, ctx: ServerContext): void
 
 	router.add("POST", "/api/session/:id/interrupt", async (route) => {
 		const id = route.params.id ?? "";
-		const session = ctx.registry.get(id);
+		const session = await lookupSession(ctx, id).catch(() => undefined);
 		if (!session) {
-			sendError(route.res, 404, "NotFoundError", `Unknown session: ${id}`);
+			sendSessionNotFound(route.res, id);
 			return;
 		}
 		try {
@@ -171,9 +181,9 @@ export function registerOpencodeRoutes(router: Router, ctx: ServerContext): void
 	router.add("POST", "/api/session/:id/compact", async (route) => {
 		const id = route.params.id ?? "";
 		const body = await readJson(route);
-		const session = ctx.registry.get(id);
+		const session = await lookupSession(ctx, id).catch(() => undefined);
 		if (!session) {
-			sendError(route.res, 404, "NotFoundError", `Unknown session: ${id}`);
+			sendSessionNotFound(route.res, id);
 			return;
 		}
 		const customInstructions = stringField(body, "customInstructions");
@@ -188,12 +198,14 @@ export function registerOpencodeRoutes(router: Router, ctx: ServerContext): void
 
 	router.add("GET", "/api/session/:id/message", async (route) => {
 		const id = route.params.id ?? "";
-		const session = await openSession(ctx, id).catch(() => undefined);
-		const messages = session
-			? session.runtime.session.messages.map((message, index) =>
-					toMessageInfo(message, `${id}-${index}`, message.timestamp ?? Date.now()),
-				)
-			: [];
+		const session = await lookupSession(ctx, id).catch(() => undefined);
+		if (!session) {
+			sendSessionNotFound(route.res, id);
+			return;
+		}
+		const messages = session.runtime.session.messages.map((message, index) =>
+			toMessageInfo(message, `${id}-${index}`, message.timestamp ?? Date.now()),
+		);
 		const { limit, order, cursor, type } = readPaging(route);
 		const filtered = type ? messages.filter((message) => message.type === type) : messages;
 		const ordered = order === "asc" ? filtered : [...filtered].reverse();
@@ -280,8 +292,8 @@ function entriesOf(sessionPath: string): SessionEntry[] {
 async function summaryOf(ctx: ServerContext, id: string): Promise<SessionSummary> {
 	const sessions = await ctx.registry.list();
 	const found = sessions.find((session) => session.id === id);
-	if (found) return found;
 	const open = ctx.registry.get(id);
+	if (found) return { ...found, model: liveModel(open) };
 	if (open) {
 		return {
 			id: open.id,
@@ -292,6 +304,7 @@ async function summaryOf(ctx: ServerContext, id: string): Promise<SessionSummary
 			messageCount: 0,
 			firstMessage: "",
 			busy: open.busy,
+			model: liveModel(open),
 		};
 	}
 	return {
@@ -304,6 +317,17 @@ async function summaryOf(ctx: ServerContext, id: string): Promise<SessionSummary
 		firstMessage: "",
 		busy: false,
 	};
+}
+
+/**
+ * The model of an open session, as the opencode clients expect it: the id of the model
+ * and the provider it belongs to.
+ */
+function liveModel(session: ServerSession | undefined): { id: string; providerID: string } | undefined {
+	if (!session) return undefined;
+	const model = session.runtime.session.model;
+	if (!model) return undefined;
+	return { id: model.id, providerID: model.provider };
 }
 
 /**
@@ -337,14 +361,53 @@ async function findSessionPath(id: string): Promise<string | undefined> {
 }
 
 /**
- * Open a session in the registry, if it is not open yet.
+ * The session of an id, opened when it is not open yet.
+ *
+ * @returns `undefined` when no session with that id exists.
  */
-async function openSession(ctx: ServerContext, id: string) {
+async function lookupSession(ctx: ServerContext, id: string): Promise<ServerSession | undefined> {
 	const existing = ctx.registry.get(id);
 	if (existing) return existing;
 	const path = await findSessionPath(id);
 	if (!path) return undefined;
 	return ctx.registry.open(path);
+}
+
+/**
+ * Answer the opencode session-not-found error.
+ *
+ * The opencode clients detect a missing session by the tag and the session id, so the
+ * answer carries both.
+ */
+function sendSessionNotFound(res: ServerResponse, id: string): void {
+	sendJson(res, 404, {
+		_tag: "SessionNotFoundError",
+		sessionID: id,
+		message: `Session not found: ${id}`,
+	});
+}
+
+/**
+ * Why a prompt did not run.
+ *
+ * The opencode clients show the message of a refused prompt, so it has to name what the
+ * server is missing instead of repeating the guidance of the pi terminal.
+ */
+async function promptFailure(session: ServerSession, reason: string | undefined): Promise<string> {
+	const model = session.runtime.session.model;
+	if (!model) {
+		return "The pi server has no model for this session, so it cannot run the prompt. Configure a model for the server first.";
+	}
+	const runtime = session.runtime.session.modelRuntime;
+	if (!runtime.getModel(model.provider, model.id)) {
+		return "The pi server has no model for this session, so it cannot run the prompt. Configure a model for the server first.";
+	}
+	const configured =
+		runtime.hasConfiguredAuth(model.provider) || (await runtime.checkAuth(model.provider)) !== undefined;
+	if (!configured) {
+		return `The pi server has no API key for ${model.provider}, so it cannot run the prompt. Log in to ${model.provider} first.`;
+	}
+	return reason ?? "The prompt was rejected";
 }
 
 /**
