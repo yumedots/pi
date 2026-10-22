@@ -123,7 +123,7 @@ export async function runCli(args: string[] = process.argv.slice(2)): Promise<vo
 		createRuntime,
 		// A server that starts after a crash picks the interrupted work up again.
 		resumeInterrupted: true,
-		idleTimeoutMs: options.idleTimeoutMs,
+		idleTimeoutMs: options.idleTimeoutMs ?? settingsManager.getServerIdleTimeoutMs(),
 		onIdle: () => {
 			process.exit(0);
 		},
