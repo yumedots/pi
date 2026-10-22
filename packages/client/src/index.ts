@@ -62,9 +62,12 @@ export {
 	type EnsureServerOptions,
 	ensureServer,
 	isServerAlive,
+	type LocalServer,
+	localServer,
 	type RunningServer,
 	readServerRegistration,
 	SERVER_START_TIMEOUT_MS,
+	startEmbeddedServer,
 } from "./server-launcher.ts";
 export { type SessionConnection, STATE_REFRESHING_EVENTS } from "./session-connection.ts";
 export type { SessionFacade, SessionModelRuntime } from "./session-facade.ts";

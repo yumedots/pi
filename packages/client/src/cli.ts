@@ -63,6 +63,7 @@ import { RemoteSessionFacade } from "./remote-facade.ts";
 import {
 	ensureServer,
 	isServerAlive,
+	localServer,
 	readServerRegistration,
 	readServerSettings,
 	readSettingsRecord,
@@ -907,16 +908,29 @@ function resolvePhotonWasm(codingAgentDir: string): string | undefined {
  */
 export async function startInteractive(parsed: Args): Promise<void> {
 	const agentDir = getAgentDir();
-	const server = await ensureServer({ agentDir });
-	const client = new PiServerClient({ url: server.url, password: server.password });
+	// A local run costs one runtime: the client runs the server in its own process, unless
+	// the machine already has a server the client can join.
+	const server = await localServer({ agentDir });
+	try {
+		await runInteractive(parsed, agentDir, server.url, server.password);
+	} finally {
+		await server.close?.();
+	}
+}
+
+/**
+ * Open the session and hand it to the terminal UI.
+ */
+async function runInteractive(parsed: Args, agentDir: string, url: string, password: string): Promise<void> {
+	const client = new PiServerClient({ url, password });
 	const handshake = await client.handshake();
 	await ensureProjectTrust(client, handshake);
 	const cwd = handshake.cwd;
 
 	const resume = await resolveResumeTarget(client, parsed, cwd, agentDir);
 	const snapshot = await openRemoteSession({
-		url: server.url,
-		password: server.password,
+		url,
+		password,
 		sessionDir: resolveSessionDir(parsed),
 		title: parsed.name === undefined ? undefined : normalizeSessionName(parsed.name),
 		model: parsed.model,

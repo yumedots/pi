@@ -233,6 +233,101 @@ export function readServerSettings(cwd: string, agentDir: string): ServerSetting
 }
 
 /**
+ * The server the client talks to.
+ *
+ * A registered server that is running is the server of the machine: a client that finds
+ * one joins it, so the server of `pi serve` or of another client is shared. A client that
+ * finds none runs the server in its own process: one process costs one runtime, and the
+ * server is reachable on the network while the client runs.
+ */
+export interface LocalServer {
+	/** The base URL of the server. */
+	url: string;
+	/** The password the client authenticates with. */
+	password: string;
+	/** The process id of the server. */
+	pid: number;
+	/** Stop the server, when this client started it. */
+	close: (() => Promise<void>) | undefined;
+}
+
+/**
+ * Find the server of the agent directory, or run one in this process.
+ */
+export async function localServer(options: EnsureServerOptions): Promise<LocalServer> {
+	const registration = readServerRegistration(options.agentDir);
+	if (registration && (await isServerAlive(registration))) {
+		return { url: registration.url, password: registration.password, pid: registration.pid, close: undefined };
+	}
+	return startEmbeddedServer(options);
+}
+
+/**
+ * Run the server in this process.
+ *
+ * The runtime of the server is loaded here and not at the top of the module: the client's
+ * own code never imports it. The server binds every interface and registers itself, so a
+ * browser or another client reaches it while this process runs.
+ */
+export async function startEmbeddedServer(options: EnsureServerOptions): Promise<LocalServer> {
+	const { randomBytes } = await import("node:crypto");
+	const hostname = options.hostname ?? resolveServerHostname(options.agentDir);
+	const password = randomBytes(16).toString("base64url");
+	const [{ startServer }, runtimeFactory] = await Promise.all([
+		import("@earendil-works/pi-server"),
+		createServerRuntimeFactory(options.agentDir),
+	]);
+	const server = await startServer({
+		hostname,
+		port: 0,
+		password,
+		agentDir: options.agentDir,
+		cwd: process.cwd(),
+		// The server lives as long as this process does, so nothing has to watch it.
+		idleTimeoutMs: 0,
+		createRuntime: runtimeFactory,
+	});
+	return { url: server.url, password, pid: process.pid, close: () => server.close() };
+}
+
+/**
+ * The runtime factory of the embedded server.
+ *
+ * The server builds the agent runtime, so the module is loaded with the server and never
+ * with the client's own code.
+ */
+async function createServerRuntimeFactory(
+	agentDir: string,
+): Promise<import("@earendil-works/pi-coding-agent/core/agent-session-runtime").CreateAgentSessionRuntimeFactory> {
+	const [{ SettingsManager }, { ProjectTrustStore }, { parseArgs }, { createRuntimeFactory }] = await Promise.all([
+		import("@earendil-works/pi-coding-agent/core/settings-manager"),
+		import("@earendil-works/pi-coding-agent/core/trust-manager"),
+		import("@earendil-works/pi-coding-agent/cli/args"),
+		import("@earendil-works/pi-coding-agent/core/runtime-factory"),
+	]);
+	return createRuntimeFactory({
+		agentDir,
+		parsed: parseArgs([]),
+		startupSettingsManager: SettingsManager.create(process.cwd(), agentDir),
+		trustStore: new ProjectTrustStore(agentDir),
+		appMode: () => "interactive",
+		trustPromptMode: "interactive",
+		extensionFactories: [],
+		projectTrustContextFactory: (cwd, mode, hasUI) => ({
+			cwd,
+			mode: mode === "interactive" ? "tui" : mode,
+			hasUI,
+			ui: {
+				select: async (_title, choices) => choices[0],
+				confirm: async () => false,
+				input: async () => undefined,
+				notify: () => {},
+			},
+		}),
+	});
+}
+
+/**
  * Find a running server, or start one.
  *
  * @returns The server the client should talk to.

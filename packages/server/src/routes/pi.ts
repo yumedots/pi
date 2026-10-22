@@ -188,6 +188,9 @@ export function registerPiRoutes(router: Router, ctx: ServerContext): void {
 						? await ctx.registry.open(body.resume)
 						: await ctx.registry.create(cwd, body.sessionDir);
 			if (body.title) session.runtime.session.setSessionName(body.title);
+			// The model and the thinking level of the command line belong to the session
+			// the client asks for, so the server applies them before it answers.
+			await applySessionChoices(session, body);
 			sendJson(route.res, 200, { data: toSessionStateSnapshot(session) });
 		} catch (error) {
 			if (errorTag(error) === "ProjectNotTrustedError") {
@@ -458,6 +461,27 @@ async function serverResolvedPaths(ctx: ServerContext): Promise<{ global: Resolv
 		settingsManager,
 	}).resolve();
 	return { global, project };
+}
+
+/**
+ * Apply the model and the thinking level the client asked for.
+ *
+ * The command line of the client names them, the runtime of the server owns them, so the
+ * server applies them to the session before it answers. A model the runtime does not have
+ * is reported to the client instead of silently replaced by the default.
+ */
+async function applySessionChoices(session: ServerSession, body: CreatePiSessionBody): Promise<void> {
+	if (body.model) {
+		const separator = body.model.indexOf("/");
+		const provider = separator === -1 ? body.model : body.model.slice(0, separator);
+		const modelId = separator === -1 ? "" : body.model.slice(separator + 1);
+		const model = separator === -1 ? undefined : session.runtime.session.modelRuntime.getModel(provider, modelId);
+		if (!model) throw new Error(`Unknown model: ${body.model}`);
+		await session.runtime.session.setModel(model);
+	}
+	if (body.thinkingLevel) {
+		session.runtime.session.setThinkingLevel(body.thinkingLevel as Parameters<AgentSession["setThinkingLevel"]>[0]);
+	}
 }
 
 /**

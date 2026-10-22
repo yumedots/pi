@@ -18,7 +18,7 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_MODEL = "opencode-go/minimax-m3.1-flash-free";
+const DEFAULT_MODEL = "opencode-go/beam-free";
 const DEFAULT_TASK = 'Read the file "answer.txt" in the current directory and reply with its content, nothing else.';
 const DEFAULT_SOURCE_AGENT_DIR = join(homedir(), ".pi", "agent");
 const DEFAULT_VANILLA_CLI = "/tmp/vanilla-pi/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js";
