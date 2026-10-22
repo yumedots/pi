@@ -174,7 +174,8 @@ export async function runCli(args: string[] = process.argv.slice(2)): Promise<vo
 	process.on("SIGTERM", shutdown);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// A generated entry point starts the server itself.
+if (process.env.PI_CLIENT_EMBEDDED !== "1" && import.meta.url === `file://${process.argv[1]}`) {
 	runCli().catch((error: unknown) => {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exit(1);

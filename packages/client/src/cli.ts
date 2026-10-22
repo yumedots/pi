@@ -8,11 +8,29 @@
  * session on it.
  */
 
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, realpathSync } from "node:fs";
-import { networkInterfaces } from "node:os";
+import {
+	accessSync,
+	constants,
+	cpSync,
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	readFileSync,
+	readlinkSync,
+	realpathSync,
+	rmSync,
+	type Stats,
+	symlinkSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
+import { createRequire } from "node:module";
+import { homedir, networkInterfaces } from "node:os";
+import { delimiter, dirname, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
 	type CreateAgentSessionRuntimeFactory,
 	createRuntimeFactory,
@@ -25,6 +43,7 @@ import {
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { setConfigSelector } from "@earendil-works/pi-coding-agent/cli/config-selector-host";
+import { readSelfInstallManifest, type SelfInstallManifest } from "@earendil-works/pi-coding-agent/config";
 import type { SessionStateSnapshot } from "@earendil-works/pi-server";
 import { basicAuthHeader, createPairingCode, startServer } from "@earendil-works/pi-server";
 import { PiServerClient } from "@earendil-works/pi-server/client";
@@ -57,11 +76,26 @@ export async function runClient(args: string[]): Promise<void> {
 		case "service":
 			await runService(rest);
 			return;
+		case SELF_INSTALL_COMMAND:
+			await runSelfInstall(rest);
+			return;
 		default:
 			break;
 	}
 	registerConfigEditor();
+	if (args.includes("--help") || args.includes("-h")) printClientCommands();
 	await main(args, { onInteractive: startInteractive });
+}
+
+/** The commands the client adds to the ones of the coding agent. */
+function printClientCommands(): void {
+	console.log(`Client commands:
+  pi serve               Start a pi server in the foreground
+  pi pair                Print the LAN url and a pairing code
+  pi service status      Show the registered server
+  pi service stop        Stop the registered server
+  pi ${SELF_INSTALL_COMMAND}            Build the standalone binary and link it into a PATH directory
+`);
 }
 
 /**
@@ -158,6 +192,517 @@ async function runService(args: string[]): Promise<void> {
 	console.log(`url: ${registration.url}`);
 	console.log(`pid: ${registration.pid}`);
 	console.log(`alive: ${alive ? "yes" : "no"}`);
+}
+
+// =============================================================================
+// Self install
+// =============================================================================
+
+/** The command that builds the standalone binary and links it into a PATH directory. */
+export const SELF_INSTALL_COMMAND = "self-install";
+
+/** Whether the client runs on Windows, which needs a command shim instead of a symlink. */
+const IS_WINDOWS = process.platform === "win32";
+
+/** The name of the standalone client binary. */
+const BINARY_NAME = IS_WINDOWS ? "pi.exe" : "pi";
+
+/** The name of the standalone server binary. */
+const SERVER_BINARY_NAME = IS_WINDOWS ? "pi-server.exe" : "pi-server";
+
+/** The name of the link the shell finds. */
+const LINK_NAME = IS_WINDOWS ? "pi.cmd" : "pi";
+
+/** The name of the link the shell finds for the server. */
+const SERVER_LINK_NAME = IS_WINDOWS ? "pi-server.cmd" : "pi-server";
+
+/** The paths a self install writes. */
+export interface SelfInstallPlan {
+	/** The directory the binary and its runtime assets live in. */
+	installDir: string;
+	/** The directory the `pi` symlink lives in. */
+	binDir: string;
+	/** The standalone client binary. */
+	binaryPath: string;
+	/** The standalone server binary. */
+	serverPath: string;
+	/** The `pi` symlink. */
+	linkPath: string;
+	/** The `pi-server` symlink. */
+	serverLinkPath: string;
+}
+
+/** The paths of a self install, with the defaults of the release layout. */
+export function planSelfInstall(
+	options: { installDir?: string; binDir?: string; home?: string } = {},
+): SelfInstallPlan {
+	const home = options.home ?? homedir();
+	const installDir = options.installDir
+		? resolve(expandPath(options.installDir, home))
+		: join(home, ".local", "lib", "pi");
+	const binDir = options.binDir ? resolve(expandPath(options.binDir, home)) : join(home, ".local", "bin");
+	return {
+		installDir,
+		binDir,
+		binaryPath: join(installDir, BINARY_NAME),
+		serverPath: join(installDir, SERVER_BINARY_NAME),
+		linkPath: join(binDir, LINK_NAME),
+		serverLinkPath: join(binDir, SERVER_LINK_NAME),
+	};
+}
+
+/** Expand a leading `~` in a path. */
+function expandPath(path: string, home: string): string {
+	if (path === "~") return home;
+	if (path.startsWith("~/")) return join(home, path.slice(2));
+	return path;
+}
+
+/**
+ * Whether a path may be replaced by the install.
+ *
+ * The install only replaces what it created: a symlink into the install directory, or
+ * nothing at all. A file it did not create is left alone unless the user forces it.
+ */
+export function checkReplaceable(path: string, installDir: string): { allowed: boolean; reason?: string } {
+	let stats: Stats;
+	try {
+		stats = lstatSync(path);
+	} catch {
+		return { allowed: true };
+	}
+	if (stats.isSymbolicLink()) {
+		const target = resolve(dirname(path), readlinkSync(path));
+		if (target === installDir || target.startsWith(`${installDir}${sep}`)) return { allowed: true };
+		return { allowed: false, reason: `it points at ${target}` };
+	}
+	return { allowed: false, reason: "it is a file that pi did not create" };
+}
+
+/** The usage of the self install command. */
+function printSelfInstallUsage(): void {
+	console.log(`Usage: pi ${SELF_INSTALL_COMMAND} [options]
+
+Builds the pi client as a standalone binary and links it into a directory on your PATH.
+
+Options:
+  --dir <dir>       The directory the binary and its assets live in (default ~/.local/lib/pi)
+  --bin-dir <dir>   The directory the pi symlink lives in (default ~/.local/bin)
+  --offline         Build with the bundled model data instead of fetching it
+  --no-build        Only refresh the links, do not build the binary
+  --no-workspace-build
+                    Do not build the workspace before building the binary
+  --build-only      Build the binary, do not touch the links
+  --force           Replace files that pi did not create
+  -h, --help        Show this help
+`);
+}
+
+/**
+ * Build the client as a standalone binary and link it into a PATH directory.
+ *
+ * The binary is a single file that carries the client and the runtime it talks to, so the
+ * `pi` on the PATH is the one that was just built.
+ */
+async function runSelfInstall(args: string[]): Promise<void> {
+	const flags = parseFlags(args);
+	if (flags.help) {
+		printSelfInstallUsage();
+		return;
+	}
+	const manifest = readSelfInstallManifest();
+	const plan = planSelfInstall({
+		installDir: stringFlag(flags, "dir") ?? manifest?.installDir,
+		binDir: stringFlag(flags, "bin-dir") ?? manifest?.binDir,
+	});
+	const force = flags.force === true;
+	const skipBuild = flags["no-build"] === true;
+	const buildOnly = flags["build-only"] === true;
+
+	if (!buildOnly) {
+		for (const linkPath of [plan.linkPath, plan.serverLinkPath]) {
+			const check = checkReplaceable(linkPath, plan.installDir);
+			if (check.allowed || force) continue;
+			throw new Error(
+				`${linkPath} already exists and ${check.reason}. Remove it, choose another --bin-dir, or pass --force.`,
+			);
+		}
+	}
+
+	const sources = resolveSelfInstallSources(manifest);
+	let version = sources.version;
+	const hadBinary = existsSync(plan.binaryPath);
+	if (!skipBuild) {
+		version = await buildSelfInstall(plan, sources, {
+			offline: flags.offline === true,
+			buildWorkspace: flags["no-workspace-build"] !== true,
+		});
+	}
+
+	if (!buildOnly) {
+		mkdirSync(plan.installDir, { recursive: true });
+		writeFileSync(
+			join(plan.installDir, "install.json"),
+			`${JSON.stringify(
+				{
+					installDir: plan.installDir,
+					binDir: plan.binDir,
+					...(sources.repoRoot ? { sourceDir: sources.repoRoot } : {}),
+					version,
+					installedAt: new Date().toISOString(),
+				},
+				null,
+				2,
+			)}\n`,
+			"utf-8",
+		);
+		mkdirSync(plan.binDir, { recursive: true });
+		linkBinary(plan.binaryPath, plan.linkPath);
+		linkBinary(plan.serverPath, plan.serverLinkPath);
+	}
+
+	console.log(`Installed pi ${version} to ${plan.binaryPath}`);
+	if (hadBinary) console.log(`Replaced the binary that was at ${plan.binaryPath}`);
+	if (!buildOnly) {
+		console.log(`Linked ${plan.linkPath} -> ${relative(plan.binDir, plan.binaryPath)}`);
+		console.log(`Linked ${plan.serverLinkPath} -> ${relative(plan.binDir, plan.serverPath)}`);
+	}
+	if (!isOnPath(plan.binDir)) {
+		console.log();
+		console.log(`${plan.binDir} is not on your PATH. Add it with:`);
+		console.log(`  export PATH="${plan.binDir}:$PATH"`);
+		console.log(`Add that line to your shell profile (~/.zshrc, ~/.bashrc) to keep it.`);
+	}
+	console.log();
+	console.log(`To undo the install: rm ${plan.linkPath} ${plan.serverLinkPath} && rm -rf ${plan.installDir}`);
+}
+
+/** Whether a directory is on the PATH. */
+function isOnPath(directory: string): boolean {
+	const entries = (process.env.PATH ?? "").split(delimiter);
+	return entries.some((entry) => entry.length > 0 && resolve(entry) === resolve(directory));
+}
+
+/** Link a binary into the PATH directory. */
+function linkBinary(binaryPath: string, linkPath: string): void {
+	try {
+		unlinkSync(linkPath);
+	} catch {
+		// The link does not exist yet.
+	}
+	if (IS_WINDOWS) {
+		const target = relative(dirname(linkPath), binaryPath).replaceAll("/", "\\");
+		writeFileSync(linkPath, `@ECHO off\r\n"%~dp0${target}" %*\r\n`, "utf-8");
+		return;
+	}
+	symlinkSync(relative(dirname(linkPath), binaryPath), linkPath);
+}
+
+/** The packages a self install builds from. */
+interface SelfInstallSources {
+	/** The repository root, when the install runs from a checkout. */
+	repoRoot: string | undefined;
+	/** The client package directory. */
+	clientDir: string;
+	/** The coding agent package directory. */
+	codingAgentDir: string;
+	/** The server package directory. */
+	serverDir: string;
+	/** The version of the client. */
+	version: string;
+}
+
+/** Find the package directory of a package, by walking up from one of its files. */
+function findPackageDir(startDir: string): string | undefined {
+	let dir = startDir;
+	while (dir !== dirname(dir)) {
+		if (existsSync(join(dir, "package.json"))) return dir;
+		dir = dirname(dir);
+	}
+	return undefined;
+}
+
+/** Find the package directory of an installed package. */
+function resolveInstalledPackageDir(packageName: string): string | undefined {
+	try {
+		const require = createRequire(import.meta.url);
+		return findPackageDir(dirname(require.resolve(packageName)));
+	} catch {
+		return undefined;
+	}
+}
+
+/** Read the manifest of a package. */
+function readPackageManifest(packageDir: string): { name?: string; version?: string } | undefined {
+	try {
+		return JSON.parse(readFileSync(join(packageDir, "package.json"), "utf-8")) as { name?: string; version?: string };
+	} catch {
+		return undefined;
+	}
+}
+
+/** Read the version of a package. */
+function readPackageVersion(packageDir: string): string {
+	return readPackageManifest(packageDir)?.version ?? "0.0.0";
+}
+
+/**
+ * The packages the install builds from.
+ *
+ * A checkout builds the workspace; an installed package builds from the files it ships.
+ * A binary that `pi self-install` built rebuilds from the checkout it was built from.
+ */
+function resolveSelfInstallSources(manifest: SelfInstallManifest | undefined): SelfInstallSources {
+	const recordedRoot = manifest?.sourceDir && existsSync(manifest.sourceDir) ? manifest.sourceDir : undefined;
+	const clientDir = recordedRoot
+		? join(recordedRoot, "packages", "client")
+		: (findPackageDir(dirname(fileURLToPath(import.meta.url))) ?? process.cwd());
+	const repoRoot = recordedRoot ?? findRepoRoot(clientDir);
+	if (repoRoot) {
+		return {
+			repoRoot,
+			clientDir,
+			codingAgentDir: join(repoRoot, "packages", "coding-agent"),
+			serverDir: join(repoRoot, "packages", "server"),
+			version: readPackageVersion(clientDir),
+		};
+	}
+	const codingAgentDir = resolveInstalledPackageDir("@earendil-works/pi-coding-agent");
+	const serverDir = resolveInstalledPackageDir("@earendil-works/pi-server");
+	if (!codingAgentDir || !serverDir) {
+		throw new Error(
+			"The pi client and the pi server package are needed to build the binary. Install them next to the client.",
+		);
+	}
+	return { repoRoot: undefined, clientDir, codingAgentDir, serverDir, version: readPackageVersion(clientDir) };
+}
+
+/** The repository root of a checkout, when the directory is part of one. */
+function findRepoRoot(startDir: string): string | undefined {
+	let dir = startDir;
+	while (dir !== dirname(dir)) {
+		const manifestPath = join(dir, "package.json");
+		if (existsSync(manifestPath)) {
+			try {
+				const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as { name?: string };
+				if (manifest.name === "pi-monorepo") return dir;
+			} catch {
+				return undefined;
+			}
+		}
+		dir = dirname(dir);
+	}
+	return undefined;
+}
+
+/** Run a command, failing the install when it does not succeed. */
+function runInstallCommand(command: string, args: string[], cwd?: string): void {
+	const result = spawnSync(command, args, { cwd, stdio: "inherit" });
+	if (result.error) {
+		throw new Error(`Could not run ${command}: ${result.error.message}`);
+	}
+	if (result.status !== 0) {
+		throw new Error(`${command} ${args.join(" ")} failed with exit code ${result.status ?? "unknown"}`);
+	}
+}
+
+/**
+ * Build the standalone binaries.
+ *
+ * The binaries carry the client and the server, so they run without the workspace and
+ * without the packages they were built from.
+ */
+async function buildSelfInstall(
+	plan: SelfInstallPlan,
+	sources: SelfInstallSources,
+	options: { offline: boolean; buildWorkspace: boolean },
+): Promise<string> {
+	const bunVersion = spawnSync("bun", ["--version"], { encoding: "utf-8" });
+	if (bunVersion.error || bunVersion.status !== 0) {
+		throw new Error("Building the binary needs bun. Install it from https://bun.sh and run the command again.");
+	}
+
+	if (sources.repoRoot && options.buildWorkspace) {
+		console.log(`Building the workspace in ${sources.repoRoot}...`);
+		runInstallCommand("bun", ["run", options.offline ? "build:offline" : "build"], sources.repoRoot);
+	}
+
+	mkdirSync(plan.installDir, { recursive: true });
+	const entryDir = resolveEntryDirectory(sources);
+	const entryFiles: string[] = [];
+	try {
+		const clientEntry = writeEntryFile(entryDir, "pi-self-install-client-entry.mjs", [
+			// A relative import: the bundler resolves a file url as a package specifier.
+			'import "./runtime-setup.js";',
+			// In a compiled binary every bundled module sees the executable as its
+			// entry, so the client would start itself as well. Point argv at the
+			// executable and import the client afterwards, so that it knows it is
+			// not the entry and this file starts it once. A static import cannot
+			// do this: imports are evaluated before the body of this file runs.
+			'process.env.PI_CLIENT_EMBEDDED = "1";',
+			"process.argv[1] = process.execPath;",
+			`const { runClient, setupClient } = await import(${JSON.stringify(relativeEntryPath(entryDir, join(sources.clientDir, "dist", "cli.js")))});`,
+			"setupClient();",
+			"await runClient(process.argv.slice(2));",
+		]);
+		entryFiles.push(clientEntry);
+		const serverEntry = writeEntryFile(entryDir, "pi-self-install-server-entry.mjs", [
+			// A relative import: the bundler resolves a file url as a package specifier.
+			'import "./runtime-setup.js";',
+			// The server starts itself when it is the process entry, so the entry
+			// claims the start. The import has to be dynamic: imports are
+			// evaluated before the body of this file runs.
+			'process.env.PI_CLIENT_EMBEDDED = "1";',
+			"process.argv[1] = process.execPath;",
+			`const { runCli } = await import(${JSON.stringify(relativeEntryPath(entryDir, join(sources.serverDir, "dist", "cli.js")))});`,
+			"await runCli(process.argv.slice(2));",
+		]);
+		entryFiles.push(serverEntry);
+
+		console.log(`Building ${plan.binaryPath}...`);
+		runInstallCommand(
+			"bun",
+			[
+				"build",
+				"--compile",
+				"--no-compile-autoload-bunfig",
+				"--no-compile-autoload-dotenv",
+				clientEntry,
+				"--outfile",
+				plan.binaryPath,
+			],
+			entryDir,
+		);
+		console.log(`Building ${plan.serverPath}...`);
+		runInstallCommand(
+			"bun",
+			[
+				"build",
+				"--compile",
+				"--no-compile-autoload-bunfig",
+				"--no-compile-autoload-dotenv",
+				serverEntry,
+				...workerEntrypoints(sources),
+				"--outfile",
+				plan.serverPath,
+			],
+			entryDir,
+		);
+	} finally {
+		for (const entryFile of entryFiles) {
+			rmSync(entryFile, { force: true });
+		}
+	}
+
+	copyRuntimeAssets(plan, sources);
+	return readPackageVersion(sources.clientDir);
+}
+
+/**
+ * The directory the generated entry points live in.
+ *
+ * Bun embeds the extra entry points of a binary relative to their common directory, and
+ * the runtime looks the workers up by that path, so the entries live next to the coding
+ * agent package.
+ */
+function resolveEntryDirectory(sources: SelfInstallSources): string {
+	const candidate = join(sources.codingAgentDir, "dist", "bun");
+	try {
+		mkdirSync(candidate, { recursive: true });
+		accessSync(candidate, constants.W_OK);
+		return candidate;
+	} catch {
+		return sources.codingAgentDir;
+	}
+}
+
+/**
+ * The path of a file relative to the entry point, for the bundler.
+ */
+function relativeEntryPath(entryDir: string, file: string): string {
+	const path = relative(entryDir, file);
+	return path.startsWith(".") ? path : `./${path}`;
+}
+
+/**
+ * Write an entry point for a binary.
+ *
+ * The entry lives in the coding agent package so that the workers the runtime spawns
+ * keep the paths they are embedded under.
+ */
+function writeEntryFile(entryDir: string, name: string, lines: string[]): string {
+	const entryPath = join(entryDir, name);
+	writeFileSync(entryPath, `${lines.join("\n")}\n`, "utf-8");
+	return entryPath;
+}
+
+/** The worker entry points the server binary embeds. */
+function workerEntrypoints(sources: SelfInstallSources): string[] {
+	const entries: string[] = [];
+	for (const worker of ["src/extensions/codemode/worker.ts", "src/utils/image-resize-worker.ts"]) {
+		const source = join(sources.codingAgentDir, worker);
+		if (existsSync(source)) entries.push(source);
+	}
+	return entries;
+}
+
+/** Copy the runtime assets the binaries read next to the executable. */
+function copyRuntimeAssets(plan: SelfInstallPlan, sources: SelfInstallSources): void {
+	const themeSource = join(sources.codingAgentDir, "dist", "core", "theme");
+	if (existsSync(themeSource)) {
+		cpSync(themeSource, join(plan.installDir, "theme"), { recursive: true });
+	}
+	const exportSource = join(sources.codingAgentDir, "dist", "core", "export-html");
+	if (existsSync(exportSource)) {
+		cpSync(exportSource, join(plan.installDir, "export-html"), { recursive: true });
+	}
+	const clientAssets = [join(sources.clientDir, "dist", "assets"), join(sources.clientDir, "src", "assets")];
+	for (const assets of clientAssets) {
+		if (!existsSync(assets)) continue;
+		cpSync(assets, join(plan.installDir, "assets"), { recursive: true });
+		break;
+	}
+	cpSync(join(sources.clientDir, "package.json"), join(plan.installDir, "package.json"));
+	// The system prompt points the model at the README next to the executable, so the
+	// documentation of the runtime has to sit next to the binary.
+	for (const document of ["README.md", "CHANGELOG.md"]) {
+		const source = join(sources.codingAgentDir, document);
+		if (existsSync(source)) cpSync(source, join(plan.installDir, document));
+	}
+	const wasm = resolvePhotonWasm(sources.codingAgentDir);
+	if (wasm) cpSync(wasm, join(plan.installDir, "photon_rs_bg.wasm"));
+	copyNativeHelpers(plan, sources);
+}
+
+/**
+ * Copy the native terminal helpers next to the executable.
+ *
+ * A compiled binary has no packages to resolve the native module from, so the helper
+ * has to sit next to it, in the layout the terminal UI looks for.
+ */
+function copyNativeHelpers(plan: SelfInstallPlan, sources: SelfInstallSources): void {
+	const tuiDir = sources.repoRoot
+		? join(sources.repoRoot, "packages", "tui")
+		: resolveInstalledPackageDir("@earendil-works/pi-tui");
+	if (!tuiDir) return;
+	const platform = process.platform;
+	const arch = process.arch;
+	const source = join(tuiDir, "native", platform, "prebuilds", `${platform}-${arch}`);
+	if (!existsSync(source)) return;
+	cpSync(source, join(plan.installDir, "native", platform, "prebuilds", `${platform}-${arch}`), { recursive: true });
+}
+
+/** Find the native image helper that ships next to the coding agent. */
+function resolvePhotonWasm(codingAgentDir: string): string | undefined {
+	const built = join(codingAgentDir, "dist", "photon_rs_bg.wasm");
+	if (existsSync(built)) return built;
+	let dir = codingAgentDir;
+	while (dir !== dirname(dir)) {
+		const candidate = join(dir, "node_modules", "@silvia-odwyer", "photon-node", "photon_rs_bg.wasm");
+		if (existsSync(candidate)) return candidate;
+		dir = dirname(dir);
+	}
+	return undefined;
 }
 
 /**
@@ -440,6 +985,8 @@ function describe(error: unknown): string {
  * Whether this module is the entry point of the process.
  */
 function isProcessEntry(): boolean {
+	// A generated entry point starts the client itself.
+	if (process.env.PI_CLIENT_EMBEDDED === "1") return false;
 	if (typeof PI_BUNDLED_NODE !== "undefined") return PI_BUNDLED_NODE === true;
 	const entry = process.argv[1];
 	if (entry === undefined) return false;
@@ -454,10 +1001,45 @@ function isProcessEntry(): boolean {
 /**
  * Prepare the process for the client.
  */
-function setupClient(): void {
+export function setupClient(): void {
 	process.title = "pi";
 	process.env.PI_CODING_AGENT = "true";
 	process.env.AI_AGENT = "pi";
+	declareBinaryOwner();
+	pointAtSiblingServer();
+}
+
+/**
+ * Tell the runtime which package owns the running binary.
+ *
+ * The self update has to update the package that ships the `pi` binary. A bundled or a
+ * compiled binary does not say where it came from, so the client names itself.
+ */
+function declareBinaryOwner(): void {
+	const packageDir = findPackageDir(dirname(fileURLToPath(import.meta.url)));
+	if (!packageDir) return;
+	const manifest = readPackageManifest(packageDir);
+	if (!manifest?.name) return;
+	process.env.PI_BINARY_PACKAGE = manifest.name;
+	process.env.PI_BINARY_PACKAGE_DIR = packageDir;
+	if (manifest.version) process.env.PI_BINARY_PACKAGE_VERSION = manifest.version;
+}
+
+/**
+ * Point the client at the server binary that sits next to it.
+ *
+ * A standalone binary has no packages to resolve the server from, so it starts the
+ * `pi-server` binary that `pi self-install` put next to it.
+ */
+function pointAtSiblingServer(): void {
+	if (process.env.PI_SERVER_COMMAND?.trim()) return;
+	// Only a compiled binary needs this: an installed package resolves the server from
+	// its node_modules.
+	if (!import.meta.url.includes("$bunfs") && !import.meta.url.includes("~BUN")) return;
+	const sibling = join(dirname(process.execPath), SERVER_BINARY_NAME);
+	if (!existsSync(sibling)) return;
+	// The server takes a free port, so that two clients do not fight over one.
+	process.env.PI_SERVER_COMMAND = `${sibling} --port 0`;
 }
 
 if (isProcessEntry()) {

@@ -54,6 +54,112 @@ export interface SelfUpdateCommand extends SelfUpdateCommandStep {
 
 export type SelfUpdatePackageTarget = string | { packageName: string; installSpec?: string };
 
+/** The package that ships the `pi` binary. The runtime is its dependency. */
+export const CLIENT_PACKAGE_NAME = "@earendil-works/pi-client";
+
+/** The package that provides the running `pi` binary. */
+export interface SelfUpdateOwner {
+	/** The npm package name that ships the binary. */
+	packageName: string;
+	/** The version of that package. */
+	version: string;
+	/** The directory of that package on disk, when it could be resolved. */
+	packageDir: string | undefined;
+}
+
+interface PackageManifest {
+	name?: string;
+	version?: string;
+	bin?: string | Record<string, string>;
+}
+
+function readPackageManifest(packageDir: string): PackageManifest | undefined {
+	try {
+		return JSON.parse(stripBom(readFileSync(join(packageDir, "package.json"), "utf-8"))) as PackageManifest;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Whether a package manifest ships a binary named `pi`. */
+function declaresPiBin(manifest: PackageManifest | undefined): boolean {
+	const bin = manifest?.bin;
+	if (!bin) return false;
+	if (typeof bin === "string") return basename(bin) === "pi";
+	return Object.entries(bin).some(([name, target]) => name === "pi" || basename(target) === "pi");
+}
+
+/**
+ * The package that provides the running `pi` binary.
+ *
+ * The binary moved from the coding agent to the client package, so the package that
+ * has to be updated is the one the running executable came from: the client for a
+ * client install, the coding agent for an install that only has the coding agent.
+ *
+ * The client names itself in the environment, because the process arguments of a
+ * bundled or compiled binary do not say which package they came from.
+ */
+export function getSelfUpdateOwner(): SelfUpdateOwner {
+	const declaredName = process.env.PI_BINARY_PACKAGE?.trim();
+	if (declaredName) {
+		return {
+			packageName: declaredName,
+			version: process.env.PI_BINARY_PACKAGE_VERSION?.trim() || VERSION,
+			packageDir: process.env.PI_BINARY_PACKAGE_DIR?.trim() || getPackageDir(),
+		};
+	}
+	const entrypointDir = getEntrypointPackageDir();
+	if (entrypointDir) {
+		const manifest = readPackageManifest(entrypointDir);
+		if (declaresPiBin(manifest) && manifest?.name) {
+			return {
+				packageName: manifest.name,
+				version: manifest.version ?? "0.0.0",
+				packageDir: entrypointDir,
+			};
+		}
+	}
+	return { packageName: PACKAGE_NAME, version: VERSION, packageDir: getPackageDir() };
+}
+
+/** The manifest of a binary that `pi self-install` built and linked. */
+export interface SelfInstallManifest {
+	/** The directory the binary and its runtime assets live in. */
+	installDir: string;
+	/** The directory the `pi` symlink lives in. */
+	binDir: string;
+	/** The source checkout the binary was built from, when there is one. */
+	sourceDir?: string;
+	/** The version of the build. */
+	version?: string;
+	/** When the binary was installed. */
+	installedAt?: string;
+}
+
+/** The file `pi self-install` writes next to the binary it installed. */
+export function getSelfInstallManifestPath(packageDir = getPackageDir()): string {
+	return join(packageDir, "install.json");
+}
+
+/** Read the manifest of a self-installed binary, when there is one. */
+export function readSelfInstallManifest(packageDir = getPackageDir()): SelfInstallManifest | undefined {
+	try {
+		const manifest = JSON.parse(
+			stripBom(readFileSync(getSelfInstallManifestPath(packageDir), "utf-8")),
+		) as Partial<SelfInstallManifest>;
+		if (typeof manifest.installDir !== "string") return undefined;
+		return {
+			installDir: manifest.installDir,
+			binDir: manifest.binDir ?? packageDir,
+			...(manifest.sourceDir ? { sourceDir: manifest.sourceDir } : {}),
+			...(manifest.version ? { version: manifest.version } : {}),
+			...(manifest.installedAt ? { installedAt: manifest.installedAt } : {}),
+		};
+	} catch {
+		return undefined;
+	}
+}
+
 function normalizeSelfUpdatePackageTarget(target: SelfUpdatePackageTarget): {
 	packageName: string;
 	installSpec: string;
@@ -308,7 +414,7 @@ function getEntrypointPackageDir(): string | undefined {
 }
 
 function isSelfUpdatePathWritable(): boolean {
-	const packageDir = getPackageDir();
+	const packageDir = getSelfUpdateOwner().packageDir ?? getPackageDir();
 	try {
 		accessSync(packageDir, constants.W_OK);
 		accessSync(dirname(packageDir), constants.W_OK);
@@ -319,7 +425,8 @@ function isSelfUpdatePathWritable(): boolean {
 }
 
 function isManagedByGlobalPackageManager(method: InstallMethod, packageName: string, npmCommand?: string[]): boolean {
-	const packageDirs = [getPackageDir(), getEntrypointPackageDir()].filter((dir): dir is string => !!dir);
+	const owner = getSelfUpdateOwner();
+	const packageDirs = [owner.packageDir, getEntrypointPackageDir()].filter((dir): dir is string => !!dir);
 	const packageDirCandidates = packageDirs.flatMap((dir) => getPathComparisonCandidates(dir));
 	return getGlobalPackageRoots(method, packageName, npmCommand).some((root) => {
 		return getPathComparisonCandidates(root).some((normalizedRoot) => {

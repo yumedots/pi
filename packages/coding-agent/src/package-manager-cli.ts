@@ -7,14 +7,18 @@ import { getConfigSelector } from "./cli/config-selector-host.ts";
 import { createTuiProjectTrustContext } from "./cli/project-trust-tui.ts";
 import {
 	APP_NAME,
+	CLIENT_PACKAGE_NAME,
 	CONFIG_DIR_NAME,
 	detectInstallMethod,
 	getAgentDir,
 	getPackageDir,
 	getSelfUpdateCommand,
+	getSelfUpdateOwner,
 	getSelfUpdateUnavailableInstruction,
-	PACKAGE_NAME,
+	readSelfInstallManifest,
+	type SelfInstallManifest,
 	type SelfUpdateCommand,
+	type SelfUpdateOwner,
 	type SelfUpdatePackageTarget,
 	VERSION,
 } from "./config.ts";
@@ -28,7 +32,12 @@ import { SettingsManager } from "./core/settings-manager.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
 import { spawnProcess, spawnProcessSync, waitForChildProcess } from "./utils/child-process.ts";
 import { getPiUserAgent } from "./utils/pi-user-agent.ts";
-import { formatVersionCheckError, getLatestPiRelease, isNewerPackageVersion } from "./utils/version-check.ts";
+import {
+	formatVersionCheckError,
+	getLatestPiRelease,
+	isNewerPackageVersion,
+	type LatestPiRelease,
+} from "./utils/version-check.ts";
 import {
 	cleanupWindowsSelfUpdateQuarantine,
 	quarantineWindowsNativeDependencies,
@@ -561,10 +570,11 @@ async function refreshModelCatalogs(agentDir: string): Promise<void> {
 
 function printSelfUpdateUnavailable(
 	npmCommand?: string[],
-	updatePackageTarget: SelfUpdatePackageTarget = PACKAGE_NAME,
+	updatePackageTarget: SelfUpdatePackageTarget = getSelfUpdateOwner().packageName,
+	owner: SelfUpdateOwner = getSelfUpdateOwner(),
 ): void {
 	console.error(`error: ${APP_NAME} cannot self-update this installation.`);
-	console.error(getSelfUpdateUnavailableInstruction(PACKAGE_NAME, npmCommand, updatePackageTarget));
+	console.error(getSelfUpdateUnavailableInstruction(owner.packageName, npmCommand, updatePackageTarget));
 
 	const entrypoint = process.argv[1];
 	if (entrypoint) {
@@ -575,6 +585,38 @@ function printSelfUpdateUnavailable(
 
 function printSelfUpdateFallback(command: SelfUpdateCommand): void {
 	console.error(chalk.dim(`If this keeps failing, run this command yourself: ${command.display}`));
+}
+
+/**
+ * Report that a self-built binary cannot be updated by a package manager.
+ *
+ * `pi self-install` builds the binary from a source checkout, so the way to update it
+ * is to build it again from that checkout.
+ */
+async function reportSelfInstallUpdate(manifest: SelfInstallManifest, owner: SelfUpdateOwner): Promise<void> {
+	let latestVersion: string | undefined;
+	try {
+		latestVersion = (await getLatestPiRelease(owner.version))?.version;
+	} catch {
+		latestVersion = undefined;
+	}
+	if (latestVersion && !isNewerPackageVersion(latestVersion, owner.version)) {
+		console.log(chalk.green(`${APP_NAME} is already up to date (v${owner.version})`));
+		console.log(chalk.dim(`Package: ${owner.packageName}`));
+		return;
+	}
+	console.error(`error: ${APP_NAME} cannot self-update this installation.`);
+	console.error(`This installation is a binary that \`${APP_NAME} self-install\` built in ${manifest.installDir}.`);
+	if (manifest.sourceDir) {
+		console.error(`Rebuild it from the source checkout: cd ${manifest.sourceDir} && ${APP_NAME} self-install`);
+	} else {
+		console.error(`Rebuild it by running \`${APP_NAME} self-install\` from a pi checkout.`);
+	}
+	if (latestVersion) {
+		console.error(`The latest release is ${latestVersion}.`);
+	}
+	console.error(`To undo the install: rm ${join(manifest.binDir, "pi")} && rm -rf ${manifest.installDir}`);
+	process.exitCode = 1;
 }
 
 function printPnpmSelfUpdateMetadataHint(): void {
@@ -610,10 +652,22 @@ interface SelfUpdatePlan {
 	note?: string;
 }
 
-async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
-	let latestRelease: Awaited<ReturnType<typeof getLatestPiRelease>>;
+/**
+ * The package the update has to install.
+ *
+ * The `pi` binary ships with the client package, so a client install updates the client;
+ * the runtime arrives as its dependency. An install that only has the coding agent
+ * updates the coding agent, including the scope change the release feed announces.
+ */
+function resolveSelfUpdatePackageName(owner: SelfUpdateOwner, releasePackageName: string | undefined): string {
+	if (owner.packageName === CLIENT_PACKAGE_NAME) return CLIENT_PACKAGE_NAME;
+	return releasePackageName ?? owner.packageName;
+}
+
+async function getSelfUpdatePlan(force: boolean, owner: SelfUpdateOwner): Promise<SelfUpdatePlan> {
+	let latestRelease: LatestPiRelease | undefined;
 	try {
-		latestRelease = await getLatestPiRelease(VERSION, { retry: true });
+		latestRelease = await getLatestPiRelease(owner.version, { retry: true });
 	} catch (error: unknown) {
 		throw new Error(`Could not determine latest ${APP_NAME} version: ${formatVersionCheckError(error)}`, {
 			cause: error,
@@ -623,9 +677,9 @@ async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
 		throw new Error(`Could not determine latest ${APP_NAME} version.`);
 	}
 
-	const packageName = latestRelease.packageName ?? PACKAGE_NAME;
+	const packageName = resolveSelfUpdatePackageName(owner, latestRelease.packageName);
 	const installSpec = `${packageName}@${latestRelease.version}`;
-	if (force || packageName !== PACKAGE_NAME || isNewerPackageVersion(latestRelease.version, VERSION)) {
+	if (force || packageName !== owner.packageName || isNewerPackageVersion(latestRelease.version, owner.version)) {
 		return {
 			packageName,
 			installSpec,
@@ -635,7 +689,8 @@ async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
 		};
 	}
 
-	console.log(chalk.green(`${APP_NAME} is already up to date (v${VERSION})`));
+	console.log(chalk.green(`${APP_NAME} is already up to date (v${owner.version})`));
+	console.log(chalk.dim(`Package: ${owner.packageName}`));
 	return { packageName, installSpec, version: latestRelease.version, shouldRun: false };
 }
 
@@ -986,6 +1041,7 @@ export async function handlePackageCommand(
 					}
 				}
 				if (updateTargetIncludesSelf(target)) {
+					const owner = getSelfUpdateOwner();
 					const managedInstallRoot = getActiveManagedInstallRoot();
 					if (managedInstallRoot && options.force) {
 						console.error(
@@ -996,7 +1052,12 @@ export async function handlePackageCommand(
 						process.exitCode = 1;
 						return true;
 					}
-					const selfUpdatePlan = await getSelfUpdatePlan(options.force);
+					const selfInstall = readSelfInstallManifest();
+					if (selfInstall) {
+						await reportSelfInstallUpdate(selfInstall, owner);
+						return true;
+					}
+					const selfUpdatePlan = await getSelfUpdatePlan(options.force, owner);
 					if (!selfUpdatePlan.shouldRun) {
 						return true;
 					}
@@ -1013,7 +1074,8 @@ export async function handlePackageCommand(
 							process.exitCode = 1;
 							return true;
 						}
-						console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${selfUpdatePlan.version}`));
+						console.log(chalk.green(`Updated ${APP_NAME} from ${owner.version} to ${selfUpdatePlan.version}`));
+						console.log(chalk.dim(`Package: ${selfUpdatePlan.packageName}`));
 						return true;
 					}
 
@@ -1030,9 +1092,13 @@ export async function handlePackageCommand(
 						packageName: selfUpdatePlan.packageName,
 						installSpec: selfUpdatePlan.installSpec,
 					};
-					const selfUpdateCommand = getSelfUpdateCommand(PACKAGE_NAME, selfUpdateNpmCommand, selfUpdateTarget);
+					const selfUpdateCommand = getSelfUpdateCommand(
+						owner.packageName,
+						selfUpdateNpmCommand,
+						selfUpdateTarget,
+					);
 					if (!selfUpdateCommand) {
-						printSelfUpdateUnavailable(selfUpdateNpmCommand, selfUpdateTarget);
+						printSelfUpdateUnavailable(selfUpdateNpmCommand, selfUpdateTarget, owner);
 						process.exitCode = 1;
 						return true;
 					}
@@ -1054,7 +1120,8 @@ export async function handlePackageCommand(
 						process.exitCode = 1;
 						return true;
 					}
-					console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${selfUpdatePlan.version}`));
+					console.log(chalk.green(`Updated ${APP_NAME} from ${owner.version} to ${selfUpdatePlan.version}`));
+					console.log(chalk.dim(`Package: ${selfUpdatePlan.packageName}`));
 					// The pi.dev installer migrates global npm installs to a managed install
 					// that pins all dependencies. It does not migrate pnpm, yarn, or bun installs.
 					if (installMethod === "npm") {

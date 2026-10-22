@@ -24,6 +24,7 @@
 		"clean": "shx rm -rf dist",
 		"build": "bun run build:unbundled && bun ../../scripts/build-client-bundle.mjs",
 		"build:unbundled": "tsc -p tsconfig.build.json && shx chmod +x dist/cli.js && bun run copy-assets",
+		"build:binary": "bun run build:unbundled && bun src/cli.ts self-install --build-only --no-workspace-build --dir dist/binary",
 		"copy-assets": "shx mkdir -p dist/assets && shx cp src/assets/*.png dist/assets/ 2>/dev/null || true",
 		"test": "vitest --run",
 		"prepublishOnly": "bun run clean && bun run build"
