@@ -39,6 +39,7 @@ import {
 	type ServerHandshake,
 	type SessionStateSnapshot,
 } from "@earendil-works/pi-server/client";
+import type { PiServer } from "@earendil-works/pi-server";
 import { ClientSettings } from "./client-settings.ts";
 import {
 	type Args,
@@ -163,37 +164,66 @@ async function runRpc(parsed: Args): Promise<number> {
  *
  * The client is a renderer, so a headless run is a run of the server: the client starts
  * the server, opens the session, sends the prompt and prints the answer of the model.
+ *
+ * The server runs in this process: a one-shot run needs a runtime, and a runtime of its
+ * own in a second process would cost the memory of a second copy of the agent.
  */
 async function runPrint(parsed: Args): Promise<number> {
 	const agentDir = getAgentDir();
-	const server = await ensureServer({ agentDir });
-	const client = new PiServerClient({ url: server.url, password: server.password });
-	const handshake = await client.handshake();
-	await ensureProjectTrust(client, handshake);
-	const cwd = handshake.cwd;
+	const server = await startLocalServer(agentDir);
+	try {
+		const client = new PiServerClient({ url: server.url, password: server.password });
+		const handshake = await client.handshake();
+		await ensureProjectTrust(client, handshake);
+		const cwd = handshake.cwd;
 
-	const snapshot = await openRemoteSession({
-		url: server.url,
-		password: server.password,
-		sessionDir: resolveSessionDir(parsed),
-		title: parsed.name === undefined ? undefined : normalizeSessionName(parsed.name),
-		model: parsed.model,
-		thinkingLevel: parsed.thinking,
-		resume: await resolveResumeTarget(client, parsed, cwd, agentDir),
-	});
+		const snapshot = await openRemoteSession({
+			url: server.url,
+			password: server.password,
+			sessionDir: resolveSessionDir(parsed),
+			title: parsed.name === undefined ? undefined : normalizeSessionName(parsed.name),
+			model: parsed.model,
+			thinkingLevel: parsed.thinking,
+			resume: await resolveResumeTarget(client, parsed, cwd, agentDir),
+		});
 
-	const { initialMessage, initialImages } = await buildInitialMessageFor(parsed);
-	const messages = initialMessage === undefined ? [...parsed.messages] : [initialMessage, ...parsed.messages];
-	if (messages.length === 0) {
-		process.stderr.write("There is nothing to send. Give a prompt with -p.\n");
-		return 1;
+		const { initialMessage, initialImages } = await buildInitialMessageFor(parsed);
+		const messages = initialMessage === undefined ? [...parsed.messages] : [initialMessage, ...parsed.messages];
+		if (messages.length === 0) {
+			process.stderr.write("There is nothing to send. Give a prompt with -p.\n");
+			return 1;
+		}
+
+		const { runPrintMode } = await import("./print-mode.ts");
+		return await runPrintMode(client, snapshot.sessionId, {
+			mode: parsed.mode === "json" ? "json" : "text",
+			messages,
+			initialImages,
+		});
+	} finally {
+		await server.close();
 	}
+}
 
-	const { runPrintMode } = await import("./print-mode.ts");
-	return runPrintMode(client, snapshot.sessionId, {
-		mode: parsed.mode === "json" ? "json" : "text",
-		messages,
-		initialImages,
+/**
+ * Start a server in this process.
+ *
+ * The server runtime is the whole agent runtime, so it is loaded here and not at the top
+ * of the module: the interactive client never needs it.
+ */
+async function startLocalServer(agentDir: string): Promise<PiServer> {
+	const cwd = process.cwd();
+	const serverSettings = readServerSettings(cwd, agentDir);
+	const password = randomBytes(16).toString("base64url");
+	const { startServer } = await import("@earendil-works/pi-server");
+	return startServer({
+		hostname: "127.0.0.1",
+		port: 0,
+		password,
+		agentDir,
+		cwd,
+		idleTimeoutMs: 0,
+		createRuntime: await createServerRuntimeFactory(agentDir, cwd),
 	});
 }
 
@@ -444,16 +474,19 @@ export function checkReplaceable(path: string, installDir: string): { allowed: b
 function printSelfInstallUsage(): void {
 	console.log(`Usage: pi ${SELF_INSTALL_COMMAND} [options]
 
-Builds the pi client as a standalone binary and links it into a directory on your PATH.
+Builds the pi client and the pi server as standalone binaries and links them into a
+directory on your PATH, replacing the binaries an earlier install left there.
+
+From a checkout, "make app" does the same and is the shorter way to say it.
 
 Options:
-  --dir <dir>       The directory the binary and its assets live in (default ~/.local/lib/pi)
-  --bin-dir <dir>   The directory the pi symlink lives in (default ~/.local/bin)
+  --dir <dir>       The directory the binaries and their assets live in (default ~/.local/lib/pi)
+  --bin-dir <dir>   The directory the pi symlinks live in (default ~/.local/bin)
   --offline         Build with the bundled model data instead of fetching it
-  --no-build        Only refresh the links, do not build the binary
+  --no-build        Only refresh the links, do not build the binaries
   --no-workspace-build
-                    Do not build the workspace before building the binary
-  --build-only      Build the binary, do not touch the links
+                    Do not build the workspace before building the binaries
+  --build-only      Build the binaries, do not touch the links
   --force           Replace files that pi did not create
   -h, --help        Show this help
 `);

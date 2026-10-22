@@ -19,7 +19,7 @@ NODE_MODULES := node_modules
 
 .PHONY: help install install-ci hydrate build build-offline build-binary check \
         test test-one bench bench-compare clean dev release-local run app \
-        install-app require-bun require-install
+        require-bun require-install
 
 help:
 	@printf '%s\n' \
@@ -30,7 +30,6 @@ help:
 	  '  make hydrate        Refresh the bundled model data from models.dev' \
 	  '  make build          Build every workspace package into dist/' \
 	  '  make build-offline  Build every workspace package with the bundled model data' \
-	  '  make build-binary   Compile the standalone binary to $(BINARY)' \
 	  '  make check          Run biome, the lockfile checks, tsc --noEmit and the smoke checks' \
 	  '  make test           Run the full test suite in an isolated home' \
 	  '  make test-one FILE=<path>   Run a single test file' \
@@ -38,8 +37,7 @@ help:
 	  '  make bench-compare  Write bench/compare.md from the stored results' \
 	  '  make dev            Run the fork from TypeScript sources (./scripts/pi-test.sh)' \
 	  '  make release-local  Build, pack and smoke-test the published packages' \
-	  '  make app            Alias for build-binary' \
-	  '  make install-app    Install the compiled binary to $(BIN_DIR)/pi' \
+	  '  make app            Build the client and the server and install them into $(BIN_DIR)' \
 	  '  make clean          Remove build output' \
 	  '' \
 	  '  make help           Show this message'
@@ -132,16 +130,13 @@ release-local: require-bun require-install
 
 run: dev
 
-app: build-binary
-
-# Install the compiled binary into $(BIN_DIR) and the shared assets into $(LIB_DIR).
-install-app: build-binary
-	rm -rf $(LIB_DIR)
-	install -d $(LIB_DIR)
-	install -m755 $(BINARY) $(LIB_DIR)/pi
-	cp $(DIST)/package.json $(DIST)/README.md $(DIST)/CHANGELOG.md $(DIST)/photon_rs_bg.wasm $(LIB_DIR)/
-	cp -r $(DIST)/theme $(DIST)/assets $(DIST)/export-html $(DIST)/docs $(DIST)/examples $(LIB_DIR)/
-	ln -sfn ../lib/pi/pi $(BIN_DIR)/pi
+# The application: the client that draws and the server that runs the agent.
+#
+# The two binaries are compiled and installed into $(BIN_DIR), replacing the ones an
+# earlier install left there. The assets they share live in $(LIB_DIR).
+app: build
+	@printf '==> building the client and the server\n'
+	@$(BUN) packages/client/src/cli.ts self-install --no-workspace-build --dir $(LIB_DIR) --bin-dir $(BIN_DIR)
 	@printf 'installed %s -> %s (%s)\n' "$(BIN_DIR)/pi" "$(LIB_DIR)/pi" "$$($(BIN_DIR)/pi --version)"
 	@found="$$(command -v pi || true)"; \
 	if [ -n "$$found" ] && [ "$$found" != "$(BIN_DIR)/pi" ]; then \
