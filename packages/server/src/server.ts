@@ -26,6 +26,7 @@ import { IdleWatchdog } from "./idle.ts";
 import { resumeInterruptedSessions } from "./recovery.ts";
 import { clearRegistration, writeRegistration } from "./registration.ts";
 import { registerOpencodeRoutes } from "./routes/opencode.ts";
+import { type OpencodeEvent, toOpencodeEvent } from "./routes/opencode-shapes.ts";
 import { registerPiRoutes } from "./routes/pi.ts";
 import { EXTENSION_UI_TIMEOUT_MS, type ServerContext } from "./server-context.ts";
 import { SessionRegistry } from "./session-registry.ts";
@@ -54,6 +55,31 @@ export interface PiServerOptions {
 	onIdle?: () => void;
 	/** Whether the interrupted sessions are resumed on boot. */
 	resumeInterrupted?: boolean;
+}
+
+/**
+ * The opencode event stream.
+ *
+ * Every subscriber gets the same frame, encoded once. The frames carry opencode's event
+ * names, so the opencode clients recognize them.
+ */
+class OpencodeEventStream {
+	private readonly subscribers = new Set<(frame: string) => void>();
+
+	/** Publish one event to every subscriber. */
+	publish(event: OpencodeEvent): void {
+		if (this.subscribers.size === 0) return;
+		const frame = sseFrame(event);
+		for (const subscriber of this.subscribers) subscriber(frame);
+	}
+
+	/** Subscribe to the stream. */
+	subscribe(send: (frame: string) => void): () => void {
+		this.subscribers.add(send);
+		return () => {
+			this.subscribers.delete(send);
+		};
+	}
 }
 
 /** A running server. */
@@ -91,6 +117,7 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 
 	const id = randomUUID();
 	const feed = new EventFeed();
+	const opencodeEvents = new OpencodeEventStream();
 	const pairingCodes = new Map<string, number>();
 	const sseConnections = new Set<SseConnection>();
 	const pendingExtensionUi = new Map<string, (response: RpcExtensionUIResponse) => void>();
@@ -112,7 +139,9 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 		sessionId: string,
 		request: RpcExtensionUIRequest,
 	): Promise<RpcExtensionUIResponse> {
-		feed.publish({ type: "extension_ui_request", data: { sessionID: sessionId, ...request } });
+		if (feed.subscriberCount > 0) {
+			feed.publish({ type: "extension_ui_request", data: { sessionID: sessionId, ...request } });
+		}
 		ctx.publishSessionEvent(sessionId, { ...request });
 		const { promise, resolve } = Promise.withResolvers<RpcExtensionUIResponse>();
 		ctx.registerExtensionUiRequest(sessionId, request, resolve);
@@ -120,7 +149,11 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 	}
 
 	function publishEvent(sessionId: string, event: AgentSessionEvent): void {
-		feed.publish({ type: event.type, data: { sessionID: sessionId, ...(event as object) } });
+		const withSession = { sessionID: sessionId, ...(event as object) } as unknown as AgentSessionEvent;
+		// The global feed keeps the pi events for the embedders that subscribe to it.
+		if (feed.subscriberCount > 0) feed.publish({ type: event.type, data: withSession });
+		// The opencode stream carries the opencode event names.
+		opencodeEvents.publish(toOpencodeEvent(withSession));
 	}
 
 	const ctx: ServerContext = {
@@ -234,26 +267,15 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 	router.add("GET", "/api/event", ({ res }) => {
 		const connection = openSse(res);
 		ctx.trackSse(connection);
-		connection.send(sseFrame({ id: randomUUID(), type: "server.connected", data: {} }));
-		const subscription = feed.subscribe();
+		connection.send(sseFrame({ id: randomUUID(), type: "server.connected", created: Date.now(), data: {} }));
+		const unsubscribe = opencodeEvents.subscribe((frame) => connection.send(frame));
 		const heartbeat = setInterval(() => {
 			connection.send(SSE_HEARTBEAT);
 		}, 15_000);
 		heartbeat.unref?.();
-		const pump = () => {
-			if (connection.closed) return;
-			let frame = subscription.next();
-			while (frame !== undefined) {
-				connection.send(frame);
-				frame = subscription.next();
-			}
-		};
-		const interval = setInterval(pump, 50);
-		interval.unref?.();
 		res.on("close", () => {
 			clearInterval(heartbeat);
-			clearInterval(interval);
-			subscription.close();
+			unsubscribe();
 			ctx.untrackSse(connection);
 			connection.close();
 		});

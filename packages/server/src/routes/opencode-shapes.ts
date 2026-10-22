@@ -6,6 +6,7 @@
  * without starting a server.
  */
 
+import { randomUUID } from "node:crypto";
 import { basename, dirname } from "node:path";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
@@ -248,10 +249,9 @@ export interface OpencodeEvent {
  */
 export function toOpencodeEvent(event: AgentSessionEvent, now: number = Date.now()): OpencodeEvent {
 	const data = event as unknown as Record<string, unknown>;
-	const type = opencodeEventType(event.type);
 	return {
-		id: `${now}-${event.type}`,
-		type,
+		id: `evt_${randomUUID()}`,
+		type: opencodeEventType(event.type, data),
 		created: now,
 		data: { ...data, sessionID: data.sessionID ?? data.sessionId },
 	};
@@ -259,8 +259,10 @@ export function toOpencodeEvent(event: AgentSessionEvent, now: number = Date.now
 
 /**
  * The opencode event type of a pi event type.
+ *
+ * @param event The pi event, for the events whose opencode name depends on it.
  */
-export function opencodeEventType(piType: string): string {
+export function opencodeEventType(piType: string, event?: Record<string, unknown>): string {
 	switch (piType) {
 		case "turn_start":
 		case "agent_start":
@@ -276,8 +278,13 @@ export function opencodeEventType(piType: string): string {
 			return "session.text.delta";
 		case "message_end":
 			return "session.text.ended";
+		case "tool_execution_start":
 		case "tool_start":
 			return "session.tool.input.started";
+		case "tool_execution_update":
+			return "session.tool.input.delta";
+		case "tool_execution_end":
+			return event?.isError === true ? "session.tool.failed" : "session.tool.success";
 		case "tool_end":
 			return "session.tool.input.ended";
 		case "tool_call":
