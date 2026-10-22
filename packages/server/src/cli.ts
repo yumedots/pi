@@ -121,6 +121,8 @@ export async function runCli(args: string[] = process.argv.slice(2)): Promise<vo
 		agentDir,
 		cwd,
 		createRuntime,
+		// A server that starts after a crash picks the interrupted work up again.
+		resumeInterrupted: true,
 		idleTimeoutMs: options.idleTimeoutMs,
 		onIdle: () => {
 			process.exit(0);

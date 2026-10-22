@@ -17,7 +17,7 @@ import {
 	SessionManager,
 	type SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { clearTurnClaim, writeTurnClaim } from "./turn-claim.ts";
+import { clearTurnClaim, readTurnClaim, writeTurnClaim } from "./turn-claim.ts";
 
 /** A session the server hosts. */
 export interface ServerSession {
@@ -238,13 +238,17 @@ export class SessionRegistry {
 	private writeClaim(id: string): void {
 		const serverSession = this.sessionMap.get(id);
 		if (!serverSession?.sessionFile) return;
+		const sessionDir = dirname(serverSession.sessionFile);
+		// The attempt counter belongs to the claim: the recovery sweep raises it before it
+		// resumes a turn, and a fresh turn must not reset it.
+		const existing = readTurnClaim(sessionDir, id);
 		writeTurnClaim({
 			sessionId: id,
 			cwd: serverSession.cwd,
 			sessionFile: serverSession.sessionFile,
-			startedAt: Date.now(),
+			startedAt: existing?.startedAt ?? Date.now(),
 			pid: process.pid,
-			attempt: 0,
+			attempt: existing?.attempt ?? 0,
 		});
 	}
 
