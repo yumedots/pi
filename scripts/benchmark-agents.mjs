@@ -311,7 +311,9 @@ async function runOnce(arm, options, runIndex, secret) {
 	const session = sessionFiles.length > 0 ? sessionSummary(sessionFiles[0]) : null;
 
 	const clientRssKb = peak.get(String(child.pid)) ?? 0;
-	const serverRssKb = serverPid ? (peak.get(String(serverPid)) ?? 0) : 0;
+	// The print mode hosts the server in the client process, so the server is the client.
+	const serverPidIsTheClient = serverPid !== undefined && String(serverPid) === String(child.pid);
+	const serverRssKb = serverPid && !serverPidIsTheClient ? (peak.get(String(serverPid)) ?? 0) : 0;
 	const modelMs = session?.userAt && session?.lastAssistantAt ? session.lastAssistantAt - session.userAt : 0;
 	const startedAt = session?.sessionStartedAt ? session.sessionStartedAt : startedAtWall;
 	const result = {
