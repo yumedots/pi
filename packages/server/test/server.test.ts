@@ -50,7 +50,7 @@ describe("the server", () => {
 		const body = (await response.json()) as { version: string; pid: number; urls: string[] };
 		expect(body.version).toBe("1.3.0");
 		expect(body.pid).toBe(process.pid);
-		expect(body.urls).toEqual([server.url]);
+		expect(body.urls[0]).toBe(server.url);
 	});
 
 	test("answers /api/session with the session list", async () => {

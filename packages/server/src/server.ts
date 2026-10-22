@@ -9,7 +9,7 @@
 
 import { randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
 	AgentSessionEvent,
@@ -64,6 +64,33 @@ export interface PiServerOptions {
 	onIdle?: () => void;
 	/** Whether the interrupted sessions are resumed on boot. */
 	resumeInterrupted?: boolean;
+}
+
+/**
+ * The addresses the server can be reached at.
+ *
+ * The loopback address comes first, then the IPv4 addresses of the machine, so a
+ * phone on the same network can pair with the server.
+ */
+function reachableUrls(hostname: string, port: number): string[] {
+	const urls: string[] = [];
+	const add = (url: string): void => {
+		if (!urls.includes(url)) urls.push(url);
+	};
+	if (hostname !== "0.0.0.0" && hostname !== "::") {
+		add(`http://${hostname}:${port}`);
+	}
+	for (const infos of Object.values(networkInterfaces())) {
+		for (const info of infos ?? []) {
+			const isIpv4 = info.family === "IPv4" || String(info.family) === "4";
+			if (!isIpv4 || info.internal) continue;
+			add(`http://${info.address}:${port}`);
+		}
+	}
+	if (urls.length === 0) {
+		add(`http://${hostname}:${port}`);
+	}
+	return urls;
 }
 
 /**
@@ -247,7 +274,7 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 		sendJson(res, 200, {
 			version,
 			pid: process.pid,
-			urls: [url],
+			urls: reachableUrls(hostname, port),
 			paths: { tmp: join(tmpdir(), "pi") },
 			capabilities: { persistentPty: false },
 		});
