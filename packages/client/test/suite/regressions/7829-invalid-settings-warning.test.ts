@@ -35,6 +35,7 @@ describe("issue #7829 invalid settings warning", () => {
 					prompt: vi.fn(async () => "handled"),
 				},
 				checkForPackageUpdates: vi.fn().mockResolvedValue([]),
+				updateServerStatus: vi.fn(async () => {}),
 				checkTmuxKeyboardSetup: vi.fn().mockResolvedValue(undefined),
 				maybeWarnAboutAnthropicSubscriptionAuth: vi.fn(),
 				getUserInput: vi.fn(() => new Promise<string>(() => {})),

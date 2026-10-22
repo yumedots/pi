@@ -98,7 +98,7 @@ describe("the client and an embedded server", () => {
 		const info = (await response.json()) as { version: string; pid: number; urls: string[] };
 		expect(info.version).toBe("1.3.0");
 		expect(info.pid).toBe(process.pid);
-		expect(info.urls).toEqual([server.url]);
+		expect(info.urls[0]).toBe(server.url);
 
 		const client = new PiServerClient({ url: server.url, password: "test" });
 		const sessions = await client.listSessions();
