@@ -36,6 +36,16 @@ const WORKSPACE = {
  * graph it is allowed to reach.
  */
 const BUDGETS = {
+	"packages/client": {
+		// The client is a renderer: it draws what the server tells it to draw. It must not
+		// load the coding agent runtime, not even a part of it: the client and the server
+		// would hold the same core twice, in two processes, and the memory of the pair
+		// would be the memory of the agent twice.
+		".": {
+			maxFiles: 220,
+			forbid: ["packages/coding-agent/src/"],
+		},
+	},
 	"packages/ai": {
 		"./models": {
 			maxFiles: 15,
