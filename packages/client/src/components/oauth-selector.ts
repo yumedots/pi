@@ -1,5 +1,5 @@
 import type { ApiKeyAuth, AuthCheck, OAuthAuth } from "@earendil-works/pi-ai";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
+import { theme } from "../client-theme.ts";
 import { MenuComponent, type MenuItem } from "./menu.ts";
 
 export type AuthSelectorProvider = {

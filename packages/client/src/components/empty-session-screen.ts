@@ -1,5 +1,5 @@
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import { type Component, type TuiMouseEvent, type TuiMouseEventResult, visibleWidth } from "@earendil-works/pi-tui";
+import { theme } from "../client-theme.ts";
 import type { Centered } from "./centered.ts";
 
 /**

@@ -1,7 +1,4 @@
 import type { Model } from "@earendil-works/pi-ai";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
-import { keyDisplayText } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import {
 	Container,
 	type Focusable,
@@ -13,6 +10,9 @@ import {
 	Spacer,
 	Text,
 } from "@earendil-works/pi-tui";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { keyDisplayText } from "../client-support/keybinding-hints.ts";
+import { theme } from "../client-theme.ts";
 import { getModelSearchText } from "../model-search.ts";
 
 // EnabledIds: null = all enabled (no filter), string[] = explicit ordered list

@@ -4,18 +4,7 @@
 
 import { homedir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
-import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent/config";
-import type {
-	PathMetadata,
-	ResolvedPaths,
-	ResolvedResource,
-} from "@earendil-works/pi-coding-agent/core/package-manager";
-import type { PackageSource, SettingsManager } from "@earendil-works/pi-coding-agent/core/settings-manager";
-import { BUILTIN_PATH_PREFIX } from "@earendil-works/pi-coding-agent/core/source-info";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
-import { keyHint, rawKeyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
-import { canonicalizePath, isLocalPath, resolvePath } from "@earendil-works/pi-coding-agent/utils/paths";
+import type { PackageSource } from "@earendil-works/pi-coding-agent/core/settings-manager";
 import type { Component, Focusable } from "@earendil-works/pi-tui";
 import { Input } from "@earendil-works/pi-tui/components/input";
 import { Spacer } from "@earendil-works/pi-tui/components/spacer";
@@ -23,6 +12,14 @@ import { getKeybindings } from "@earendil-works/pi-tui/keybindings";
 import { matchesKey } from "@earendil-works/pi-tui/keys";
 import { Container } from "@earendil-works/pi-tui/tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui/utils";
+import type { ClientSettings } from "../client-settings.ts";
+import { CONFIG_DIR_NAME } from "../client-support/config.ts";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { keyHint, rawKeyHint } from "../client-support/keybinding-hints.ts";
+import type { PathMetadata, ResolvedPaths, ResolvedResource } from "../client-support/package-manager.ts";
+import { canonicalizePath, isLocalPath, resolvePath } from "../client-support/paths.ts";
+import { BUILTIN_PATH_PREFIX } from "../client-support/source-info.ts";
+import { theme } from "../client-theme.ts";
 
 type ResourceType = "extensions" | "skills" | "prompts" | "themes";
 type ConfigWriteScope = "global" | "project";
@@ -232,7 +229,7 @@ class ResourceList implements Component, Focusable {
 	private selectedIndex = 0;
 	private searchInput: Input;
 	private maxVisible: number;
-	private settingsManager: SettingsManager;
+	private settingsManager: ClientSettings;
 	private cwd: string;
 	private agentDir: string;
 	private writeScope: ConfigWriteScope;
@@ -254,7 +251,7 @@ class ResourceList implements Component, Focusable {
 
 	constructor(
 		groupsByScope: Record<ConfigWriteScope, ResourceGroup[]>,
-		settingsManager: SettingsManager,
+		settingsManager: ClientSettings,
 		cwd: string,
 		agentDir: string,
 		terminalHeight?: number,
@@ -588,7 +585,7 @@ class ResourceList implements Component, Focusable {
 		const settings =
 			scope === "project" ? this.settingsManager.getProjectSettings() : this.settingsManager.getGlobalSettings();
 
-		const packages = [...(settings.packages ?? [])] as PackageSource[];
+		const packages = [...((settings.packages as PackageSource[] | undefined) ?? [])];
 		const pkgIndex = packages.findIndex((pkg) => {
 			const source = typeof pkg === "string" ? pkg : pkg.source;
 			return source === item.metadata.source;
@@ -702,7 +699,7 @@ class ResourceList implements Component, Focusable {
 	}
 
 	private setProjectPackageOverride(item: ResourceItem, state: ProjectOverrideState): boolean {
-		const packages = [...(this.settingsManager.getProjectSettings().packages ?? [])] as PackageSource[];
+		const packages = [...((this.settingsManager.getProjectSettings().packages as PackageSource[] | undefined) ?? [])];
 		let pkgIndex = packages.findIndex((pkg) =>
 			this.packageSourceStringMatches(
 				item.metadata.source,
@@ -833,7 +830,7 @@ class ResourceList implements Component, Focusable {
 			targetScope === "project"
 				? this.settingsManager.getProjectSettings()
 				: this.settingsManager.getGlobalSettings();
-		return (settings.packages ?? []).find((pkg) =>
+		return ((settings.packages as PackageSource[] | undefined) ?? []).find((pkg) =>
 			this.packageSourceStringMatches(
 				item.metadata.source,
 				this.getItemScope(item),
@@ -888,7 +885,7 @@ export class ConfigSelectorComponent extends Container implements Focusable {
 
 	constructor(
 		resolvedPaths: ScopedResolvedPaths,
-		settingsManager: SettingsManager,
+		settingsManager: ClientSettings,
 		cwd: string,
 		agentDir: string,
 		onClose: () => void,

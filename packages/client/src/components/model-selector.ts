@@ -1,7 +1,7 @@
 import { type Model, modelsAreEqual } from "@earendil-works/pi-ai";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { keyDisplayText } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import { getKeybindings, type Input, type TUI } from "@earendil-works/pi-tui";
+import { keyDisplayText } from "../client-support/keybinding-hints.ts";
+import { theme } from "../client-theme.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
 import type { SessionModelRuntime } from "../session-facade.ts";

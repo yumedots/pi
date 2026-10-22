@@ -1,32 +1,6 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { getSupportedThinkingLevels, type Model, type Transport } from "@earendil-works/pi-ai";
-import {
-	formatHttpIdleTimeoutMs,
-	HTTP_IDLE_TIMEOUT_CHOICES,
-} from "@earendil-works/pi-coding-agent/core/http-dispatcher";
-import { SETTINGS_DEFAULTS } from "@earendil-works/pi-coding-agent/core/settings-defaults";
-import {
-	CACHE_WARMING_MODES,
-	type CacheWarmingMode,
-	type DefaultProjectTrust,
-	type FullscreenExitOutput,
-	formatServerIdleTimeout,
-	type MermaidRenderingMode,
-	type QuietStartup,
-	SERVER_IDLE_TIMEOUT_CHOICES,
-	type SessionShareDestination,
-	type TuiMode,
-	type WarningSettings,
-} from "@earendil-works/pi-coding-agent/core/settings-manager";
-import {
-	getSettingsListTheme,
-	parseAutoThemeSetting,
-	SYSTEM_THEME_NAME,
-	type TerminalTheme,
-	theme,
-} from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
-import { keyDisplayText } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
+import type { CacheWarmingMode, WarningSettings } from "@earendil-works/pi-coding-agent/core/settings-manager";
 import {
 	type Component,
 	Container,
@@ -39,7 +13,45 @@ import {
 	Text,
 	type WheelScrollLines,
 } from "@earendil-works/pi-tui";
+import type {
+	DefaultProjectTrust,
+	FullscreenExitOutput,
+	MermaidRenderingMode,
+	QuietStartup,
+	SessionShareDestination,
+	TuiMode,
+} from "../client-settings.ts";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../client-support/http-dispatcher.ts";
+import { keyDisplayText } from "../client-support/keybinding-hints.ts";
+import { SETTINGS_DEFAULTS } from "../client-support/settings-defaults.ts";
+import {
+	getSettingsListTheme,
+	parseAutoThemeSetting,
+	SYSTEM_THEME_NAME,
+	type TerminalTheme,
+	theme,
+} from "../client-theme.ts";
 import { SelectSubmenu, SteppedSubmenu, type SteppedSubmenuStep } from "./settings-submenu.ts";
+
+/** The cache-warming profiles the settings offer. */
+export const CACHE_WARMING_MODES = ["off", "streaming", "idle"] as const satisfies readonly CacheWarmingMode[];
+
+/** The idle timeouts the settings offer for the server. */
+export const SERVER_IDLE_TIMEOUT_CHOICES = [
+	{ label: "5m", timeoutMs: 300_000 },
+	{ label: "10m", timeoutMs: 600_000 },
+	{ label: "30m", timeoutMs: 1_800_000 },
+	{ label: "1h", timeoutMs: 3_600_000 },
+	{ label: "never", timeoutMs: 0 },
+] as const;
+
+/** The label of an idle timeout. */
+export function formatServerIdleTimeout(timeoutMs: number): string {
+	const choice = SERVER_IDLE_TIMEOUT_CHOICES.find((item) => item.timeoutMs === timeoutMs);
+	if (choice) return choice.label;
+	return `${Math.round(timeoutMs / 1000)}s`;
+}
 
 const MODEL_PICKER_LAYOUT = { minPrimaryColumnWidth: 12, maxPrimaryColumnWidth: 46 };
 
@@ -78,7 +90,7 @@ export interface SettingsConfig {
 	transport: Transport;
 	sessionShareDestination: SessionShareDestination;
 	httpIdleTimeoutMs: number;
-	cacheWarmingMode: CacheWarmingMode;
+	cacheWarmingMode: string;
 	serverIdleTimeoutMs: number;
 	thinkingLevel: ThinkingLevel;
 	availableThinkingLevels: ThinkingLevel[];

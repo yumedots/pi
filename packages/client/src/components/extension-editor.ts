@@ -3,10 +3,7 @@
  * Supports Ctrl+G for external editor.
  */
 
-import type { KeybindingsManager } from "@earendil-works/pi-coding-agent/core/keybindings";
-import { getEditorTheme, theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
-import { keyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
+import type { KeybindingsManager } from "@earendil-works/pi-tui";
 import {
 	Container,
 	Editor,
@@ -17,6 +14,9 @@ import {
 	Text,
 	type TUI,
 } from "@earendil-works/pi-tui";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { keyHint } from "../client-support/keybinding-hints.ts";
+import { getEditorTheme, theme } from "../client-theme.ts";
 import { editInExternalEditor } from "../external-editor.ts";
 
 export interface ExtensionEditorOptions extends EditorOptions {

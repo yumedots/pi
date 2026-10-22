@@ -3,9 +3,6 @@ import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import * as os from "node:os";
 import type { SessionInfo, SessionListProgress } from "@earendil-works/pi-coding-agent/core/session-manager";
-import { getSelectListTheme, theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { keyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
-import { canonicalizePath as _canonicalizePath } from "@earendil-works/pi-coding-agent/utils/paths";
 import {
 	type Component,
 	Container,
@@ -16,6 +13,9 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
+import { keyHint } from "../client-support/keybinding-hints.ts";
+import { canonicalizePath as _canonicalizePath } from "../client-support/paths.ts";
+import { getSelectListTheme, theme } from "../client-theme.ts";
 import { MenuComponent, type MenuItem } from "./menu.ts";
 import { filterAndSortSessions, hasSessionName, type NameFilter, type SortMode } from "./session-selector-search.ts";
 import { ThemedText } from "./themed-text.ts";

@@ -1,10 +1,10 @@
 import type { AuthInfoLink, OAuthDeviceCodeInfo } from "@earendil-works/pi-ai";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { AuthUrlComponent } from "@earendil-works/pi-coding-agent/core/ui/auth-url";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
-import { keyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
-import { openBrowser } from "@earendil-works/pi-coding-agent/utils/open-browser";
 import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
+import { AuthUrlComponent } from "../client-support/auth-url.ts";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { keyHint } from "../client-support/keybinding-hints.ts";
+import { openBrowser } from "../client-support/open-browser.ts";
+import { theme } from "../client-theme.ts";
 
 /**
  * Login dialog component - replaces editor during OAuth login flow

@@ -3,8 +3,8 @@
  * Displays a list of string options with keyboard navigation.
  */
 
-import { keyHint, rawKeyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import { getKeybindings, type TUI } from "@earendil-works/pi-tui";
+import { keyHint, rawKeyHint } from "../client-support/keybinding-hints.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { MenuComponent, type MenuItem, type MenuOptions } from "./menu.ts";
 

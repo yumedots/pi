@@ -1,8 +1,8 @@
 import type { EntryRenderer } from "@earendil-works/pi-coding-agent/core/extensions/types";
 import type { CustomEntry } from "@earendil-works/pi-coding-agent/core/session-manager";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import type { Component } from "@earendil-works/pi-tui";
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { theme } from "../client-theme.ts";
 import { getServerRenderProvider } from "../session-facade.ts";
 
 /**
@@ -67,7 +67,11 @@ export class CustomEntryComponent extends Container {
 		let component: Component | undefined;
 		if (this.renderer) {
 			try {
-				component = this.renderer(this.entry, { expanded: this._expanded }, theme);
+				// The renderer of an extension draws with the theme it is given. The client
+				// has the theme of the server, the extension knows the theme of the coding
+				// agent: the tokens are the same, so the theme of the server is the one it
+				// gets.
+				component = this.renderer(this.entry, { expanded: this._expanded }, theme as never);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				const box = new Box(this.outputPad, 1, (text) => theme.bg("customMessageBg", text));

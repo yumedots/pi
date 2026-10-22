@@ -1,7 +1,7 @@
 import type { WorkingIndicatorOptions } from "@earendil-works/pi-coding-agent/core/extensions/index";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { keyText } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import { type Component, Loader, type TUI } from "@earendil-works/pi-tui";
+import { keyText } from "../client-support/keybinding-hints.ts";
+import { theme } from "../client-theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 
 export type StatusIndicatorKind = "working" | "retry" | "compaction" | "branchSummary";

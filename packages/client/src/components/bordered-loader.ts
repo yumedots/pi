@@ -1,7 +1,7 @@
-import type { Theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
-import { keyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import { CancellableLoader, Container, Loader, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { keyHint } from "../client-support/keybinding-hints.ts";
+import type { ThemeLike } from "../client-theme.ts";
 
 /** Loader wrapped with borders for extension UI */
 export class BorderedLoader extends Container {
@@ -9,7 +9,7 @@ export class BorderedLoader extends Container {
 	private cancellable: boolean;
 	private signalController?: AbortController;
 
-	constructor(tui: TUI, theme: Theme, message: string, options?: { cancellable?: boolean }) {
+	constructor(tui: TUI, theme: ThemeLike, message: string, options?: { cancellable?: boolean }) {
 		super();
 		this.cancellable = options?.cancellable ?? true;
 		const borderColor = (s: string) => theme.fg("border", s);

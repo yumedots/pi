@@ -1,5 +1,5 @@
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import { backgroundAnsi, foregroundAnsi, isAppleTerminalSession, rgbColor } from "@earendil-works/pi-tui";
+import { theme } from "../client-theme.ts";
 
 const CORAL = rgbColor(228, 138, 122);
 const BLUE = rgbColor(79, 142, 179);

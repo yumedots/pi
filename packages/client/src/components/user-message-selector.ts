@@ -1,6 +1,6 @@
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
 import { type Component, Container, getKeybindings, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { theme } from "../client-theme.ts";
 
 interface UserMessageItem {
 	id: string; // Entry ID in the session

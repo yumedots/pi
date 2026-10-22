@@ -2,15 +2,15 @@
  * Simple text input component for extensions.
  */
 
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
-import { keyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import type { Focusable, TUI } from "@earendil-works/pi-tui";
 import { Input } from "@earendil-works/pi-tui/components/input";
 import { Spacer } from "@earendil-works/pi-tui/components/spacer";
 import { Text } from "@earendil-works/pi-tui/components/text";
 import { getKeybindings } from "@earendil-works/pi-tui/keybindings";
 import { Container } from "@earendil-works/pi-tui/tui";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { keyHint } from "../client-support/keybinding-hints.ts";
+import { theme } from "../client-theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 
 export interface ExtensionInputOptions {

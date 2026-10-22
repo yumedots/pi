@@ -1,9 +1,9 @@
 import type { TextContent } from "@earendil-works/pi-ai";
 import type { MessageRenderer } from "@earendil-works/pi-coding-agent/core/extensions/types";
 import type { CustomMessage } from "@earendil-works/pi-coding-agent/core/messages";
-import { getMarkdownTheme, theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import type { Component } from "@earendil-works/pi-tui";
 import { Box, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";
+import { getMarkdownTheme, theme } from "../client-theme.ts";
 import { getServerRenderProvider } from "../session-facade.ts";
 
 /**
@@ -83,7 +83,7 @@ export class CustomMessageComponent extends Container {
 				const component = this.customRenderer(
 					this.message,
 					{ expanded: this._expanded, outputPad: this.outputPad },
-					theme,
+					theme as never,
 				);
 				if (component) {
 					// Custom renderer provides its own styled component

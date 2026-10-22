@@ -1,8 +1,8 @@
 import type { MarkdownTransformer } from "@earendil-works/pi-coding-agent/core/extensions/types";
 import type { MermaidRenderingMode } from "@earendil-works/pi-coding-agent/core/settings-manager";
-import type { Theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import { Marked, type Token } from "@earendil-works/pi-tui";
 import { type MermaidArt, render, type Span } from "grok-mermaid";
+import type { Theme } from "../client-theme.ts";
 
 const markdownParser = new Marked();
 

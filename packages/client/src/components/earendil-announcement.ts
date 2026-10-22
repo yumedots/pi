@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
 import { Container, Image, Spacer, Text } from "@earendil-works/pi-tui";
 import { getBundledClientAssetPath } from "../asset-path.ts";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { theme } from "../client-theme.ts";
 
 const BLOG_URL = "https://mariozechner.at/posts/2026-04-08-ive-sold-out/";
 const IMAGE_FILENAME = "clankolas.png";

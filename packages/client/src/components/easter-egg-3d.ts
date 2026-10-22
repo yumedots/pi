@@ -1,5 +1,3 @@
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { formatKeyText } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import {
 	backgroundAnsi,
 	type Color,
@@ -14,6 +12,8 @@ import {
 	type TuiMouseEventResult,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
+import { formatKeyText } from "../client-support/keybinding-hints.ts";
+import { theme } from "../client-theme.ts";
 import { ARMIN_HEIGHT, ARMIN_WIDTH, isArminPixel } from "./armin.ts";
 
 /**

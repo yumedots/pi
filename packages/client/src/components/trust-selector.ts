@@ -1,14 +1,49 @@
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import {
-	getProjectTrustOptions,
-	type ProjectTrustOption,
-	type ProjectTrustStoreEntry,
-} from "@earendil-works/pi-coding-agent/core/trust-manager";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
-import { keyHint, rawKeyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
+import { dirname } from "node:path";
+import type { ProjectTrustOption, ProjectTrustStoreEntry } from "@earendil-works/pi-coding-agent/core/trust-manager";
 import { Container, getKeybindings, Spacer, Text } from "@earendil-works/pi-tui";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { keyHint, rawKeyHint } from "../client-support/keybinding-hints.ts";
+import { canonicalizePath, resolvePath } from "../client-support/paths.ts";
+import { theme } from "../client-theme.ts";
 
 export type TrustSelection = Pick<ProjectTrustOption, "trusted" | "updates">;
+
+function normalizeCwd(cwd: string): string {
+	return canonicalizePath(resolvePath(cwd));
+}
+
+function getProjectTrustParentPath(cwd: string): string | undefined {
+	const trustPath = normalizeCwd(cwd);
+	const parentPath = dirname(trustPath);
+	return parentPath === trustPath ? undefined : parentPath;
+}
+
+/** The trust the user can give: the directory itself, its parent, or nothing. */
+function getProjectTrustOptions(cwd: string): ProjectTrustOption[] {
+	const trustPath = normalizeCwd(cwd);
+	const trustOptions: ProjectTrustOption[] = [
+		{ label: "Trust", trusted: true, updates: [{ path: trustPath, decision: true }], savedPath: trustPath },
+	];
+	const parentPath = getProjectTrustParentPath(cwd);
+	if (parentPath !== undefined) {
+		trustOptions.push({
+			label: `Trust parent folder (${parentPath})`,
+			trusted: true,
+			updates: [
+				{ path: parentPath, decision: true },
+				{ path: trustPath, decision: null },
+			],
+			savedPath: parentPath,
+		});
+	}
+	trustOptions.push({
+		label: "Do not trust",
+		trusted: false,
+		updates: [{ path: trustPath, decision: false }],
+		savedPath: trustPath,
+	});
+	return trustOptions;
+}
 
 export interface TrustSelectorOptions {
 	cwd: string;

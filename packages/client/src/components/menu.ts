@@ -1,5 +1,3 @@
-import { getSelectListTheme, theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { keyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import {
 	type Component,
 	Container,
@@ -15,6 +13,8 @@ import {
 	type TuiMouseDispatchResult,
 	type TuiMouseEvent,
 } from "@earendil-works/pi-tui";
+import { keyHint } from "../client-support/keybinding-hints.ts";
+import { getSelectListTheme, theme } from "../client-theme.ts";
 import { ThemedText } from "./themed-text.ts";
 
 export interface MenuItem<T> {

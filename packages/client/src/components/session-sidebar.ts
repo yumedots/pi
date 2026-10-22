@@ -1,4 +1,3 @@
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import {
 	type Component,
 	spinnerFrame,
@@ -6,6 +5,7 @@ import {
 	type TuiMouseEventResult,
 	truncateToWidth,
 } from "@earendil-works/pi-tui";
+import { theme } from "../client-theme.ts";
 
 /** One row of the sidebar: a session of the current directory. */
 export interface SessionSidebarRow {

@@ -1,5 +1,5 @@
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import type { Component, TUI } from "@earendil-works/pi-tui";
+import { theme } from "../client-theme.ts";
 
 /** Expected duration of a run until the session has measured one. */
 const DEFAULT_ESTIMATE_MS = 15_000;

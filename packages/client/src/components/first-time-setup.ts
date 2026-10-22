@@ -1,11 +1,11 @@
-import { APP_NAME } from "@earendil-works/pi-coding-agent/config";
-import { SYSTEM_THEME_NAME, theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
-import { keyHint, rawKeyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import { Spacer } from "@earendil-works/pi-tui/components/spacer";
 import { Text } from "@earendil-works/pi-tui/components/text";
 import { getKeybindings } from "@earendil-works/pi-tui/keybindings";
 import { Container } from "@earendil-works/pi-tui/tui";
+import { APP_NAME } from "../client-support/config.ts";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { keyHint, rawKeyHint } from "../client-support/keybinding-hints.ts";
+import { SYSTEM_THEME_NAME, theme } from "../client-theme.ts";
 
 export interface FirstTimeSetupResult {
 	theme: string;

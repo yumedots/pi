@@ -1,4 +1,3 @@
-import { getSelectListTheme, theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import {
 	type Component,
 	Container,
@@ -11,6 +10,7 @@ import {
 	Spacer,
 	Text,
 } from "@earendil-works/pi-tui";
+import { getSelectListTheme, theme } from "../client-theme.ts";
 
 const SUBMENU_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	minPrimaryColumnWidth: 12,

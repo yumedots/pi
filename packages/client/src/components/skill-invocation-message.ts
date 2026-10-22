@@ -1,6 +1,5 @@
 import type { MarkdownTransformer } from "@earendil-works/pi-coding-agent/core/extensions/types";
 import type { ParsedSkillMessage } from "@earendil-works/pi-coding-agent/core/skill-message";
-import { getMarkdownTheme, theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import {
 	Box,
 	type Component,
@@ -12,6 +11,7 @@ import {
 	Text,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
+import { getMarkdownTheme, theme } from "../client-theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 
 /** Clicks closer together than this belong to one burst (e.g. a double click). */

@@ -1,14 +1,10 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { areExperimentalFeaturesEnabled } from "@earendil-works/pi-coding-agent/core/experimental";
 import type { ContextUsage } from "@earendil-works/pi-coding-agent/core/extensions/types";
 import type { ReadonlyFooterDataProvider } from "@earendil-works/pi-coding-agent/core/footer-data-provider";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import {
-	addUsageToTotals,
-	createUsageTotals,
-	type UsageTotals,
-} from "@earendil-works/pi-coding-agent/core/usage-totals";
 import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { areExperimentalFeaturesEnabled } from "../client-support/experimental.ts";
+import { addUsageToTotals, createUsageTotals, type UsageTotals } from "../client-support/usage-totals.ts";
+import { theme } from "../client-theme.ts";
 import type { SessionFacade } from "../session-facade.ts";
 
 /**

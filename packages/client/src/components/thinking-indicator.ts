@@ -1,5 +1,5 @@
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import { Text } from "@earendil-works/pi-tui";
+import { theme } from "../client-theme.ts";
 import { spinnerFrame } from "./spinner-sign.ts";
 
 /**

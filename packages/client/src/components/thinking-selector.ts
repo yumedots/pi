@@ -1,7 +1,7 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { keyDisplayText } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import { getKeybindings } from "@earendil-works/pi-tui";
+import { keyDisplayText } from "../client-support/keybinding-hints.ts";
+import { theme } from "../client-theme.ts";
 import { MenuComponent, type MenuItem } from "./menu.ts";
 
 const LEVEL_DESCRIPTIONS: Record<ThinkingLevel, string> = {

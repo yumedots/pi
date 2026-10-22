@@ -3,6 +3,7 @@ import type {
 	ToolRenderContext,
 	ToolRenderers,
 } from "@earendil-works/pi-coding-agent/core/extensions/types";
+import type { Theme as ToolTheme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import {
 	Box,
 	type Component,
@@ -19,18 +20,23 @@ import {
 /** What this component needs from a tool: how to draw it, without executing it. */
 export type { ToolRenderers };
 
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import {
-	formatToolCallWithArgs,
-	getTextOutput as getRenderedTextOutput,
-} from "@earendil-works/pi-coding-agent/core/tools/render-utils";
-import { createAllToolRenderers } from "@earendil-works/pi-coding-agent/core/tools/renderers/index";
-import { keyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
-import { ensurePngTranscoder } from "@earendil-works/pi-coding-agent/utils/image-convert";
+import { ensurePngTranscoder } from "../client-support/image-convert.ts";
+import { keyHint } from "../client-support/keybinding-hints.ts";
+import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../client-support/render-utils.ts";
+import { createAllToolRenderers } from "../client-support/tool-renderers/index.ts";
+import { theme } from "../client-theme.ts";
 import { getServerRenderProvider, type RenderRequest, type RenderToolResult } from "../session-facade.ts";
 import { SignedRow } from "./spinner-sign.ts";
 
 const FALLBACK_PREVIEW_LINES = 10;
+
+/**
+ * The theme of the client, as the renderers of the tools expect it.
+ *
+ * The renderers of the extension API take the theme of the agent. The client draws with its
+ * own theme, which has the same shape.
+ */
+const rendererTheme = theme as unknown as ToolTheme;
 
 /**
  * The sources of the built-in renderer functions.
@@ -344,7 +350,11 @@ export class ToolExecutionComponent extends Container {
 				hasContent = true;
 			} else {
 				try {
-					const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
+					const component = callRenderer(
+						this.args,
+						rendererTheme,
+						this.getRenderContext(this.callRendererComponent),
+					);
 					this.callRendererComponent = component;
 					renderContainer.addChild(this.createCallRegion(component));
 					hasContent = true;
@@ -368,7 +378,7 @@ export class ToolExecutionComponent extends Container {
 						const component = resultRenderer(
 							{ content: this.result.content as any, details: this.result.details },
 							{ expanded: this.expanded, isPartial: this.isPartial },
-							theme,
+							rendererTheme,
 							this.getRenderContext(this.resultRendererComponent),
 						);
 						this.resultRendererComponent = component;

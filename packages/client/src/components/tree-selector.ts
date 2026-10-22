@@ -1,8 +1,4 @@
 import type { SessionTreeNode } from "@earendil-works/pi-coding-agent/core/session-manager";
-import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { formatReadLineRange } from "@earendil-works/pi-coding-agent/core/tools/render-utils";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent/core/ui/dynamic-border";
-import { formatKeyText, keyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import {
 	type Component,
 	Container,
@@ -17,6 +13,10 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
+import { DynamicBorder } from "../client-support/dynamic-border.ts";
+import { formatKeyText, keyHint } from "../client-support/keybinding-hints.ts";
+import { formatReadLineRange } from "../client-support/render-utils.ts";
+import { theme } from "../client-theme.ts";
 
 /** Gutter info: position (displayIndent where connector was) and whether to show │ */
 interface GutterInfo {
