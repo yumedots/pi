@@ -1,7 +1,6 @@
+import { openBrowser } from "@earendil-works/pi-support/open-browser";
 import type { Terminal, WheelScrollLines } from "@earendil-works/pi-tui";
 import { ProcessTerminal, type TUI, TuiAltScreen, TuiMainScreen } from "@earendil-works/pi-tui";
-import { copyToClipboard } from "./client-support/clipboard.ts";
-import { openBrowser } from "./client-support/open-browser.ts";
 import { theme } from "./client-theme.ts";
 
 export interface InteractiveTuiOptions {
@@ -34,6 +33,7 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 			wheelScrollLines: options.fullscreenWheelScrollLines ?? "auto",
 			copySelection: async (text) => {
 				try {
+					const { copyToClipboard } = await import("@earendil-works/pi-support/clipboard");
 					await copyToClipboard(text);
 					return true;
 				} catch (error) {

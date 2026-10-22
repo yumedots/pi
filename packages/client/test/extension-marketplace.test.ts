@@ -20,9 +20,9 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { type PiServer, startServer } from "@earendil-works/pi-server";
 import { type PiManifest, PiServerClient } from "@earendil-works/pi-server/client";
+import { stripAnsi } from "@earendil-works/pi-support/ansi";
 import { afterAll, afterEach, describe, expect, test } from "vitest";
 import { ClientState } from "../src/client-state.ts";
-import { stripAnsi } from "../src/client-support/ansi.ts";
 import { ManifestMismatchError } from "../src/manifest-check.ts";
 
 /** The environment variable that moves the agent directory, and with it the sessions. */

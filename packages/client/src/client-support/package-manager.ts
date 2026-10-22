@@ -13,4 +13,4 @@ export type {
 	PathMetadata,
 	ResolvedPaths,
 	ResolvedResource,
-} from "@earendil-works/pi-coding-agent/core/package-manager";
+} from "@earendil-works/pi-support/path-metadata";

@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 	getNativeClipboard: vi.fn<() => NativeClipboard | undefined>(),
 }));
 
-vi.mock("../src/utils/clipboard-command.ts", () => ({ runClipboardCommand: mocks.command }));
+vi.mock("@earendil-works/pi-support/clipboard-command", () => ({ runClipboardCommand: mocks.command }));
 vi.mock("@earendil-works/pi-tui/native-platform", () => ({ getNativeClipboard: mocks.getNativeClipboard }));
 
 function commandResult(stdout: Buffer, status = 0): Buffer | undefined {

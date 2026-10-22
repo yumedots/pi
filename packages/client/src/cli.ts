@@ -32,6 +32,7 @@ import { delimiter, dirname, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent/core/agent-session-runtime";
+import type { PiServer } from "@earendil-works/pi-server";
 import {
 	basicAuthHeader,
 	type PiManifest,
@@ -39,7 +40,7 @@ import {
 	type ServerHandshake,
 	type SessionStateSnapshot,
 } from "@earendil-works/pi-server/client";
-import type { PiServer } from "@earendil-works/pi-server";
+import { normalizePath } from "@earendil-works/pi-support/paths";
 import { ClientSettings } from "./client-settings.ts";
 import {
 	type Args,
@@ -57,7 +58,6 @@ import {
 	type SelfInstallManifest,
 	VERSION,
 } from "./client-support/config.ts";
-import { normalizePath } from "./client-support/paths.ts";
 import { setAvailableThemes, setThemeFromJson } from "./client-theme.ts";
 import { RemoteSessionFacade } from "./remote-facade.ts";
 import {
@@ -213,7 +213,7 @@ async function runPrint(parsed: Args): Promise<number> {
  */
 async function startLocalServer(agentDir: string): Promise<PiServer> {
 	const cwd = process.cwd();
-	const serverSettings = readServerSettings(cwd, agentDir);
+	const _serverSettings = readServerSettings(cwd, agentDir);
 	const password = randomBytes(16).toString("base64url");
 	const { startServer } = await import("@earendil-works/pi-server");
 	return startServer({

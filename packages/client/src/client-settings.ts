@@ -13,8 +13,8 @@ import { randomUUID } from "node:crypto";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Transport } from "@earendil-works/pi-ai";
 import type { CacheWarmingMode, WarningSettings } from "@earendil-works/pi-coding-agent/core/settings-manager";
+import { SETTINGS_DEFAULTS } from "@earendil-works/pi-support/settings-defaults";
 import type { TerminalCapabilities } from "@earendil-works/pi-tui";
-import { SETTINGS_DEFAULTS } from "./client-support/settings-defaults.ts";
 
 /** The quiet startup modes of the client. */
 export type QuietStartup = boolean | "header";

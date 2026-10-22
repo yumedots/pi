@@ -4,8 +4,8 @@
 
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Api, AuthOperationOptions, KnownProvider, Model } from "@earendil-works/pi-ai";
+import { DEFAULT_THINKING_LEVEL } from "@earendil-works/pi-support/defaults";
 import { isValidThinkingLevel } from "./args.ts";
-import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import { modelsAreEqual } from "./models.ts";
 
 /**

@@ -21,7 +21,7 @@ const clipboardMocks = vi.hoisted(() => ({
 	readClipboardText: vi.fn<() => Promise<string | null>>(),
 }));
 
-vi.mock("../src/client-support/clipboard.ts", () => clipboardMocks);
+vi.mock("@earendil-works/pi-support/clipboard", () => clipboardMocks);
 
 class RecordingTerminal extends VirtualTerminal implements Terminal {
 	readonly writes: string[] = [];

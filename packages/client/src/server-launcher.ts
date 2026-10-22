@@ -10,8 +10,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { basicAuthHeader, type ServerRegistration } from "@earendil-works/pi-server/client";
+import { SETTINGS_DEFAULTS } from "@earendil-works/pi-support/settings-defaults";
 import { CONFIG_DIR_NAME } from "./client-support/config.ts";
-import { SETTINGS_DEFAULTS } from "./client-support/settings-defaults.ts";
 
 /** How long the client waits for a freshly spawned server to answer. */
 export const SERVER_START_TIMEOUT_MS = 10_000;

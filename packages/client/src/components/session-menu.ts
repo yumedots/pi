@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import * as os from "node:os";
 import type { SessionInfo, SessionListProgress } from "@earendil-works/pi-coding-agent/core/session-manager";
+import { canonicalizePath as _canonicalizePath } from "@earendil-works/pi-support/paths";
 import {
 	type Component,
 	Container,
@@ -14,7 +15,6 @@ import {
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 import { keyHint } from "../client-support/keybinding-hints.ts";
-import { canonicalizePath as _canonicalizePath } from "../client-support/paths.ts";
 import { getSelectListTheme, theme } from "../client-theme.ts";
 import { MenuComponent, type MenuItem } from "./menu.ts";
 import { filterAndSortSessions, hasSessionName, type NameFilter, type SortMode } from "./session-selector-search.ts";

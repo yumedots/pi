@@ -1,6 +1,6 @@
 import type { ModelsRefreshResult } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent/core/model-runtime";
-import { raceWithAbortSignal } from "./client-support/abort.ts";
+import { raceWithAbortSignal } from "@earendil-works/pi-support/abort";
 
 type ModelCatalogRuntime = Pick<ModelRuntime, "refresh">;
 

@@ -13,7 +13,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { canonicalizePath, resolvePath } from "./paths.ts";
+import { canonicalizePath, resolvePath } from "@earendil-works/pi-support/paths";
 
 /** The name of the configuration directory of a project. */
 const CONFIG_DIR_NAME = ".pi";

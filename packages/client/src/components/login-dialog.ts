@@ -1,9 +1,9 @@
 import type { AuthInfoLink, OAuthDeviceCodeInfo } from "@earendil-works/pi-ai";
+import { openBrowser } from "@earendil-works/pi-support/open-browser";
 import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
 import { AuthUrlComponent } from "../client-support/auth-url.ts";
 import { DynamicBorder } from "../client-support/dynamic-border.ts";
 import { keyHint } from "../client-support/keybinding-hints.ts";
-import { openBrowser } from "../client-support/open-browser.ts";
 import { theme } from "../client-theme.ts";
 
 /**

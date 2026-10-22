@@ -1,12 +1,12 @@
 // UI Components for extensions
 
-export { type RenderDiffOptions, renderDiff } from "../client-support/diff.ts";
-export { DynamicBorder } from "../client-support/dynamic-border.ts";
-export { keyHint, keyText, rawKeyHint } from "../client-support/keybinding-hints.ts";
 export {
 	truncateToVisualLines,
 	type VisualTruncateResult,
-} from "../client-support/visual-truncate.ts";
+} from "@earendil-works/pi-support/visual-truncate";
+export { type RenderDiffOptions, renderDiff } from "../client-support/diff.ts";
+export { DynamicBorder } from "../client-support/dynamic-border.ts";
+export { keyHint, keyText, rawKeyHint } from "../client-support/keybinding-hints.ts";
 export { ArminComponent } from "./armin.ts";
 export { AssistantMessageComponent } from "./assistant-message.ts";
 export { BashExecutionComponent } from "./bash-execution.ts";

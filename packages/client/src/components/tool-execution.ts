@@ -20,9 +20,12 @@ import {
 /** What this component needs from a tool: how to draw it, without executing it. */
 export type { ToolRenderers };
 
+import {
+	formatToolCallWithArgs,
+	getTextOutput as getRenderedTextOutput,
+} from "@earendil-works/pi-support/render-utils";
 import { ensurePngTranscoder } from "../client-support/image-convert.ts";
 import { keyHint } from "../client-support/keybinding-hints.ts";
-import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../client-support/render-utils.ts";
 import { createAllToolRenderers } from "../client-support/tool-renderers/index.ts";
 import { theme } from "../client-theme.ts";
 import { getServerRenderProvider, type RenderRequest, type RenderToolResult } from "../session-facade.ts";

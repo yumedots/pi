@@ -9,13 +9,19 @@ import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type { ToolDefinition, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent/core/extensions/types";
 import type { ReadToolDetails } from "@earendil-works/pi-coding-agent/core/tools/read";
+import { formatPathRelativeToCwdOrAbsolute, resolvePath } from "@earendil-works/pi-support/paths";
+import {
+	formatReadLineRange,
+	getTextOutput,
+	renderToolPath,
+	replaceTabs,
+	str,
+} from "@earendil-works/pi-support/render-utils";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from "@earendil-works/pi-support/truncate";
 import { Text } from "@earendil-works/pi-tui/components/text";
 import { theme } from "../../client-theme.ts";
 import { getReadmePath } from "../config.ts";
 import { keyHint, keyText } from "../keybinding-hints.ts";
-import { formatPathRelativeToCwdOrAbsolute, resolvePath } from "../paths.ts";
-import { formatReadLineRange, getTextOutput, renderToolPath, replaceTabs, str } from "../render-utils.ts";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from "../truncate.ts";
 
 interface CompactReadClassification {
 	kind: "docs" | "resource" | "skill";

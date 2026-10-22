@@ -1,4 +1,4 @@
-import type { PhotonImageType } from "./photon.ts";
+import type { PhotonImage as PhotonImageType } from "@silvia-odwyer/photon-node";
 
 type Photon = typeof import("@silvia-odwyer/photon-node");
 

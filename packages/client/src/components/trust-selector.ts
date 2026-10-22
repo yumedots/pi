@@ -1,9 +1,9 @@
 import { dirname } from "node:path";
 import type { ProjectTrustOption, ProjectTrustStoreEntry } from "@earendil-works/pi-coding-agent/core/trust-manager";
+import { canonicalizePath, resolvePath } from "@earendil-works/pi-support/paths";
 import { Container, getKeybindings, Spacer, Text } from "@earendil-works/pi-tui";
 import { DynamicBorder } from "../client-support/dynamic-border.ts";
 import { keyHint, rawKeyHint } from "../client-support/keybinding-hints.ts";
-import { canonicalizePath, resolvePath } from "../client-support/paths.ts";
 import { theme } from "../client-theme.ts";
 
 export type TrustSelection = Pick<ProjectTrustOption, "trusted" | "updates">;

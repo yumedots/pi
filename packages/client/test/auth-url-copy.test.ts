@@ -9,9 +9,9 @@ import { initDarkTheme } from "./theme-fixture.ts";
 
 const { copyToClipboard } = vi.hoisted(() => ({ copyToClipboard: vi.fn(async (_text: string) => {}) }));
 
-vi.mock("../src/client-support/clipboard.ts", () => ({ copyToClipboard }));
+vi.mock("@earendil-works/pi-support/clipboard", () => ({ copyToClipboard }));
 vi.mock("@earendil-works/pi-coding-agent/utils/clipboard", () => ({ copyToClipboard }));
-vi.mock("../src/client-support/open-browser.ts", () => ({ openBrowser: vi.fn() }));
+vi.mock("@earendil-works/pi-support/open-browser", () => ({ openBrowser: vi.fn() }));
 
 const URL = `https://auth.example.invalid/authorize?${"x".repeat(300)}`;
 const CTRL_X = "\x18";

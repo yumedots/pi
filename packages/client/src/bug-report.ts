@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { getRadiusGatewayUrl, RADIUS_PROVIDER_ID } from "@earendil-works/pi-support/radius";
 import type { Container, EditorComponent, KeybindingsManager, TUI } from "@earendil-works/pi-tui";
 import { getAuthCredential } from "./client-support/auth-command.ts";
 import {
@@ -15,7 +16,6 @@ import {
 } from "./client-support/bug-report.ts";
 import { uploadBugReport } from "./client-support/bug-report-upload.ts";
 import { clearCrashLog, readCrashLog } from "./client-support/crash-log.ts";
-import { getRadiusGatewayUrl, RADIUS_PROVIDER_ID } from "./client-support/radius.ts";
 import { theme } from "./client-theme.ts";
 import { BorderedLoader } from "./components/bordered-loader.ts";
 import { ExtensionEditorComponent } from "./components/extension-editor.ts";

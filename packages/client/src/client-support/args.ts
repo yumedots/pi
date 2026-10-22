@@ -10,10 +10,10 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import { detectSupportedImageMimeTypeFromFile } from "@earendil-works/pi-support/mime";
+import { stripBom } from "@earendil-works/pi-support/text";
 import type { TuiMode } from "../client-settings.ts";
 import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR } from "./config.ts";
-import { detectSupportedImageMimeTypeFromFile } from "./mime.ts";
-import { stripBom } from "./text.ts";
 
 /** The output mode of a run. */
 export type Mode = "text" | "json" | "rpc";

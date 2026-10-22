@@ -1,7 +1,7 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { MarkdownTransformer } from "@earendil-works/pi-coding-agent/core/extensions/types";
+import { formatToolDuration } from "@earendil-works/pi-support/render-utils";
 import { Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
-import { formatToolDuration } from "../client-support/render-utils.ts";
 import { getMarkdownTheme, theme } from "../client-theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 import { ThinkingIndicator } from "./thinking-indicator.ts";

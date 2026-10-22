@@ -10,7 +10,7 @@ import { InteractiveMode } from "../../../src/interactive-mode.ts";
 
 const showModelsSelector = Reflect.get(InteractiveMode.prototype, "showModelsSelector") as (this: object) => void;
 
-function openSelector(harness: Harness, initialModels: readonly Model<Api>[]) {
+async function openSelector(harness: Harness, initialModels: readonly Model<Api>[]) {
 	let snapshot = initialModels;
 	let finishRefresh: ((result: ModelsRefreshResult) => void) | undefined;
 	let refreshSignal: AbortSignal | undefined;
@@ -54,6 +54,8 @@ function openSelector(harness: Harness, initialModels: readonly Model<Api>[]) {
 	};
 
 	showModelsSelector.call(context);
+	// The selector is loaded when it is shown, so wait for it.
+	await vi.waitFor(() => expect(selector).toBeDefined());
 	if (!selector) throw new Error("Expected scoped-model selector to open");
 	return {
 		done,
@@ -87,7 +89,7 @@ describe("issue #7153 scoped models refresh", () => {
 				{ id: "refreshed", name: "Refreshed" },
 			],
 		});
-		const refresh = openSelector(harness, [harness.models[0]]);
+		const refresh = await openSelector(harness, [harness.models[0]]);
 
 		const initial = stripAnsi(refresh.selector.render(100).join("\n"));
 		expect(initial).toContain("cached");
@@ -104,7 +106,7 @@ describe("issue #7153 scoped models refresh", () => {
 
 	it("cancels the background refresh when the selector closes", async () => {
 		harness = await createHarness({ models: [{ id: "cached", name: "Cached" }] });
-		const refresh = openSelector(harness, harness.models);
+		const refresh = await openSelector(harness, harness.models);
 
 		expect(refresh.refreshSignal).toBeDefined();
 		refresh.selector.handleInput("\x1b");

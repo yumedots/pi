@@ -34,6 +34,7 @@ function getEnv(): NodeJS.ProcessEnv {
 
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import type { Readable } from "node:stream";
+import type { PathMetadata, ResolvedPaths, ResolvedResource } from "@earendil-works/pi-support/path-metadata";
 import ignore from "ignore";
 import { minimatch } from "minimatch";
 import { gt, maxSatisfying, rcompare, satisfies, valid, validRange } from "semver";
@@ -71,26 +72,7 @@ function getNpmVersionRange(version: string | undefined): string | undefined {
 	return version ? (validRange(version) ?? undefined) : undefined;
 }
 
-export interface PathMetadata {
-	source: string;
-	scope: SourceScope;
-	origin: "package" | "top-level";
-	baseDir?: string;
-	packageRoot?: string;
-}
-
-export interface ResolvedResource {
-	path: string;
-	enabled: boolean;
-	metadata: PathMetadata;
-}
-
-export interface ResolvedPaths {
-	extensions: ResolvedResource[];
-	skills: ResolvedResource[];
-	prompts: ResolvedResource[];
-	themes: ResolvedResource[];
-}
+export type { PathMetadata, ResolvedPaths, ResolvedResource } from "@earendil-works/pi-support/path-metadata";
 
 export type MissingSourceAction = "install" | "skip" | "error";
 

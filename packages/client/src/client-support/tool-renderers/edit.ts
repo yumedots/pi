@@ -8,13 +8,13 @@
 
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent/core/extensions/types";
 import type { EditToolDetails } from "@earendil-works/pi-coding-agent/core/tools/edit";
+import { renderToolPath, str } from "@earendil-works/pi-support/render-utils";
 import { Box } from "@earendil-works/pi-tui/components/box";
 import { Spacer } from "@earendil-works/pi-tui/components/spacer";
 import { Text } from "@earendil-works/pi-tui/components/text";
 import { Container } from "@earendil-works/pi-tui/tui";
 import { theme } from "../../client-theme.ts";
 import { renderDiff } from "../diff.ts";
-import { renderToolPath, str } from "../render-utils.ts";
 
 type RenderableEditArgs = {
 	path?: string;

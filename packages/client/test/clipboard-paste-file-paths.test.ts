@@ -7,12 +7,12 @@ const mocks = vi.hoisted(() => ({
 	readClipboardText: vi.fn<() => Promise<string | null>>(),
 }));
 
-vi.mock("../src/client-support/clipboard.ts", () => ({
+vi.mock("@earendil-works/pi-support/clipboard", () => ({
 	copyToClipboard: vi.fn(),
 	readClipboardFilePaths: mocks.readClipboardFilePaths,
 	readClipboardText: mocks.readClipboardText,
 }));
-vi.mock("../src/client-support/clipboard-image.ts", () => ({
+vi.mock("../src/client-support/clipboard-image", () => ({
 	extensionForImageMimeType: () => "png",
 	readClipboardImage: mocks.readClipboardImage,
 }));

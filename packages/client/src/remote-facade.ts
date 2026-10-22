@@ -58,10 +58,10 @@ import type {
 	ServerTrustState,
 	SessionStateSnapshot,
 } from "@earendil-works/pi-server/client";
+import { normalizePath, resolvePath } from "@earendil-works/pi-support/paths";
 import type { ClientExtensionUIContext } from "./client-extension-ui.ts";
 import { ClientSettings } from "./client-settings.ts";
 import { getAgentDir } from "./client-support/config.ts";
-import { normalizePath, resolvePath } from "./client-support/paths.ts";
 import { buildContextEntries } from "./client-support/session-manager.ts";
 import { RemoteSessionConnection } from "./remote-session.ts";
 import { STATE_REFRESHING_EVENTS } from "./session-connection.ts";

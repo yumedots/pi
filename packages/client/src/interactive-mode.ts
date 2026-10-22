@@ -24,6 +24,27 @@ import type { FullscreenExitOutput, TuiMode } from "@earendil-works/pi-coding-ag
 import type { TruncationResult } from "@earendil-works/pi-coding-agent/core/tools/truncate";
 import type { ServerRegistration } from "@earendil-works/pi-server";
 import { PiServerClient, type RemoteSessionInfo } from "@earendil-works/pi-server/client";
+import {
+	CACHE_TTL_MS,
+	type CacheMiss,
+	collectCacheMisses,
+	computeCacheWaste,
+	detectCacheMiss,
+} from "@earendil-works/pi-support/cache-stats";
+import { getNewEntries, normalizeChangelogLinks, parseChangelog } from "@earendil-works/pi-support/changelog";
+import { CredentialSynchronizationError } from "@earendil-works/pi-support/credential-sync-error";
+import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "@earendil-works/pi-support/defaults";
+import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "@earendil-works/pi-support/http-dispatcher";
+import { createCompactionSummaryMessage, createCustomMessage } from "@earendil-works/pi-support/messages";
+import { RADIUS_MCP_URL, RADIUS_PROVIDER_ID } from "@earendil-works/pi-support/radius";
+import type { MissingSessionCwdError } from "@earendil-works/pi-support/session-cwd";
+import { SessionImportFileNotFoundError } from "@earendil-works/pi-support/session-import-error";
+import { killTrackedDetachedChildren } from "@earendil-works/pi-support/shell";
+import { parseSkillMessage } from "@earendil-works/pi-support/skill-message";
+import { BUILTIN_SLASH_COMMANDS, resolveBuiltinSlashAlias } from "@earendil-works/pi-support/slash-commands";
+import type { SourceInfo } from "@earendil-works/pi-support/source-info";
+import { getUsageCostBreakdown } from "@earendil-works/pi-support/usage-totals";
+import type { LatestPiRelease } from "@earendil-works/pi-support/version-check";
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
@@ -56,25 +77,9 @@ import {
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 import { spawn } from "child_process";
-import { reportBug } from "./bug-report.ts";
 import { type ChatViewport, createChatViewport } from "./chat-viewport.ts";
 import type { ClientExtensionUIContext, ClientWidgetOptions } from "./client-extension-ui.ts";
-import {
-	CACHE_TTL_MS,
-	type CacheMiss,
-	collectCacheMisses,
-	computeCacheWaste,
-	detectCacheMiss,
-} from "./client-support/cache-stats.ts";
 import { formatCacheWarmingStatus, formatCacheWarmingUsage } from "./client-support/cache-warmer.ts";
-import {
-	getChangelogPath,
-	getNewEntries,
-	normalizeChangelogLinks,
-	parseChangelog,
-} from "./client-support/changelog.ts";
-import { copyToClipboard, readClipboardFilePaths, readClipboardText } from "./client-support/clipboard.ts";
-import { extensionForImageMimeType, readClipboardImage } from "./client-support/clipboard-image.ts";
 import {
 	APP_NAME,
 	APP_TITLE,
@@ -82,47 +87,34 @@ import {
 	detectInstallChange,
 	getAgentDir,
 	getAuthPath,
+	getChangelogPath,
 	getDebugLogPath,
 	getDocsPath,
 	VERSION,
 } from "./client-support/config.ts";
 import { findExtensionStackMatches, recordCrash, takeUnnotifiedCrash } from "./client-support/crash-log.ts";
-import { CredentialSynchronizationError } from "./client-support/credential-sync-error.ts";
-import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "./client-support/defaults.ts";
 import { DynamicBorder } from "./client-support/dynamic-border.ts";
 import { FooterDataProvider } from "./client-support/footer-data-provider.ts";
-import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "./client-support/http-dispatcher.ts";
 import { formatServerIdleTimeout } from "./client-support/idle-timeout.ts";
 import { ensurePngTranscoder } from "./client-support/image-convert.ts";
 import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./client-support/keybinding-hints.ts";
 import { type AppKeybinding, KeybindingsManager } from "./client-support/keybindings.ts";
-import { addMcpServerConfig, loadMcpConfig } from "./client-support/mcp-config.ts";
-import { createCompactionSummaryMessage, createCustomMessage } from "./client-support/messages.ts";
 import {
 	defaultModelPerProvider,
 	findExactModelReferenceMatch,
 	resolveModelScopeFromModels,
 } from "./client-support/model-resolver.ts";
 import { isRetryableAssistantError } from "./client-support/models.ts";
-import { RADIUS_MCP_URL, RADIUS_PROVIDER_ID } from "./client-support/radius.ts";
-import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "./client-support/session-cwd.ts";
-import { SessionImportFileNotFoundError } from "./client-support/session-import-error.ts";
 import {
 	type SessionEntry,
 	type SessionInfo,
 	sessionEntryToContextMessages,
 	type UsageEntry,
 } from "./client-support/session-manager.ts";
-import { killTrackedDetachedChildren } from "./client-support/shell.ts";
-import { parseSkillMessage } from "./client-support/skill-message.ts";
-import { BUILTIN_SLASH_COMMANDS, resolveBuiltinSlashAlias } from "./client-support/slash-commands.ts";
-import type { SourceInfo } from "./client-support/source-info.ts";
 import { InteractiveThemeController } from "./client-support/theme-controller.ts";
 import { withBuiltInRenderers } from "./client-support/tool-renderers/index.ts";
-import { ensureTool, type ToolStatus } from "./client-support/tools-manager.ts";
+import type { ToolStatus } from "./client-support/tools-manager.ts";
 import { hasTrustRequiringProjectResources } from "./client-support/trust.ts";
-import { getUsageCostBreakdown } from "./client-support/usage-totals.ts";
-import { checkForNewPiVersion, type LatestPiRelease } from "./client-support/version-check.ts";
 import {
 	getAvailableThemes,
 	getEditorTheme,
@@ -144,14 +136,13 @@ import { CustomMessageComponent } from "./components/custom-message.ts";
 import { EarendilAnnouncementComponent } from "./components/earendil-announcement.ts";
 import { loadPiLogo3d, type PiLogo3d, playArmin3d, playPiLogo3d } from "./components/easter-egg-3d.lazy.ts";
 import { EmptySessionScreen } from "./components/empty-session-screen.ts";
-import { ExtensionEditorComponent } from "./components/extension-editor.ts";
-import { ExtensionInputComponent } from "./components/extension-input.ts";
-import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
+import type { ExtensionEditorComponent } from "./components/extension-editor.ts";
+import type { ExtensionInputComponent } from "./components/extension-input.ts";
+import type { ExtensionSelectorComponent } from "./components/extension-selector.ts";
 import { FooterComponent, formatTokens } from "./components/footer.ts";
-import { LoginDialogComponent } from "./components/login-dialog.ts";
+import type { LoginDialogComponent } from "./components/login-dialog.ts";
 import { MenuComponent, type MenuItem } from "./components/menu.ts";
 import { createMermaidMarkdownTransformer } from "./components/mermaid.ts";
-import { ModelSelectorComponent } from "./components/model-selector.ts";
 import {
 	type AuthSelectorProvider,
 	formatAuthSelectorProviderStatus,
@@ -160,12 +151,9 @@ import {
 } from "./components/oauth-selector.ts";
 import { piLogoLines, piWordmark, supportsPiLogo } from "./components/pi-logo.ts";
 import { AgentProgressBar } from "./components/progress-bar.ts";
-import { createLoginMenuSelector } from "./components/radius-login-selector.ts";
-import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
 import { ServerDrawnComponent } from "./components/server-drawn.ts";
-import { SessionMenuComponent } from "./components/session-menu.ts";
 import { SessionSidebar, type SessionSidebarRow, type SessionSidebarSelection } from "./components/session-sidebar.ts";
-import { SettingsSelectorComponent } from "./components/settings-selector.ts";
+import type { SettingsSelectorComponent } from "./components/settings-selector.ts";
 import { SkillInvocationMessageComponent } from "./components/skill-invocation-message.ts";
 import {
 	BranchSummaryStatusIndicator,
@@ -176,20 +164,15 @@ import {
 	WorkingStatusIndicator,
 } from "./components/status-indicator.ts";
 import { ThemedText } from "./components/themed-text.ts";
-import { ThinkingSelectorComponent } from "./components/thinking-selector.ts";
 import { ToolExecutionComponent } from "./components/tool-execution.ts";
-import { TreeSelectorComponent } from "./components/tree-selector.ts";
-import { TrustSelectorComponent } from "./components/trust-selector.ts";
 import { UserMessageComponent } from "./components/user-message.ts";
-import { UserMessageSelectorComponent } from "./components/user-message-selector.ts";
 import { editInExternalEditor } from "./external-editor.ts";
 import { refreshModelCatalogs } from "./model-catalog-refresh.ts";
 import { getModelSearchText } from "./model-search.ts";
-import { PairDialog, type PairingFlow, runPairingFlow } from "./pair-dialog.ts";
+import type { PairingFlow } from "./pair-dialog.ts";
 import { type BlockedStatus, ProgramStatusReporter } from "./program-status-reporter.ts";
 import { readServerRegistration } from "./server-launcher.ts";
 import type { SessionExtensionRunner, SessionFacade } from "./session-facade.ts";
-import { shareSession } from "./session-share.ts";
 import { SessionSidebarLayout } from "./session-sidebar-layout.ts";
 import { createInteractiveTui, createInteractiveTuiReference } from "./tui-renderer.ts";
 
@@ -1293,6 +1276,7 @@ export class InteractiveMode {
 		// Ensure fd and rg are available after mounting the TUI (downloads if missing, adds to PATH via getBinDir)
 		// so slow downloads do not make startup appear frozen.
 		// Both are needed: fd for autocomplete, rg for grep tool and bash commands.
+		const { ensureTool } = await import("./client-support/tools-manager.ts");
 		const [fdPath] = await Promise.all([
 			ensureTool("fd", (status) => this.showManagedToolStatus(status)),
 			ensureTool("rg", (status) => this.showManagedToolStatus(status)),
@@ -1372,11 +1356,14 @@ export class InteractiveMode {
 		}
 
 		// Start version check asynchronously
-		checkForNewPiVersion(this.version).then((newRelease) => {
-			if (newRelease) {
-				this.showNewVersionNotification(newRelease);
-			}
-		});
+		void import("@earendil-works/pi-support/version-check")
+			.then(({ checkForNewPiVersion }) => checkForNewPiVersion(this.version))
+			.then((newRelease) => {
+				if (newRelease) {
+					this.showNewVersionNotification(newRelease);
+				}
+			})
+			.catch(() => {});
 
 		// Start package update check asynchronously
 		this.checkForPackageUpdates()
@@ -2675,12 +2662,13 @@ export class InteractiveMode {
 	/**
 	 * Show a selector for extensions.
 	 */
-	private showExtensionSelector(
+	private async showExtensionSelector(
 		title: string,
 		options: string[],
 		opts?: ExtensionUIDialogOptions,
 		blocked: BlockedStatus = { kind: "question", message: title },
 	): Promise<string | undefined> {
+		const { ExtensionSelectorComponent } = await import("./components/extension-selector.ts");
 		return new Promise((resolve) => {
 			if (opts?.signal?.aborted) {
 				resolve(undefined);
@@ -2748,6 +2736,7 @@ export class InteractiveMode {
 	}
 
 	private async promptForMissingSessionCwd(error: MissingSessionCwdError): Promise<string | undefined> {
+		const { formatMissingSessionCwdPrompt } = await import("@earendil-works/pi-support/session-cwd");
 		const confirmed = await this.showExtensionConfirm(
 			"Session cwd not found",
 			formatMissingSessionCwdPrompt(error.issue),
@@ -2758,11 +2747,12 @@ export class InteractiveMode {
 	/**
 	 * Show a text input for extensions.
 	 */
-	private showExtensionInput(
+	private async showExtensionInput(
 		title: string,
 		placeholder?: string,
 		opts?: ExtensionUIDialogOptions,
 	): Promise<string | undefined> {
+		const { ExtensionInputComponent } = await import("./components/extension-input.ts");
 		return new Promise((resolve) => {
 			if (opts?.signal?.aborted) {
 				resolve(undefined);
@@ -2816,7 +2806,8 @@ export class InteractiveMode {
 	/**
 	 * Show a multi-line editor for extensions (with Ctrl+G support).
 	 */
-	private showExtensionEditor(title: string, prefill?: string): Promise<string | undefined> {
+	private async showExtensionEditor(title: string, prefill?: string): Promise<string | undefined> {
+		const { ExtensionEditorComponent } = await import("./components/extension-editor.ts");
 		return new Promise((resolve) => {
 			this.extensionEditor = new ExtensionEditorComponent(
 				this.ui,
@@ -2892,7 +2883,7 @@ export class InteractiveMode {
 					const now = Date.now();
 					if (now - this.lastEscapeTime < 500) {
 						if (action === "tree") {
-							this.showTreeSelector();
+							void this.showTreeSelector();
 						} else {
 							void this.showUserMessageSelector();
 						}
@@ -2914,7 +2905,7 @@ export class InteractiveMode {
 
 		// Global debug handler on TUI (works regardless of focus)
 		this.ui.onDebug = () => this.handleDebugCommand();
-		this.defaultEditor.onAction("app.model.select", () => this.showModelSelector());
+		this.defaultEditor.onAction("app.model.select", () => void this.showModelSelector());
 		this.defaultEditor.onAction("app.tools.expand", () => this.toggleToolOutputExpansion());
 		this.defaultEditor.onAction("app.thinking.toggle", () => this.toggleThinkingBlockVisibility());
 		this.defaultEditor.onAction("app.editor.external", () => void this.handleOpenExternalEditor());
@@ -2925,9 +2916,9 @@ export class InteractiveMode {
 		this.defaultEditor.onAction("app.message.followUp", () => this.handleFollowUp());
 		this.defaultEditor.onAction("app.message.dequeue", () => void this.handleDequeue());
 		this.defaultEditor.onAction("app.session.new", () => this.handleClearCommand());
-		this.defaultEditor.onAction("app.session.tree", () => this.showTreeSelector());
+		this.defaultEditor.onAction("app.session.tree", () => void this.showTreeSelector());
 		this.defaultEditor.onAction("app.session.fork", () => void this.showUserMessageSelector());
-		this.defaultEditor.onAction("app.session.resume", () => this.showSessionSelector());
+		this.defaultEditor.onAction("app.session.resume", () => void this.showSessionSelector());
 		this.defaultEditor.onAction("app.sidebar.toggle", () => this.toggleSessionSidebar());
 
 		this.defaultEditor.onChange = (text: string) => {
@@ -2950,6 +2941,7 @@ export class InteractiveMode {
 		const handleInput = target?.handleInput;
 		if (!target || !handleInput) return;
 		try {
+			const { readClipboardText } = await import("@earendil-works/pi-support/clipboard");
 			const text = await readClipboardText();
 			if (!text || this.renderer.getFocusedComponent() !== target) return;
 			handleInput.call(target, `\x1b[200~${text}\x1b[201~`);
@@ -2961,6 +2953,7 @@ export class InteractiveMode {
 
 	private async handleClipboardPaste(): Promise<void> {
 		try {
+			const { readClipboardFilePaths, readClipboardText } = await import("@earendil-works/pi-support/clipboard");
 			const filePaths = await readClipboardFilePaths();
 			if (filePaths) {
 				if (filePaths.some((filePath) => /\p{Cc}/u.test(filePath))) {
@@ -2978,6 +2971,7 @@ export class InteractiveMode {
 				return;
 			}
 
+			const { extensionForImageMimeType, readClipboardImage } = await import("./client-support/clipboard-image.ts");
 			const image = await readClipboardImage();
 			if (image) {
 				const tmpDir = os.tmpdir();
@@ -3016,7 +3010,7 @@ export class InteractiveMode {
 
 			// Handle commands
 			if (text === "/settings") {
-				this.showSettingsSelector();
+				void this.showSettingsSelector();
 				this.editor.setText("");
 				return;
 			}
@@ -3110,12 +3104,12 @@ export class InteractiveMode {
 				return;
 			}
 			if (text === "/tree") {
-				this.showTreeSelector();
+				void this.showTreeSelector();
 				this.editor.setText("");
 				return;
 			}
 			if (text === "/trust") {
-				this.showTrustSelector();
+				void this.showTrustSelector();
 				this.editor.setText("");
 				return;
 			}
@@ -3177,7 +3171,7 @@ export class InteractiveMode {
 				return;
 			}
 			if (text === "/resume") {
-				this.showSessionSelector();
+				void this.showSessionSelector();
 				this.editor.setText("");
 				return;
 			}
@@ -4841,7 +4835,8 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	private showSettingsSelector(): void {
+	private async showSettingsSelector(): Promise<void> {
+		const { SettingsSelectorComponent } = await import("./components/settings-selector.ts");
 		this.showSelector((done) => {
 			let selector: SettingsSelectorComponent | undefined;
 			const defaultProvider = this.settingsManager.getDefaultProvider();
@@ -5136,6 +5131,7 @@ export class InteractiveMode {
 	}
 
 	private async showThinkingSelector(): Promise<void> {
+		const { ThinkingSelectorComponent } = await import("./components/thinking-selector.ts");
 		const availableLevels = await this.facade.getAvailableThinkingLevels();
 		this.showSelector((done) => {
 			const selectLevel = (level: ThinkingLevel, persist: boolean) => {
@@ -5159,7 +5155,7 @@ export class InteractiveMode {
 
 	private async handleModelCommand(searchTerm?: string): Promise<void> {
 		if (!searchTerm) {
-			this.showModelSelector();
+			void this.showModelSelector();
 			return;
 		}
 
@@ -5177,7 +5173,7 @@ export class InteractiveMode {
 			return;
 		}
 
-		this.showModelSelector(searchTerm);
+		void this.showModelSelector(searchTerm);
 	}
 
 	private async findExactModelMatch(searchTerm: string): Promise<Model<any> | undefined> {
@@ -5271,7 +5267,8 @@ export class InteractiveMode {
 		return true;
 	}
 
-	private showTrustSelector(): void {
+	private async showTrustSelector(): Promise<void> {
+		const { TrustSelectorComponent } = await import("./components/trust-selector.ts");
 		const cwd = this.sessionManager.getCwd();
 		const savedDecision = this.facade.trust.decided ? { path: cwd, decision: this.facade.trust.trusted } : null;
 		this.showSelector((done) => {
@@ -5297,7 +5294,8 @@ export class InteractiveMode {
 		});
 	}
 
-	private showModelSelector(initialSearchInput?: string): void {
+	private async showModelSelector(initialSearchInput?: string): Promise<void> {
+		const { ModelSelectorComponent } = await import("./components/model-selector.ts");
 		this.showSelector((done) => {
 			const selectModel = async (model: Model<any>, persist: boolean) => {
 				try {
@@ -5333,7 +5331,8 @@ export class InteractiveMode {
 		});
 	}
 
-	private showModelsSelector(): void {
+	private async showModelsSelector(): Promise<void> {
+		const { ScopedModelsSelectorComponent } = await import("./components/scoped-models-selector.ts");
 		let availableModels = [...this.facade.modelRuntime.getAvailableSnapshot()];
 		let availableModelIds = new Set(availableModels.map((model) => `${model.provider}/${model.id}`));
 		const configuredPatterns = this.settingsManager.getEnabledModels();
@@ -5456,6 +5455,7 @@ export class InteractiveMode {
 	}
 
 	private async showUserMessageSelector(): Promise<void> {
+		const { UserMessageSelectorComponent } = await import("./components/user-message-selector.ts");
 		const userMessages = await this.facade.getUserMessagesForForking();
 
 		if (userMessages.length === 0) {
@@ -5514,7 +5514,8 @@ export class InteractiveMode {
 		}
 	}
 
-	private showTreeSelector(initialSelectedId?: string): void {
+	private async showTreeSelector(initialSelectedId?: string): Promise<void> {
+		const { TreeSelectorComponent } = await import("./components/tree-selector.ts");
 		const tree = this.sessionManager.getTree();
 		const realLeafId = this.sessionManager.getLeafId();
 		const initialFilterMode = this.settingsManager.getTreeFilterMode();
@@ -5555,7 +5556,7 @@ export class InteractiveMode {
 
 							if (summaryChoice === undefined) {
 								// User pressed escape - re-show tree selector with same selection
-								this.showTreeSelector(entryId);
+								void this.showTreeSelector(entryId);
 								return;
 							}
 
@@ -5611,7 +5612,7 @@ export class InteractiveMode {
 						if (result.aborted) {
 							// Summarization aborted - re-show tree selector with same selection
 							this.showStatus("Branch summarization cancelled");
-							this.showTreeSelector(entryId);
+							void this.showTreeSelector(entryId);
 							return;
 						}
 						if (result.cancelled) {
@@ -5654,6 +5655,7 @@ export class InteractiveMode {
 					return;
 				}
 				try {
+					const { copyToClipboard } = await import("@earendil-works/pi-support/clipboard");
 					await copyToClipboard(text);
 					this.showStatus("Copied selected message to clipboard");
 				} catch (error) {
@@ -5756,7 +5758,8 @@ export class InteractiveMode {
 		);
 	}
 
-	private showSessionSelector(): void {
+	private async showSessionSelector(): Promise<void> {
+		const { SessionMenuComponent } = await import("./components/session-menu.ts");
 		this.showSelector(
 			(done) => {
 				const selector = new SessionMenuComponent({
@@ -5866,7 +5869,7 @@ export class InteractiveMode {
 
 	private async handleLoginCommand(providerRef?: string): Promise<void> {
 		if (!providerRef) {
-			this.showLoginAuthTypeSelector();
+			void this.showLoginAuthTypeSelector();
 			return;
 		}
 
@@ -5879,7 +5882,7 @@ export class InteractiveMode {
 		if (providerOptions.length > 1) {
 			const providerIds = new Set(providerOptions.map((provider) => provider.id));
 			if (providerIds.size === 1) {
-				this.showLoginAuthTypeSelector(providerOptions);
+				void this.showLoginAuthTypeSelector(providerOptions);
 				return;
 			}
 		}
@@ -5894,11 +5897,13 @@ export class InteractiveMode {
 		} else if (providerOption.method?.login) {
 			await this.showApiKeyLoginDialog(providerOption.id, providerOption.name, onBack);
 		} else {
-			this.showAmbientAuthDialog(providerOption, onBack);
+			void this.showAmbientAuthDialog(providerOption, onBack);
 		}
 	}
 
-	private showLoginAuthTypeSelector(providerOptions?: AuthSelectorProvider[]): void {
+	private async showLoginAuthTypeSelector(providerOptions?: AuthSelectorProvider[]): Promise<void> {
+		const { createLoginMenuSelector } = await import("./components/radius-login-selector.ts");
+		const { ExtensionSelectorComponent } = await import("./components/extension-selector.ts");
 		// The top-level selector offers Radius directly, as its last option.
 		const radiusOption = providerOptions
 			? undefined
@@ -5942,14 +5947,17 @@ export class InteractiveMode {
 			const onSelect = (option: string) => {
 				done();
 				if (radiusOption && option === radiusLabel) {
-					void this.startProviderLogin(radiusOption, () => this.showLoginAuthTypeSelector());
+					void this.startProviderLogin(radiusOption, () => void this.showLoginAuthTypeSelector());
 					return;
 				}
 				const authType = option === subscriptionLabel ? "oauth" : "api_key";
 				if (providerOptions) {
 					const providerOption = providerOptions.find((provider) => provider.authType === authType);
 					if (providerOption) {
-						void this.startProviderLogin(providerOption, () => this.showLoginAuthTypeSelector(providerOptions));
+						void this.startProviderLogin(
+							providerOption,
+							() => void this.showLoginAuthTypeSelector(providerOptions),
+						);
 					}
 					return;
 				}
@@ -6008,7 +6016,7 @@ export class InteractiveMode {
 				() => {
 					done();
 					if (authType) {
-						this.showLoginAuthTypeSelector();
+						void this.showLoginAuthTypeSelector();
 					} else {
 						this.ui.requestRender();
 					}
@@ -6021,7 +6029,7 @@ export class InteractiveMode {
 
 	private async showOAuthSelector(mode: "login" | "logout"): Promise<void> {
 		if (mode === "login") {
-			this.showLoginAuthTypeSelector();
+			void this.showLoginAuthTypeSelector();
 			return;
 		}
 
@@ -6175,7 +6183,8 @@ export class InteractiveMode {
 			.finally(() => clearTimeout(timeout));
 	}
 
-	private showAmbientAuthDialog(providerOption: AuthSelectorProvider, onBack?: () => void): void {
+	private async showAmbientAuthDialog(providerOption: AuthSelectorProvider, onBack?: () => void): Promise<void> {
+		const { LoginDialogComponent } = await import("./components/login-dialog.ts");
 		const restoreEditor = () => {
 			this.editorContainer.clear();
 			this.editorContainer.addChild(this.editor);
@@ -6206,6 +6215,7 @@ export class InteractiveMode {
 	}
 
 	private async showApiKeyLoginDialog(providerId: string, providerName: string, onBack?: () => void): Promise<void> {
+		const { LoginDialogComponent } = await import("./components/login-dialog.ts");
 		const previousModel = this.facade.model;
 
 		const dialog = new LoginDialogComponent(
@@ -6256,11 +6266,12 @@ export class InteractiveMode {
 		}
 	}
 
-	private showAuthSelect(
+	private async showAuthSelect(
 		dialog: LoginDialogComponent,
 		prompt: Extract<AuthPrompt, { type: "select" }>,
 		providerId: string,
 	): Promise<string> {
+		const { ExtensionSelectorComponent } = await import("./components/extension-selector.ts");
 		return new Promise((resolve, reject) => {
 			const restoreDialog = () => {
 				this.editorContainer.clear();
@@ -6352,6 +6363,7 @@ export class InteractiveMode {
 	}
 
 	private async showLoginDialog(providerId: string, providerName: string, onBack?: () => void): Promise<void> {
+		const { LoginDialogComponent } = await import("./components/login-dialog.ts");
 		const previousModel = this.facade.model;
 		const dialog = new LoginDialogComponent(this.ui, providerId, (_success, _message) => {}, providerName);
 		this.editorContainer.clear();
@@ -6370,7 +6382,7 @@ export class InteractiveMode {
 			await this.loginProvider(dialog, providerId, providerName, "oauth");
 			restoreEditor();
 			await this.completeProviderAuthentication(providerId, providerName, "oauth", previousModel);
-			if (providerId === RADIUS_PROVIDER_ID) this.offerRadiusMcpServer(providerId, providerName);
+			if (providerId === RADIUS_PROVIDER_ID) await this.offerRadiusMcpServer(providerId, providerName);
 		} catch (error: unknown) {
 			restoreEditor();
 			const errorMsg = error instanceof Error ? error.message : String(error);
@@ -6390,9 +6402,11 @@ export class InteractiveMode {
 	 * Offer to point the Radius MCP server in the global mcp.json at the Radius login, adding the server
 	 * when missing. Nothing is asked when a global server already uses this login.
 	 */
-	private offerRadiusMcpServer(providerId: string, providerName: string): void {
+	private async offerRadiusMcpServer(providerId: string, providerName: string): Promise<void> {
 		const mcpPath = path.join(getAgentDir(), "mcp.json");
 		const normalizeUrl = (url: string) => url.replace(/\/+$/u, "");
+		const { addMcpServerConfig, loadMcpConfig } = await import("./client-support/mcp-config.ts");
+		const { ExtensionSelectorComponent } = await import("./components/extension-selector.ts");
 		const { servers } = loadMcpConfig({
 			agentDir: getAgentDir(),
 			cwd: this.sessionManager.getCwd(),
@@ -6595,6 +6609,7 @@ export class InteractiveMode {
 			}
 			this.showStatus(`Session imported from: ${inputPath}`);
 		} catch (error: unknown) {
+			const { MissingSessionCwdError } = await import("@earendil-works/pi-support/session-cwd");
 			if (error instanceof MissingSessionCwdError) {
 				const selectedCwd = await this.promptForMissingSessionCwd(error);
 				if (!selectedCwd) {
@@ -6618,6 +6633,7 @@ export class InteractiveMode {
 	}
 
 	private async handleShareCommand(): Promise<void> {
+		const { shareSession } = await import("./session-share.ts");
 		await shareSession({
 			session: this.facade,
 			ui: this.ui,
@@ -6629,6 +6645,7 @@ export class InteractiveMode {
 	}
 
 	private async handleBugCommand(hint: string | undefined): Promise<void> {
+		const { reportBug } = await import("./bug-report.ts");
 		await reportBug(
 			{
 				session: this.facade,
@@ -6663,6 +6680,7 @@ export class InteractiveMode {
 		}
 
 		try {
+			const { copyToClipboard } = await import("@earendil-works/pi-support/clipboard");
 			await copyToClipboard(text);
 			if (options.flashConfirmation && this.ui instanceof TuiAltScreen) {
 				this.ui.flash("Copied!");
@@ -6799,6 +6817,7 @@ export class InteractiveMode {
 		const registration = this.getServerRegistration();
 		let flow: PairingFlow;
 		try {
+			const { runPairingFlow } = await import("./pair-dialog.ts");
 			flow = await runPairingFlow({
 				url: client.serverUrl,
 				password: registration?.password,
@@ -6807,7 +6826,7 @@ export class InteractiveMode {
 			this.showError(error instanceof Error ? error.message : String(error));
 			return;
 		}
-		this.showPairDialog(flow);
+		await this.showPairDialog(flow);
 	}
 
 	/**
@@ -6816,7 +6835,8 @@ export class InteractiveMode {
 	 * The pairing code is a chat message, not an overlay: the user keeps typing while it is
 	 * on the screen, and the agent does not see it.
 	 */
-	private showPairDialog(flow: PairingFlow): void {
+	private async showPairDialog(flow: PairingFlow): Promise<void> {
+		const { PairDialog } = await import("./pair-dialog.ts");
 		const dialog = new PairDialog({
 			payloadText: flow.payloadText,
 			code: flow.code,

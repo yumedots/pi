@@ -1,3 +1,4 @@
+import { fetchWithRetry } from "@earendil-works/pi-support/management-http";
 import { type SpawnSyncReturns, spawnSync } from "child_process";
 import { chmodSync, createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "fs";
 import { arch, platform } from "os";
@@ -5,7 +6,6 @@ import { join } from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import { APP_NAME, getBinDir } from "./config.ts";
-import { fetchWithRetry } from "./management-http.ts";
 
 const TOOLS_DIR = getBinDir();
 const NETWORK_TIMEOUT_MS = 10_000;

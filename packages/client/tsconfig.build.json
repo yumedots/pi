@@ -13,6 +13,7 @@
 			"@earendil-works/pi-coding-agent/*": ["../coding-agent/dist/*.d.ts"],
 			"@earendil-works/pi-server": ["../server/dist/index.d.ts"],
 			"@earendil-works/pi-server/client": ["../server/dist/client.d.ts"],
+			"@earendil-works/pi-support/*": ["../support/dist/*.d.ts"],
 			"@earendil-works/pi-tui": ["../tui/dist/index.d.ts"],
 			"@earendil-works/pi-tui/*": ["../tui/dist/*.d.ts", "../tui/dist/components/*.d.ts"]
 		},

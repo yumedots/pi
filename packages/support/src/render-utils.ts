@@ -1,13 +1,26 @@
 import * as os from "node:os";
 import { pathToFileURL } from "node:url";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-import type { ToolRenderContext } from "@earendil-works/pi-coding-agent/core/extensions/types";
 import { getCapabilities } from "@earendil-works/pi-tui/terminal-capabilities";
 import { getImageDimensions, hyperlink, imageFallback } from "@earendil-works/pi-tui/terminal-image";
-import type { Theme } from "../client-theme.ts";
 import { stripAnsi } from "./ansi.ts";
 import { resolvePath } from "./paths.ts";
 import { sanitizeBinaryOutput } from "./shell.ts";
+import type { ToolRenderContext } from "./tool-render-context.ts";
+
+/**
+ * The theme operations the render helpers use.
+ *
+ * The coding agent and the client draw with a theme of their own, and both of them fit
+ * this shape: the helpers need the foreground color of a token and the bold style, and
+ * nothing else.
+ */
+export interface RenderTheme {
+	/** The text in the color of a token. */
+	fg(color: string, text: string): string;
+	/** The text in bold. */
+	bold(text: string): string;
+}
 
 export function shortenPath(path: unknown): string {
 	if (typeof path !== "string") return "";
@@ -95,7 +108,7 @@ const COLLAPSED_ARGS_CHARS = 100;
  * pairs on the title line, cut to {@link COLLAPSED_ARGS_CHARS}. Expanded, each is a `key: value`
  * line below the title, with strings shown raw and continuation lines indented.
  */
-export function formatToolCallWithArgs(title: string, args: unknown, theme: Theme, expanded: boolean): string {
+export function formatToolCallWithArgs(title: string, args: unknown, theme: RenderTheme, expanded: boolean): string {
 	const header = theme.fg("toolTitle", theme.bold(title));
 	if (args == null) return header;
 	const entries =
@@ -169,13 +182,13 @@ export function toolTimerText(context: ToolRenderContext<ToolTimerState>, isPart
 	return `${isPartial ? "Elapsed" : "Took"} ${formatToolDuration(endTime - state.startedAt)}`;
 }
 
-export function invalidArgText(theme: Theme): string {
+export function invalidArgText(theme: RenderTheme): string {
 	return theme.fg("error", "[invalid arg]");
 }
 
 export function renderToolPath(
 	rawPath: string | null,
-	theme: Theme,
+	theme: RenderTheme,
 	cwd: string,
 	options?: { emptyFallback?: string },
 ): string {

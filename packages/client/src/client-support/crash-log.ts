@@ -8,8 +8,8 @@
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isSyntheticPath, type SourceInfo } from "@earendil-works/pi-support/source-info";
 import { getAgentDir, VERSION } from "./config.ts";
-import { isSyntheticPath, type SourceInfo } from "./source-info.ts";
 
 export interface CrashRecord {
 	timestamp: string;

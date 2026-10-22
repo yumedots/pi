@@ -4,11 +4,11 @@
 
 import type { ToolDefinition, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent/core/extensions/types";
 import type { FindToolDetails } from "@earendil-works/pi-coding-agent/core/tools/find";
+import { getTextOutput, invalidArgText, shortenPath, str } from "@earendil-works/pi-support/render-utils";
+import { DEFAULT_MAX_BYTES, formatSize } from "@earendil-works/pi-support/truncate";
 import { Text } from "@earendil-works/pi-tui/components/text";
 import { theme } from "../../client-theme.ts";
 import { keyHint } from "../keybinding-hints.ts";
-import { getTextOutput, invalidArgText, shortenPath, str } from "../render-utils.ts";
-import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";
 
 function formatFindCall(args: { pattern: string; path?: string; limit?: number } | undefined): string {
 	const pattern = str(args?.pattern);

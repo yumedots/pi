@@ -1,5 +1,5 @@
 import type { Usage } from "@earendil-works/pi-ai/compat";
-import type { SessionEntry } from "./session-manager.ts";
+import type { SessionEntry } from "./session-entry.ts";
 
 export interface UsageTotals {
 	input: number;

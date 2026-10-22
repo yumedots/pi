@@ -5,8 +5,8 @@
  * multipart form data, with the credential of the user when there is one.
  */
 
+import { getRadiusGatewayUrl } from "@earendil-works/pi-support/radius";
 import { type BugReportBundle, bugReportFiles } from "./bug-report.ts";
-import { getRadiusGatewayUrl } from "./radius.ts";
 
 interface UploadBugReportOptions {
 	token?: string;

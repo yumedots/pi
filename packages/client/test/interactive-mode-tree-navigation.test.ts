@@ -73,7 +73,8 @@ function createTreeUI() {
 		onEscape,
 		targetId,
 		async select() {
-			expect(selector).toBeDefined();
+			// The selector is loaded when it is shown, so wait for it.
+			await vi.waitFor(() => expect(selector).toBeDefined());
 			await selector!.getTreeList().onSelect!(targetId);
 		},
 	};

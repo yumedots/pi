@@ -5,6 +5,8 @@
 import { homedir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import type { PackageSource } from "@earendil-works/pi-coding-agent/core/settings-manager";
+import { canonicalizePath, isLocalPath, resolvePath } from "@earendil-works/pi-support/paths";
+import { BUILTIN_PATH_PREFIX } from "@earendil-works/pi-support/source-info";
 import type { Component, Focusable } from "@earendil-works/pi-tui";
 import { Input } from "@earendil-works/pi-tui/components/input";
 import { Spacer } from "@earendil-works/pi-tui/components/spacer";
@@ -17,8 +19,6 @@ import { CONFIG_DIR_NAME } from "../client-support/config.ts";
 import { DynamicBorder } from "../client-support/dynamic-border.ts";
 import { keyHint, rawKeyHint } from "../client-support/keybinding-hints.ts";
 import type { PathMetadata, ResolvedPaths, ResolvedResource } from "../client-support/package-manager.ts";
-import { canonicalizePath, isLocalPath, resolvePath } from "../client-support/paths.ts";
-import { BUILTIN_PATH_PREFIX } from "../client-support/source-info.ts";
 import { theme } from "../client-theme.ts";
 
 type ResourceType = "extensions" | "skills" | "prompts" | "themes";

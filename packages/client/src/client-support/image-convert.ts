@@ -1,6 +1,6 @@
+import { applyExifOrientation } from "@earendil-works/pi-support/exif-orientation";
 import { type ImageTranscoder, setImageTranscoder } from "@earendil-works/pi-tui/components/image";
 import { getCapabilities } from "@earendil-works/pi-tui/terminal-capabilities";
-import { applyExifOrientation } from "./exif-orientation.ts";
 
 type Photon = typeof import("@silvia-odwyer/photon-node");
 

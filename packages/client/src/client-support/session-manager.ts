@@ -10,27 +10,29 @@
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { SessionEntry } from "@earendil-works/pi-coding-agent";
-import { createBranchSummaryMessage, createCompactionSummaryMessage, createCustomMessage } from "./messages.ts";
+import {
+	createBranchSummaryMessage,
+	createCompactionSummaryMessage,
+	createCustomMessage,
+} from "@earendil-works/pi-support/messages";
+import type { SessionEntry } from "@earendil-works/pi-support/session-entry";
 
 export type { SessionStats } from "@earendil-works/pi-coding-agent/core/agent-session";
+export type { FileEntry, SessionInfo, SessionTreeNode } from "@earendil-works/pi-coding-agent/core/session-manager";
 export type {
 	CompactionEntry,
 	ContextEditEntry,
 	CustomEntry,
 	CustomMessageEntry,
-	FileEntry,
 	LabelEntry,
 	ModelChangeEntry,
 	SessionEntry,
 	SessionEntryBase,
-	SessionInfo,
 	SessionInfoEntry,
 	SessionMessageEntry,
-	SessionTreeNode,
 	ThinkingLevelChangeEntry,
 	UsageEntry,
-} from "@earendil-works/pi-coding-agent/core/session-manager";
+} from "@earendil-works/pi-support/session-entry";
 
 /**
  * The messages of a session entry.

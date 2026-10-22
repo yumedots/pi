@@ -6,14 +6,20 @@
 
 import type { ToolDefinition, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent/core/extensions/types";
 import type { BashToolDetails } from "@earendil-works/pi-coding-agent/core/tools/bash";
+import {
+	getTextOutput,
+	invalidArgText,
+	startToolTimer,
+	str,
+	toolTimerText,
+} from "@earendil-works/pi-support/render-utils";
+import { DEFAULT_MAX_BYTES, formatSize } from "@earendil-works/pi-support/truncate";
+import { VisualLinePreview } from "@earendil-works/pi-support/visual-truncate";
 import { Spacer } from "@earendil-works/pi-tui/components/spacer";
 import { Text } from "@earendil-works/pi-tui/components/text";
 import { Container } from "@earendil-works/pi-tui/tui";
 import { theme } from "../../client-theme.ts";
 import { keyHint } from "../keybinding-hints.ts";
-import { getTextOutput, invalidArgText, startToolTimer, str, toolTimerText } from "../render-utils.ts";
-import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";
-import { VisualLinePreview } from "../visual-truncate.ts";
 
 const BASH_PREVIEW_LINES = 5;
 export const BASH_UPDATE_THROTTLE_MS = 100;

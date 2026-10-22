@@ -6,10 +6,10 @@
  */
 
 import type { ToolDefinition, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent/core/extensions/types";
+import { normalizeDisplayText, renderToolPath, replaceTabs, str } from "@earendil-works/pi-support/render-utils";
 import { Text } from "@earendil-works/pi-tui/components/text";
 import { theme } from "../../client-theme.ts";
 import { keyHint } from "../keybinding-hints.ts";
-import { normalizeDisplayText, renderToolPath, replaceTabs, str } from "../render-utils.ts";
 
 function trimTrailingEmptyLines(lines: string[]): string[] {
 	let end = lines.length;

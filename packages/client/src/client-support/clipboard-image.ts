@@ -1,12 +1,12 @@
+import { runClipboardCommand } from "@earendil-works/pi-support/clipboard-command";
+import { detectSupportedImageMimeType } from "@earendil-works/pi-support/mime";
+import { isWSL } from "@earendil-works/pi-support/wsl";
 import { getNativeClipboard } from "@earendil-works/pi-tui/native-platform";
 import { randomUUID } from "crypto";
 import { readFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { runClipboardCommand } from "./clipboard-command.ts";
 import { convertImageBytesToPng } from "./image-convert.ts";
-import { detectSupportedImageMimeType } from "./mime.ts";
-import { isWSL } from "./wsl.ts";
 
 export type ClipboardImage = {
 	bytes: Uint8Array;

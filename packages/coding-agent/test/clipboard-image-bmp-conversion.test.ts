@@ -43,7 +43,7 @@ function createTinyBmp1x1Red24bpp(): Uint8Array {
 }
 
 // Mock wl-paste to return BMP
-vi.mock("../src/utils/clipboard-command.ts", () => ({
+vi.mock("@earendil-works/pi-support/clipboard-command", () => ({
 	runClipboardCommand: vi.fn(async (command: string, args: string[]) => {
 		if (command === "wl-paste" && args.includes("--list-types")) return Buffer.from("image/bmp\n");
 		if (command === "wl-paste" && args.includes("image/bmp")) return Buffer.from(createTinyBmp1x1Red24bpp());

@@ -3,7 +3,6 @@ import { Text } from "@earendil-works/pi-tui/components/text";
 import { hyperlink } from "@earendil-works/pi-tui/terminal-image";
 import { Container } from "@earendil-works/pi-tui/tui";
 import { theme } from "../client-theme.ts";
-import { copyToClipboard } from "./clipboard.ts";
 import { keyHint } from "./keybinding-hints.ts";
 
 /**
@@ -33,6 +32,7 @@ export class AuthUrlComponent extends Container {
 
 	async copy(): Promise<void> {
 		try {
+			const { copyToClipboard } = await import("@earendil-works/pi-support/clipboard");
 			await copyToClipboard(this.url);
 			this.setHint(theme.fg("success", "Copied URL to clipboard"));
 		} catch (error) {

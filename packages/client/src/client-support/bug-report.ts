@@ -16,10 +16,10 @@ import * as os from "node:os";
 import { crc32, deflateRawSync } from "node:zlib";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model, Provider } from "@earendil-works/pi-ai";
+import { getPiUserAgent } from "@earendil-works/pi-support/pi-user-agent";
 import type { ServerSettings } from "../client-settings.ts";
 import { VERSION } from "./config.ts";
 import type { CrashRecord } from "./crash-log.ts";
-import { getPiUserAgent } from "./pi-user-agent.ts";
 import type { SessionEntry } from "./session-manager.ts";
 
 export const BUG_REPORT_CUSTOM_ENTRY_TYPE = "pi.bug-report";
