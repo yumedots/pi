@@ -7,10 +7,12 @@
  * native routes the pi client uses.
  */
 
+import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
+import { accessSync, constants, statSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import { networkInterfaces, tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import type {
 	AgentSessionEvent,
 	CreateAgentSessionRuntimeFactory,
@@ -34,7 +36,13 @@ import { SessionRegistry } from "./session-registry.ts";
 
 /** The options of {@link startServer}. */
 export interface PiServerOptions {
-	/** The interface to bind. Defaults to `127.0.0.1`. */
+	/**
+	 * The interface to bind. Defaults to `0.0.0.0`, which listens on every interface.
+	 *
+	 * The server is protected by a password, so listening on every interface is what
+	 * makes it reachable from a phone on the same network. A server that only listens on
+	 * the loopback address is reachable from the machine it runs on and nowhere else.
+	 */
 	hostname?: string;
 	/** The port to bind. `0` asks the OS for a free port. */
 	port?: number;
@@ -64,33 +72,269 @@ export interface PiServerOptions {
 	onIdle?: () => void;
 	/** Whether the interrupted sessions are resumed on boot. */
 	resumeInterrupted?: boolean;
+	/**
+	 * Whether the server opens a tunnel to the internet.
+	 *
+	 * The tunnel needs the opentunnel binary, which is not part of pi: when it is
+	 * missing the server says so and runs without a tunnel.
+	 */
+	remote?: boolean;
+	/** The opentunnel profile that holds the tunnel. */
+	tunnelProfile?: string;
+	/** The route name the server claims on the tunnel. */
+	tunnelName?: string;
+}
+
+/**
+ * Whether the hostname stands for every interface of the machine.
+ */
+function isWildcardHostname(hostname: string): boolean {
+	return hostname === "0.0.0.0" || hostname === "::" || hostname === "[::]";
+}
+
+/**
+ * Whether an interface is a virtual one that a phone cannot reach.
+ *
+ * The addresses of a docker bridge, a virtual machine or a tunnel are on the machine but
+ * not on the network the phone is on, so advertising them would send the phone to an
+ * address that does not answer.
+ */
+function isVirtualInterface(name: string): boolean {
+	return /^(docker|br-|bridge|veth|virbr|vmnet|vboxnet|utun|tun|tap|wg|zt)/i.test(name);
 }
 
 /**
  * The addresses the server can be reached at.
  *
- * The loopback address comes first, then the IPv4 addresses of the machine, so a
- * phone on the same network can pair with the server.
+ * A server that binds every interface listens on the loopback address and on every
+ * address of the machine, so all of them are advertised. A server that binds a single
+ * interface only listens there, so only that address is advertised: an address the
+ * server does not listen on is worse than no address at all, because the client tries
+ * it, waits for a timeout and reports the server as unreachable.
  */
 function reachableUrls(hostname: string, port: number): string[] {
 	const urls: string[] = [];
 	const add = (url: string): void => {
 		if (!urls.includes(url)) urls.push(url);
 	};
-	if (hostname !== "0.0.0.0" && hostname !== "::") {
+	if (!isWildcardHostname(hostname)) {
 		add(`http://${hostname}:${port}`);
+		return urls;
 	}
-	for (const infos of Object.values(networkInterfaces())) {
+	add(`http://127.0.0.1:${port}`);
+	for (const [name, infos] of Object.entries(networkInterfaces())) {
+		if (isVirtualInterface(name)) continue;
 		for (const info of infos ?? []) {
 			const isIpv4 = info.family === "IPv4" || String(info.family) === "4";
 			if (!isIpv4 || info.internal) continue;
 			add(`http://${info.address}:${port}`);
 		}
 	}
-	if (urls.length === 0) {
-		add(`http://${hostname}:${port}`);
-	}
 	return urls;
+}
+
+/**
+ * The url the server is reached at from the machine it runs on.
+ *
+ * A server that binds every interface has no address of its own, so the loopback
+ * address stands in for it.
+ */
+function localUrl(hostname: string, port: number): string {
+	if (isWildcardHostname(hostname)) return `http://127.0.0.1:${port}`;
+	return `http://${hostname}:${port}`;
+}
+
+/** The binary that opens the tunnel to the internet. */
+export const OPENTUNNEL_BINARY = "opentunnel";
+
+/** How long the tunnel may take to come up before the server gives up on it. */
+export const TUNNEL_TIMEOUT_MS = 120_000;
+
+/**
+ * A route name for the tunnel.
+ *
+ * The name is random, so the address of the tunnel cannot be guessed: the tunnel
+ * hostname shows up in public certificate logs. The route is given back when the server
+ * stops.
+ */
+function randomRouteName(): string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+	const bytes = randomBytes(16);
+	let name = "";
+	for (const byte of bytes) name += alphabet[byte % alphabet.length]!;
+	return name;
+}
+
+/** The options of {@link startRemoteTunnel}. */
+export interface RemoteTunnelOptions {
+	/** The port the tunnel forwards to. */
+	port: number;
+	/** The host the tunnel forwards to. Defaults to the loopback address. */
+	host?: string;
+	/** The route name on the tunnel. */
+	name?: string;
+	/** The opentunnel profile that holds the tunnel. */
+	profile?: string;
+	/** How long the tunnel may take to come up. */
+	timeoutMs?: number;
+}
+
+/** What the tunnel did. */
+export interface RemoteTunnelResult {
+	/** Whether the tunnel came up. */
+	ok: boolean;
+	/** The public url of the tunnel. */
+	url?: string;
+	/** Why the tunnel did not come up. */
+	reason?: string;
+}
+
+/**
+ * Find a binary on the path.
+ *
+ * @returns The path of the binary, or `undefined` when it is not installed.
+ */
+function findExecutable(name: string): string | undefined {
+	const path = process.env.PATH;
+	if (!path) return undefined;
+	const extensions = process.platform === "win32" ? [".exe", ".cmd", ".bat", ""] : [""];
+	for (const directory of path.split(delimiter)) {
+		if (!directory) continue;
+		for (const extension of extensions) {
+			const candidate = join(directory, `${name}${extension}`);
+			try {
+				if (!statSync(candidate).isFile()) continue;
+				accessSync(candidate, constants.X_OK);
+				return candidate;
+			} catch {}
+		}
+	}
+	return undefined;
+}
+
+/** The output of a finished command. */
+interface CommandResult {
+	/** The exit code of the command. */
+	code: number | null;
+	/** Everything the command wrote to stdout. */
+	stdout: string;
+	/** Everything the command wrote to stderr. */
+	stderr: string;
+	/** Whether the command had to be killed. */
+	timedOut: boolean;
+}
+
+/**
+ * Run a command and collect its output.
+ *
+ * The command is killed when it takes longer than the timeout.
+ */
+function runCommand(command: string, args: string[], timeoutMs: number): Promise<CommandResult> {
+	const { promise, resolve } = Promise.withResolvers<CommandResult>();
+	const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+	let stdout = "";
+	let stderr = "";
+	let timedOut = false;
+	child.stdout?.setEncoding("utf8");
+	child.stderr?.setEncoding("utf8");
+	child.stdout?.on("data", (chunk: string) => {
+		stdout += chunk;
+	});
+	child.stderr?.on("data", (chunk: string) => {
+		stderr += chunk;
+	});
+	const timer = setTimeout(() => {
+		timedOut = true;
+		child.kill("SIGTERM");
+	}, timeoutMs);
+	timer.unref?.();
+	child.on("error", (error: Error) => {
+		clearTimeout(timer);
+		resolve({ code: null, stdout, stderr: `${stderr}${error.message}`, timedOut });
+	});
+	child.on("close", (code: number | null) => {
+		clearTimeout(timer);
+		resolve({ code, stdout, stderr, timedOut });
+	});
+	return promise;
+}
+
+/**
+ * The tunnel url in the output of the tunnel command.
+ *
+ * The command prints the route it added and the public url of the route on separate
+ * lines, so the last url it printed is the one to use.
+ */
+function tunnelUrlFrom(stdout: string): string | undefined {
+	const urls = stdout
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.startsWith("https://"));
+	return urls[urls.length - 1];
+}
+
+/**
+ * Open a tunnel to the server through opentunnel.
+ *
+ * The tunnel binary is not part of pi: the user installs it. When it is missing the
+ * server says so and runs without a tunnel.
+ *
+ * @returns What the tunnel did.
+ */
+export async function startRemoteTunnel(options: RemoteTunnelOptions): Promise<RemoteTunnelResult> {
+	const binary = findExecutable(OPENTUNNEL_BINARY);
+	if (!binary) {
+		return {
+			ok: false,
+			reason: `the ${OPENTUNNEL_BINARY} binary was not found on the PATH; install it with "curl -fsSL https://opentunnel.xyz/install | sh"`,
+		};
+	}
+	const host = options.host ?? "127.0.0.1";
+	const name = options.name ?? randomRouteName();
+	const args = [
+		...(options.profile ? ["--profile", options.profile] : []),
+		"route",
+		"add",
+		`${host}:${options.port}`,
+		"--name",
+		name,
+	];
+	const result = await runCommand(binary, args, options.timeoutMs ?? TUNNEL_TIMEOUT_MS);
+	if (result.timedOut) {
+		return { ok: false, reason: `the ${OPENTUNNEL_BINARY} command did not finish in time` };
+	}
+	if (result.code !== 0) {
+		const message =
+			(result.stderr.trim() || result.stdout.trim() || "it failed without a message").split("\n")[0] ?? "";
+		return { ok: false, reason: `the ${OPENTUNNEL_BINARY} command failed: ${message}` };
+	}
+	const url = tunnelUrlFrom(result.stdout);
+	if (!url) {
+		return { ok: false, reason: `the ${OPENTUNNEL_BINARY} command did not report a tunnel url` };
+	}
+	return { ok: true, url };
+}
+
+/**
+ * Give the tunnel route back to the user.
+ *
+ * The route is only removed when it still points at this server, so a server that took
+ * over the route of another one does not cut it off.
+ */
+async function removeRemoteRoute(options: {
+	host: string;
+	port: number;
+	name: string;
+	profile?: string;
+}): Promise<void> {
+	const binary = findExecutable(OPENTUNNEL_BINARY);
+	if (!binary) return;
+	const prefix = options.profile ? ["--profile", options.profile] : [];
+	const target = `${options.host}:${options.port}`;
+	const list = await runCommand(binary, [...prefix, "route", "list"], 5_000);
+	if (list.code !== 0) return;
+	if (!list.stdout.includes(target)) return;
+	await runCommand(binary, [...prefix, "route", "remove", options.name], 5_000);
 }
 
 /**
@@ -122,6 +366,8 @@ class OpencodeEventStream {
 export interface PiServer {
 	/** The base URL of the server. */
 	readonly url: string;
+	/** The addresses the server can be reached at. */
+	readonly urls: readonly string[];
 	/** The port the server listens on. */
 	readonly port: number;
 	/** The process id of the server. */
@@ -136,6 +382,8 @@ export interface PiServer {
 	readonly router: Router;
 	/** The number of connected clients. */
 	readonly connectedClients: number;
+	/** What the remote tunnel did, when one was asked for. */
+	readonly tunnel: RemoteTunnelResult | undefined;
 	/** Stop the server and release everything. */
 	close(): Promise<void>;
 }
@@ -144,12 +392,14 @@ export interface PiServer {
  * Start the server.
  */
 export async function startServer(options: PiServerOptions = {}): Promise<PiServer> {
-	const hostname = options.hostname ?? "127.0.0.1";
-	const requestedPort = options.port ?? 4096;
-	const password = options.password ?? randomBytes(24).toString("hex");
 	const agentDir = options.agentDir ?? getAgentDir();
 	const version = options.version ?? "1.3.0";
 	const cwd = options.cwd ?? process.cwd();
+	const settingsManager = SettingsManager.create(cwd, agentDir);
+	// The settings decide which interface the server listens on.
+	const hostname = options.hostname || settingsManager.getServerHostname();
+	const requestedPort = options.port ?? 4096;
+	const password = options.password ?? randomBytes(24).toString("hex");
 
 	const id = randomUUID();
 	const feed = new EventFeed();
@@ -158,13 +408,21 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 	const sseConnections = new Set<SseConnection>();
 	const pendingExtensionUi = new Map<string, (response: RpcExtensionUIResponse) => void>();
 	const sessionEventListeners = new Map<string, Set<(event: unknown) => void>>();
+	// The addresses the server advertises. They are filled in once the server has a
+	// port, and the tunnel adds its url to them when it comes up.
+	const advertisedUrls: string[] = [];
+	// What the remote tunnel did, when one was asked for.
+	let tunnel: RemoteTunnelResult | undefined;
+	// The host the tunnel forwards to.
+	const tunnelHost = isWildcardHostname(hostname) ? "127.0.0.1" : hostname;
+	const tunnelName = options.tunnelName ?? randomRouteName();
 
 	const registry =
 		options.registry ??
 		new SessionRegistry({
 			agentDir,
 			createRuntime: options.createRuntime ?? (() => Promise.reject(new Error("no runtime factory configured"))),
-			settingsManager: SettingsManager.create(cwd, agentDir),
+			settingsManager,
 			onEvent: (sessionId, event) => {
 				publishEvent(sessionId, event);
 			},
@@ -274,7 +532,7 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 		sendJson(res, 200, {
 			version,
 			pid: process.pid,
-			urls: reachableUrls(hostname, port),
+			urls: [...advertisedUrls],
 			paths: { tmp: join(tmpdir(), "pi") },
 			capabilities: { persistentPty: false },
 		});
@@ -338,6 +596,14 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 			httpServer.close(() => resolve());
 			httpServer.closeAllConnections?.();
 		});
+		if (tunnel?.ok) {
+			await removeRemoteRoute({
+				host: tunnelHost,
+				port,
+				name: tunnelName,
+				profile: options.tunnelProfile,
+			});
+		}
 	};
 
 	const idleTimeoutMs = options.idleTimeoutMs ?? 0;
@@ -377,16 +643,30 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 		throw new Error("The server did not bind to a TCP port");
 	}
 	const port = address.port;
-	const url = `http://${hostname}:${port}`;
+	const url = localUrl(hostname, port);
+	advertisedUrls.push(...reachableUrls(hostname, port));
+
+	if (options.remote) {
+		tunnel = await startRemoteTunnel({
+			port,
+			host: tunnelHost,
+			name: tunnelName,
+			profile: options.tunnelProfile,
+		});
+		if (tunnel.ok && tunnel.url) advertisedUrls.push(tunnel.url);
+	}
 
 	if (options.resumeInterrupted && !options.registry) {
 		await resumeInterruptedSessions(registry, agentDir);
 	}
-	writeRegistration(agentDir, { id, version, url, pid: process.pid, password });
+	writeRegistration(agentDir, { id, version, url, pid: process.pid, password, urls: [...advertisedUrls] });
 	watchdog.start();
 
 	return {
 		url,
+		get urls(): readonly string[] {
+			return [...advertisedUrls];
+		},
 		port,
 		pid: process.pid,
 		password,
@@ -396,6 +676,7 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 		get connectedClients(): number {
 			return ctx.connectedClients();
 		},
+		tunnel,
 		close: closeServer,
 	};
 }

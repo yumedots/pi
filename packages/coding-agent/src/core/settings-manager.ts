@@ -1006,9 +1006,15 @@ export class SettingsManager {
 		this.save();
 	}
 
-	/** The interface the server binds. */
+	/**
+	 * The interface the server binds.
+	 *
+	 * The default listens on every interface, so a device on the network can reach the
+	 * server; the server is protected by a password.
+	 */
 	getServerHostname(): string {
-		return this.settings.server?.hostname ?? SETTINGS_DEFAULTS.server.hostname;
+		const value = this.settings.server?.hostname;
+		return typeof value === "string" && value.trim().length > 0 ? value.trim() : SETTINGS_DEFAULTS.server.hostname;
 	}
 
 	setServerHostname(host: string): void {

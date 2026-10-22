@@ -70,6 +70,6 @@ export const SETTINGS_DEFAULTS = {
 	server: {
 		idleTimeoutMs: 600000,
 		port: 4096,
-		hostname: "127.0.0.1",
+		hostname: "0.0.0.0",
 	},
 } as const;

@@ -186,7 +186,8 @@ const ServerSettingsSchema = Type.Object({
 	),
 	hostname: Type.Optional(
 		Type.String({
-			description: "The interface the server binds.",
+			description:
+				"The interface the server binds. 0.0.0.0 listens on every interface, so a device on the network can reach the server; 127.0.0.1 keeps it on this machine.",
 			default: SETTINGS_DEFAULTS.server.hostname,
 		}),
 	),

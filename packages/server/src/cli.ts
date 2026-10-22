@@ -25,6 +25,7 @@ interface CliOptions {
 	password?: string;
 	idleTimeoutMs?: number;
 	cwd?: string;
+	remote: boolean;
 	help: boolean;
 }
 
@@ -32,7 +33,7 @@ interface CliOptions {
  * Parse the command line.
  */
 export function parseCliOptions(args: string[]): CliOptions {
-	const options: CliOptions = { help: false };
+	const options: CliOptions = { help: false, remote: false };
 	for (let index = 0; index < args.length; index++) {
 		const arg = args[index]!;
 		switch (arg) {
@@ -58,6 +59,9 @@ export function parseCliOptions(args: string[]): CliOptions {
 			case "--cwd":
 				options.cwd = args[++index];
 				break;
+			case "--remote":
+				options.remote = true;
+				break;
 			default:
 				break;
 		}
@@ -68,14 +72,22 @@ export function parseCliOptions(args: string[]): CliOptions {
 const USAGE = `Usage: pi-server [options]
 
 Options:
-  --hostname <host>     The interface to bind (default 127.0.0.1)
+  --hostname <host>     The interface to bind (default 0.0.0.0, which listens on every interface)
   --port <port>         The port to bind (default 4096, 0 picks a free port)
   --agent-dir <dir>     The agent directory (default the pi agent directory)
   --password <secret>   The password clients authenticate with (default: generated)
   --idle-timeout-ms <ms> How long the server stays up without a connected client (default 600000, 0 disables it)
   --cwd <dir>          The working directory of the server
+  --remote             Expose the server to the internet through an opentunnel tunnel
   -h, --help            Show this help
 `;
+
+/**
+ * Whether a hostname is the loopback address of the machine.
+ */
+function isLoopbackHostname(hostname: string): boolean {
+	return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+}
 
 /**
  * Run the server CLI.
@@ -114,8 +126,9 @@ export async function runCli(args: string[] = process.argv.slice(2)): Promise<vo
 		}),
 	});
 
+	const hostname = options.hostname || settingsManager.getServerHostname();
 	const server = await startServer({
-		hostname: options.hostname,
+		hostname,
 		port: options.port,
 		password,
 		agentDir,
@@ -123,6 +136,7 @@ export async function runCli(args: string[] = process.argv.slice(2)): Promise<vo
 		createRuntime,
 		// A server that starts after a crash picks the interrupted work up again.
 		resumeInterrupted: true,
+		remote: options.remote,
 		idleTimeoutMs: options.idleTimeoutMs ?? settingsManager.getServerIdleTimeoutMs(),
 		onIdle: () => {
 			process.exit(0);
@@ -131,6 +145,23 @@ export async function runCli(args: string[] = process.argv.slice(2)): Promise<vo
 
 	console.log(`server listening on ${server.url}`);
 	console.log(`server password ${password}`);
+	for (const url of server.urls) {
+		if (url === server.url) continue;
+		console.log(`server address ${url}`);
+	}
+	if (server.tunnel) {
+		if (server.tunnel.ok) {
+			console.log(`server tunnel ${server.tunnel.url}`);
+		} else {
+			console.log(`server tunnel unavailable: ${server.tunnel.reason ?? "it did not come up"}`);
+		}
+	}
+	// A server that only listens on the loopback address is not reachable from a
+	// device on the network, so it says so instead of leaving the user to guess.
+	if (isLoopbackHostname(hostname)) {
+		console.log("the server only listens on the loopback address, so no other device can reach it.");
+		console.log("start it with --hostname 0.0.0.0 to pair a phone.");
+	}
 
 	let closing = false;
 	const shutdown = () => {

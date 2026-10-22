@@ -2,7 +2,8 @@
  * The registration file.
  *
  * A client finds a running server through `<agentDir>/server.json`. The file names the
- * server, its URL, its pid and its password, so a client can probe it and stop it.
+ * server, its URL, the addresses it can be reached at, its pid and its password, so a
+ * client can probe it, pair with it and stop it.
  */
 
 import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -16,6 +17,8 @@ export interface ServerRegistration {
 	version: string;
 	/** The base URL of the server. */
 	url: string;
+	/** The addresses the server can be reached at. */
+	urls?: string[];
 	/** The process id of the server. */
 	pid: number;
 	/** The password clients authenticate with. */
