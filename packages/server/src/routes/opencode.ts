@@ -7,10 +7,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { rmSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import type { ServerResponse } from "node:http";
+import { join } from "node:path";
 import {
 	BUILTIN_SLASH_COMMANDS,
+	CURRENT_SESSION_VERSION,
+	ModelRuntime,
 	type RpcResponse,
 	type SessionEntry,
 	SessionManager,
@@ -30,6 +33,23 @@ import {
 	toProviderInfo,
 	toSessionInfo,
 } from "./opencode-shapes.ts";
+
+/**
+ * The model runtime of the server's own location.
+ *
+ * The server builds one for its agent directory, the same way the runtime factory builds
+ * the runtime of a session. A server that already has one hands it over, so the catalog
+ * of the location and the catalog of its sessions come from the same place.
+ */
+const locationRuntimes = new WeakMap<ServerContext, ModelRuntime>();
+const pendingLocationRuntimes = new WeakMap<ServerContext, Promise<ModelRuntime>>();
+
+/**
+ * Give the server the model runtime of its own location.
+ */
+export function setLocationModelRuntime(ctx: ServerContext, runtime: ModelRuntime): void {
+	locationRuntimes.set(ctx, runtime);
+}
 
 /**
  * Register the opencode-compatible routes.
@@ -57,11 +77,18 @@ export function registerOpencodeRoutes(router: Router, ctx: ServerContext): void
 
 	router.add("POST", "/api/session", async (route) => {
 		const body = await readJson(route);
-		const directory = stringField(body, "directory") ?? ctx.cwd;
+		const directory = sessionDirectory(body) ?? ctx.cwd;
 		const title = stringField(body, "title");
+		const id = stringField(body, "id");
+		const reference = modelRef(body);
 		try {
-			const session = await ctx.registry.create(directory);
+			const model = reference ? await findModel(ctx, reference) : undefined;
+			if (reference && !model) {
+				throw new Error(`The model ${reference.providerID}/${reference.id} is not available on this server`);
+			}
+			const session = await createSession(ctx, directory, id);
 			if (title) session.runtime.session.setSessionName(title);
+			if (model) await applyModel(session, model);
 			sendJson(route.res, 200, { data: toSessionInfo(await summaryOf(ctx, session.id)) });
 		} catch (error) {
 			sendError(route.res, 400, errorTag(error), errorMessage(error));
@@ -275,6 +302,24 @@ async function listModels(ctx: ServerContext): Promise<OpencodeModelInfo[]> {
 	}
 }
 
+async function locationRuntime(ctx: ServerContext): Promise<ModelRuntime | undefined> {
+	const known = locationRuntimes.get(ctx);
+	if (known) return known;
+	let pending = pendingLocationRuntimes.get(ctx);
+	if (!pending) {
+		pending = ModelRuntime.create({
+			authPath: join(ctx.agentDir, "auth.json"),
+			modelsPath: join(ctx.agentDir, "models.json"),
+		});
+		pendingLocationRuntimes.set(ctx, pending);
+	}
+	try {
+		return await pending;
+	} catch {
+		return undefined;
+	}
+}
+
 /**
  * The entries of a session file.
  */
@@ -371,6 +416,112 @@ async function lookupSession(ctx: ServerContext, id: string): Promise<ServerSess
 	const path = await findSessionPath(id);
 	if (!path) return undefined;
 	return ctx.registry.open(path);
+}
+
+/**
+ * Create a session, with the id the client asked for when it sent one.
+ *
+ * The opencode clients name the session themselves, so the server has to keep that id.
+ * pi generates its own ids, so the session file is written with the client's id before
+ * the registry opens it.
+ */
+async function createSession(ctx: ServerContext, directory: string, id: string | undefined): Promise<ServerSession> {
+	if (!id) return ctx.registry.create(directory);
+	const open = ctx.registry.get(id);
+	if (open) return open;
+	const existing = SessionManager.findById(directory, id);
+	if (existing) return ctx.registry.open(existing);
+	const manager = SessionManager.create(directory, undefined, { id });
+	const file = manager.getSessionFile();
+	if (!file) throw new Error("The session has no file to open");
+	writeFileSync(
+		file,
+		`${JSON.stringify({
+			type: "session",
+			version: CURRENT_SESSION_VERSION,
+			id,
+			timestamp: new Date().toISOString(),
+			cwd: manager.getCwd(),
+		})}\n`,
+		{ flag: "wx" },
+	);
+	return ctx.registry.open(file);
+}
+
+/**
+ * A model of the catalog: the provider it belongs to and its id.
+ */
+interface CatalogModel {
+	provider: string;
+	id: string;
+}
+
+/**
+ * The model a reference points at.
+ *
+ * The opencode clients send a model reference: the catalog id of the model and the
+ * provider it belongs to. The catalog id of pi is `provider/model`, the model id alone
+ * is accepted as well.
+ */
+async function findModel(
+	ctx: ServerContext,
+	reference: { id: string; providerID: string },
+): Promise<CatalogModel | undefined> {
+	const session = [...ctx.registry.sessions.values()][0];
+	const runtime = session?.runtime.session.modelRuntime ?? (await locationRuntime(ctx));
+	if (!runtime) return undefined;
+	const models = runtime.getAvailableSnapshot();
+	const model = models.find(
+		(candidate) =>
+			candidate.provider === reference.providerID &&
+			(candidate.id === reference.id || `${candidate.provider}/${candidate.id}` === reference.id),
+	);
+	return model ? { provider: model.provider, id: model.id } : undefined;
+}
+
+/**
+ * Select the model of a new session.
+ */
+async function applyModel(session: ServerSession, model: CatalogModel): Promise<void> {
+	const response = await session.controller.handle({
+		type: "set_model",
+		provider: model.provider,
+		modelId: model.id,
+	});
+	if (response && "success" in response && response.success === false) {
+		throw new Error(response.error ?? `The model ${model.provider}/${model.id} could not be selected`);
+	}
+}
+
+/**
+ * The directory a create body asks for.
+ *
+ * The opencode clients send `location.directory`, pi's own clients send `directory`.
+ */
+function sessionDirectory(body: unknown): string | undefined {
+	return stringField(field(body, "location"), "directory") ?? stringField(body, "directory");
+}
+
+/**
+ * The model a create body asks for.
+ *
+ * The opencode clients send a model reference: `{ id, providerID }`, where the id is the
+ * catalog id of the model. A plain `provider/model` string is accepted as well.
+ */
+function modelRef(body: unknown): { id: string; providerID: string } | undefined {
+	const model = field(body, "model");
+	if (typeof model === "string") {
+		const separator = model.indexOf("/");
+		if (separator <= 0) return undefined;
+		return { providerID: model.slice(0, separator), id: model.slice(separator + 1) };
+	}
+	const id = stringField(model, "id");
+	if (!id) return undefined;
+	const providerID = stringField(model, "providerID");
+	if (providerID) return { id, providerID };
+	const separator = id.indexOf("/");
+	if (separator <= 0) return undefined;
+	return { providerID: id.slice(0, separator), id: id.slice(separator + 1) };
 }
 
 /**
@@ -484,10 +635,19 @@ async function readJson(route: RouteContext): Promise<unknown> {
  * The body is external data, so the handlers check the fields they use before they trust
  * them. A missing body, or a body that is not an object, has no fields.
  */
-function stringField(body: unknown, field: string): string | undefined {
-	if (typeof body !== "object" || body === null) return undefined;
-	const value: unknown = Reflect.get(body, field);
+function stringField(body: unknown, name: string): string | undefined {
+	const value = field(body, name);
 	return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * A field of a JSON body.
+ *
+ * A missing body, or a body that is not an object, has no fields.
+ */
+function field(body: unknown, name: string): unknown {
+	if (typeof body !== "object" || body === null) return undefined;
+	return Reflect.get(body, name);
 }
 
 function errorMessage(error: unknown): string {
