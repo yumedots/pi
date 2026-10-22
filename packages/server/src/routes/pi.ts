@@ -7,31 +7,39 @@
  */
 
 import { randomUUID } from "node:crypto";
+import type { ServerResponse } from "node:http";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import {
 	type AgentSession,
 	BUILTIN_SLASH_COMMANDS,
+	hasTrustRequiringProjectResources,
+	ProjectTrustStore,
 	type RpcCommand,
 	type RpcExtensionUIResponse,
+	SessionManager,
+	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { ToolRenderContext } from "@earendil-works/pi-coding-agent/core/extensions/types";
+import { KeybindingsManager } from "@earendil-works/pi-coding-agent/core/keybindings";
 import type { CustomMessage } from "@earendil-works/pi-coding-agent/core/messages";
+import { DefaultPackageManager, type ResolvedPaths } from "@earendil-works/pi-coding-agent/core/package-manager";
 import type { CustomEntry } from "@earendil-works/pi-coding-agent/core/session-manager";
 import { initTheme, type Theme, theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import { withBuiltInRenderers } from "@earendil-works/pi-coding-agent/core/tools/renderers/index";
+import {
+	renderExtensionCustom,
+	renderExtensionFooter,
+	renderExtensionHeader,
+	SERVER_RENDER_WIDTH,
+} from "../extension-ui.ts";
 import { type RouteContext, type Router, sendError, sendJson } from "../http/router.ts";
 import { openSse, sseFrame } from "../http/sse.ts";
+import { buildManifest, getServerVersion } from "../manifest.ts";
 import type { ServerContext } from "../server-context.ts";
+import type { ServerSession } from "../session-registry.ts";
+import { applyClientSetting } from "../settings-apply.ts";
 import { toSessionStateSnapshot } from "../state.ts";
-import type { RenderRequest } from "../types.ts";
-
-/**
- * The width the server renders with.
- *
- * The client does not tell the server how wide its terminal is, so the server picks a
- * width and the client re-wraps the lines it receives.
- */
-const SERVER_RENDER_WIDTH = 100;
+import type { RenderRequest, ServerHandshake } from "../types.ts";
 
 /** The theme the server renders with, and the name it was loaded from. */
 let renderThemeName: string | undefined;
@@ -75,6 +83,92 @@ export interface CreatePiSessionBody {
  * Register the pi-native routes.
  */
 export function registerPiRoutes(router: Router, ctx: ServerContext): void {
+	router.add("GET", "/pi/server", ({ res }) => {
+		sendJson(res, 200, { data: serverHandshake(ctx) });
+	});
+
+	router.add("POST", "/pi/trust", async (route) => {
+		const body = (await readJson(route)) as { cwd?: unknown; trusted?: unknown } | undefined;
+		if (!body || typeof body.cwd !== "string" || (typeof body.trusted !== "boolean" && body.trusted !== null)) {
+			sendError(route.res, 400, "BadRequestError", "Expected a trust decision");
+			return;
+		}
+		serverTrustStore(ctx.agentDir).set(body.cwd, body.trusted);
+		sendJson(route.res, 200, { ok: true });
+	});
+
+	router.add("POST", "/pi/settings", async (route) => {
+		const body = (await readJson(route)) as { key?: unknown; value?: unknown; scope?: unknown } | undefined;
+		if (!body || typeof body.key !== "string") {
+			sendError(route.res, 400, "BadRequestError", "Expected a setting key");
+			return;
+		}
+		const scope = body.scope === "project" ? "project" : "global";
+		const settingsManager = serverSettings(ctx.agentDir, ctx.cwd);
+		if (!applyClientSetting(settingsManager, body.key, body.value, scope)) {
+			sendError(route.res, 400, "BadRequestError", `Unknown setting: ${body.key}`);
+			return;
+		}
+		sendJson(route.res, 200, { data: { settings: settingsManager.getSettings() } });
+	});
+
+	router.add("POST", "/pi/session/:id/settings", async (route) => {
+		const session = ctx.registry.get(route.params.id ?? "");
+		if (!session) {
+			sendError(route.res, 404, "NotFoundError", `Unknown session: ${route.params.id}`);
+			return;
+		}
+		const body = (await readJson(route)) as { key?: unknown; value?: unknown; scope?: unknown } | undefined;
+		if (!body || typeof body.key !== "string") {
+			sendError(route.res, 400, "BadRequestError", "Expected a setting key");
+			return;
+		}
+		const scope = body.scope === "project" ? "project" : "global";
+		const settingsManager = session.runtime.session.settingsManager;
+		if (!applyClientSetting(settingsManager, body.key, body.value, scope)) {
+			sendError(route.res, 400, "BadRequestError", `Unknown setting: ${body.key}`);
+			return;
+		}
+		sendJson(route.res, 200, { data: { settings: settingsManager.getSettings() } });
+	});
+
+	router.add("GET", "/pi/paths", async ({ res }) => {
+		try {
+			const resolvedPaths = await serverResolvedPaths(ctx);
+			sendJson(res, 200, { data: { global: resolvedPaths.global, project: resolvedPaths.project } });
+		} catch (error: unknown) {
+			sendError(res, 500, "InternalError", errorMessage(error));
+		}
+	});
+
+	router.add("GET", "/pi/package/updates", async ({ res }) => {
+		try {
+			const packageManager = new DefaultPackageManager({
+				cwd: ctx.cwd,
+				agentDir: ctx.agentDir,
+				settingsManager: serverSettings(ctx.agentDir, ctx.cwd),
+			});
+			const updates = await packageManager.checkForAvailableUpdates();
+			sendJson(res, 200, { data: { updates: updates.map((update) => update.displayName) } });
+		} catch (error: unknown) {
+			sendError(res, 500, "InternalError", errorMessage(error));
+		}
+	});
+
+	router.add("POST", "/pi/session/rename", async (route) => {
+		const body = (await readJson(route)) as { path?: unknown; name?: unknown } | undefined;
+		if (!body || typeof body.path !== "string" || typeof body.name !== "string") {
+			sendError(route.res, 400, "BadRequestError", "Expected a session path and a name");
+			return;
+		}
+		try {
+			SessionManager.open(body.path).appendSessionInfo(body.name);
+			sendJson(route.res, 200, { ok: true });
+		} catch (error: unknown) {
+			sendError(route.res, 400, errorTag(error), errorMessage(error));
+		}
+	});
+
 	router.add("GET", "/pi/session", ({ res, url }) => {
 		const directory = url.searchParams.get("directory") ?? undefined;
 		void ctx.registry.list(directory).then(
@@ -96,6 +190,16 @@ export function registerPiRoutes(router: Router, ctx: ServerContext): void {
 			if (body.title) session.runtime.session.setSessionName(body.title);
 			sendJson(route.res, 200, { data: toSessionStateSnapshot(session) });
 		} catch (error) {
+			if (errorTag(error) === "ProjectNotTrustedError") {
+				// The directory travels with the error, so the client asks about the
+				// directory the server refused and not about its own.
+				sendJson(route.res, 400, {
+					_tag: "ProjectNotTrustedError",
+					message: errorMessage(error),
+					cwd: refusedCwd(body, ctx),
+				});
+				return;
+			}
 			sendError(route.res, 400, errorTag(error), errorMessage(error));
 		}
 	});
@@ -126,6 +230,15 @@ export function registerPiRoutes(router: Router, ctx: ServerContext): void {
 		}
 		const sessionManager = session.runtime.session.sessionManager;
 		sendJson(res, 200, { data: { tree: sessionManager.getTree(), leafId: sessionManager.getLeafId() } });
+	});
+
+	router.add("GET", "/pi/session/:id/widgets", ({ res, params }) => {
+		const session = ctx.registry.get(params.id ?? "");
+		if (!session) {
+			sendError(res, 404, "NotFoundError", `Unknown session: ${params.id}`);
+			return;
+		}
+		sendJson(res, 200, { data: { widgets: session.controller.getExtensionWidgets() } });
 	});
 
 	router.add("GET", "/pi/session/:id/resources", ({ res, params }) => {
@@ -223,11 +336,23 @@ export function registerPiRoutes(router: Router, ctx: ServerContext): void {
 			return;
 		}
 		try {
-			const lines = await renderOnServer(session.runtime.session, body);
+			const lines = await renderOnServer(session, body, serverKeybindings(ctx.agentDir));
 			sendJson(route.res, 200, { lines });
 		} catch (error) {
 			sendError(route.res, 500, "InternalError", errorMessage(error));
 		}
+	});
+
+	router.add("GET", "/pi/session/:id/manifest", ({ res, params }) => {
+		sendManifest(res, ctx, params.id ?? "");
+	});
+
+	router.add("GET", "/pi/manifest/:id", ({ res, params }) => {
+		sendManifest(res, ctx, params.id ?? "");
+	});
+
+	router.add("GET", "/pi/manifest", ({ res, url }) => {
+		sendManifest(res, ctx, url.searchParams.get("session") ?? "");
 	});
 
 	router.add("GET", "/pi/session/:id/events", ({ res, params }) => {
@@ -263,6 +388,141 @@ async function readJson(route: RouteContext): Promise<unknown> {
 }
 
 /**
+ * The keys the server binds, per agent directory.
+ *
+ * The keybindings are read from the agent directory, so they are read once per server
+ * instead of once per request.
+ */
+const keybindingsByAgentDir = new Map<string, KeybindingsManager>();
+
+function serverKeybindings(agentDir: string): KeybindingsManager {
+	const cached = keybindingsByAgentDir.get(agentDir);
+	if (cached) return cached;
+	const keybindings = KeybindingsManager.create(agentDir);
+	keybindingsByAgentDir.set(agentDir, keybindings);
+	return keybindings;
+}
+
+/**
+ * The trust store of the server, per agent directory.
+ *
+ * The trust store lives in the agent directory, so the client and the server share it:
+ * the client asks, the server decides.
+ */
+const trustStoresByAgentDir = new Map<string, ProjectTrustStore>();
+
+function serverTrustStore(agentDir: string): ProjectTrustStore {
+	const cached = trustStoresByAgentDir.get(agentDir);
+	if (cached) return cached;
+	const store = new ProjectTrustStore(agentDir);
+	trustStoresByAgentDir.set(agentDir, store);
+	return store;
+}
+
+/**
+ * The settings of the server, per agent directory.
+ *
+ * The settings decide whether a project is trusted without asking, so the handshake has
+ * to read them.
+ */
+const settingsByAgentDir = new Map<string, SettingsManager>();
+
+function serverSettings(agentDir: string, cwd: string): SettingsManager {
+	const cached = settingsByAgentDir.get(agentDir);
+	if (cached) return cached;
+	const settings = SettingsManager.create(cwd, agentDir);
+	settingsByAgentDir.set(agentDir, settings);
+	return settings;
+}
+
+/**
+ * The resource paths of the server, per scope.
+ *
+ * The packages belong to the server, so the paths of the resources they hold are
+ * resolved here and not in the client.
+ */
+async function serverResolvedPaths(ctx: ServerContext): Promise<{ global: ResolvedPaths; project: ResolvedPaths }> {
+	const globalSettingsManager = SettingsManager.create(ctx.cwd, ctx.agentDir, { projectTrusted: false });
+	const global = await new DefaultPackageManager({
+		cwd: ctx.cwd,
+		agentDir: ctx.agentDir,
+		settingsManager: globalSettingsManager,
+	}).resolve();
+	const settingsManager = serverSettings(ctx.agentDir, ctx.cwd);
+	if (!settingsManager.isProjectTrusted()) {
+		return { global, project: global };
+	}
+	const project = await new DefaultPackageManager({
+		cwd: ctx.cwd,
+		agentDir: ctx.agentDir,
+		settingsManager,
+	}).resolve();
+	return { global, project };
+}
+
+/**
+ * The directory a session-open request is about.
+ *
+ * The session runs in the directory of the server, unless the request asks for another
+ * one. A session that is resumed runs in the directory of its session file, because
+ * that is the directory the server has to trust.
+ */
+function refusedCwd(body: CreatePiSessionBody, ctx: ServerContext): string {
+	if (typeof body.resume === "string" && body.resume !== "recent") {
+		try {
+			return SessionManager.open(body.resume).getCwd();
+		} catch {
+			return ctx.cwd;
+		}
+	}
+	return body.cwd ?? ctx.cwd;
+}
+
+/**
+ * The handshake of the server: its directory and the trust state of that directory.
+ *
+ * The server owns the working directory, so the client works in the directory of the
+ * server and never in its own. The trust state tells the client whether it has to ask
+ * before it opens a session.
+ */
+function serverHandshake(ctx: ServerContext): ServerHandshake {
+	const decision = serverTrustStore(ctx.agentDir).get(ctx.cwd);
+	const policy = serverSettings(ctx.agentDir, ctx.cwd).getDefaultProjectTrust();
+	return {
+		cwd: ctx.cwd,
+		trust: {
+			required: hasTrustRequiringProjectResources(ctx.cwd),
+			decided: decision !== null,
+			trusted: policy === "always" ? true : policy === "never" ? false : decision === true,
+		},
+		agentDir: ctx.agentDir,
+	};
+}
+
+/**
+ * Answer with the manifest of a session.
+ *
+ * The manifest tells the client what the server loaded and how it is configured, so the
+ * client can refuse to start when the two do not match.
+ */
+function sendManifest(res: ServerResponse, ctx: ServerContext, sessionId: string): void {
+	const session = ctx.registry.get(sessionId);
+	if (!session) {
+		sendError(res, 404, "NotFoundError", `Unknown session: ${sessionId}`);
+		return;
+	}
+	const agentSession = session.runtime.session;
+	const manifest = buildManifest({
+		version: getServerVersion(),
+		cwd: ctx.cwd,
+		session: agentSession,
+		settingsManager: agentSession.settingsManager,
+		keybindings: serverKeybindings(ctx.agentDir),
+	});
+	sendJson(res, 200, { data: manifest });
+}
+
+/**
  * Whether the body of a render request is a request the server can answer.
  *
  * The body comes from the network, so it is checked before it is used.
@@ -279,6 +539,12 @@ function isRenderRequest(value: unknown): value is RenderRequest {
 	if (kind === "message" || kind === "entry") {
 		return "customType" in value && typeof value.customType === "string";
 	}
+	if (kind === "header" || kind === "footer") return true;
+	if (kind === "custom") {
+		if ("title" in value && value.title !== undefined && typeof value.title !== "string") return false;
+		if ("prefill" in value && value.prefill !== undefined && typeof value.prefill !== "string") return false;
+		return true;
+	}
 	return false;
 }
 
@@ -289,7 +555,12 @@ function isRenderRequest(value: unknown): value is RenderRequest {
  * draw what they draw. The built-in renderers are the fallback, so the answer is the same
  * as what the client would have drawn, unless an extension changed it.
  */
-async function renderOnServer(agentSession: AgentSession, request: RenderRequest): Promise<string[]> {
+async function renderOnServer(
+	session: ServerSession,
+	request: RenderRequest,
+	keybindings: KeybindingsManager,
+): Promise<string[]> {
+	const agentSession = session.runtime.session;
 	switch (request.kind) {
 		case "tool":
 			return renderTool(agentSession, request);
@@ -297,6 +568,12 @@ async function renderOnServer(agentSession: AgentSession, request: RenderRequest
 			return renderMessage(agentSession, request);
 		case "entry":
 			return renderEntry(agentSession, request);
+		case "header":
+			return renderExtensionHeader(session, renderTheme(agentSession));
+		case "footer":
+			return renderExtensionFooter(session, renderTheme(agentSession));
+		case "custom":
+			return renderExtensionCustom(session, renderTheme(agentSession), keybindings);
 	}
 }
 

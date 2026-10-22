@@ -144,6 +144,7 @@ export class SessionRegistry {
 					modified: session.modified.getTime(),
 					messageCount: session.messageCount,
 					firstMessage: session.firstMessage,
+					allMessagesText: session.allMessagesText,
 					busy: this.sessionMap.get(session.id)?.busy ?? false,
 				},
 			]),
@@ -161,6 +162,7 @@ export class SessionRegistry {
 				modified: Date.now(),
 				messageCount: session.runtime.session.messages.length,
 				firstMessage: "",
+				allMessagesText: "",
 				busy: session.busy,
 			});
 		}
@@ -222,23 +224,29 @@ export class SessionRegistry {
 		const session = runtime.session;
 		const id = session.sessionId;
 
-		const controller = new SessionController(runtime, {
-			onEvent: (event) => {
-				this.refreshBusy(session);
-				if (event.type === "agent_settled") this.clearClaim(id);
-				this.deps.onEvent?.(id, event);
+		const controller = new SessionController(
+			runtime,
+			{
+				onEvent: (event) => {
+					this.refreshBusy(session);
+					if (event.type === "agent_settled") this.clearClaim(id);
+					this.deps.onEvent?.(id, event);
+				},
+				requestExtensionUi: (request) => {
+					if (!this.deps.requestExtensionUi) {
+						return Promise.resolve({ type: "extension_ui_response", id: request.id, cancelled: true });
+					}
+					return this.deps.requestExtensionUi(id, request);
+				},
+				onSessionRebind: () => {
+					const current = this.sessionMap.get(id);
+					if (current) current.busy = session.isStreaming || session.isCompacting;
+				},
+				// The server draws the terminal UI of the extensions, so the extensions see the
+				// host they are really in.
 			},
-			requestExtensionUi: (request) => {
-				if (!this.deps.requestExtensionUi) {
-					return Promise.resolve({ type: "extension_ui_response", id: request.id, cancelled: true });
-				}
-				return this.deps.requestExtensionUi(id, request);
-			},
-			onSessionRebind: () => {
-				const current = this.sessionMap.get(id);
-				if (current) current.busy = session.isStreaming || session.isCompacting;
-			},
-		});
+			"tui",
+		);
 		await controller.rebind();
 
 		const handle = controller.handle.bind(controller);
@@ -323,5 +331,6 @@ export interface ServerInfo {
 	modified: number;
 	messageCount: number;
 	firstMessage: string;
+	allMessagesText: string;
 	busy: boolean;
 }

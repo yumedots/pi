@@ -334,6 +334,33 @@ export type RpcExtensionUIRequest =
 			widgetLines: string[] | undefined;
 			widgetPlacement?: "aboveEditor" | "belowEditor";
 	  }
+	| {
+			type: "extension_ui_request";
+			id: string;
+			method: "setWorkingMessage";
+			message?: string;
+	  }
+	| {
+			type: "extension_ui_request";
+			id: string;
+			method: "setWorkingVisible";
+			visible: boolean;
+	  }
+	| {
+			type: "extension_ui_request";
+			id: string;
+			method: "setWorkingIndicator";
+			options?: { frames?: string[]; intervalMs?: number };
+	  }
+	| {
+			type: "extension_ui_request";
+			id: string;
+			method: "setHiddenThinkingLabel";
+			label?: string;
+	  }
+	| { type: "extension_ui_request"; id: string; method: "setHeader" }
+	| { type: "extension_ui_request"; id: string; method: "setFooter" }
+	| { type: "extension_ui_request"; id: string; method: "setCustom" }
 	| { type: "extension_ui_request"; id: string; method: "setTitle"; title: string }
 	| { type: "extension_ui_request"; id: string; method: "set_editor_text"; text: string };
 

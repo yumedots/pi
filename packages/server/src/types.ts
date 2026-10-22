@@ -93,6 +93,10 @@ export interface RenderToolResult {
  * The client cannot render what only the server can: an extension that lives in the
  * server's process registers its renderers there. The client sends the piece it wants
  * drawn and the server answers with the lines.
+ *
+ * The parts of the extension UI that need a terminal component (the custom header, the
+ * custom footer and the custom dialog) are drawn by the server too: the extension lives
+ * there, so the factory that builds the component lives there as well.
  */
 export type RenderRequest =
 	| {
@@ -123,6 +127,22 @@ export type RenderRequest =
 			customType: string;
 			/** The entry to draw. */
 			entry: unknown;
+	  }
+	| {
+			/** The custom header of the session. */
+			kind: "header";
+	  }
+	| {
+			/** The custom footer of the session. */
+			kind: "footer";
+	  }
+	| {
+			/** A custom dialog of an extension. */
+			kind: "custom";
+			/** The title of the dialog. The client draws it around the lines. */
+			title?: string;
+			/** The text the dialog starts with. The client draws it around the lines. */
+			prefill?: string;
 	  };
 
 /** The rendered lines of a piece of the transcript. */
@@ -143,4 +163,30 @@ export interface PiServerInfo {
 	paths: { tmp: string };
 	/** The capabilities of the server. */
 	capabilities: { persistentPty: boolean };
+}
+
+/** The trust state of the server's working directory. */
+export interface ServerTrustState {
+	/** The project in the directory has resources that need trust, such as extensions. */
+	required: boolean;
+	/** The trust store holds a decision for the directory. */
+	decided: boolean;
+	/** That decision is "yes". */
+	trusted: boolean;
+}
+
+/**
+ * The handshake of the server.
+ *
+ * The server owns the working directory: the client works in the directory of the server
+ * and never in its own. The trust state travels with it, because the client must not
+ * decide trust for a directory it is not working in.
+ */
+export interface ServerHandshake {
+	/** The server's own working directory: the directory the sessions are created in. */
+	cwd: string;
+	/** The trust state of that directory. */
+	trust: ServerTrustState;
+	/** The agent directory that holds the trust store. */
+	agentDir?: string;
 }

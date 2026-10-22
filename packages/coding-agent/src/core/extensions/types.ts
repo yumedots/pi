@@ -142,6 +142,29 @@ export interface WorkingIndicatorOptions {
 export type AutocompleteProviderFactory = (current: AutocompleteProvider) => AutocompleteProvider;
 export type EditorFactory = (tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => EditorComponent;
 
+/** The factory of a custom header component. */
+export type ExtensionHeaderFactory = (tui: TUI, theme: Theme) => Component & { dispose?(): void };
+
+/** The factory of a custom footer component. */
+export type ExtensionFooterFactory = (
+	tui: TUI,
+	theme: Theme,
+	footerData: ReadonlyFooterDataProvider,
+) => Component & { dispose?(): void };
+
+/**
+ * The factory of a custom component with keyboard focus.
+ *
+ * The factory hands the component to the host, and calls `done` with the result of the
+ * dialog when the user is finished with it.
+ */
+export type ExtensionCustomFactory<T = any> = (
+	tui: TUI,
+	theme: Theme,
+	keybindings: KeybindingsManager,
+	done: (result: T) => void,
+) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>;
+
 /**
  * UI context for extensions to request interactive UI.
  * Each mode (interactive, RPC, print) provides its own implementation.
@@ -198,26 +221,17 @@ export interface ExtensionUIContext {
 	 * git branch and extension statuses from setStatus(). Context usage is on
 	 * ctx.getContextUsage(), token stats on ctx.sessionManager.getEntries(), model info on ctx.model.
 	 */
-	setFooter(
-		factory:
-			| ((tui: TUI, theme: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void })
-			| undefined,
-	): void;
+	setFooter(factory: ExtensionFooterFactory | undefined): void;
 
 	/** Set a custom header component (shown at startup, above chat), or undefined to restore the built-in header. */
-	setHeader(factory: ((tui: TUI, theme: Theme) => Component & { dispose?(): void }) | undefined): void;
+	setHeader(factory: ExtensionHeaderFactory | undefined): void;
 
 	/** Set the terminal window/tab title. */
 	setTitle(title: string): void;
 
 	/** Show a custom component with keyboard focus. */
 	custom<T>(
-		factory: (
-			tui: TUI,
-			theme: Theme,
-			keybindings: KeybindingsManager,
-			done: (result: T) => void,
-		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
+		factory: ExtensionCustomFactory<T>,
 		options?: {
 			overlay?: boolean;
 			/** Overlay positioning/sizing options. Can be static or a function for dynamic updates. */

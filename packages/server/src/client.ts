@@ -12,14 +12,25 @@ import type {
 	RpcExtensionUIResponse,
 	RpcResponse,
 } from "@earendil-works/pi-coding-agent";
+import type { ResolvedPaths } from "@earendil-works/pi-coding-agent/core/package-manager";
 import { basicAuthHeader } from "./auth.ts";
+import type { PiManifest } from "./manifest.ts";
 import type { OpencodeModelInfo } from "./routes/opencode-shapes.ts";
-import type { PiServerInfo, RenderRequest, RenderResponse, SessionStateSnapshot } from "./types.ts";
+import type { PiServerInfo, RenderRequest, RenderResponse, ServerHandshake, SessionStateSnapshot } from "./types.ts";
 
 export { basicAuthHeader } from "./auth.ts";
+export type { PiManifest } from "./manifest.ts";
 export type { ServerRegistration } from "./registration.ts";
 export type { OpencodeModelInfo } from "./routes/opencode-shapes.ts";
-export type { RenderRequest, RenderResponse, RenderToolResult, SessionStateSnapshot } from "./types.ts";
+export type {
+	PiServerInfo,
+	RenderRequest,
+	RenderResponse,
+	RenderToolResult,
+	ServerHandshake,
+	ServerTrustState,
+	SessionStateSnapshot,
+} from "./types.ts";
 
 /** How long the client waits before it reconnects to the event stream. */
 const RECONNECT_DELAY_MS = 1000;
@@ -72,6 +83,7 @@ export interface RemoteSessionInfo {
 	modified: number;
 	messageCount: number;
 	firstMessage: string;
+	allMessagesText: string;
 	busy: boolean;
 }
 
@@ -99,6 +111,103 @@ export class PiServerClient {
 	 */
 	async info(): Promise<PiServerInfo> {
 		return this.request<PiServerInfo>("GET", "/api/info");
+	}
+
+	/**
+	 * The handshake of the server: its working directory and the trust state of it.
+	 *
+	 * The server owns the working directory: the client works in the directory of the
+	 * server and never in its own. The trust state tells the client whether it has to
+	 * ask the user before it opens a session.
+	 */
+	async handshake(): Promise<ServerHandshake> {
+		const body = await this.request<ServerHandshake & { data?: ServerHandshake }>("GET", "/pi/server");
+		return body.data ?? body;
+	}
+
+	/**
+	 * Store the trust decision of a directory in the trust store of the server.
+	 *
+	 * The trust store lives in the agent directory the server uses, so both sides share
+	 * it: the client asks, the server decides.
+	 */
+	async setTrust(cwd: string, trusted: boolean | null): Promise<void> {
+		await this.request<void>("POST", "/pi/trust", { cwd, trusted });
+	}
+
+	/**
+	 * Change a setting of the server.
+	 *
+	 * The settings belong to the server: the client draws with them and hands the
+	 * changes over. The answer carries the settings the server made of the change.
+	 *
+	 * @param sessionId the session whose settings change; without one the settings of the
+	 *   server itself change.
+	 */
+	async setSetting(
+		key: string,
+		value: unknown,
+		sessionId?: string,
+		scope: "global" | "project" = "global",
+	): Promise<Record<string, unknown>> {
+		const path = sessionId ? `/pi/session/${encodeURIComponent(sessionId)}/settings` : "/pi/settings";
+		const body = await this.request<{ data: { settings: Record<string, unknown> } }>("POST", path, {
+			key,
+			value,
+			scope,
+		});
+		return body.data.settings;
+	}
+
+	/**
+	 * The messages of a session.
+	 */
+	async messages(sessionId: string): Promise<unknown[]> {
+		const body = await this.request<{ data: unknown[] }>(
+			"GET",
+			`/pi/session/${encodeURIComponent(sessionId)}/messages`,
+		);
+		return body.data;
+	}
+
+	/**
+	 * The widgets the extensions of a session set.
+	 */
+	async extensionWidgets(sessionId: string): Promise<Array<{ key: string; lines: string[]; placement?: string }>> {
+		const body = await this.request<{
+			data: { widgets: Array<{ key: string; lines: string[]; placement?: string }> };
+		}>("GET", `/pi/session/${encodeURIComponent(sessionId)}/widgets`);
+		return body.data.widgets;
+	}
+
+	/**
+	 * The resource paths of the server, per scope.
+	 *
+	 * The packages belong to the server, so the paths of the resources they hold are
+	 * resolved there.
+	 */
+	async paths(): Promise<{ global: ResolvedPaths; project: ResolvedPaths }> {
+		const body = await this.request<{ data: { global: ResolvedPaths; project: ResolvedPaths } }>("GET", "/pi/paths");
+		return body.data;
+	}
+
+	/**
+	 * Give a session of the disk a name.
+	 *
+	 * The session files belong to the server, so the client asks it to rename one.
+	 */
+	async renameSession(path: string, name: string): Promise<void> {
+		await this.request<void>("POST", "/pi/session/rename", { path, name });
+	}
+
+	/**
+	 * The packages that have an update waiting.
+	 *
+	 * The packages belong to the server, so it is the one that looks for the updates.
+	 */
+	async packageUpdates(): Promise<string[]> {
+		const body = await this.request<{ data: { updates: string[] } }>("GET", "/pi/package/updates");
+		return body.data.updates;
 	}
 
 	/**
@@ -174,6 +283,20 @@ export class PiServerClient {
 			`/pi/session/${encodeURIComponent(sessionId)}/resources`,
 		);
 		return body.data;
+	}
+
+	/**
+	 * The manifest of the server: what it loaded and how it is configured.
+	 *
+	 * The client compares the extensions of the manifest with its own list and refuses to
+	 * start when the two do not match.
+	 */
+	async manifest(sessionId: string): Promise<PiManifest> {
+		const body = await this.request<PiManifest & { data?: PiManifest }>(
+			"GET",
+			`/pi/session/${encodeURIComponent(sessionId)}/manifest`,
+		);
+		return body.data ?? body;
 	}
 
 	/**

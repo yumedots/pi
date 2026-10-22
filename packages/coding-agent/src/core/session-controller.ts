@@ -19,11 +19,13 @@ import type {
 import type { AgentSession, AgentSessionEvent } from "./agent-session.ts";
 import type { AgentSessionRuntime } from "./agent-session-runtime.ts";
 import type {
+	ExtensionMode,
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
 	ExtensionWidgetOptions,
 	WorkingIndicatorOptions,
 } from "./extensions/index.ts";
+import type { ExtensionCustomFactory, ExtensionFooterFactory, ExtensionHeaderFactory } from "./extensions/types.ts";
 import { type Theme, theme } from "./theme/theme.ts";
 
 /**
@@ -54,14 +56,23 @@ export interface SessionControllerHooks {
 export class SessionController {
 	private readonly runtime: AgentSessionRuntime;
 	private readonly hooks: SessionControllerHooks;
+	private readonly extensionMode: ExtensionMode;
 	private _session: AgentSession;
 	private readonly listeners = new Set<(event: AgentSessionEvent) => void>();
 	private unsubscribeSession?: () => void;
 	private disposed = false;
+	private extensionHeaderFactory: ExtensionHeaderFactory | undefined;
+	private extensionFooterFactory: ExtensionFooterFactory | undefined;
+	private extensionCustomFactory: ExtensionCustomFactory | undefined;
+	private readonly extensionWidgets = new Map<
+		string,
+		{ key: string; lines: string[] | undefined; placement?: string }
+	>();
 
-	constructor(runtime: AgentSessionRuntime, hooks: SessionControllerHooks) {
+	constructor(runtime: AgentSessionRuntime, hooks: SessionControllerHooks, extensionMode: ExtensionMode = "rpc") {
 		this.runtime = runtime;
 		this.hooks = hooks;
+		this.extensionMode = extensionMode;
 		this._session = runtime.session;
 		this.runtime.setRebindSession(async () => {
 			await this.rebind();
@@ -71,6 +82,46 @@ export class SessionController {
 	/** The session the controller currently drives. */
 	get session(): AgentSession {
 		return this._session;
+	}
+
+	/**
+	 * The factory of the custom header of the session.
+	 *
+	 * A factory cannot travel over the wire, so the controller keeps it and the server
+	 * renders it.
+	 */
+	getExtensionHeaderFactory(): ExtensionHeaderFactory | undefined {
+		return this.extensionHeaderFactory;
+	}
+
+	/**
+	 * The factory of the custom footer of the session.
+	 *
+	 * A factory cannot travel over the wire, so the controller keeps it and the server
+	 * renders it.
+	 */
+	getExtensionFooterFactory(): ExtensionFooterFactory | undefined {
+		return this.extensionFooterFactory;
+	}
+
+	/**
+	 * The factory of the custom dialog of the session.
+	 *
+	 * A factory cannot travel over the wire, so the controller keeps it and the server
+	 * renders it.
+	 */
+	getExtensionCustomFactory(): ExtensionCustomFactory | undefined {
+		return this.extensionCustomFactory;
+	}
+
+	/**
+	 * The widgets the extensions of the session set.
+	 *
+	 * A client that joins later asks for them, so it sees the widgets that are already
+	 * there.
+	 */
+	getExtensionWidgets(): Array<{ key: string; lines: string[] | undefined; placement?: string }> {
+		return [...this.extensionWidgets.values()];
 	}
 
 	/**
@@ -92,9 +143,15 @@ export class SessionController {
 	 */
 	async rebind(): Promise<void> {
 		this._session = this.runtime.session;
+		this.extensionHeaderFactory = undefined;
+		this.extensionFooterFactory = undefined;
+		this.extensionCustomFactory = undefined;
+		this.extensionWidgets.clear();
+		this.notifyExtensionChrome("setHeader");
+		this.notifyExtensionChrome("setFooter");
 		await this._session.bindExtensions({
 			uiContext: this.createExtensionUIContext(),
-			mode: "rpc",
+			mode: this.extensionMode,
 			commandContextActions: {
 				waitForIdle: () => this._session.waitForIdle(),
 				newSession: async (options) => this.runtime.newSession(options),
@@ -609,18 +666,44 @@ export class SessionController {
 	}
 
 	/**
+	 * Ask the transport for an extension UI request.
+	 *
+	 * The transport answers the dialogs; the fire-and-forget methods are answered right
+	 * away, since nobody answers them.
+	 */
+	private requestExtensionUi(payload: RpcExtensionUIRequest): Promise<RpcExtensionUIResponse> {
+		if (this.disposed) {
+			return Promise.resolve({ type: "extension_ui_response", id: payload.id, cancelled: true });
+		}
+		return this.hooks.requestExtensionUi(payload);
+	}
+
+	/**
+	 * Tell the client that the chrome of the session changed.
+	 *
+	 * The header and the footer are drawn by the server, so the client asks for them again
+	 * when the extensions change them.
+	 */
+	private notifyExtensionChrome(method: "setHeader" | "setFooter" | "setCustom"): void {
+		void this.requestExtensionUi({
+			type: "extension_ui_request",
+			id: crypto.randomUUID(),
+			method,
+		} as RpcExtensionUIRequest);
+	}
+
+	/**
 	 * Build the extension UI context.
 	 *
 	 * Every dialog is answered by the transport; the controller only shapes the request and
 	 * interprets the answer.
 	 */
 	private createExtensionUIContext(): ExtensionUIContext {
-		const request = async (payload: RpcExtensionUIRequest): Promise<RpcExtensionUIResponse> => {
-			if (this.disposed) {
-				return { type: "extension_ui_response", id: payload.id, cancelled: true };
-			}
-			return this.hooks.requestExtensionUi(payload);
-		};
+		const request = (payload: RpcExtensionUIRequest): Promise<RpcExtensionUIResponse> =>
+			this.requestExtensionUi(payload);
+		// The object literal below is not a method of the controller, so `this` inside it
+		// is the literal. The state of the controller is captured here.
+		const controller = this;
 
 		const createDialogPromise = <T>(
 			opts: ExtensionUIDialogOptions | undefined,
@@ -707,24 +790,49 @@ export class SessionController {
 				} as RpcExtensionUIRequest);
 			},
 
-			setWorkingMessage(_message?: string): void {
-				// Working message needs TUI loader access.
+			setWorkingMessage(message?: string): void {
+				void request({
+					type: "extension_ui_request",
+					id: crypto.randomUUID(),
+					method: "setWorkingMessage",
+					message,
+				} as RpcExtensionUIRequest);
 			},
 
-			setWorkingVisible(_visible: boolean): void {
-				// Working visibility needs TUI loader access.
+			setWorkingVisible(visible: boolean): void {
+				void request({
+					type: "extension_ui_request",
+					id: crypto.randomUUID(),
+					method: "setWorkingVisible",
+					visible,
+				} as RpcExtensionUIRequest);
 			},
 
-			setWorkingIndicator(_options?: WorkingIndicatorOptions): void {
-				// Working indicator customization needs TUI loader access.
+			setWorkingIndicator(options?: WorkingIndicatorOptions): void {
+				void request({
+					type: "extension_ui_request",
+					id: crypto.randomUUID(),
+					method: "setWorkingIndicator",
+					options: options ? { frames: options.frames, intervalMs: options.intervalMs } : undefined,
+				} as RpcExtensionUIRequest);
 			},
 
-			setHiddenThinkingLabel(_label?: string): void {
-				// Hidden thinking label needs TUI message rendering access.
+			setHiddenThinkingLabel(label?: string): void {
+				void request({
+					type: "extension_ui_request",
+					id: crypto.randomUUID(),
+					method: "setHiddenThinkingLabel",
+					label,
+				} as RpcExtensionUIRequest);
 			},
 
 			setWidget(key: string, content: unknown, options?: ExtensionWidgetOptions): void {
 				if (content === undefined || Array.isArray(content)) {
+					controller.extensionWidgets.set(key, {
+						key,
+						lines: content as string[] | undefined,
+						placement: options?.placement,
+					});
 					void request({
 						type: "extension_ui_request",
 						id: crypto.randomUUID(),
@@ -736,12 +844,14 @@ export class SessionController {
 				}
 			},
 
-			setFooter(_factory: unknown): void {
-				// Custom footer needs TUI access.
+			setFooter: (factory) => {
+				controller.extensionFooterFactory = factory;
+				controller.notifyExtensionChrome("setFooter");
 			},
 
-			setHeader(_factory: unknown): void {
-				// Custom header needs TUI access.
+			setHeader: (factory) => {
+				controller.extensionHeaderFactory = factory;
+				controller.notifyExtensionChrome("setHeader");
 			},
 
 			setTitle(title: string): void {
@@ -753,7 +863,9 @@ export class SessionController {
 				} as RpcExtensionUIRequest);
 			},
 
-			async custom() {
+			custom: async <T>(factory: ExtensionCustomFactory<T>): Promise<T> => {
+				controller.extensionCustomFactory = factory;
+				controller.notifyExtensionChrome("setCustom");
 				return undefined as never;
 			},
 

@@ -22,6 +22,14 @@ export { EventFeed, type FeedEvent, type FeedSubscription, SUBSCRIBER_OVERFLOW_E
 export { type RouteContext, type RouteHandler, type RouteParams, Router, sendError, sendJson } from "./http/router.ts";
 export { openSse, SSE_HEARTBEAT, type SseConnection, sseFrame } from "./http/sse.ts";
 export {
+	type BuildManifestOptions,
+	buildManifest,
+	getServerVersion,
+	hashFile,
+	type PiManifest,
+	setServerVersion,
+} from "./manifest.ts";
+export {
 	clearRegistration,
 	REGISTRATION_FILE_NAME,
 	readRegistration,
@@ -41,6 +49,8 @@ export {
 export { toSessionStateSnapshot } from "./state.ts";
 export type {
 	PiServerInfo,
+	ServerHandshake,
+	ServerTrustState,
 	SessionQueueState,
 	SessionResourcesSnapshot,
 	SessionStateSnapshot,
