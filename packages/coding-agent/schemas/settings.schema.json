@@ -689,7 +689,7 @@
     "showSessionSidebar": {
       "type": "boolean",
       "description": "Show the session sidebar beside the conversation.",
-      "default": false
+      "default": true
     },
     "server": {
       "type": "object",

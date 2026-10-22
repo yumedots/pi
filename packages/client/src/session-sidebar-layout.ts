@@ -11,18 +11,14 @@ import {
 	type Component,
 	HStack,
 	spinnerFrame,
-	truncateToWidth,
 	type TuiMouseEvent,
 	type TuiMouseEventResult,
+	truncateToWidth,
 	VStack,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type StackLayoutNode } from "@earendil-works/pi-tui/layout-node";
-import {
-	NEW_SESSION_ROW_LABEL,
-	type SessionSidebar,
-	type SessionSidebarRow,
-} from "./components/session-sidebar.ts";
+import { NEW_SESSION_ROW_LABEL, type SessionSidebar, type SessionSidebarRow } from "./components/session-sidebar.ts";
 
 /** The narrowest terminal that still shows the sidebar as a column. */
 export const SIDEBAR_MIN_WIDTH = 100;

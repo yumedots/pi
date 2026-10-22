@@ -3312,6 +3312,12 @@ export class InteractiveMode {
 				await this.handleServerCommand();
 				return;
 			}
+			if (text === "/sidebar") {
+				this.editor.setText("");
+				this.toggleSessionSidebar();
+				this.showStatus(`Session sidebar: ${this.settingsManager.getShowSessionSidebar() ? "on" : "off"}`);
+				return;
+			}
 			if (text === "/fork") {
 				await this.showUserMessageSelector();
 				this.editor.setText("");

@@ -66,7 +66,7 @@ export const SETTINGS_DEFAULTS = {
 	fullscreenScrollbar: "auto",
 	fullscreenCopyOnSelect: true,
 	fullscreenWheelScrollLines: 1,
-	showSessionSidebar: false,
+	showSessionSidebar: true,
 	server: {
 		idleTimeoutMs: 600000,
 		port: 4096,

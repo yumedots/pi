@@ -78,7 +78,9 @@ const APP_KEYBINDINGS = {
 	},
 	"app.session.new": { defaultKeys: [], description: "Start a new session" },
 	"app.sidebar.toggle": {
-		defaultKeys: "ctrl+shift+b",
+		// Alt reaches the terminal even without the Kitty keyboard protocol, where
+		// ctrl+shift and ctrl are the same byte.
+		defaultKeys: "alt+b",
 		description: "Show or hide the session sidebar",
 	},
 	"app.session.tree": { defaultKeys: [], description: "Open session tree" },

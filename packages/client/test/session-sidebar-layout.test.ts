@@ -2,16 +2,12 @@ import type { Component } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it } from "vitest";
 import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
-import {
-	NEW_SESSION_ROW_LABEL,
-	SessionSidebar,
-	type SessionSidebarRow,
-} from "../src/components/session-sidebar.ts";
-import { SIDEBAR_MIN_WIDTH, SIDEBAR_WIDTH, SessionSidebarLayout } from "../src/session-sidebar-layout.ts";
+import { NEW_SESSION_ROW_LABEL, SessionSidebar, type SessionSidebarRow } from "../src/components/session-sidebar.ts";
+import { SessionSidebarLayout, SIDEBAR_MIN_WIDTH, SIDEBAR_WIDTH } from "../src/session-sidebar-layout.ts";
 
 /** Stands in for the conversation area. */
 class Conversation implements Component {
-	render(width: number): string[] {
+	render(_width: number): string[] {
 		return ["conversation"];
 	}
 

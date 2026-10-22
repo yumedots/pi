@@ -55,9 +55,6 @@ export function createChatViewport(options: ChatViewportOptions): ChatViewport {
 	]);
 	return {
 		transcript,
-		root:
-			options.sidebar === undefined
-				? root
-				: new SessionSidebarLayout({ sidebar: options.sidebar, main: root }),
+		root: options.sidebar === undefined ? root : new SessionSidebarLayout({ sidebar: options.sidebar, main: root }),
 	};
 }
