@@ -15,6 +15,21 @@ import type {
 import { basicAuthHeader } from "./auth.ts";
 import type { PiServerInfo, SessionStateSnapshot } from "./types.ts";
 
+/** How long the client waits before it reconnects to the event stream. */
+const RECONNECT_DELAY_MS = 1000;
+
+/**
+ * The event of a frame, with the type of the frame when the payload carries none.
+ *
+ * A session event is its own payload, so it keeps its type. The frame that opens the
+ * stream carries an empty payload, so the type of the frame is what names it.
+ */
+function withFrameType(event: AgentSessionEvent, frameType: string | undefined): AgentSessionEvent {
+	const payload = event as unknown as Record<string, unknown>;
+	if (typeof payload.type === "string") return event;
+	return { ...payload, type: frameType ?? "unknown" } as unknown as AgentSessionEvent;
+}
+
 /** The options of {@link PiServerClient}. */
 export interface PiServerClientOptions {
 	/** The base URL of the server. */
@@ -23,6 +38,22 @@ export interface PiServerClientOptions {
 	password: string;
 	/** The fetch implementation. Defaults to the global one. */
 	fetch?: typeof globalThis.fetch;
+}
+
+/** The options of {@link PiServerClient.openSession}. */
+export interface OpenSessionOptions {
+	/** The working directory of the session. */
+	cwd?: string;
+	/** The session directory. */
+	sessionDir?: string;
+	/** The display name of the session. */
+	title?: string;
+	/** The model to start with, as `provider/model`. */
+	model?: string;
+	/** The thinking level to start with. */
+	thinkingLevel?: string;
+	/** Continue the most recent session of the directory, or a session file. */
+	resume?: "recent" | string;
 }
 
 /** A session as the server lists it. */
@@ -71,6 +102,24 @@ export class PiServerClient {
 		const query = cwd ? `?directory=${encodeURIComponent(cwd)}` : "";
 		const body = await this.request<{ data: RemoteSessionInfo[] }>("GET", `/pi/session${query}`);
 		return body.data;
+	}
+
+	/**
+	 * Open a session on the server.
+	 *
+	 * The server answers with the state snapshot of the new session, so the caller does
+	 * not have to ask for it again.
+	 */
+	async openSession(options: OpenSessionOptions = {}): Promise<SessionStateSnapshot> {
+		const body: Record<string, unknown> = {};
+		if (options.cwd !== undefined) body.cwd = options.cwd;
+		if (options.sessionDir !== undefined) body.sessionDir = options.sessionDir;
+		if (options.title !== undefined) body.title = options.title;
+		if (options.model !== undefined) body.model = options.model;
+		if (options.thinkingLevel !== undefined) body.thinkingLevel = options.thinkingLevel;
+		if (options.resume !== undefined) body.resume = options.resume;
+		const response = await this.request<{ data: SessionStateSnapshot }>("POST", "/pi/session", body);
+		return response.data;
 	}
 
 	/**
@@ -129,6 +178,20 @@ export class PiServerClient {
 	events(sessionId: string, onEvent: (event: AgentSessionEvent) => void): () => void {
 		const controller = new AbortController();
 		let stopped = false;
+		let reconnectTimer: NodeJS.Timeout | undefined;
+		let resolveReconnect: (() => void) | undefined;
+
+		const waitForReconnect = async (): Promise<void> => {
+			const { promise, resolve } = Promise.withResolvers<void>();
+			resolveReconnect = () => resolve();
+			reconnectTimer = setTimeout(() => {
+				reconnectTimer = undefined;
+				resolveReconnect?.();
+				resolveReconnect = undefined;
+			}, RECONNECT_DELAY_MS);
+			reconnectTimer.unref?.();
+			await promise;
+		};
 
 		const connect = async (): Promise<void> => {
 			while (!stopped) {
@@ -145,7 +208,7 @@ export class PiServerClient {
 					if (stopped) return;
 				}
 				if (stopped) return;
-				await new Promise((resolve) => setTimeout(resolve, 1000));
+				await waitForReconnect();
 			}
 		};
 
@@ -154,6 +217,12 @@ export class PiServerClient {
 		return () => {
 			stopped = true;
 			controller.abort();
+			if (reconnectTimer) {
+				clearTimeout(reconnectTimer);
+				reconnectTimer = undefined;
+			}
+			resolveReconnect?.();
+			resolveReconnect = undefined;
 		};
 	}
 
@@ -188,7 +257,7 @@ export class PiServerClient {
 		try {
 			const parsed = JSON.parse(data) as { type?: string; data?: AgentSessionEvent };
 			if (!parsed.data) return;
-			onEvent(parsed.data);
+			onEvent(withFrameType(parsed.data, parsed.type));
 		} catch {
 			// A malformed frame must not kill the stream.
 		}

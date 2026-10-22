@@ -34,6 +34,8 @@ import type {
 	ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { BashResult } from "@earendil-works/pi-coding-agent/core/bash-executor";
+import type { SessionStateSnapshot } from "@earendil-works/pi-server";
+import type { RemoteSessionInfo } from "@earendil-works/pi-server/client";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
 
 /** How a queued user input was handled. */
@@ -290,6 +292,13 @@ export interface SessionFacade {
 	 */
 	readonly sessionId: string;
 
+	/**
+	 * The working directory of the session.
+	 *
+	 * The server owns the session, so the directory comes from the state snapshot.
+	 */
+	readonly cwd: string;
+
 	// --- Lifecycle ---
 
 	/** Build the client-local resources and load the session. */
@@ -378,6 +387,19 @@ export interface SessionFacade {
 
 	// --- Reads that need a round trip ---
 
+	/**
+	 * Read the state of the session from the server again.
+	 *
+	 * The refresh covers the state snapshot and the transcript, so a caller that missed
+	 * an event can catch up with one round trip.
+	 */
+	refresh(): Promise<SessionStateSnapshot>;
+	/**
+	 * The sessions the server knows about.
+	 *
+	 * The list covers every project of the server unless a directory is given.
+	 */
+	listSessions(cwd?: string): Promise<RemoteSessionInfo[]>;
 	/** The queued steering messages. */
 	getSteeringMessages(): readonly string[];
 	/** The queued follow-up messages. */

@@ -41,7 +41,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { BashResult } from "@earendil-works/pi-coding-agent/core/bash-executor";
 import type { SessionStateSnapshot } from "@earendil-works/pi-server";
-import type { PiServerClient } from "@earendil-works/pi-server/client";
+import type { PiServerClient, RemoteSessionInfo } from "@earendil-works/pi-server/client";
 import { RemoteSessionConnection } from "./remote-session.ts";
 import { STATE_REFRESHING_EVENTS } from "./session-connection.ts";
 import type {
@@ -173,6 +173,8 @@ export class RemoteSessionFacade implements SessionFacade {
 	private tree: SessionTreeNode[] = [];
 	private leafId: string | null = null;
 	private refreshPromise: Promise<void> | undefined;
+	private refreshQueued = false;
+	private refreshQueuedWithMessages = false;
 	private beforeSessionInvalidate: (() => void | Promise<void>) | undefined;
 	private rebindSession: (() => void | Promise<void>) | undefined;
 	private uiContext: ExtensionUIContext | undefined;
@@ -386,6 +388,13 @@ export class RemoteSessionFacade implements SessionFacade {
 		return this.connection.sessionId;
 	}
 
+	/**
+	 * The working directory of the session.
+	 */
+	get cwd(): string {
+		return this.snapshot?.cwd ?? this.connection.cwd;
+	}
+
 	get model(): Model<any> | undefined {
 		return this.resolvedModel;
 	}
@@ -467,6 +476,31 @@ export class RemoteSessionFacade implements SessionFacade {
 	}
 
 	// --- Reads ---
+
+	/**
+	 * Read the state of the session from the server again.
+	 *
+	 * The refresh covers the state snapshot and the transcript, so a caller that missed
+	 * an event can catch up with one round trip.
+	 */
+	async refresh(): Promise<SessionStateSnapshot> {
+		const snapshot = await this.connection.refresh();
+		this.snapshot = snapshot;
+		this.applySnapshot();
+		try {
+			await this.refreshMessages();
+		} catch {
+			// A transcript that cannot be read does not invalidate the snapshot.
+		}
+		return snapshot;
+	}
+
+	/**
+	 * The sessions the server knows about.
+	 */
+	async listSessions(cwd?: string): Promise<RemoteSessionInfo[]> {
+		return this.client.listSessions(cwd);
+	}
 
 	getSteeringMessages(): readonly string[] {
 		return this.snapshot?.queue.steering ?? [];
@@ -578,7 +612,9 @@ export class RemoteSessionFacade implements SessionFacade {
 
 	async clearQueue(): Promise<{ steering: string[]; followUp: string[] }> {
 		const response = await this.send({ type: "clear_queue" });
-		return response.command === "clear_queue" ? response.data : { steering: [], followUp: [] };
+		const cleared = response.command === "clear_queue" ? response.data : { steering: [], followUp: [] };
+		this.patchSnapshot({ queue: { steering: [], followUp: [] }, pendingMessageCount: 0 });
+		return cleared;
 	}
 
 	async compact(customInstructions?: string): Promise<CompactionResult | undefined> {
@@ -599,6 +635,7 @@ export class RemoteSessionFacade implements SessionFacade {
 
 	async setModel(model: Model<any>, options?: SessionModelMutationOptions): Promise<void> {
 		await this.send({ type: "set_model", provider: model.provider, modelId: model.id });
+		this.patchSnapshot({ model: `${model.provider}/${model.id}` });
 		if (options?.persist) {
 			this.settingsManager.setDefaultModelAndProvider(model.provider, model.id);
 		}
@@ -606,6 +643,7 @@ export class RemoteSessionFacade implements SessionFacade {
 
 	async setThinkingLevel(level: ThinkingLevel, options?: SessionModelMutationOptions): Promise<void> {
 		await this.send({ type: "set_thinking_level", level });
+		this.patchSnapshot({ thinkingLevel: level });
 		if (options?.persist) {
 			this.settingsManager.setDefaultThinkingLevel(level);
 		}
@@ -618,26 +656,32 @@ export class RemoteSessionFacade implements SessionFacade {
 			thinkingLevel: entry.thinkingLevel,
 		}));
 		await this.send({ type: "set_scoped_models", scopedModels });
+		this.patchSnapshot({ scopedModels: scopedModels.map((entry) => ({ ...entry })) });
 	}
 
 	async setSteeringMode(mode: "all" | "one-at-a-time"): Promise<void> {
 		await this.send({ type: "set_steering_mode", mode });
+		this.patchSnapshot({ steeringMode: mode });
 	}
 
 	async setFollowUpMode(mode: "all" | "one-at-a-time"): Promise<void> {
 		await this.send({ type: "set_follow_up_mode", mode });
+		this.patchSnapshot({ followUpMode: mode });
 	}
 
 	async setAutoCompactionEnabled(enabled: boolean): Promise<void> {
 		await this.send({ type: "set_auto_compaction", enabled });
+		this.patchSnapshot({ autoCompactionEnabled: enabled });
 	}
 
 	async setCacheWarmingMode(mode: CacheWarmingMode): Promise<void> {
 		await this.send({ type: "set_cache_warming_mode", mode });
+		this.patchSnapshot({ cacheWarmingMode: mode });
 	}
 
 	async setSessionName(name: string): Promise<void> {
 		await this.send({ type: "set_session_name", name });
+		this.patchSnapshot({ title: name });
 	}
 
 	async navigateTree(targetId: string, options?: SessionNavigateTreeOptions): Promise<SessionNavigateTreeResult> {
@@ -820,6 +864,18 @@ export class RemoteSessionFacade implements SessionFacade {
 		await this.refreshSessionData();
 		await this.rebindSession?.();
 		return result;
+	}
+
+	/**
+	 * Merge a change into the local snapshot.
+	 *
+	 * A command that changes the state of the session answers with the change, so the
+	 * snapshot is updated right away instead of waiting for the next event.
+	 */
+	private patchSnapshot(patch: Partial<SessionStateSnapshot>): void {
+		if (!this.snapshot) return;
+		this.snapshot = { ...this.snapshot, ...patch };
+		this.applySnapshot();
 	}
 
 	private applySnapshot(): void {
@@ -1018,26 +1074,48 @@ export class RemoteSessionFacade implements SessionFacade {
 	}
 
 	private refreshState(withMessages: boolean): Promise<void> {
-		if (this.refreshPromise) return this.refreshPromise;
-		this.refreshPromise = (async () => {
-			if (this.disposed) return;
+		if (this.refreshPromise) {
+			// A refresh is already running: schedule another one, so the change this event
+			// carries is not lost.
+			this.refreshQueued = true;
+			this.refreshQueuedWithMessages = this.refreshQueuedWithMessages || withMessages;
+			return this.refreshPromise;
+		}
+		const promise = this.runRefresh(withMessages);
+		this.refreshPromise = promise;
+		return promise;
+	}
+
+	private async runRefresh(withMessages: boolean): Promise<void> {
+		try {
+			let messages = withMessages;
+			while (true) {
+				this.refreshQueued = false;
+				await this.fetchState(messages);
+				if (!this.refreshQueued) break;
+				messages = messages || this.refreshQueuedWithMessages;
+				this.refreshQueuedWithMessages = false;
+			}
+		} finally {
+			this.refreshPromise = undefined;
+		}
+	}
+
+	private async fetchState(withMessages: boolean): Promise<void> {
+		if (this.disposed) return;
+		try {
+			this.snapshot = await this.connection.refresh();
+			this.applySnapshot();
+		} catch {
+			return;
+		}
+		if (withMessages) {
 			try {
-				this.snapshot = await this.connection.refresh();
-				this.applySnapshot();
+				await this.refreshMessages();
 			} catch {
 				return;
 			}
-			if (withMessages) {
-				try {
-					await this.refreshMessages();
-				} catch {
-					return;
-				}
-			}
-		})().finally(() => {
-			this.refreshPromise = undefined;
-		});
-		return this.refreshPromise;
+		}
 	}
 
 	private async send(rpc: RpcCommand): Promise<RpcSuccessResponse> {
