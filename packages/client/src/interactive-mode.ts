@@ -812,13 +812,30 @@ export class InteractiveMode {
 		});
 	}
 
+	/**
+	 * The commands of an extension that clash with a built-in interactive command.
+	 *
+	 * The server's resource snapshot merges the built-in commands with the commands of the
+	 * extensions, so only the commands of an extension can be a conflict. A command that
+	 * carries its source is an extension command when it says so. Without the source, the
+	 * built-in command is the first one with that name, because the server puts the
+	 * built-in commands first.
+	 */
 	private getBuiltInCommandConflictDiagnostics(extensionRunner: SessionExtensionRunner): ResourceDiagnostic[] {
-		const builtinNames = new Set(
-			BUILTIN_SLASH_COMMANDS.flatMap((command) => [command.name, ...(command.aliases ?? [])]),
-		);
+		const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
+		const builtinAliases = new Set(BUILTIN_SLASH_COMMANDS.flatMap((command) => command.aliases ?? []));
+		const seenBuiltin = new Set<string>();
 		return extensionRunner
 			.getRegisteredCommands()
-			.filter((command) => builtinNames.has(command.name))
+			.filter((command) => builtinNames.has(command.name) || builtinAliases.has(command.name))
+			.filter((command) => {
+				const source = "source" in command && typeof command.source === "string" ? command.source : undefined;
+				if (source !== undefined) return source === "extension";
+				if (!builtinNames.has(command.name)) return true;
+				if (seenBuiltin.has(command.name)) return true;
+				seenBuiltin.add(command.name);
+				return false;
+			})
 			.map((command) => ({
 				type: "warning" as const,
 				message:
@@ -1834,20 +1851,14 @@ export class InteractiveMode {
 	/**
 	 * The diagnostics of the extensions the client loaded.
 	 *
-	 * Besides the errors of the load, it reports the extensions that only run on the server
-	 * and the "both" extensions the server does not have.
+	 * An extension that declares the server side is not an issue: it runs on the server and
+	 * the client does not render with it. Only the load errors and the "both" extensions the
+	 * server does not have are worth reporting.
 	 */
 	private getClientExtensionDiagnostics(): ResourceDiagnostic[] {
 		const runtime = this.clientExtensions;
 		if (!runtime) return [];
 		const diagnostics: ResourceDiagnostic[] = [...runtime.diagnostics];
-		for (const skipped of runtime.skipped) {
-			diagnostics.push({
-				type: "warning",
-				message: `Extension "${skipped.path}" declares the server side, so the client does not render with it. It runs on the server.`,
-				path: skipped.path,
-			});
-		}
 		diagnostics.push(...runtime.getDiagnostics(this.facade.sessionExtensions));
 		return diagnostics;
 	}

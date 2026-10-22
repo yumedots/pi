@@ -207,7 +207,25 @@ export class ClientExtensionRuntime {
 		this.extensions = load.extensions;
 		this.skipped = load.skipped;
 		this.themes = load.themes;
-		this.diagnostics = load.diagnostics;
+		const diagnostics = [
+			...load.diagnostics,
+			// The load reports the extensions it skipped (a server-side extension on the
+			// client, for example) as warnings; they belong in the diagnostics the TUI shows.
+			...load.warnings.map((warning) => ({
+				type: "warning" as const,
+				message: warning.warning,
+				path: warning.path,
+			})),
+		];
+		// The loader reports a skipped extension as a warning and as a diagnostic; the TUI
+		// shows one line per problem.
+		const seen = new Set<string>();
+		this.diagnostics = diagnostics.filter((diagnostic) => {
+			const key = `${diagnostic.path ?? ""}\n${diagnostic.message}`;
+			if (seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		});
 	}
 
 	/** The renderer of a custom message. */
