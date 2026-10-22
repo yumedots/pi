@@ -765,6 +765,8 @@ async function buildSelfInstall(
 			[
 				"build",
 				"--compile",
+				// The minified binary loads its embedded modules faster.
+				"--minify",
 				"--no-compile-autoload-bunfig",
 				"--no-compile-autoload-dotenv",
 				clientEntry,
@@ -779,6 +781,7 @@ async function buildSelfInstall(
 			[
 				"build",
 				"--compile",
+				"--minify",
 				"--no-compile-autoload-bunfig",
 				"--no-compile-autoload-dotenv",
 				serverEntry,
