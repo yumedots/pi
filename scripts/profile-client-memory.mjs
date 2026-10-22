@@ -218,7 +218,13 @@ function reportLive(options) {
 		const client = rows.find(
 			(row) => row.command.includes(binary) && !row.command.includes("pi-server") && !row.command.startsWith("tmux"),
 		);
-		const server = rows.find((row) => row.ppid === client?.pid || row.command.includes("pi-server"));
+		// The server is a process of its own only when the client does not host it.
+		const server = rows.find(
+			(row) =>
+				!row.command.startsWith("tmux") &&
+				row.pid !== client?.pid &&
+				(row.command.includes("pi-server") || /server\/(src|dist)\/cli\.ts/.test(row.command)),
+		);
 		const clientMb = client ? client.rss / 1024 : 0;
 		const serverMb = server ? server.rss / 1024 : 0;
 		console.log("Live memory (MB)");
