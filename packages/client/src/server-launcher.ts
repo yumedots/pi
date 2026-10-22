@@ -9,10 +9,19 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { basicAuthHeader, type ServerRegistration } from "@earendil-works/pi-server";
+import { SettingsManager } from "@earendil-works/pi-coding-agent/core/settings-manager";
+import { basicAuthHeader, type ServerRegistration } from "@earendil-works/pi-server/client";
 
 /** How long the client waits for a freshly spawned server to answer. */
 export const SERVER_START_TIMEOUT_MS = 10_000;
+
+/**
+ * The interface a server listens on when the settings do not say otherwise.
+ *
+ * The server is password protected, so it listens on every interface: that is what makes
+ * it reachable from a phone on the same network.
+ */
+export const DEFAULT_SERVER_HOSTNAME = "0.0.0.0";
 
 /**
  * The arguments the client starts a server with.
@@ -20,7 +29,18 @@ export const SERVER_START_TIMEOUT_MS = 10_000;
  * The server picks a free port and writes the URL into the registration file, so a running
  * server never collides with another one.
  */
-const SERVER_ARGS = ["--port", "0"];
+/**
+ * The arguments the server is started with.
+ *
+ * A command that already names a port keeps it: the compiled binary's sibling command
+ * carries `--port 0` already.
+ */
+function serverArgs(existing: readonly string[], hostname: string): string[] {
+	const args: string[] = [];
+	if (!existing.includes("--port")) args.push("--port", "0");
+	if (!existing.includes("--hostname")) args.push("--hostname", hostname);
+	return args;
+}
 
 /** The options of {@link ensureServer}. */
 export interface EnsureServerOptions {
@@ -30,6 +50,8 @@ export interface EnsureServerOptions {
 	command?: string;
 	/** The arguments of the command. */
 	args?: string[];
+	/** The interface the server listens on. Defaults to the one from the settings. */
+	hostname?: string;
 }
 
 /** A server the client can talk to. */
@@ -91,11 +113,11 @@ function typeStrippingArgs(): string[] {
  * installed, not from `$PATH`: the `pi-server` binary is not on the path when the client
  * runs from a checkout or from a global install without the server package linked.
  */
-export function resolveServerCommand(): { command: string; args: string[] } {
+export function resolveServerCommand(hostname: string = DEFAULT_SERVER_HOSTNAME): { command: string; args: string[] } {
 	const override = process.env.PI_SERVER_COMMAND;
 	if (override && override.trim().length > 0) {
 		const [command, ...args] = override.split(" ");
-		return { command: command!, args };
+		return { command: command!, args: [...args, ...serverArgs(args, hostname)] };
 	}
 
 	try {
@@ -106,17 +128,34 @@ export function resolveServerCommand(): { command: string; args: string[] } {
 		// published package ships only `dist`.
 		const source = join(packageRoot, "src", "cli.ts");
 		if (existsSync(source)) {
-			return { command: process.execPath, args: [...typeStrippingArgs(), source, ...SERVER_ARGS] };
+			return {
+				command: process.execPath,
+				args: [...typeStrippingArgs(), source, ...serverArgs([], hostname)],
+			};
 		}
 		const built = join(packageRoot, "dist", "cli.js");
 		if (existsSync(built)) {
-			return { command: process.execPath, args: [built, ...SERVER_ARGS] };
+			return { command: process.execPath, args: [built, ...serverArgs([], hostname)] };
 		}
 	} catch {
 		// The server package is not installed next to the client; fall back to the path.
 	}
 
-	return { command: "pi-server", args: [] };
+	return { command: "pi-server", args: serverArgs([], hostname) };
+}
+
+/**
+ * The interface a server listens on.
+ *
+ * The settings decide, so a user who pinned the server to the loopback address keeps
+ * that.
+ */
+export function resolveServerHostname(agentDir: string): string {
+	try {
+		return SettingsManager.create(process.cwd(), agentDir).getServerHostname();
+	} catch {
+		return DEFAULT_SERVER_HOSTNAME;
+	}
 }
 
 /**
@@ -130,7 +169,10 @@ export async function ensureServer(options: EnsureServerOptions): Promise<Runnin
 		return { url: registration.url, password: registration.password, pid: registration.pid };
 	}
 
-	const command = options.command ? { command: options.command, args: options.args ?? [] } : resolveServerCommand();
+	const hostname = options.hostname ?? resolveServerHostname(options.agentDir);
+	const command = options.command
+		? { command: options.command, args: [...(options.args ?? []), ...serverArgs(options.args ?? [], hostname)] }
+		: resolveServerCommand(hostname);
 	const child = spawn(command.command, command.args, {
 		detached: true,
 		stdio: "ignore",
