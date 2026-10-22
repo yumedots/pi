@@ -16,6 +16,9 @@ import { CONFIG_DIR_NAME } from "./client-support/config.ts";
 /** How long the client waits for a freshly spawned server to answer. */
 export const SERVER_START_TIMEOUT_MS = 10_000;
 
+/** How often the client looks for the registration file of a server it just started. */
+const SERVER_START_POLL_MS = 25;
+
 /**
  * The interface a server listens on when the settings do not say otherwise.
  *
@@ -232,99 +235,26 @@ export function readServerSettings(cwd: string, agentDir: string): ServerSetting
 	};
 }
 
-/**
- * The server the client talks to.
- *
- * A registered server that is running is the server of the machine: a client that finds
- * one joins it, so the server of `pi serve` or of another client is shared. A client that
- * finds none runs the server in its own process: one process costs one runtime, and the
- * server is reachable on the network while the client runs.
- */
-export interface LocalServer {
-	/** The base URL of the server. */
-	url: string;
-	/** The password the client authenticates with. */
-	password: string;
-	/** The process id of the server. */
-	pid: number;
-	/** Stop the server, when this client started it. */
-	close: (() => Promise<void>) | undefined;
-}
+/** The servers the client started before it needed them, per agent directory. */
+const earlyStarts = new Map<string, Promise<RunningServer>>();
 
 /**
- * Find the server of the agent directory, or run one in this process.
- */
-export async function localServer(options: EnsureServerOptions): Promise<LocalServer> {
-	const registration = readServerRegistration(options.agentDir);
-	if (registration && (await isServerAlive(registration))) {
-		return { url: registration.url, password: registration.password, pid: registration.pid, close: undefined };
-	}
-	return startEmbeddedServer(options);
-}
-
-/**
- * Run the server in this process.
+ * Start the server before the client needs it.
  *
- * The runtime of the server is loaded here and not at the top of the module: the client's
- * own code never imports it. The server binds every interface and registers itself, so a
- * browser or another client reaches it while this process runs.
- */
-export async function startEmbeddedServer(options: EnsureServerOptions): Promise<LocalServer> {
-	const { randomBytes } = await import("node:crypto");
-	const hostname = options.hostname ?? resolveServerHostname(options.agentDir);
-	const password = randomBytes(16).toString("base64url");
-	const [{ startServer }, runtimeFactory] = await Promise.all([
-		import("@earendil-works/pi-server"),
-		createServerRuntimeFactory(options.agentDir),
-	]);
-	const server = await startServer({
-		hostname,
-		port: 0,
-		password,
-		agentDir: options.agentDir,
-		cwd: process.cwd(),
-		// The server lives as long as this process does, so nothing has to watch it.
-		idleTimeoutMs: 0,
-		createRuntime: runtimeFactory,
-	});
-	return { url: server.url, password, pid: process.pid, close: () => server.close() };
-}
-
-/**
- * The runtime factory of the embedded server.
+ * The server takes a while to boot, and the client needs a while to load its own modules.
+ * Starting the server first overlaps the two waits, so the terminal UI shows up sooner.
  *
- * The server builds the agent runtime, so the module is loaded with the server and never
- * with the client's own code.
+ * @returns A function that waits for the server, for a command that turns out not to need
+ * one.
  */
-async function createServerRuntimeFactory(
-	agentDir: string,
-): Promise<import("@earendil-works/pi-coding-agent/core/agent-session-runtime").CreateAgentSessionRuntimeFactory> {
-	const [{ SettingsManager }, { ProjectTrustStore }, { parseArgs }, { createRuntimeFactory }] = await Promise.all([
-		import("@earendil-works/pi-coding-agent/core/settings-manager"),
-		import("@earendil-works/pi-coding-agent/core/trust-manager"),
-		import("@earendil-works/pi-coding-agent/cli/args"),
-		import("@earendil-works/pi-coding-agent/core/runtime-factory"),
-	]);
-	return createRuntimeFactory({
-		agentDir,
-		parsed: parseArgs([]),
-		startupSettingsManager: SettingsManager.create(process.cwd(), agentDir),
-		trustStore: new ProjectTrustStore(agentDir),
-		appMode: () => "interactive",
-		trustPromptMode: "interactive",
-		extensionFactories: [],
-		projectTrustContextFactory: (cwd, mode, hasUI) => ({
-			cwd,
-			mode: mode === "interactive" ? "tui" : mode,
-			hasUI,
-			ui: {
-				select: async (_title, choices) => choices[0],
-				confirm: async () => false,
-				input: async () => undefined,
-				notify: () => {},
-			},
-		}),
-	});
+export function prewarmServer(options: EnsureServerOptions): () => void {
+	const started = ensureServer(options);
+	earlyStarts.set(options.agentDir, started);
+	// A command that never asks for the server must not leave a rejected promise behind.
+	started.catch(() => undefined);
+	return () => {
+		earlyStarts.delete(options.agentDir);
+	};
 }
 
 /**
@@ -333,6 +263,11 @@ async function createServerRuntimeFactory(
  * @returns The server the client should talk to.
  */
 export async function ensureServer(options: EnsureServerOptions): Promise<RunningServer> {
+	const started = earlyStarts.get(options.agentDir);
+	if (started) {
+		earlyStarts.delete(options.agentDir);
+		return started;
+	}
 	const registration = readServerRegistration(options.agentDir);
 	if (registration && (await isServerAlive(registration))) {
 		return { url: registration.url, password: registration.password, pid: registration.pid };
@@ -350,7 +285,9 @@ export async function ensureServer(options: EnsureServerOptions): Promise<Runnin
 
 	const deadline = Date.now() + SERVER_START_TIMEOUT_MS;
 	while (Date.now() < deadline) {
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		// Poll quickly: the server writes its registration as soon as it listens, and a slow
+		// poll would add its own delay to every start.
+		await new Promise((resolve) => setTimeout(resolve, SERVER_START_POLL_MS));
 		const started = readServerRegistration(options.agentDir);
 		if (started && (await isServerAlive(started))) {
 			return { url: started.url, password: started.password, pid: started.pid };

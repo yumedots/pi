@@ -112,6 +112,7 @@ import {
 	type UsageEntry,
 } from "./client-support/session-manager.ts";
 import { InteractiveThemeController } from "./client-support/theme-controller.ts";
+import { printTimings, time } from "./client-support/timings.ts";
 import { withBuiltInRenderers } from "./client-support/tool-renderers/index.ts";
 import type { ToolStatus } from "./client-support/tools-manager.ts";
 import { hasTrustRequiringProjectResources } from "./client-support/trust.ts";
@@ -1188,6 +1189,8 @@ export class InteractiveMode {
 		// Start the UI before initializing extensions so session_start handlers can use interactive dialogs
 		this.ui.start();
 		this.isInitialized = true;
+		time("draw the first frame");
+		printTimings();
 		this.programStatus.report();
 		this.ensurePngTranscoder();
 

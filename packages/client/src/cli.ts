@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// The server starts while the rest of the client loads.
+import "./boot.ts";
 /**
  * The client entry point.
  *
@@ -41,7 +43,6 @@ import {
 	type SessionStateSnapshot,
 } from "@earendil-works/pi-server/client";
 import { normalizePath } from "@earendil-works/pi-support/paths";
-import { ClientSettings } from "./client-settings.ts";
 import {
 	type Args,
 	buildInitialMessage,
@@ -58,12 +59,10 @@ import {
 	type SelfInstallManifest,
 	VERSION,
 } from "./client-support/config.ts";
-import { setAvailableThemes, setThemeFromJson } from "./client-theme.ts";
-import { RemoteSessionFacade } from "./remote-facade.ts";
+import { printTimings, time } from "./client-support/timings.ts";
 import {
 	ensureServer,
 	isServerAlive,
-	localServer,
 	readServerRegistration,
 	readServerSettings,
 	readSettingsRecord,
@@ -128,6 +127,7 @@ export async function runClient(args: string[]): Promise<void> {
 		process.exitCode = await runRpc(parsed);
 		return;
 	}
+	time("parse");
 	await startInteractive(parsed);
 }
 
@@ -279,6 +279,7 @@ Options:
 	const cwd = handshake.cwd;
 
 	const changes: Promise<unknown>[] = [];
+	const { ClientSettings } = await import("./client-settings.ts");
 	const settings = new ClientSettings({
 		scopes: { global: readSettingsRecord(cwd, agentDir) },
 		projectTrusted: handshake.trust.trusted,
@@ -912,14 +913,11 @@ function resolvePhotonWasm(codingAgentDir: string): string | undefined {
  */
 export async function startInteractive(parsed: Args): Promise<void> {
 	const agentDir = getAgentDir();
-	// A local run costs one runtime: the client runs the server in its own process, unless
-	// the machine already has a server the client can join.
-	const server = await localServer({ agentDir });
-	try {
-		await runInteractive(parsed, agentDir, server.url, server.password);
-	} finally {
-		await server.close?.();
-	}
+	// The server is a process of its own: the client can be closed without stopping the
+	// agent, and the server can be closed without stopping the client.
+	const server = await ensureServer({ agentDir });
+	time("start the server");
+	await runInteractive(parsed, agentDir, server.url, server.password);
 }
 
 /**
@@ -942,6 +940,7 @@ async function runInteractive(parsed: Args, agentDir: string, url: string, passw
 		resume,
 	});
 
+	const { RemoteSessionFacade } = await import("./remote-facade.ts");
 	const facade = new RemoteSessionFacade(client, snapshot.sessionId, snapshot.cwd || cwd, {
 		agentDir,
 	});
@@ -950,11 +949,13 @@ async function runInteractive(parsed: Args, agentDir: string, url: string, passw
 	if (!(await checkManifest(client, snapshot.sessionId, agentDir, handshake.trust.trusted))) {
 		return;
 	}
+	time("open the session");
 	const manifest = await client.manifest(snapshot.sessionId);
-	installServerThemes(manifest);
+	await installServerThemes(manifest);
 
 	const { initialMessage, initialImages } = await buildInitialMessageFor(parsed);
 	const { InteractiveMode } = await import("./interactive-mode.ts");
+	time("load the terminal UI");
 	const mode = new InteractiveMode(facade, {
 		initialMessage,
 		initialImages,
@@ -964,6 +965,7 @@ async function runInteractive(parsed: Args, agentDir: string, url: string, passw
 		initialThemeSetting: parsed.useTheme,
 	});
 	await mode.run();
+	printTimings();
 }
 
 /**
@@ -1025,7 +1027,8 @@ function resolveSessionDir(parsed: Args): string | undefined {
  * The themes belong to the server: it offers them in its manifest, so the client draws
  * with the theme of the server and knows the ones the theme picker offers.
  */
-function installServerThemes(manifest: PiManifest): void {
+async function installServerThemes(manifest: PiManifest): Promise<void> {
+	const { setAvailableThemes, setThemeFromJson } = await import("./client-theme.ts");
 	const themes = manifest.themes ?? [];
 	setAvailableThemes(
 		themes.map((entry) => ({ name: entry.name, path: undefined })),
@@ -1082,6 +1085,7 @@ async function findSessionPath(client: PiServerClient, cwd: string, id: string):
  * Ask which session to resume.
  */
 async function pickSession(client: PiServerClient, cwd: string, agentDir: string): Promise<string | undefined> {
+	const { ClientSettings } = await import("./client-settings.ts");
 	const settings = new ClientSettings({ scopes: { global: readSettingsRecord(cwd, agentDir) } });
 	const { selectSession } = await import("./cli/session-picker.ts");
 	return (await selectSession(client, cwd, settings)) ?? undefined;
