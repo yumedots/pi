@@ -11,6 +11,8 @@ export const clientName = "@earendil-works/pi-client";
 export function smokeTestClient(directory, runtime = process.execPath) {
 	const packageDir = join(directory, "node_modules", clientName);
 	const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
+	// The client is the package that ships the `pi` binary.
+	if (!manifest.bin?.pi) throw new Error(`${clientName} must ship the pi binary`);
 	const home = mkdtempSync(join(tmpdir(), "pi-client-smoke-home-"));
 	const entry = join(directory, "client-smoke.mjs");
 	const env = {

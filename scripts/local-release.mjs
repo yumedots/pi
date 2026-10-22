@@ -35,21 +35,33 @@ function currentBinaryPlatform() {
 	throw new Error(`Unsupported binary platform: ${process.platform} ${process.arch}`);
 }
 
-function buildBunBinaryRelease(targetDirectory, archiveDirectory) {
+function buildBunBinaryRelease(targetDirectory, archiveDirectory, repoRoot) {
 	const platform = currentBinaryPlatform();
-	const binaryBuildDirectory = join(archiveDirectory, "binary-build");
-	execFileSync("bash", ["./scripts/build-binaries.sh",
-		"--skip-install",
-		"--skip-build",
-		"--platform",
-		platform,
-		"--out",
-		binaryBuildDirectory,
-	], { stdio: "inherit" });
+	// The `pi` binary ships with the client package; the coding agent is the runtime it drives.
+	execBunSync(["run", "--filter", clientName, "build:binary"], { cwd: repoRoot, stdio: "inherit" });
+	const buildDirectory = join(repoRoot, "packages", "client", "dist", "binary");
 	rmSync(targetDirectory, { force: true, recursive: true });
-	cpSync(join(binaryBuildDirectory, platform), targetDirectory, { recursive: true });
+	cpSync(buildDirectory, targetDirectory, { recursive: true });
+	// The release ships the documentation of the runtime next to the binary. The system
+	// prompt points the model at the README next to the executable, so it has to be there.
+	for (const extra of ["README.md", "CHANGELOG.md", "docs", "examples"]) {
+		const source = join(repoRoot, "packages", "coding-agent", extra);
+		if (existsSync(source)) cpSync(source, join(targetDirectory, extra), { recursive: true });
+	}
 	const archiveName = platform.startsWith("windows-") ? `pi-${platform}.zip` : `pi-${platform}.tar.gz`;
-	cpSync(join(binaryBuildDirectory, archiveName), join(archiveDirectory, archiveName));
+	const archivePath = join(archiveDirectory, archiveName);
+	rmSync(archivePath, { force: true });
+	if (platform.startsWith("windows-")) {
+		execFileSync("zip", ["-r", archivePath, "."], { cwd: targetDirectory, stdio: "inherit" });
+	} else {
+		// The archive carries a wrapper directory, so that mise and other version
+		// managers find the binary in a directory they can track.
+		const wrapper = join(archiveDirectory, "pi");
+		rmSync(wrapper, { force: true, recursive: true });
+		cpSync(targetDirectory, wrapper, { recursive: true });
+		execFileSync("tar", ["-czf", archivePath, "-C", archiveDirectory, "pi"], { stdio: "inherit" });
+		rmSync(wrapper, { force: true, recursive: true });
+	}
 	return platform;
 }
 
@@ -114,7 +126,7 @@ if (!options.skipTest) execFileSync("bash", ["./scripts/test.sh"], { cwd: repoRo
 
 let binaryPlatform;
 if (!options.skipInstall) {
-	binaryPlatform = buildBunBinaryRelease(binaryDirectory, outDir);
+	binaryPlatform = buildBunBinaryRelease(binaryDirectory, outDir, repoRoot);
 	const validationRoot = mkdtempSync(join(tmpdir(), "pi-local-release-consumers-"));
 	try {
 		for (const pkg of artifactSet.packages) {

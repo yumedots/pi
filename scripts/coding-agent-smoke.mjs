@@ -8,6 +8,8 @@ export const codingAgentName = "@earendil-works/pi-coding-agent";
 export function smokeTestCodingAgent(directory, runtime = process.execPath) {
 	const packageDir = join(directory, "node_modules", codingAgentName);
 	const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
+	// The binary moved to the client package; the coding agent is the runtime it drives.
+	if (manifest.bin?.pi) throw new Error(`${codingAgentName} must not ship the pi binary; the client owns it`);
 	const home = mkdtempSync(join(tmpdir(), "pi-coding-agent-smoke-home-"));
 	const entry = join(directory, "coding-agent-smoke.mjs");
 	const env = {

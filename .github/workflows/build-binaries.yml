@@ -64,6 +64,8 @@ jobs:
             --out "release-assets/pi-${VERSION}-source.tar.gz"
 
       - name: Build binaries from source archive
+        # The script builds the client binary (`pi`) and the server binary (`pi-server`)
+        # for every platform, and puts the runtime assets next to them.
         run: |
           set -euo pipefail
 
@@ -169,18 +171,21 @@ jobs:
               archive="release-assets/pi-${platform}.tar.gz"
               root="extracted/pi"
               binary="${root}/pi"
+              server_binary="${root}/pi-server"
               ;;
             win32-arm64)
               platform="windows-arm64"
               archive="release-assets/pi-${platform}.zip"
               root="extracted"
               binary="${root}/pi.exe"
+              server_binary="${root}/pi-server.exe"
               ;;
             win32-x64)
               platform="windows-x64"
               archive="release-assets/pi-${platform}.zip"
               root="extracted"
               binary="${root}/pi.exe"
+              server_binary="${root}/pi-server.exe"
               ;;
             *)
               echo "::error::Unsupported runner platform ${runtime_platform}"
@@ -197,14 +202,22 @@ jobs:
           else
             tar -xf "${archive}" -C extracted
           fi
+
+          # The client starts the server binary that sits next to it, so the release
+          # has to ship both.
+          test -f "${binary}"
+          test -f "${server_binary}"
+
           echo "root=${root}" >> "${GITHUB_OUTPUT}"
           echo "binary=${binary}" >> "${GITHUB_OUTPUT}"
+          echo "server_binary=${server_binary}" >> "${GITHUB_OUTPUT}"
 
       - name: Smoke-test binary
         shell: bash
         run: |
           "${{ steps.binary.outputs.binary }}" --help
           "${{ steps.binary.outputs.binary }}" --version
+          "${{ steps.binary.outputs.server_binary }}" --help
           node scripts/smoke-test-codemode-binary.mjs "${{ steps.binary.outputs.binary }}"
 
   stage-github-release:
