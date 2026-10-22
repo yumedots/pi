@@ -56,6 +56,8 @@ const argumentsList: unknown[] = [
 	{ count: null },
 	{ count: 42.5 },
 	{ path: "file.txt", offset: "7" },
+	// An optional property set to undefined counts as absent, the way TypeBox reads it.
+	{ path: "file.txt", offset: undefined },
 	{ value: null },
 	{ value: "42" },
 	{ items: ["a"] },

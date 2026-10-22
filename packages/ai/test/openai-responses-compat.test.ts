@@ -72,8 +72,9 @@ describe("openai-responses provider defaults", () => {
 		vi.restoreAllMocks();
 	});
 
+	// Copilot rejects reasoning.effort "none", so it never sends a reasoning field it was not asked for.
 	it("omits reasoning when no reasoning is requested", async () => {
-		const model = getModel("github-copilot", "gpt-5-mini");
+		const model = getModel("github-copilot", "gpt-6-sol");
 		let capturedPayload: unknown;
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(
