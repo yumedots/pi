@@ -1,9 +1,10 @@
 import type { Component } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it } from "vitest";
-import { initTheme, theme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
+import { theme } from "../src/client-theme.ts";
 import { NEW_SESSION_ROW_LABEL, SessionSidebar, type SessionSidebarRow } from "../src/components/session-sidebar.ts";
 import { SessionSidebarLayout, SIDEBAR_MIN_WIDTH, SIDEBAR_WIDTH } from "../src/session-sidebar-layout.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 /** Stands in for the conversation area. */
 class Conversation implements Component {
@@ -38,7 +39,7 @@ function layout(main: Component = new Conversation()): SessionSidebarLayout {
 
 describe("session sidebar layout", () => {
 	beforeEach(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	it("shows the sessions in a column beside the conversation", () => {

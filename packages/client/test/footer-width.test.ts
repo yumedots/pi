@@ -1,10 +1,10 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { ReadonlyFooterDataProvider } from "../../coding-agent/src/core/footer-data-provider.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { FooterComponent, formatContextBar, formatCwdForFooter } from "../src/components/footer.ts";
 import type { SessionFacade } from "../src/session-facade.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 type AssistantUsage = {
 	input: number;
@@ -137,7 +137,7 @@ describe("formatContextBar", () => {
 
 describe("FooterComponent width handling", () => {
 	beforeAll(() => {
-		initTheme(undefined, false);
+		initDarkTheme();
 	});
 
 	it("keeps all lines within width for wide session names", () => {

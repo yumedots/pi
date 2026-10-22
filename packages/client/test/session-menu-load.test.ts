@@ -2,9 +2,9 @@ import { setKeybindings } from "@earendil-works/pi-tui";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../coding-agent/src/core/keybindings.ts";
 import type { SessionInfo } from "../../coding-agent/src/core/session-manager.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { SessionMenuComponent } from "../src/components/session-menu.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 async function flushPromises(): Promise<void> {
 	await new Promise<void>((resolve) => {
@@ -27,7 +27,7 @@ function makeSession(id: string): SessionInfo {
 
 describe("session menu loading", () => {
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	beforeEach(() => {

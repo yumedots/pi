@@ -172,11 +172,23 @@ describe("the thin client", () => {
 		expect(runtime).toEqual([]);
 	});
 
+	test("the module graph of the client does not reach the coding agent", () => {
+		// The client is a renderer: it draws what the server tells it to draw. It must
+		// not load the coding agent at all, not even a part of it. The client and the
+		// server would hold the same core twice, in two processes, and the memory of
+		// the pair would be the memory of the agent twice.
+		//
+		// `import type` is erased before the runtime sees it, so the type imports of the
+		// coding agent cost nothing and stay allowed. The graph below follows the value
+		// imports only.
+		const graph = clientGraph();
+		const codingAgent = [...graph].filter((file) => file.startsWith("packages/coding-agent/"));
+		expect(codingAgent).toEqual([]);
+	});
+
 	test("the client does not import the model runtime or the catalog itself", () => {
 		// The catalog is the server's business: the client reads the models from the
-		// server. It may not import the model runtime or the catalog itself. (The coding
-		// agent's command line entry and its bug report still reach the catalog; those
-		// are the coding agent's files.)
+		// server. It may not import the model runtime or the catalog itself.
 		const offenders = clientSources().filter((file) =>
 			valueImports(file).some((spec) => {
 				const target = resolveSpec(spec, file);
@@ -202,6 +214,7 @@ describe("the thin client", () => {
 			script,
 			[
 				`import ${JSON.stringify(join(CLIENT_SRC, "cli.ts"))};`,
+				`import ${JSON.stringify(join(CLIENT_SRC, "interactive-mode.ts"))};`,
 				// The module registry of bun holds the modules the process loaded.
 				"console.log(JSON.stringify(Object.keys(require.cache)));",
 				"",
@@ -214,5 +227,7 @@ describe("the thin client", () => {
 			(file) => file.startsWith("packages/server/src/") && ALLOWED_SERVER_FILES[file] !== true,
 		);
 		expect(runtime).toEqual([]);
+		const codingAgent = loaded.filter((file) => file.startsWith("packages/coding-agent/"));
+		expect(codingAgent).toEqual([]);
 	});
 });

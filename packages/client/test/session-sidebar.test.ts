@@ -1,13 +1,14 @@
 import { type TuiMouseEvent, visibleWidth } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it } from "vitest";
-import { initTheme, theme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
+import { theme } from "../src/client-theme.ts";
 import {
 	NEW_SESSION_ROW_LABEL,
 	SessionSidebar,
 	type SessionSidebarRow,
 	type SessionSidebarSelection,
 } from "../src/components/session-sidebar.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 function click(y: number): TuiMouseEvent {
 	return {
@@ -34,7 +35,7 @@ function rows(): SessionSidebarRow[] {
 
 describe("session sidebar", () => {
 	beforeEach(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	it("renders the braille spinner on a working row", () => {

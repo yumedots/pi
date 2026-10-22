@@ -17,13 +17,14 @@ import { ENV_AGENT_DIR, PACKAGE_NAME, VERSION } from "../../coding-agent/src/con
 import { ModelRuntime } from "../../coding-agent/src/core/model-runtime.ts";
 import { DefaultPackageManager, type ResolvedPaths } from "../../coding-agent/src/core/package-manager.ts";
 import { InMemorySettingsStorage, SettingsManager } from "../../coding-agent/src/core/settings-manager.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { ProjectTrustStore } from "../../coding-agent/src/core/trust-manager.ts";
 import { main } from "../../coding-agent/src/main.ts";
 import { handlePackageCommand } from "../../coding-agent/src/package-manager-cli.ts";
 import { hideBunRuntime } from "../../coding-agent/test/bun-runtime.ts";
 import { allowNetwork } from "../../coding-agent/test/test-network-env.ts";
+import { ClientSettings } from "../src/client-settings.ts";
 import { ConfigSelectorComponent } from "../src/components/config-selector.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 describe("package commands", () => {
 	let tempDir: string;
@@ -509,10 +510,26 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 		expect(process.exitCode).toBe(1);
 	});
 
+	/**
+	 * The mirror of the settings the client draws with.
+	 *
+	 * The client keeps a mirror of the settings of the server, so the config editor works on
+	 * the mirror and hands the changes to the server.
+	 */
+	function clientSettingsOf(storage: InMemorySettingsStorage): ClientSettings {
+		let raw: string | undefined;
+		storage.withLock("global", (current) => {
+			raw = current;
+			return undefined;
+		});
+		const settings = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+		return new ClientSettings({ scopes: { global: settings } });
+	}
+
 	it("cycles project package overrides in config local mode", async () => {
 		const storage = new InMemorySettingsStorage();
 		storage.withLock("global", () => JSON.stringify({ packages: ["npm:pi-tools"] }));
-		const settingsManager = SettingsManager.fromStorage(storage, { projectTrusted: true });
+		const settingsManager = clientSettingsOf(storage);
 		const resolvedPaths = extensionPaths(join(tempDir, "pkg"), "npm:pi-tools", "user", ["bar.ts"]);
 		const selector = new ConfigSelectorComponent(
 			{ global: resolvedPaths, project: resolvedPaths },
@@ -541,11 +558,12 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 	});
 
 	it("toggles built-in extensions in config global mode", async () => {
-		const settingsManager = SettingsManager.fromStorage(new InMemorySettingsStorage(), { projectTrusted: true });
+		const storage = new InMemorySettingsStorage();
+		const settingsManager = clientSettingsOf(storage);
 		const resolvedPaths = await new DefaultPackageManager({
 			cwd: projectDir,
 			agentDir,
-			settingsManager,
+			settingsManager: SettingsManager.fromStorage(storage, { projectTrusted: true }),
 			builtinExtensions: ["llama.cpp", "mcp"],
 		}).resolve();
 		const selector = new ConfigSelectorComponent(
@@ -561,7 +579,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 		);
 
 		const list = selector.getResourceList();
-		initTheme("dark");
+		initDarkTheme();
 		expect(list.render(80).join("\n")).toContain("Built-in");
 		expect(list.render(80).join("\n")).toContain("llama.cpp");
 		list.handleInput(" ");
@@ -573,11 +591,11 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 	it("cycles project built-in extension overrides in config local mode", async () => {
 		const storage = new InMemorySettingsStorage();
 		storage.withLock("global", () => JSON.stringify({ extensions: ["-builtin:mcp"] }));
-		const settingsManager = SettingsManager.fromStorage(storage, { projectTrusted: true });
+		const settingsManager = clientSettingsOf(storage);
 		const resolvedPaths = await new DefaultPackageManager({
 			cwd: projectDir,
 			agentDir,
-			settingsManager,
+			settingsManager: SettingsManager.fromStorage(storage, { projectTrusted: true }),
 			builtinExtensions: ["mcp"],
 		}).resolve();
 		const selector = new ConfigSelectorComponent(

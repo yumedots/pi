@@ -2,10 +2,10 @@ import type { Usage } from "@earendil-works/pi-ai";
 import { Container } from "@earendil-works/pi-tui";
 import { describe, expect, test, vi } from "vitest";
 import type { SessionEntry } from "../../coding-agent/src/core/session-manager.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { InteractiveMode } from "../src/interactive-mode.ts";
 import { createInteractiveContext } from "./interactive-mode-context.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 describe("InteractiveMode compaction events", () => {
 	test("uses the cache miss notice setting for compaction and branch summary costs", () => {
@@ -26,7 +26,7 @@ describe("InteractiveMode compaction events", () => {
 			},
 		) => void;
 
-		initTheme("dark");
+		initDarkTheme();
 		const enabled = createInteractiveContext({
 			chatContainer: new Container(),
 			facade: { settingsManager: { getShowCacheMissNotices: () => true } },

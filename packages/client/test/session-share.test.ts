@@ -10,8 +10,8 @@ const childProcessMocks = vi.hoisted(() => ({
 
 vi.mock("node:child_process", () => childProcessMocks);
 
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { shareSession } from "../src/session-share.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
 	let resolve!: () => void;
@@ -22,7 +22,7 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe("shareSession", () => {
-	beforeAll(() => initTheme("dark"));
+	beforeAll(() => initDarkTheme());
 	beforeEach(() => vi.clearAllMocks());
 
 	it("keeps concurrent session exports isolated", async () => {

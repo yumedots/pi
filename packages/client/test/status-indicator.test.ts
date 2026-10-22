@@ -1,8 +1,8 @@
 import { type TUI, visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../coding-agent/src/core/keybindings.ts";
-import { getEditorTheme, initTheme, theme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
+import { getEditorTheme, theme } from "../src/client-theme.ts";
 import { CustomEditor } from "../src/components/custom-editor.ts";
 import {
 	BranchSummaryStatusIndicator,
@@ -11,6 +11,7 @@ import {
 	RetryStatusIndicator,
 	WorkingStatusIndicator,
 } from "../src/components/status-indicator.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 describe("status indicators", () => {
 	afterEach(() => {
@@ -26,7 +27,7 @@ describe("status indicators", () => {
 	});
 
 	it("keeps the editor's top row free of the status", () => {
-		initTheme("dark");
+		initDarkTheme();
 		const tui = {
 			requestRender: vi.fn(),
 			terminal: { rows: 10 },
@@ -37,7 +38,7 @@ describe("status indicators", () => {
 	});
 
 	it("paints the editor box in the color of the sent messages", () => {
-		initTheme("dark");
+		initDarkTheme();
 		const tui = {
 			requestRender: vi.fn(),
 			terminal: { rows: 10 },
@@ -49,7 +50,7 @@ describe("status indicators", () => {
 	});
 
 	it("renders the working indicator on its own row", () => {
-		initTheme("dark");
+		initDarkTheme();
 		const tui = {
 			requestRender: vi.fn(),
 			terminal: { rows: 10 },
@@ -66,7 +67,7 @@ describe("status indicators", () => {
 	});
 
 	it("renders compaction, summary, and retry labels on the status row", () => {
-		initTheme("dark");
+		initDarkTheme();
 		vi.useFakeTimers();
 		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
 		const indicators = [
@@ -91,7 +92,7 @@ describe("status indicators", () => {
 	});
 
 	it("disposes retry countdown updates", () => {
-		initTheme("dark");
+		initDarkTheme();
 		vi.useFakeTimers();
 		const requestRender = vi.fn();
 		const tui = { requestRender } as unknown as TUI;

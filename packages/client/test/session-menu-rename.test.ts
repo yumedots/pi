@@ -2,8 +2,8 @@ import { setKeybindings } from "@earendil-works/pi-tui";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../coding-agent/src/core/keybindings.ts";
 import type { SessionInfo } from "../../coding-agent/src/core/session-manager.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { SessionMenuComponent } from "../src/components/session-menu.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 async function flushPromises(): Promise<void> {
 	await new Promise<void>((resolve) => {
@@ -30,7 +30,7 @@ const CTRL_R = "\x1b[114;5u";
 
 describe("session menu rename", () => {
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	beforeEach(() => {

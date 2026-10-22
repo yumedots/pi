@@ -1,9 +1,9 @@
 import { setCapabilities, setKeybindings } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../coding-agent/src/core/keybindings.ts";
-import { initTheme, setTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { defaultMenuMaxVisible, MenuComponent } from "../src/components/menu.ts";
+import { initDarkTheme, initLightTheme } from "./theme-fixture.ts";
 
 const renderBody = (menu: MenuComponent<string>, width = 60): string => stripAnsi(menu.render(width).join("\n"));
 
@@ -24,7 +24,7 @@ describe("menu", () => {
 		// The assertions look for truecolor escapes. The terminal the suite runs in decides
 		// the color mode, and a terminal without truecolor support would fail them.
 		setCapabilities({ images: null, trueColor: true, hyperlinks: false });
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	it("shows fewer rows on a short screen", () => {
@@ -38,7 +38,7 @@ describe("menu", () => {
 	});
 
 	afterEach(() => {
-		setTheme("dark", false);
+		initDarkTheme();
 	});
 
 	it("renders the title and the description of each item", () => {
@@ -136,7 +136,7 @@ describe("menu", () => {
 		const dark = colorBefore(menu.render(60).join("\n"), "Skills");
 		expect(dark).not.toBe("");
 
-		setTheme("light", false);
+		initLightTheme();
 		// The UI invalidates on a theme change; the menu must pick the new colors up.
 		menu.invalidate();
 

@@ -3,10 +3,11 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ToolRenderContext } from "../../coding-agent/src/core/extensions/types.ts";
-import { initTheme, theme } from "../../coding-agent/src/core/theme/theme.ts";
+import { theme } from "../../coding-agent/src/core/theme/theme.ts";
 import { codemodeRenderers } from "../../coding-agent/src/extensions/codemode/renderer.ts";
 import type { CodemodeToolDetails } from "../../coding-agent/src/extensions/codemode/tool.ts";
 import { ToolExecutionComponent } from "../src/components/tool-execution.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 function render(
 	result: AgentToolResult<CodemodeToolDetails | undefined>,
@@ -44,7 +45,7 @@ function render(
 }
 
 describe("codemode renderer", () => {
-	beforeAll(() => initTheme("dark"));
+	beforeAll(() => initDarkTheme());
 	afterEach(() => vi.useRealTimers());
 
 	it("hides the script header and shows the output", () => {

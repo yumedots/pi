@@ -9,14 +9,15 @@ import {
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { redactJsonValue, redactUrl } from "../../coding-agent/src/core/bug-report.ts";
 import { KeybindingsManager } from "../../coding-agent/src/core/keybindings.ts";
-import { getEditorTheme, initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { reportBug } from "../src/bug-report.ts";
+import { getEditorTheme } from "../src/client-theme.ts";
 import { ExtensionEditorComponent } from "../src/components/extension-editor.ts";
 import { ExtensionSelectorComponent } from "../src/components/extension-selector.ts";
 import type { SessionFacade } from "../src/session-facade.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
-beforeAll(() => initTheme("dark"));
+beforeAll(() => initDarkTheme());
 
 describe("bug report prompt", () => {
 	it("preserves line breaks in pasted descriptions", async () => {

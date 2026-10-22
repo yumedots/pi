@@ -327,6 +327,7 @@ describe("the remote session facade", () => {
 				modified: 2,
 				messageCount: 3,
 				firstMessage: "hello",
+				allMessagesText: "hello",
 				busy: false,
 			},
 		];

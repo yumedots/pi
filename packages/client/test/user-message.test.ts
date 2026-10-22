@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { UserMessageComponent } from "../src/components/user-message.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
@@ -10,7 +10,7 @@ const BG_RESET = "\x1b[49m";
 
 describe("UserMessageComponent", () => {
 	test("keeps user message height stable while moving closing OSC markers off line end", () => {
-		initTheme("dark");
+		initDarkTheme();
 
 		const component = new UserMessageComponent("hello");
 		const lines = component.render(20);
@@ -25,7 +25,7 @@ describe("UserMessageComponent", () => {
 	});
 
 	test("chains Markdown transformers with user message context", () => {
-		initTheme("dark");
+		initDarkTheme();
 		const calls: string[] = [];
 		const component = new UserMessageComponent("The input is $x^2$.", undefined, 1, [
 			(markdown, context) => {
@@ -44,7 +44,7 @@ describe("UserMessageComponent", () => {
 	});
 
 	test("reapplies Markdown transformers when invalidated", () => {
-		initTheme("dark");
+		initDarkTheme();
 		let suffix = "before";
 		const component = new UserMessageComponent("Message", undefined, 1, [(markdown) => `${markdown} ${suffix}`]);
 

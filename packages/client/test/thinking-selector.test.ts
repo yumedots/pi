@@ -1,13 +1,13 @@
 import { setKeybindings } from "@earendil-works/pi-tui";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../coding-agent/src/core/keybindings.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { ThinkingSelectorComponent } from "../src/components/thinking-selector.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 describe("thinking selector", () => {
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	beforeEach(() => {

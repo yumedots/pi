@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Container, type Terminal, Text, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { createEditToolDefinition } from "../../coding-agent/src/core/tools/edit.ts";
 import { computeEditsDiff, type Edit } from "../../coding-agent/src/core/tools/edit-diff.ts";
 import { ToolExecutionComponent } from "../src/components/tool-execution.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 class FakeTerminal implements Terminal {
 	columns = 80;
@@ -70,7 +70,7 @@ describe("edit tool TUI rendering", () => {
 	const tempDirs: string[] = [];
 
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	afterEach(async () => {

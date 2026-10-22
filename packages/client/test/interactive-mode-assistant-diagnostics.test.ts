@@ -1,10 +1,10 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { Container } from "@earendil-works/pi-tui";
 import { describe, expect, test } from "vitest";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { InteractiveMode } from "../src/interactive-mode.ts";
 import { createInteractiveContext } from "./interactive-mode-context.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 const message: AssistantMessage = {
 	role: "assistant",
@@ -64,7 +64,7 @@ const maybeShowThinkingDropNotice = Reflect.get(InteractiveMode.prototype, "mayb
 
 describe("InteractiveMode assistant diagnostics", () => {
 	test("shows Anthropic thinking drops when cache miss notices are enabled", () => {
-		initTheme("dark");
+		initDarkTheme();
 		const enabled = createInteractiveContext({
 			chatContainer: new Container(),
 			facade: {
@@ -88,7 +88,7 @@ describe("InteractiveMode assistant diagnostics", () => {
 	});
 
 	test("does not repeat unchanged Anthropic thinking drops", () => {
-		initTheme("dark");
+		initDarkTheme();
 		const context = createInteractiveContext({
 			chatContainer: new Container(),
 			facade: {

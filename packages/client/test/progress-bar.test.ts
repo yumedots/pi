@@ -1,11 +1,11 @@
 import type { TUI } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { Text } from "../../tui/src/components/text.ts";
 import { renderLayoutFrame } from "../../tui/src/layout.ts";
 import { createChatViewport } from "../src/chat-viewport.ts";
 import { AgentProgressBar } from "../src/components/progress-bar.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 function createBar(): { bar: AgentProgressBar; renders: number } {
 	const state = { renders: 0 };
@@ -24,7 +24,7 @@ function filledCells(line: string): number {
 
 describe("AgentProgressBar", () => {
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	afterEach(() => {

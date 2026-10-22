@@ -3,11 +3,12 @@ import type { ImageContent, Message, TextContent } from "@earendil-works/pi-ai";
 import type { MarkdownTheme } from "@earendil-works/pi-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import type { MarkdownTransformer } from "../../coding-agent/src/core/extensions/types.ts";
-import { getMarkdownTheme, initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import type { Spacer } from "../../tui/src/components/spacer.ts";
 import { Container } from "../../tui/src/tui.ts";
+import { getMarkdownTheme } from "../src/client-theme.ts";
 import type { UserMessageComponent } from "../src/components/user-message.ts";
 import { InteractiveMode } from "../src/interactive-mode.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 type UserMessage = Extract<AgentMessage, { role: "user" }>;
 
@@ -67,7 +68,7 @@ function userMessage(text: string, extra: Array<TextContent | ImageContent> = []
 }
 
 describe("InteractiveMode user message echo", () => {
-	beforeAll(() => initTheme("dark"));
+	beforeAll(() => initDarkTheme());
 
 	test("shows the submitted message right away", () => {
 		const fakeThis = createFakeThis();

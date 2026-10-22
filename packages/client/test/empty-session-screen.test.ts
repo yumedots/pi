@@ -4,12 +4,13 @@ import { join } from "node:path";
 import { type Component, Container, CURSOR_MARKER, Editor, TuiMainScreen } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SettingsManager } from "../../coding-agent/src/core/settings-manager.ts";
-import { getEditorTheme, initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
+import { getEditorTheme } from "../src/client-theme.ts";
 import { Centered } from "../src/components/centered.ts";
 import { EmptySessionScreen } from "../src/components/empty-session-screen.ts";
 import { MenuComponent } from "../src/components/menu.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 /** A component that renders one line per line of text. */
 class Text implements Component {
@@ -28,7 +29,7 @@ class Text implements Component {
 
 describe("empty session screen", () => {
 	beforeEach(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	it("centers the input box in the available width", () => {

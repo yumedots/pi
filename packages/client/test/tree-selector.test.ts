@@ -8,11 +8,11 @@ import type {
 	SessionMessageEntry,
 	SessionTreeNode,
 } from "../../coding-agent/src/core/session-manager.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { TreeSelectorComponent } from "../src/components/tree-selector.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 beforeAll(() => {
-	initTheme("dark");
+	initDarkTheme();
 });
 
 beforeEach(() => {

@@ -1,15 +1,17 @@
 import { setKeybindings, type TUI } from "@earendil-works/pi-tui";
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { KeybindingsManager } from "../../coding-agent/src/core/keybindings.ts";
-import { initTheme, theme } from "../../coding-agent/src/core/theme/theme.ts";
+import { theme } from "../../coding-agent/src/core/theme/theme.ts";
 import { McpManagerView } from "../../coding-agent/src/extensions/mcp/ui.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { LoginDialogComponent } from "../src/components/login-dialog.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 const { copyToClipboard } = vi.hoisted(() => ({ copyToClipboard: vi.fn(async (_text: string) => {}) }));
 
+vi.mock("../src/client-support/clipboard.ts", () => ({ copyToClipboard }));
 vi.mock("@earendil-works/pi-coding-agent/utils/clipboard", () => ({ copyToClipboard }));
-vi.mock("@earendil-works/pi-coding-agent/utils/open-browser", () => ({ openBrowser: vi.fn() }));
+vi.mock("../src/client-support/open-browser.ts", () => ({ openBrowser: vi.fn() }));
 
 const URL = `https://auth.example.invalid/authorize?${"x".repeat(300)}`;
 const CTRL_X = "\x18";
@@ -22,7 +24,7 @@ function rendered(component: { render(width: number): string[] }): string {
 
 describe("sign-in URL copy key", () => {
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	beforeEach(() => {

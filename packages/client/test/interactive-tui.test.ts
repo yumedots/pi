@@ -2,8 +2,8 @@ import type { Component, Terminal, TUI, WheelScrollLines } from "@earendil-works
 import { Container, isViewportTUI, ScrollView, Text, VStack } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FullscreenExitOutput, TuiMode } from "../../coding-agent/src/core/settings-manager.ts";
-import { initTheme, theme } from "../../coding-agent/src/core/theme/theme.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
+import { theme } from "../src/client-theme.ts";
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
@@ -13,6 +13,7 @@ import {
 	WorkingStatusIndicator,
 } from "../src/components/status-indicator.ts";
 import { createInteractiveTui, createInteractiveTuiReference, InteractiveMode } from "../src/interactive-mode.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 const clipboardMocks = vi.hoisted(() => ({
 	copyToClipboard: vi.fn<(text: string) => Promise<void>>(),
@@ -20,7 +21,7 @@ const clipboardMocks = vi.hoisted(() => ({
 	readClipboardText: vi.fn<() => Promise<string | null>>(),
 }));
 
-vi.mock("@earendil-works/pi-coding-agent/utils/clipboard", () => clipboardMocks);
+vi.mock("../src/client-support/clipboard.ts", () => clipboardMocks);
 
 class RecordingTerminal extends VirtualTerminal implements Terminal {
 	readonly writes: string[] = [];
@@ -75,7 +76,7 @@ describe("createInteractiveTui", () => {
 	});
 
 	it("shows the jump-to-latest label while scrolled up", async () => {
-		initTheme("dark");
+		initDarkTheme();
 		const terminal = new RecordingTerminal(50, 4);
 		const ui = createInteractiveTui({
 			tuiMode: "fullscreen",
@@ -104,7 +105,7 @@ describe("createInteractiveTui", () => {
 	});
 
 	it("shows the jump-to-latest label in the blank line above the input box", async () => {
-		initTheme("dark");
+		initDarkTheme();
 		const terminal = new RecordingTerminal(50, 6);
 		const ui = createInteractiveTui({
 			tuiMode: "fullscreen",
@@ -463,7 +464,7 @@ const interactiveModePrototype = InteractiveMode.prototype as unknown as Interac
 
 describe("status row above the input box", () => {
 	it("routes every status to the row above the input box", () => {
-		initTheme("dark");
+		initDarkTheme();
 		const tui = { requestRender: vi.fn() } as unknown as TUI;
 		const context: ClearStatusContext = {
 			activeStatusIndicator: undefined,

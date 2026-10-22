@@ -1,10 +1,10 @@
 import type { Box, TuiMouseEvent } from "@earendil-works/pi-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { BranchSummaryMessageComponent } from "../src/components/branch-summary-message.ts";
 import { CompactionSummaryMessageComponent } from "../src/components/compaction-summary-message.ts";
 import { SkillInvocationMessageComponent } from "../src/components/skill-invocation-message.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 const WIDTH = 80;
 
@@ -46,7 +46,7 @@ function doubleClickRow(component: Box, marker: string): void {
 }
 
 describe("collapsible message components", () => {
-	beforeAll(() => initTheme("dark"));
+	beforeAll(() => initDarkTheme());
 
 	test("toggles a compaction summary when clicked", () => {
 		const component = new CompactionSummaryMessageComponent({

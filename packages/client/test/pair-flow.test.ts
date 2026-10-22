@@ -7,7 +7,6 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import {
 	buildConnectUrl,
 	buildPairingPayload,
@@ -15,6 +14,7 @@ import {
 	PairDialog,
 	runPairingFlow,
 } from "../src/pair-dialog.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 /** A fetch that answers the two routes the pairing flow uses. */
 function stubFetch(
@@ -115,7 +115,7 @@ describe("the pairing flow", () => {
 
 describe("the pairing dialog", () => {
 	test("shows the code and the links", () => {
-		initTheme("dark");
+		initDarkTheme();
 		const flow = {
 			payload: buildPairingPayload("code-42", ["http://127.0.0.1:4096"]),
 			payloadText: formatPairingPayload(buildPairingPayload("code-42", ["http://127.0.0.1:4096"])),

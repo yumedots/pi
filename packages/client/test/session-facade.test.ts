@@ -5,7 +5,6 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import type {
 	AgentSessionEvent,
-	ExtensionUIContext,
 	ModelRuntime,
 	RpcCommand,
 	RpcExtensionUIRequest,
@@ -15,6 +14,7 @@ import type {
 import type { SessionStateSnapshot } from "@earendil-works/pi-server";
 import type { PiServerClient } from "@earendil-works/pi-server/client";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import type { ClientExtensionUIContext } from "../src/client-extension-ui.ts";
 import { RemoteSessionFacade } from "../src/remote-facade.ts";
 
 /** The model the fake catalog knows. */
@@ -542,7 +542,7 @@ describe("the remote session facade", () => {
 				asked.push(title);
 				return true;
 			},
-		} as unknown as ExtensionUIContext;
+		} as unknown as ClientExtensionUIContext;
 		await facade.bindExtensions({ uiContext });
 		const answer = client.waitForExtensionUiResponse();
 		client.emitExtensionUi("session-1", {

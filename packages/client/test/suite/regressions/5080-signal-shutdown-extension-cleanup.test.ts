@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 import { APP_NAME } from "../../../../coding-agent/src/config.ts";
 import type { SessionManager } from "../../../../coding-agent/src/core/session-manager.ts";
-import { initTheme, theme } from "../../../../coding-agent/src/core/theme/theme.ts";
+import { theme } from "../../../src/client-theme.ts";
 import { InteractiveMode } from "../../../src/interactive-mode.ts";
 import { createInteractiveContext } from "../../interactive-mode-context.ts";
+import { initDarkTheme } from "../../theme-fixture.ts";
 
 // Regression for https://github.com/earendil-works/pi/issues/5080
 //
@@ -106,7 +107,7 @@ async function callShutdown(context: ShutdownThis, options?: { fromSignal?: bool
 
 describe("InteractiveMode.shutdown ordering (#5080)", () => {
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	afterEach(() => {

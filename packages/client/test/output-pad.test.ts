@@ -2,13 +2,13 @@ import { type Component, TuiMainScreen } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import type { ToolDefinition } from "../../coding-agent/src/core/extensions/types.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { createEditToolDefinition } from "../../coding-agent/src/core/tools/edit.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { BashExecutionComponent } from "../src/components/bash-execution.ts";
 import { CompactionSummaryMessageComponent } from "../src/components/compaction-summary-message.ts";
 import { ToolExecutionComponent } from "../src/components/tool-execution.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 const ui = new TuiMainScreen(new VirtualTerminal(80, 24));
 
@@ -77,7 +77,7 @@ const components: Array<{ name: string; create: (outputPad: number) => OutputPad
 
 describe("outputPad", () => {
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	afterAll(() => {

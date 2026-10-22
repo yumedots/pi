@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MarkdownTransformContext } from "../../coding-agent/src/core/extensions/types.ts";
-import type { MermaidRenderingMode } from "../../coding-agent/src/core/settings-manager.ts";
-import type { Theme } from "../../coding-agent/src/core/theme/theme.ts";
+import type { MermaidRenderingMode } from "../src/client-settings.ts";
+import type { Theme } from "../src/client-theme.ts";
 import { createMermaidMarkdownTransformer } from "../src/components/mermaid.ts";
 
 interface TransformOptions {

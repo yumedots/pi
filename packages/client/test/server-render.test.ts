@@ -1,12 +1,12 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent/core/extensions/types";
-import { initTheme } from "@earendil-works/pi-coding-agent/core/theme/theme";
-import { stripAnsi } from "@earendil-works/pi-coding-agent/utils/ansi";
 import type { PiServerClient, RenderRequest, RenderResponse } from "@earendil-works/pi-server/client";
 import { Text, type TUI } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
+import { stripAnsi } from "../src/client-support/ansi.ts";
+import { setThemeFromJson } from "../src/client-theme.ts";
 import { CustomMessageComponent } from "../src/components/custom-message.ts";
 import { ToolExecutionComponent } from "../src/components/tool-execution.ts";
 import { RemoteSessionFacade } from "../src/remote-facade.ts";
@@ -18,7 +18,10 @@ function fakeTui(): TUI {
 }
 
 beforeAll(() => {
-	initTheme("dark");
+	const document = JSON.parse(
+		readFileSync(join(import.meta.dirname, "../../coding-agent/src/core/theme/dark.json"), "utf-8"),
+	) as unknown;
+	setThemeFromJson(document);
 });
 
 afterEach(() => {

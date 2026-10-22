@@ -9,15 +9,15 @@ import { ProcessTerminal, type TUI, TuiMainScreen } from "@earendil-works/pi-tui
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { AssistantMessageComponent } from "../src/components/assistant-message.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Initialize dark theme with full color support
 process.env.COLORTERM = "truecolor";
-initTheme("dark");
+initDarkTheme();
 
 // Load the real fixture that caused the bug
 const fixtureMessage: AssistantMessage = JSON.parse(

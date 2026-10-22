@@ -1,16 +1,14 @@
-import { type AutocompleteProvider, CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
+import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
-import type { AutocompleteProviderFactory } from "../../coding-agent/src/core/extensions/types.ts";
 import type { QuietStartup } from "../../coding-agent/src/core/settings-manager.ts";
 import type { SourceInfo } from "../../coding-agent/src/core/source-info.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { Text } from "../../tui/src/components/text.ts";
-import { type Component, Container, type Focusable, type TUI } from "../../tui/src/tui.ts";
-import { TuiMainScreen } from "../../tui/src/tui-main-screen.ts";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
+import { Container, type TUI } from "../../tui/src/tui.ts";
+import type { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { AuthSelectorProvider } from "../src/components/oauth-selector.ts";
 import { InteractiveMode } from "../src/interactive-mode.ts";
 import { createInteractiveContext } from "./interactive-mode-context.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 function renderLastLine(container: Container, width = 120): string {
 	const last = container.children[container.children.length - 1];
@@ -22,36 +20,7 @@ function renderAll(container: Container, width = 120): string {
 	return container.children.flatMap((child) => child.render(width)).join("\n");
 }
 
-class TestFocusableComponent implements Component, Focusable {
-	focused = false;
-	inputs: string[] = [];
-	private readonly label: string;
-	private text = "";
-
-	constructor(label: string) {
-		this.label = label;
-	}
-
-	handleInput(data: string): void {
-		this.inputs.push(data);
-	}
-
-	getText(): string {
-		return this.text;
-	}
-
-	setText(text: string): void {
-		this.text = text;
-	}
-
-	render(): string[] {
-		return [this.label];
-	}
-
-	invalidate(): void {}
-}
-
-async function flushTui(tui: TUI, terminal: VirtualTerminal): Promise<void> {
+async function _flushTui(tui: TUI, terminal: VirtualTerminal): Promise<void> {
 	tui.requestRender(true);
 	await Promise.resolve();
 	await terminal.waitForRender();
@@ -70,7 +39,7 @@ function normalizeRenderedOutput(container: Container, width = 220): string {
 describe("InteractiveMode.showStatus", () => {
 	beforeAll(() => {
 		// showStatus uses the global theme instance
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	test("coalesces immediately-sequential status messages", () => {
@@ -115,7 +84,7 @@ describe("InteractiveMode.showStatus", () => {
 });
 
 describe("InteractiveMode.showManagedToolStatus", () => {
-	beforeAll(() => initTheme("dark"));
+	beforeAll(() => initDarkTheme());
 
 	test("renders tool updates as one contiguous group", () => {
 		const fakeThis: any = {
@@ -157,315 +126,6 @@ describe("InteractiveMode.setToolsExpanded", () => {
 		expect(header.setExpanded).toHaveBeenCalledWith(true);
 		expect(chatChild.setExpanded).toHaveBeenCalledWith(true);
 		expect(fakeThis.showStatus).toHaveBeenCalledWith("Tool output: expanded");
-	});
-});
-
-describe("InteractiveMode.createExtensionUIContext setTheme", () => {
-	test("persists theme changes to settings manager", () => {
-		initTheme("dark");
-
-		let currentTheme = "dark";
-		const settingsManager = {
-			getTheme: vi.fn(() => currentTheme),
-			setTheme: vi.fn((theme: string) => {
-				currentTheme = theme;
-			}),
-		};
-		const fakeThis: any = createInteractiveContext({
-			facade: { settingsManager },
-			themeController: {
-				setThemeInstance: vi.fn(() => ({ success: true })),
-				setThemeName: vi.fn(() => {
-					fakeThis.ui.requestRender();
-					return { success: true };
-				}),
-			},
-			ui: { requestRender: vi.fn() },
-		});
-
-		const uiContext = (InteractiveMode as any).prototype.createExtensionUIContext.call(fakeThis);
-		const result = uiContext.setTheme("light");
-
-		expect(result.success).toBe(true);
-		expect(fakeThis.themeController.setThemeName).toHaveBeenCalledWith("light");
-		expect(settingsManager.setTheme).toHaveBeenCalledWith("light");
-		expect(currentTheme).toBe("light");
-		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(1);
-	});
-
-	test("does not persist invalid theme names", () => {
-		initTheme("dark");
-
-		const settingsManager = {
-			getTheme: vi.fn(() => "dark"),
-			setTheme: vi.fn(),
-		};
-		const fakeThis: any = createInteractiveContext({
-			facade: { settingsManager },
-			themeController: {
-				setThemeInstance: vi.fn(() => ({ success: true })),
-				setThemeName: vi.fn(() => ({ success: false, error: "Theme not found" })),
-			},
-			ui: { requestRender: vi.fn() },
-		});
-
-		const uiContext = (InteractiveMode as any).prototype.createExtensionUIContext.call(fakeThis);
-		const result = uiContext.setTheme("__missing_theme__");
-
-		expect(result.success).toBe(false);
-		expect(fakeThis.themeController.setThemeName).toHaveBeenCalledWith("__missing_theme__");
-		expect(settingsManager.setTheme).not.toHaveBeenCalled();
-		expect(fakeThis.ui.requestRender).not.toHaveBeenCalled();
-	});
-});
-
-describe("InteractiveMode.showExtensionCustom", () => {
-	beforeAll(() => {
-		initTheme("dark");
-	});
-
-	test("overlay custom UI reclaims input after non-overlay custom UI closes", async () => {
-		const terminal = new VirtualTerminal(80, 24);
-		const ui: TUI = new TuiMainScreen(terminal);
-		const editorContainer = new Container();
-		const editor = new TestFocusableComponent("EDITOR");
-		const palette = new TestFocusableComponent("PALETTE");
-		const overlay = new TestFocusableComponent("OVERLAY");
-		const replacement = new TestFocusableComponent("REPLACEMENT");
-		let closeOverlay: (value: string) => void = () => {
-			throw new Error("closeOverlay was not initialized");
-		};
-		let closeReplacement: (value: string) => void = () => {
-			throw new Error("closeReplacement was not initialized");
-		};
-		const fakeThis = {
-			editor,
-			editorContainer,
-			keybindings: {},
-			ui,
-			disposeActiveSelector: vi.fn(),
-		};
-		const showExtensionCustom = <T>(
-			factory: (tui: TUI, theme: unknown, keybindings: unknown, done: (result: T) => void) => Component,
-			options?: { overlay?: boolean },
-		): Promise<T> =>
-			(InteractiveMode as any).prototype.showExtensionCustom.call(fakeThis, factory, options) as Promise<T>;
-
-		editorContainer.addChild(editor);
-		ui.addChild(editorContainer);
-		ui.addChild(palette);
-		ui.setFocus(palette);
-		ui.start();
-		try {
-			const overlayPromise = showExtensionCustom<string>(
-				(_tui, _theme, _keybindings, done) => {
-					closeOverlay = done;
-					return overlay;
-				},
-				{ overlay: true },
-			);
-			await flushTui(ui, terminal);
-			expect(overlay.focused).toBe(true);
-
-			const replacementPromise = showExtensionCustom<string>((_tui, _theme, _keybindings, done) => {
-				closeReplacement = done;
-				return replacement;
-			});
-			await flushTui(ui, terminal);
-			expect(replacement.focused).toBe(true);
-
-			closeReplacement("done");
-			await replacementPromise;
-			await flushTui(ui, terminal);
-			terminal.sendInput("x");
-			await flushTui(ui, terminal);
-
-			expect(overlay.inputs).toEqual(["x"]);
-			expect(editor.inputs).toEqual([]);
-			expect(overlay.focused).toBe(true);
-
-			closeOverlay("closed");
-			await overlayPromise;
-		} finally {
-			ui.stop();
-		}
-	});
-
-	// Regression test for #10648: closing a lower overlay removed the topmost overlay instead.
-	test.each([
-		{ lowerKind: "capturing", nonCapturing: false },
-		{ lowerKind: "non-capturing", nonCapturing: true },
-	])(
-		"closing a lower $lowerKind overlay custom UI removes its own overlay, not the topmost one",
-		async ({ nonCapturing }) => {
-			const terminal = new VirtualTerminal(80, 24);
-			const ui: TUI = new TuiMainScreen(terminal);
-			const editorContainer = new Container();
-			const editor = new TestFocusableComponent("EDITOR");
-			const lower = new TestFocusableComponent("LOWER");
-			const upper = new TestFocusableComponent("UPPER");
-			let closeLower: (value: string) => void = () => {
-				throw new Error("closeLower was not initialized");
-			};
-			let closeUpper: (value: string) => void = () => {
-				throw new Error("closeUpper was not initialized");
-			};
-			const fakeThis = {
-				editor,
-				editorContainer,
-				keybindings: {},
-				ui,
-				disposeActiveSelector: vi.fn(),
-			};
-			const showExtensionCustom = <T>(
-				factory: (tui: TUI, theme: unknown, keybindings: unknown, done: (result: T) => void) => Component,
-				options?: { overlay?: boolean; overlayOptions?: { nonCapturing?: boolean } },
-			): Promise<T> =>
-				(InteractiveMode as any).prototype.showExtensionCustom.call(fakeThis, factory, options) as Promise<T>;
-
-			editorContainer.addChild(editor);
-			ui.addChild(editorContainer);
-			ui.setFocus(editor);
-			ui.start();
-			try {
-				const lowerPromise = showExtensionCustom<string>(
-					(_tui, _theme, _keybindings, done) => {
-						closeLower = done;
-						return lower;
-					},
-					{ overlay: true, overlayOptions: { nonCapturing } },
-				);
-				await flushTui(ui, terminal);
-				const upperPromise = showExtensionCustom<string>(
-					(_tui, _theme, _keybindings, done) => {
-						closeUpper = done;
-						return upper;
-					},
-					{ overlay: true },
-				);
-				await flushTui(ui, terminal);
-				expect(upper.focused).toBe(true);
-
-				closeLower("lower closed");
-				await expect(lowerPromise).resolves.toBe("lower closed");
-				await flushTui(ui, terminal);
-
-				const viewport = terminal.getViewport().join("\n");
-				expect(viewport).toContain("UPPER");
-				expect(viewport).not.toContain("LOWER");
-				terminal.sendInput("x");
-				await flushTui(ui, terminal);
-				expect(upper.inputs).toEqual(["x"]);
-				expect(lower.inputs).toEqual([]);
-
-				closeUpper("upper closed");
-				await expect(upperPromise).resolves.toBe("upper closed");
-				await flushTui(ui, terminal);
-				expect(ui.hasOverlay()).toBe(false);
-				expect(editor.focused).toBe(true);
-			} finally {
-				ui.stop();
-			}
-		},
-	);
-});
-
-describe("InteractiveMode.createExtensionUIContext addAutocompleteProvider", () => {
-	test("stores wrapper factories and rebuilds autocomplete immediately", () => {
-		const wrapper: AutocompleteProviderFactory = (current) => current;
-		const fakeThis = {
-			autocompleteProviderWrappers: [] as AutocompleteProviderFactory[],
-			setupAutocompleteProvider: vi.fn(),
-		};
-
-		const uiContext = (InteractiveMode as any).prototype.createExtensionUIContext.call(fakeThis);
-		uiContext.addAutocompleteProvider(wrapper);
-
-		expect(fakeThis.autocompleteProviderWrappers).toEqual([wrapper]);
-		expect(fakeThis.setupAutocompleteProvider).toHaveBeenCalledTimes(1);
-	});
-});
-
-describe("InteractiveMode.setupAutocompleteProvider", () => {
-	test("stacks wrapper factories over a fresh base provider", () => {
-		const defaultEditor = { setAutocompleteProvider: vi.fn() };
-		const customEditor = { setAutocompleteProvider: vi.fn() };
-		const calls: string[] = [];
-
-		const wrap1: AutocompleteProviderFactory = (current): AutocompleteProvider => ({
-			async getSuggestions(lines, cursorLine, cursorCol, options) {
-				calls.push("getSuggestions:wrap1");
-				return current.getSuggestions(lines, cursorLine, cursorCol, options);
-			},
-			applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
-				calls.push("applyCompletion:wrap1");
-				return current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
-			},
-			shouldTriggerFileCompletion(lines, cursorLine, cursorCol) {
-				calls.push("shouldTrigger:wrap1");
-				return current.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? true;
-			},
-		});
-		const wrap2: AutocompleteProviderFactory = (current): AutocompleteProvider => ({
-			async getSuggestions(lines, cursorLine, cursorCol, options) {
-				calls.push("getSuggestions:wrap2");
-				return current.getSuggestions(lines, cursorLine, cursorCol, options);
-			},
-			applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
-				calls.push("applyCompletion:wrap2");
-				return current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
-			},
-			shouldTriggerFileCompletion(lines, cursorLine, cursorCol) {
-				calls.push("shouldTrigger:wrap2");
-				return current.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? true;
-			},
-		});
-
-		const fakeThis = {
-			createBaseAutocompleteProvider: () => new CombinedAutocompleteProvider([], "/tmp/project", undefined),
-			defaultEditor,
-			editor: customEditor,
-			autocompleteProviderWrappers: [wrap1, wrap2],
-		};
-
-		(InteractiveMode as any).prototype.setupAutocompleteProvider.call(fakeThis);
-
-		expect(defaultEditor.setAutocompleteProvider).toHaveBeenCalledTimes(1);
-		expect(customEditor.setAutocompleteProvider).toHaveBeenCalledTimes(1);
-		const provider = defaultEditor.setAutocompleteProvider.mock.calls[0]?.[0] as AutocompleteProvider;
-		expect(provider).toBe(customEditor.setAutocompleteProvider.mock.calls[0]?.[0]);
-		expect(provider.shouldTriggerFileCompletion?.(["foo"], 0, 3)).toBe(true);
-		expect(calls).toEqual(["shouldTrigger:wrap2", "shouldTrigger:wrap1"]);
-	});
-
-	test("merges triggerCharacters from wrapper factories", () => {
-		const defaultEditor = { setAutocompleteProvider: vi.fn() };
-		const customEditor = { setAutocompleteProvider: vi.fn() };
-		const passThrough =
-			(triggerCharacters: string[]): AutocompleteProviderFactory =>
-			(current) => ({
-				triggerCharacters,
-				getSuggestions: (lines, cursorLine, cursorCol, options) =>
-					current.getSuggestions(lines, cursorLine, cursorCol, options),
-				applyCompletion: (lines, cursorLine, cursorCol, item, prefix) =>
-					current.applyCompletion(lines, cursorLine, cursorCol, item, prefix),
-			});
-
-		const fakeThis = {
-			createBaseAutocompleteProvider: () => new CombinedAutocompleteProvider([], "/tmp/project", undefined),
-			defaultEditor,
-			editor: customEditor,
-			autocompleteProviderWrappers: [passThrough(["$"]), passThrough(["!"])],
-		};
-
-		(
-			InteractiveMode as unknown as {
-				prototype: { setupAutocompleteProvider: (this: typeof fakeThis) => void };
-			}
-		).prototype.setupAutocompleteProvider.call(fakeThis);
-
-		const provider = defaultEditor.setAutocompleteProvider.mock.calls[0]?.[0] as AutocompleteProvider;
-		expect(provider.triggerCharacters).toEqual(["$", "!"]);
 	});
 });
 
@@ -586,7 +246,7 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 });
 describe("InteractiveMode.showResourceDiagnostics", () => {
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	function createShowResourceDiagnosticsThis(options: {

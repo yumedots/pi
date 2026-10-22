@@ -3,12 +3,12 @@ import type { Mock } from "vitest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../coding-agent/src/core/session-manager.ts";
 import { SettingsManager } from "../../coding-agent/src/core/settings-manager.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { assistantMsg, userMsg } from "../../coding-agent/test/utilities.ts";
 import type { StatusIndicator } from "../src/components/status-indicator.ts";
 import type { TreeSelectorComponent } from "../src/components/tree-selector.ts";
 import { InteractiveMode } from "../src/interactive-mode.ts";
 import { createInteractiveContext } from "./interactive-mode-context.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 const busyMessage = "Wait for the current compaction or tree navigation to finish before navigating the session tree.";
 
@@ -80,7 +80,7 @@ function createTreeUI() {
 }
 
 describe("InteractiveMode tree navigation availability", () => {
-	beforeEach(() => initTheme("dark"));
+	beforeEach(() => initDarkTheme());
 
 	// Regression for #9178 / PR #9179: rejection must not replace the active operation's UI.
 	it.each(["Summarize", "No summary"])("preserves operation UI when choosing %s while busy", async (choice) => {

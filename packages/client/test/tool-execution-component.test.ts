@@ -4,13 +4,14 @@ import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 import { getReadmePath } from "../../coding-agent/src/config.ts";
 import type { ToolDefinition } from "../../coding-agent/src/core/extensions/types.ts";
-import { initTheme, theme } from "../../coding-agent/src/core/theme/theme.ts";
 import { type BashOperations, createBashToolDefinition } from "../../coding-agent/src/core/tools/bash.ts";
 import { createReadTool, createReadToolDefinition } from "../../coding-agent/src/core/tools/read.ts";
 import { withBuiltInRenderers } from "../../coding-agent/src/core/tools/renderers/index.ts";
 import { createWriteToolDefinition } from "../../coding-agent/src/core/tools/write.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
+import { theme } from "../src/client-theme.ts";
 import { ToolExecutionComponent } from "../src/components/tool-execution.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 function createBaseToolDefinition(name = "custom_tool"): ToolDefinition {
 	return {
@@ -37,7 +38,7 @@ function createFakeTui(): TUI {
 
 describe("ToolExecutionComponent parity", () => {
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 	afterEach(() => {
 		resetCapabilitiesCache();

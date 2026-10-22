@@ -5,8 +5,8 @@ import { setKeybindings } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../../coding-agent/src/core/keybindings.ts";
 import type { SessionInfo } from "../../coding-agent/src/core/session-manager.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { SessionMenuComponent } from "../src/components/session-menu.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 type Deferred<T> = {
 	promise: Promise<T>;
@@ -102,7 +102,7 @@ describe("session menu path/delete interactions", () => {
 
 	beforeAll(() => {
 		// session menu uses the global theme instance
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	it("does not treat Ctrl+Backspace as delete when search query is non-empty", async () => {

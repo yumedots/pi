@@ -12,11 +12,11 @@ import {
 	SessionManager,
 	type SessionMessageEntry,
 } from "../../coding-agent/src/core/session-manager.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { createReadToolDefinition } from "../../coding-agent/src/core/tools/read.ts";
 import { formatReadLineRange } from "../../coding-agent/src/core/tools/render-utils.ts";
 import { ToolExecutionComponent } from "../src/components/tool-execution.ts";
 import { TreeSelectorComponent } from "../src/components/tree-selector.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 interface HtmlViewer {
 	formatReadLineRange: typeof formatReadLineRange;
@@ -59,7 +59,7 @@ describe("read line range display", () => {
 	];
 
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 		tempDir = mkdtempSync(join(tmpdir(), "pi-read-range-"));
 	});
 

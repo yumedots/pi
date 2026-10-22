@@ -1,7 +1,6 @@
 import { setKeybindings } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../coding-agent/src/core/keybindings.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { createHarness, type Harness } from "../../coding-agent/test/suite/harness.ts";
 import {
@@ -9,11 +8,12 @@ import {
 	type SettingsConfig,
 	SettingsSelectorComponent,
 } from "../src/components/settings-selector.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 describe("SettingsSelectorComponent", () => {
 	let harness: Harness | undefined;
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 		setKeybindings(new KeybindingsManager());
 	});
 

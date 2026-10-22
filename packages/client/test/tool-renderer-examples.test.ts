@@ -9,8 +9,8 @@ import { DefaultResourceLoader } from "../../coding-agent/src/core/resource-load
 import { createAgentSession } from "../../coding-agent/src/core/sdk.ts";
 import { SessionManager } from "../../coding-agent/src/core/session-manager.ts";
 import { SettingsManager } from "../../coding-agent/src/core/settings-manager.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { ToolExecutionComponent } from "../src/components/tool-execution.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 const examplesDir = join(import.meta.dirname, "../../coding-agent/examples/extensions");
 
@@ -19,7 +19,7 @@ describe("tool renderer examples", () => {
 	let agentDir: string;
 
 	beforeAll(() => {
-		initTheme("dark");
+		initDarkTheme();
 	});
 
 	beforeEach(() => {

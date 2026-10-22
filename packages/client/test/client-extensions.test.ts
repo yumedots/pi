@@ -1,12 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getAvailableThemes } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ClientExtensionRuntime } from "../src/client-extension-runtime.ts";
-import { loadClientExtensions } from "../src/client-extensions.ts";
+import { discoverClientExtensionFiles } from "../src/client-extensions.ts";
+import { collectClientExtensions } from "../src/manifest-check.ts";
 
-describe("client extensions", () => {
+describe("the extensions the client has", () => {
 	let tempDir: string;
 	let agentDir: string;
 	let cwd: string;
@@ -25,158 +24,81 @@ describe("client extensions", () => {
 		}
 	});
 
-	function writeExtension(name: string, source: string): void {
-		const extensionsDir = join(cwd, ".pi", "extensions");
+	/**
+	 * Write an extension into the extensions directory of an agent directory.
+	 */
+	function writeExtension(dir: string, name: string, source: string): string {
+		const extensionsDir = join(dir, "extensions");
 		mkdirSync(extensionsDir, { recursive: true });
-		writeFileSync(join(extensionsDir, `${name}.ts`), source);
+		const path = join(extensionsDir, `${name}.ts`);
+		writeFileSync(path, source);
+		return path;
 	}
 
-	async function loadRuntime(): Promise<ClientExtensionRuntime> {
-		const load = await loadClientExtensions({ cwd, agentDir });
-		return new ClientExtensionRuntime(load);
-	}
-
-	it("keeps the client and both extensions and drops the server ones", async () => {
-		writeExtension(
-			"client-extension",
-			`export default function (pi) {
-	pi.setSide("client");
-	pi.registerMessageRenderer("client-message", () => undefined);
-}`,
-		);
-		writeExtension(
-			"server-extension",
-			`export default function (pi) {
-	pi.setSide("server");
-}`,
-		);
-		writeExtension(
-			"both-extension",
-			`export default function (pi) {
-	pi.setSide("both");
-}`,
-		);
-
-		const runtime = await loadRuntime();
-
-		expect(runtime.extensions.map((extension) => extension.side).sort()).toEqual(["both", "client"]);
-		expect(runtime.skipped.map((extension) => extension.side)).toEqual(["server"]);
-	});
-
-	it("finds the message renderer of a client extension", async () => {
-		writeExtension(
-			"client-extension",
-			`export default function (pi) {
-	pi.setSide("client");
-	pi.registerMessageRenderer("client-message", () => undefined);
-}`,
-		);
-
-		const runtime = await loadRuntime();
-
-		expect(runtime.getMessageRenderer("client-message")).toBeDefined();
-		expect(runtime.getMessageRenderer("not-registered")).toBeUndefined();
-	});
-
-	it("makes the theme of an extension selectable", async () => {
+	/**
+	 * Write an extension into the extensions directory of a project.
+	 */
+	function writeProjectExtension(name: string, source: string): string {
 		const extensionsDir = join(cwd, ".pi", "extensions");
 		mkdirSync(extensionsDir, { recursive: true });
-		writeFileSync(
-			join(extensionsDir, "themed-extension.ts"),
-			`export default function (pi) {
-	pi.setSide("client");
-}`,
-		);
-		const baseTheme = JSON.parse(
-			readFileSync(join(import.meta.dirname, "../../coding-agent/src/core/theme/dark.json"), "utf8"),
-		) as { name: string };
-		writeFileSync(join(extensionsDir, "theme.json"), JSON.stringify({ ...baseTheme, name: "client-theme" }));
+		const path = join(extensionsDir, `${name}.ts`);
+		writeFileSync(path, source);
+		return path;
+	}
 
-		const runtime = await loadRuntime();
+	it("finds the extensions of the project and of the agent directory", () => {
+		const project = writeProjectExtension("project-extension", `export default function (pi) {}`);
+		const global = writeExtension(agentDir, "global-extension", `export default function (pi) {}`);
 
-		expect(runtime.themes.map((theme) => theme.name)).toContain("client-theme");
-		runtime.registerThemes();
-		expect(getAvailableThemes()).toContain("client-theme");
+		const files = discoverClientExtensionFiles({ cwd, agentDir });
+
+		expect(files.map((file) => file.path).sort()).toEqual([global, project].sort());
 	});
 
-	it("reports a both extension the server does not have", async () => {
-		writeExtension(
-			"both-extension",
-			`export default function (pi) {
-	pi.setSide("both");
-}`,
-		);
+	it("finds the extensions of a directory with an index file", () => {
+		const packageDir = join(cwd, ".pi", "extensions", "packaged");
+		mkdirSync(packageDir, { recursive: true });
+		const index = join(packageDir, "index.ts");
+		writeFileSync(index, `export default function (pi) {}`);
 
-		const runtime = await loadRuntime();
-		const both = runtime.extensions.find((extension) => extension.side === "both");
-		expect(both).toBeDefined();
+		const files = discoverClientExtensionFiles({ cwd, agentDir });
 
-		const withoutServer = runtime.getDiagnostics([]);
-		expect(
-			withoutServer.some(
-				(diagnostic) =>
-					diagnostic.type === "warning" && diagnostic.path === both?.path && diagnostic.message.includes("server"),
-			),
-		).toBe(true);
-
-		const withServer = runtime.getDiagnostics([{ path: both?.path ?? "", side: "both" }]);
-		expect(withServer.some((diagnostic) => diagnostic.path === both?.path)).toBe(false);
+		expect(files.map((file) => file.path)).toEqual([index]);
 	});
 
-	it("does not report the server-side extensions as issues", async () => {
-		writeExtension(
-			"server-extension",
-			`export default function (pi) {
-	pi.setSide("server");
-}`,
-		);
-		writeExtension(
-			"another-server-extension",
-			`export default function (pi) {
-	pi.setSide("server");
-}`,
-		);
+	it("finds the extensions of the paths the settings name", () => {
+		const elsewhere = join(tempDir, "elsewhere");
+		mkdirSync(elsewhere, { recursive: true });
+		const path = join(elsewhere, "configured-extension.ts");
+		writeFileSync(path, `export default function (pi) {}`);
 
-		const runtime = await loadRuntime();
-		expect(runtime.skipped.map((extension) => extension.side)).toEqual(["server", "server"]);
+		const files = discoverClientExtensionFiles({ cwd, agentDir, configuredPaths: [elsewhere] });
 
-		const diagnostics = [...runtime.diagnostics, ...runtime.getDiagnostics([])];
-		expect(diagnostics.filter((diagnostic) => (diagnostic.path ?? "").includes("server-extension"))).toEqual([]);
-		expect(diagnostics.filter((diagnostic) => diagnostic.message.includes("skipped"))).toEqual([]);
+		expect(files.map((file) => file.path)).toEqual([path]);
 	});
 
-	it("reports a both extension the server does not have exactly once", async () => {
-		writeExtension(
-			"both-extension",
-			`export default function (pi) {
-	pi.setSide("both");
-}`,
-		);
+	it("gives every extension the digest of its content", () => {
+		const _path = writeProjectExtension("hashed-extension", `export default function (pi) {}`);
 
-		const runtime = await loadRuntime();
-		const both = runtime.extensions.find((extension) => extension.side === "both");
-		expect(both).toBeDefined();
+		const files = discoverClientExtensionFiles({ cwd, agentDir });
 
-		const diagnostics = [...runtime.diagnostics, ...runtime.getDiagnostics([])];
-		const reported = diagnostics.filter((diagnostic) => diagnostic.path === both?.path);
-		expect(reported).toHaveLength(1);
-		expect(reported[0]?.message).toContain("server");
-		expect(reported[0]?.message).toContain("installed on the server");
+		expect(files[0]?.hash).toMatch(/^[0-9a-f]{12}$/);
 	});
 
-	it("reports an extension that does not load", async () => {
-		writeExtension(
-			"broken-extension",
-			`export default function (pi) {
-	pi.setSide("client");
-`,
-		);
+	it("does not load the extensions it finds", () => {
+		writeProjectExtension("broken-extension", `export default function (pi) {`);
 
-		const runtime = await loadRuntime();
+		expect(() => discoverClientExtensionFiles({ cwd, agentDir })).not.toThrow();
+	});
 
-		const diagnostics = [...runtime.diagnostics, ...runtime.getDiagnostics([])];
-		const reported = diagnostics.filter((diagnostic) => (diagnostic.path ?? "").includes("broken-extension"));
-		expect(reported.length).toBeGreaterThan(0);
-		expect(reported.some((diagnostic) => diagnostic.type === "error")).toBe(true);
+	it("lists the extensions of the client the way the manifest compares them", () => {
+		const path = writeProjectExtension("client-extension", `export default function (pi) {}`);
+
+		const extensions = collectClientExtensions({ cwd, agentDir });
+
+		expect(extensions).toHaveLength(1);
+		expect(extensions[0]?.path).toBe(path);
+		expect(extensions[0]?.side).toBe("client");
+		expect(extensions[0]?.hash).toMatch(/^[0-9a-f]{12}$/);
 	});
 });

@@ -4,8 +4,8 @@
  */
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { beforeAll, describe, expect, it } from "vitest";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { BashExecutionComponent } from "../src/components/bash-execution.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 /** Minimal TUI stub that only exposes terminal.columns */
 function createTuiStub(columns: number): { columns: number; stub: any } {
@@ -29,7 +29,7 @@ function createTuiStub(columns: number): { columns: number; stub: any } {
 
 describe("BashExecutionComponent width handling (#2569)", () => {
 	beforeAll(() => {
-		initTheme(undefined, false);
+		initDarkTheme();
 	});
 
 	it("collapsed preview lines respect render-time width, not construction-time width", () => {

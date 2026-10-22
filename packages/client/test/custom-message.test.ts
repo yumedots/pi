@@ -2,13 +2,13 @@ import { Text } from "@earendil-works/pi-tui";
 import { describe, expect, test } from "vitest";
 import type { MessageRenderer, MessageRenderOptions } from "../../coding-agent/src/core/extensions/types.ts";
 import type { CustomMessage } from "../../coding-agent/src/core/messages.ts";
-import { initTheme } from "../../coding-agent/src/core/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 import { CustomMessageComponent } from "../src/components/custom-message.ts";
+import { initDarkTheme } from "./theme-fixture.ts";
 
 describe("CustomMessageComponent", () => {
 	test("provides output padding to custom renderers and updates it", () => {
-		initTheme("dark");
+		initDarkTheme();
 		const optionsSeen: MessageRenderOptions[] = [];
 		const renderer: MessageRenderer = (_message, options) => {
 			optionsSeen.push(options);
