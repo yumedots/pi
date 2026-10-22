@@ -123,11 +123,39 @@ export async function runClient(args: string[]): Promise<void> {
 		return;
 	}
 	if (parsed.mode === "rpc") {
-		process.stderr.write("The rpc mode belongs to the server. Run pi-server --help for what it offers.\n");
-		process.exitCode = 1;
+		process.exitCode = await runRpc(parsed);
 		return;
 	}
 	await startInteractive(parsed);
+}
+
+/**
+ * The rpc mode.
+ *
+ * The commands arrive as JSON lines on the standard input, the answers and the events go
+ * to the standard output. The runtime lives in the server, so the client hands the
+ * commands over.
+ */
+async function runRpc(parsed: Args): Promise<number> {
+	const agentDir = getAgentDir();
+	const server = await ensureServer({ agentDir });
+	const client = new PiServerClient({ url: server.url, password: server.password });
+	const handshake = await client.handshake();
+	await ensureProjectTrust(client, handshake);
+	const cwd = handshake.cwd;
+
+	const snapshot = await openRemoteSession({
+		url: server.url,
+		password: server.password,
+		sessionDir: resolveSessionDir(parsed),
+		title: parsed.name === undefined ? undefined : normalizeSessionName(parsed.name),
+		model: parsed.model,
+		thinkingLevel: parsed.thinking,
+		resume: await resolveResumeTarget(client, parsed, cwd, agentDir),
+	});
+
+	const { runRpcMode } = await import("./rpc-mode.ts");
+	return runRpcMode(client, snapshot.sessionId);
 }
 
 /**
