@@ -302,6 +302,8 @@ interface SessionStats {
 	limitsModel: unknown;
 	usageTotals: UsageTotals;
 	contextUsage: ContextUsage | undefined;
+	/** The context usage the numbers came from, so a changed usage invalidates the cache. */
+	contextUsageKey: string;
 }
 
 /**
@@ -355,6 +357,9 @@ export class FooterComponent implements Component {
 		const sessionId = sessionManager.getSessionId();
 		const leafId = sessionManager.getLeafId();
 		const limitsModel = this.session.model;
+		// The server updates the context usage after a turn, so it is part of the key: the
+		// token counter has to follow the turn even when no entry was appended.
+		const contextUsageKey = JSON.stringify(this.session.contextUsage ?? null);
 		const cached = this.sessionStats;
 		if (
 			cached &&
@@ -362,7 +367,8 @@ export class FooterComponent implements Component {
 			cached.sessionId === sessionId &&
 			cached.leafId === leafId &&
 			cached.entryCount === entryCount &&
-			cached.limitsModel === limitsModel
+			cached.limitsModel === limitsModel &&
+			cached.contextUsageKey === contextUsageKey
 		) {
 			return cached;
 		}
@@ -393,6 +399,7 @@ export class FooterComponent implements Component {
 			limitsModel,
 			usageTotals,
 			contextUsage,
+			contextUsageKey,
 		};
 		return this.sessionStats;
 	}
