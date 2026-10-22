@@ -294,8 +294,8 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 	const httpServer = createServer((req, res) => {
 		const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
 		if (!isPublic(pathname) && !authenticate(req)) {
-			res.writeHead(401, { "www-authenticate": 'Basic realm="pi"' });
-			res.end();
+			res.setHeader("www-authenticate", 'Basic realm="pi"');
+			sendJson(res, 401, { _tag: "UnauthorizedError", message: "Authentication required" });
 			return;
 		}
 		void router.handle(req, res).then((handled) => {
