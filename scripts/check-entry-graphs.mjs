@@ -42,7 +42,7 @@ const BUDGETS = {
 		// would hold the same core twice, in two processes, and the memory of the pair
 		// would be the memory of the agent twice.
 		".": {
-			maxFiles: 220,
+			maxFiles: 210,
 			forbid: ["packages/coding-agent/src/"],
 		},
 	},
