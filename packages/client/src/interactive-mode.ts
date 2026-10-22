@@ -233,6 +233,7 @@ import { UserMessageSelectorComponent } from "./components/user-message-selector
 import { editInExternalEditor } from "./external-editor.ts";
 import { refreshModelCatalogs } from "./model-catalog-refresh.ts";
 import { getModelSearchText } from "./model-search.ts";
+import { PairDialog, type PairingFlow, runPairingFlow } from "./pair-dialog.ts";
 import { type BlockedStatus, ProgramStatusReporter } from "./program-status-reporter.ts";
 import { readServerRegistration } from "./server-launcher.ts";
 import type { SessionExtensionRunner, SessionFacade } from "./session-facade.ts";
@@ -254,6 +255,16 @@ function isExpandable(obj: unknown): obj is Expandable {
 	return typeof obj === "object" && obj !== null && "setExpanded" in obj && typeof obj.setExpanded === "function";
 }
 
+/**
+ * The slash commands the client adds on top of the built-in ones.
+ *
+ * They are client commands, so they live here and not in the shared built-in list.
+ */
+const CLIENT_SLASH_COMMANDS: ReadonlyArray<{ name: string; description: string }> = [
+	{ name: "pair", description: "Pair a device with this server" },
+	{ name: "server", description: "Show the server this client is connected to" },
+	{ name: "sidebar", description: "Show or hide the session sidebar" },
+];
 
 /** The server the client is connected to. */
 interface ClientServerInfo {
@@ -820,17 +831,23 @@ export class InteractiveMode {
 	private createBaseAutocompleteProvider(): AutocompleteProvider {
 		// Define commands for autocomplete. An alias is offered as its own entry, so it
 		// can be found in the picker.
-		const slashCommands: SlashCommand[] = BUILTIN_SLASH_COMMANDS.flatMap((command) => [
-			{
+		const slashCommands: SlashCommand[] = [
+			...BUILTIN_SLASH_COMMANDS.flatMap((command) => [
+				{
+					name: command.name,
+					description: command.description,
+					...(command.argumentHint && { argumentHint: command.argumentHint }),
+				},
+				...(command.aliases ?? []).map((alias) => ({
+					name: alias,
+					description: command.description,
+				})),
+			]),
+			...CLIENT_SLASH_COMMANDS.map((command) => ({
 				name: command.name,
 				description: command.description,
-				...(command.argumentHint && { argumentHint: command.argumentHint }),
-			},
-			...(command.aliases ?? []).map((alias) => ({
-				name: alias,
-				description: command.description,
 			})),
-		]);
+		];
 
 		const modelCommand = slashCommands.find((command) => command.name === "model");
 		if (modelCommand) {
@@ -3283,6 +3300,11 @@ export class InteractiveMode {
 			if (text === "/hotkeys") {
 				this.handleHotkeysCommand();
 				this.editor.setText("");
+				return;
+			}
+			if (text === "/pair") {
+				this.editor.setText("");
+				await this.handlePairCommand();
 				return;
 			}
 			if (text === "/server") {
@@ -7000,6 +7022,53 @@ export class InteractiveMode {
 
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new ThemedText(renderInfo, 1, 0));
+		this.ui.requestRender();
+	}
+
+	/**
+	 * Ask the server for a pairing code and show the QR code of it.
+	 *
+	 * The opencode app reads the QR code: it carries the code and the addresses of the
+	 * server, so the app can pair from the phone.
+	 */
+	private async handlePairCommand(): Promise<void> {
+		const client = this.getServerClient();
+		if (!client) {
+			this.showError("No pi server is registered for this agent directory.");
+			return;
+		}
+		const registration = this.getServerRegistration();
+		let flow: PairingFlow;
+		try {
+			flow = await runPairingFlow({
+				url: client.serverUrl,
+				password: registration?.password,
+			});
+		} catch (error) {
+			this.showError(error instanceof Error ? error.message : String(error));
+			return;
+		}
+		this.showPairDialog(flow);
+	}
+
+	/**
+	 * Show the pairing code in the transcript.
+	 *
+	 * The pairing code is a chat message, not an overlay: the user keeps typing while it is
+	 * on the screen, and the agent does not see it.
+	 */
+	private showPairDialog(flow: PairingFlow): void {
+		const dialog = new PairDialog({
+			payloadText: flow.payloadText,
+			code: flow.code,
+			expiresIn: flow.expiresIn,
+			connectUrls: flow.connectUrls,
+			reachable: flow.payload.urls.length > 0,
+		});
+		this.chatContainer.addChild(new Spacer(1));
+		this.chatContainer.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "Pair a device")), 1, 0));
+		this.chatContainer.addChild(dialog);
+		this.chatContainer.addChild(new Spacer(1));
 		this.ui.requestRender();
 	}
 
