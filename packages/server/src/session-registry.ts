@@ -11,6 +11,7 @@ import {
 	type AgentSessionRuntime,
 	type CreateAgentSessionRuntimeFactory,
 	createAgentSessionRuntime,
+	getDefaultSessionDir,
 	hasTrustRequiringProjectResources,
 	ProjectTrustStore,
 	SessionController,
@@ -125,9 +126,12 @@ export class SessionRegistry {
 	 */
 	async list(cwd?: string): Promise<ServerInfo[]> {
 		// The sessions of the agent directory the registry was built with, not of whatever
-		// the environment points at.
-		const sessionsDir = join(this.deps.agentDir, "sessions");
-		const sessions = cwd ? await SessionManager.list(cwd, sessionsDir) : await SessionManager.listAll(sessionsDir);
+		// the environment points at. The session files live one level below the sessions
+		// root, in the directory that encodes the project.
+		const sessionsRoot = join(this.deps.agentDir, "sessions");
+		const sessions = cwd
+			? await SessionManager.list(cwd, getDefaultSessionDir(cwd, this.deps.agentDir))
+			: await SessionManager.listAll(sessionsRoot);
 		const listed = new Map(
 			sessions.map((session) => [
 				session.id,

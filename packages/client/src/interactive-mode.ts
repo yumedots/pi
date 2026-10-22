@@ -72,6 +72,7 @@ import {
 import { SessionImportFileNotFoundError } from "@earendil-works/pi-coding-agent/core/session-import-error";
 import {
 	type SessionEntry,
+	type SessionInfo,
 	SessionManager,
 	sessionEntryToContextMessages,
 	type UsageEntry,
@@ -233,6 +234,7 @@ import { type BlockedStatus, ProgramStatusReporter } from "./program-status-repo
 import { readServerRegistration } from "./server-launcher.ts";
 import type { SessionExtensionRunner, SessionFacade } from "./session-facade.ts";
 import { shareSession } from "./session-share.ts";
+import { SessionSidebarLayout } from "./session-sidebar-layout.ts";
 import { createInteractiveTui, createInteractiveTuiReference } from "./tui-renderer.ts";
 
 export { createInteractiveTui, createInteractiveTuiReference } from "./tui-renderer.ts";
@@ -547,6 +549,8 @@ export class InteractiveMode {
 	private fullscreenLayoutRoot: Component | undefined;
 	/** The session list beside the conversation, when the sidebar is enabled. */
 	private sessionSidebar: SessionSidebar | undefined;
+	/** The layout of the intro screen, with the sidebar beside it. */
+	private introLayout: { sidebar: SessionSidebar; screen: Component; root: Component } | undefined;
 	/** The client that asks the server about itself. */
 	private serverClient: PiServerClient | undefined;
 	/** The registration of the server, read once. */
@@ -1015,8 +1019,24 @@ export class InteractiveMode {
 
 	/** The layout root of the fullscreen renderer. */
 	private layoutRoot(): Component | undefined {
-		if (this.emptySessionActive && this.emptySessionScreen) return this.emptySessionScreen;
+		if (this.emptySessionActive && this.emptySessionScreen) return this.introLayoutRoot(this.emptySessionScreen);
 		return this.fullscreenLayoutRoot;
+	}
+
+	/**
+	 * The layout of the intro screen.
+	 *
+	 * The intro screen replaces the conversation while the session is empty, so the
+	 * sidebar has to live inside its layout to stay on the screen.
+	 */
+	private introLayoutRoot(screen: Component): Component {
+		const sidebar = this.sessionSidebar;
+		if (!sidebar) return screen;
+		const cached = this.introLayout;
+		if (cached && cached.sidebar === sidebar && cached.screen === screen) return cached.root;
+		const root = new SessionSidebarLayout({ sidebar, main: screen });
+		this.introLayout = { sidebar, screen, root };
+		return root;
 	}
 
 	/** The components mounted in the renderer. */
@@ -1365,16 +1385,16 @@ export class InteractiveMode {
 	}
 
 	/**
-	 * Update terminal title with session name and cwd.
+	 * Update terminal title with the server, the session name and the cwd.
 	 */
 	private updateTerminalTitle(): void {
 		const cwdBasename = path.basename(this.sessionManager.getCwd());
 		const sessionName = this.sessionManager.getSessionName();
-		if (sessionName) {
-			this.ui.terminal.setTitle(`${APP_TITLE} - ${sessionName} - ${cwdBasename}`);
-		} else {
-			this.ui.terminal.setTitle(`${APP_TITLE} - ${cwdBasename}`);
-		}
+		const parts = [APP_TITLE];
+		if (this.serverInfo) parts.push(hostPortOf(this.serverInfo.url));
+		if (sessionName) parts.push(sessionName);
+		parts.push(cwdBasename);
+		this.ui.terminal.setTitle(parts.join(" - "));
 	}
 
 	/**
@@ -1951,7 +1971,8 @@ export class InteractiveMode {
 				return;
 			}
 			const path = this.sessionPaths.get(selection);
-			if (path === undefined) {
+			// A session the server hosts without a file has no path to open.
+			if (path === undefined || path === "") {
 				await this.facade.switchTo(selection);
 			} else {
 				const result = await this.facade.switchSession(path);
@@ -2000,58 +2021,101 @@ export class InteractiveMode {
 	}
 
 	/**
-	 * Show the server the client is connected to in the footer.
+	 * Ask the server about itself.
 	 *
 	 * The client drives a server in another process, so the user needs to see which one.
+	 * The address is in the terminal title, not in the footer, which belongs to the session.
 	 */
 	private async updateServerStatus(): Promise<void> {
 		this.serverInfo = await this.loadServerInfo();
 		this.applyServerStatus();
 	}
 
-	/** Put the server of the client into the footer. */
+	/** Put the server of the client into the terminal title. */
 	private applyServerStatus(): void {
-		try {
-			if (this.serverInfo) {
-				this.footerDataProvider.setExtensionStatus("server", `server ${hostPortOf(this.serverInfo.url)}`);
-			} else {
-				this.footerDataProvider.setExtensionStatus("server", undefined);
-			}
-			this.footer.invalidate();
-			this.ui.requestRender();
-		} catch {
-			// The footer is not ready yet; the status shows up with the next render.
-		}
+		this.updateTerminalTitle();
 	}
 
-	/** Reads the sessions the server knows about and shows them in the sidebar. */
+	/**
+	 * Reads the sessions of the current directory and shows them in the sidebar.
+	 *
+	 * The list is the one of the session menu: the sessions of the directory the
+	 * client runs in, the newest activity first. The server adds the sessions it
+	 * hosts, so a session that has no file yet is in the list as well.
+	 */
 	private async refreshSessionList(): Promise<void> {
 		const sidebar = this.sessionSidebar;
 		if (!sidebar) return;
-		let sessions: RemoteSessionInfo[];
-		try {
-			sessions = await this.facade.listSessions();
-		} catch {
-			// The server may be unreachable; the sidebar keeps the list it has.
-			return;
-		}
-		const rows: SessionSidebarRow[] = [];
-		const paths = new Map<string, string>();
-		for (const session of sessions) {
-			rows.push({
-				id: session.id,
-				title: session.name || session.firstMessage || session.id,
-				directory: session.cwd,
-				busy: session.busy,
+		const cwd = this.sessionManager.getCwd();
+		const currentId = this.sessionManager.getSessionId();
+		const [remote, local] = await Promise.all([
+			this.facade.listSessions(cwd).catch(() => [] as RemoteSessionInfo[]),
+			this.listSessionsOnDisk(cwd),
+		]);
+		const sessions = new Map<string, { row: SessionSidebarRow; modified: number; path: string }>();
+		for (const session of local) {
+			sessions.set(session.id, {
+				row: {
+					id: session.id,
+					title: session.name || session.firstMessage || session.id,
+					directory: session.cwd,
+					busy: false,
+				},
+				modified: session.modified.getTime(),
+				path: session.path,
 			});
-			paths.set(session.id, session.path);
 		}
+		for (const session of remote) {
+			if (sessions.has(session.id)) continue;
+			sessions.set(session.id, {
+				row: {
+					id: session.id,
+					title: session.name || session.firstMessage || session.id,
+					directory: session.cwd,
+					busy: session.busy,
+				},
+				modified: session.modified,
+				path: session.path,
+			});
+		}
+		// The session of the client is in the list even before it has a file.
+		if (!sessions.has(currentId)) {
+			sessions.set(currentId, {
+				row: {
+					id: currentId,
+					title: this.sessionManager.getSessionName() || "New session",
+					directory: cwd,
+					busy: false,
+				},
+				modified: Date.now(),
+				path: this.sessionManager.getSessionFile() ?? "",
+			});
+		}
+		const entries = [...sessions.values()].sort((a, b) => b.modified - a.modified);
+		const rows: SessionSidebarRow[] = entries.map((entry) => ({
+			...entry.row,
+			// The client knows whether its own session works, the server knows about the others.
+			busy: entry.row.id === currentId ? this.facade.isStreaming : entry.row.busy,
+		}));
+		const paths = new Map<string, string>();
+		for (const entry of entries) paths.set(entry.row.id, entry.path);
 		this.sessionPaths = paths;
 		sidebar.setSessions(rows);
-		const current = this.sessionManager.getSessionId();
-		const index = rows.findIndex((row) => row.id === current);
+		const index = rows.findIndex((row) => row.id === currentId);
 		if (index !== -1) sidebar.selectedIndex = index;
 		this.ui.requestRender();
+	}
+
+	/** The sessions of the directory the client runs in, the same ones the session menu shows. */
+	private async listSessionsOnDisk(cwd: string): Promise<SessionInfo[]> {
+		try {
+			const sessionDir = this.sessionManager.getSessionDir();
+			// A session without a file has no directory, and the default one must not be created.
+			if (!sessionDir) return [];
+			return await SessionManager.list(cwd, sessionDir);
+		} catch {
+			return [];
+		}
 	}
 
 	/** Refreshes the session list while a turn runs, so the working marker follows the run. */
@@ -2534,7 +2598,7 @@ export class InteractiveMode {
 		this.setExtensionHeader(undefined);
 		this.clearExtensionWidgets();
 		this.footerDataProvider.clearExtensionStatuses();
-		// The reset clears the footer statuses of the extensions, so the server goes back in.
+		// The reset clears the footer statuses of the extensions, so the title is put back.
 		this.applyServerStatus();
 		this.footer.invalidate();
 		this.autocompleteProviderWrappers = [];
@@ -7087,6 +7151,7 @@ export class InteractiveMode {
 	private async handleServerCommand(): Promise<void> {
 		const info = (await this.loadServerInfo()) ?? this.serverInfo;
 		this.serverInfo = info;
+		this.updateTerminalTitle();
 		const sessionFile = this.sessionManager.getSessionFile();
 		const renderInfo = (): string => {
 			let text = `${theme.bold("Server")}\n\n`;

@@ -111,6 +111,13 @@ function captureVisiblePane(): string {
 }
 
 /**
+ * The title of the pane: the client puts the server it is on there.
+ */
+function paneTitle(): string {
+	return tmux(["display-message", "-p", "-t", SESSION_NAME, "#{pane_title}"], true);
+}
+
+/**
  * Wait for a while.
  *
  * The test drives a real terminal, so the wait is a real wait: the screen is polled until it
@@ -133,6 +140,18 @@ async function waitForPane(description: string, predicate: (pane: string) => boo
 		await delay(POLL_INTERVAL_MS);
 	}
 	throw new Error(`The pane never showed ${description}. The screen was:\n${captureVisiblePane()}`);
+}
+
+/**
+ * Wait for a condition that is not about the pane text.
+ */
+async function waitFor(description: string, predicate: () => boolean): Promise<void> {
+	const deadline = Date.now() + WAIT_TIMEOUT_MS;
+	while (Date.now() < deadline) {
+		if (predicate()) return;
+		await delay(POLL_INTERVAL_MS);
+	}
+	throw new Error(`The terminal never showed ${description}. The title was:\n${paneTitle()}`);
 }
 
 /**
@@ -232,10 +251,9 @@ describe("the client in a terminal", () => {
 			await waitForPane("the project trust question", (pane) => pane.includes("Trust the project folder"));
 			tmux(["send-keys", "-t", SESSION_NAME, "y", "Enter"]);
 
-			await waitForPane(
-				"the client and the server it is connected to",
-				(pane) => /server \S+:\d+/.test(pane) && /^\s*>\s*$/m.test(pane),
-			);
+			// The server the client is on is in the terminal title, not in the footer.
+			await waitForPane("the client and its prompt", (pane) => /^\s*>\s*$/m.test(pane));
+			await waitFor("the server in the terminal title", () => /\S+:\d+/.test(paneTitle()));
 			widePane = capturePane();
 
 			// The narrow layout is checked before the pairing dialog opens, because the dialog
@@ -274,9 +292,9 @@ describe("the client in a terminal", () => {
 		expect(widePane).toContain("ctrl+c twice to exit");
 	});
 
-	test("the server the client is connected to is visible", () => {
+	test("the server the client is connected to is in the terminal title", () => {
 		expect(serverUrl).not.toBe("");
-		expect(widePane).toContain(`server ${hostPortOf(serverUrl)}`);
+		expect(paneTitle()).toContain(hostPortOf(serverUrl));
 	});
 
 	test("the extension diagnostics are not a wall of text", () => {

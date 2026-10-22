@@ -58,13 +58,14 @@ class CollapsedSessionBar implements Component {
 		const chips: string[] = [];
 		const ranges: { start: number; end: number }[] = [];
 		let offset = 0;
-		for (const row of this.sidebar.sessions) {
-			const chip = this.renderChip(row, now);
+		const sessions = this.sidebar.sessions;
+		for (let index = 0; index < sessions.length; index++) {
+			const chip = this.renderChip(sessions[index]!, index, now);
 			chips.push(chip);
 			ranges.push({ start: offset, end: offset + visibleWidth(chip) });
 			offset += visibleWidth(chip) + visibleWidth(CHIP_SEPARATOR);
 		}
-		const newChip = theme.fg("accent", NEW_SESSION_ROW_LABEL);
+		const newChip = this.renderNewSessionChip();
 		chips.push(newChip);
 		ranges.push({ start: offset, end: offset + visibleWidth(newChip) });
 		this.chips = ranges;
@@ -81,9 +82,16 @@ class CollapsedSessionBar implements Component {
 	invalidate(): void {}
 
 	/** A working session shows the spinner, an idle one only its title. */
-	private renderChip(row: SessionSidebarRow, now: number): string {
-		if (!row.busy) return row.title;
-		return `${theme.fg("accent", spinnerFrame(now))} ${row.title}`;
+	private renderChip(row: SessionSidebarRow, index: number, now: number): string {
+		const title = index === this.sidebar.selectedIndex ? theme.bold(row.title) : theme.fg("muted", row.title);
+		if (!row.busy) return title;
+		return `${theme.fg("accent", spinnerFrame(now))} ${title}`;
+	}
+
+	/** The trailing chip that starts a new session. */
+	private renderNewSessionChip(): string {
+		const focused = this.sidebar.selectedIndex === this.sidebar.sessions.length;
+		return focused ? theme.bold(NEW_SESSION_ROW_LABEL) : theme.fg("muted", NEW_SESSION_ROW_LABEL);
 	}
 }
 
@@ -93,6 +101,9 @@ class CollapsedSessionBar implements Component {
  * The tree measures every child of a row to size it, and measuring the
  * conversation would render the whole transcript a second time per frame. The
  * proxy keeps the layout node of the conversation and reports no height.
+ *
+ * A target without a layout node, e.g. the intro screen, is drawn by the proxy
+ * itself, so the proxy also passes on its mouse events and its overlay.
  */
 class ConversationArea implements Component {
 	private readonly target: Component;
@@ -103,6 +114,24 @@ class ConversationArea implements Component {
 
 	render(width: number): string[] {
 		return getLayoutNode(this.target) === undefined ? this.target.render(width) : [];
+	}
+
+	/** The target draws itself, so it also gets the mouse events of its box. */
+	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+		if (getLayoutNode(this.target) !== undefined) return undefined;
+		return this.target.handleMouse?.(event);
+	}
+
+	/** The overlay of a target without a layout node, e.g. the autocomplete list. */
+	renderOverlayAbove(width: number): string[] {
+		if (getLayoutNode(this.target) !== undefined) return [];
+		return this.target.renderOverlayAbove?.(width) ?? [];
+	}
+
+	/** The row the overlay of the target is anchored to. */
+	getOverlayRow(): number {
+		if (getLayoutNode(this.target) !== undefined) return 0;
+		return this.target.getOverlayRow?.() ?? 0;
 	}
 
 	invalidate(): void {

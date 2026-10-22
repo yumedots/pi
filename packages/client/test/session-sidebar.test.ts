@@ -59,15 +59,14 @@ describe("session sidebar", () => {
 		expect(stripAnsi(lines[2]!)).toContain(NEW_SESSION_ROW_LABEL);
 	});
 
-	it("highlights the selected row", () => {
+	it("highlights the selected row with the text, not with a background", () => {
 		const sidebar = new SessionSidebar({ now: () => 0 });
 		sidebar.setSessions(rows());
 		sidebar.selectedIndex = 1;
 		const lines = sidebar.render(40);
-		const background = theme.bg("selectedBg", "x");
-		const backgroundCode = background.slice(0, background.indexOf("x"));
-		expect(lines[1]!).toContain(backgroundCode);
-		expect(lines[0]!).not.toContain(backgroundCode);
+		expect(lines[1]!).toContain("Second session");
+		expect(lines[1]!).not.toContain(theme.fg("muted", "Second session"));
+		expect(lines[0]!).toContain(theme.fg("muted", "First session"));
 	});
 
 	it("truncates the title to the width", () => {

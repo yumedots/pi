@@ -174,7 +174,8 @@ export interface PairDialogOptions {
  * The dialog the `/pair` command opens.
  *
  * It shows the QR code of the pairing payload, the code itself and the links that
- * redeem it, so the user can also type the code by hand.
+ * redeem it, so the user can also type the code by hand. The heading of the
+ * command belongs to the caller, so the dialog starts with its explanation.
  */
 export class PairDialog implements Component {
 	private readonly options: PairDialogOptions;
@@ -185,7 +186,6 @@ export class PairDialog implements Component {
 
 	render(width: number): string[] {
 		const lines: string[] = [];
-		lines.push(theme.fg("accent", theme.bold("Pair a device")));
 		if (this.options.expiresIn !== undefined) {
 			const minutes = Math.max(1, Math.round(this.options.expiresIn / 60));
 			lines.push(

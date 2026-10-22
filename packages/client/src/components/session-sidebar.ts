@@ -1,4 +1,3 @@
-import * as os from "node:os";
 import { theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import {
 	type Component,
@@ -6,16 +5,15 @@ import {
 	type TuiMouseEvent,
 	type TuiMouseEventResult,
 	truncateToWidth,
-	visibleWidth,
 } from "@earendil-works/pi-tui";
 
-/** One row of the sidebar: a session the server knows about. */
+/** One row of the sidebar: a session of the current directory. */
 export interface SessionSidebarRow {
 	/** The session id, as the server knows it. */
 	id: string;
 	/** The title shown in the row. */
 	title: string;
-	/** The project directory of the session. */
+	/** The directory the session belongs to. The sidebar only lists one directory. */
 	directory: string;
 	/** True while the session is working. */
 	busy: boolean;
@@ -37,24 +35,14 @@ export interface SessionSidebarOptions {
 /** Width of the state marker column plus the space after it. */
 const MARKER_WIDTH = 2;
 
-/** Minimum width the directory needs before it is shown next to the title. */
-const MIN_DIRECTORY_WIDTH = 4;
-
-/** Shortens the home directory to `~`, the same way the session menu does. */
-function shortenPath(path: string): string {
-	const home = os.homedir();
-	if (!path) return path;
-	if (path.startsWith(home)) {
-		return `~${path.slice(home.length)}`;
-	}
-	return path;
-}
-
 /**
  * The session sidebar: a panel beside the conversation that lists the sessions
- * the server knows about. Every row shows the session title, the project
- * directory and a state marker: a braille spinner while the session works, a
- * dim dot when it is idle.
+ * of the current directory. Every row shows the session title and a state
+ * marker: a braille spinner while the session works, a dim dot when it is idle.
+ *
+ * The row the user is on is written in bold in the default foreground color,
+ * the other rows are dimmed. No row gets a background color, so the sidebar
+ * stays a quiet list next to the conversation.
  *
  * The component owns no data. The caller pushes the sessions in with
  * `setSessions` and reacts to the picks through `onSelect`.
@@ -121,31 +109,25 @@ export class SessionSidebar implements Component {
 
 	invalidate(): void {}
 
-	private renderSessionRow(row: SessionSidebarRow, selected: boolean, width: number, now: number): string {
+	private renderSessionRow(row: SessionSidebarRow, focused: boolean, width: number, now: number): string {
 		const marker = row.busy ? theme.fg("accent", spinnerFrame(now)) : theme.fg("muted", "·");
-		const body = this.renderBody(row.title, row.directory, selected, width - MARKER_WIDTH);
-		const line = `${marker} ${body}`;
-		return selected ? theme.bg("selectedBg", line) : line;
+		const title = this.renderTitle(row.title, focused, width - MARKER_WIDTH);
+		return `${marker} ${title}`;
 	}
 
-	private renderNewSessionRow(selected: boolean, width: number): string {
-		const label = truncateToWidth(NEW_SESSION_ROW_LABEL, Math.max(0, width - MARKER_WIDTH));
-		const body = selected ? theme.bold(label) : theme.fg("accent", label);
-		const line = `  ${body}`;
-		return selected ? theme.bg("selectedBg", line) : line;
+	private renderNewSessionRow(focused: boolean, width: number): string {
+		return `  ${this.renderTitle(NEW_SESSION_ROW_LABEL, focused, width - MARKER_WIDTH)}`;
 	}
 
-	/** The title, and the directory next to it when there is room for both. */
-	private renderBody(title: string, directory: string, selected: boolean, available: number): string {
+	/**
+	 * The title of a row.
+	 *
+	 * The focused row is bold and keeps the default foreground color, the other
+	 * rows are dimmed. No row gets a background color.
+	 */
+	private renderTitle(title: string, focused: boolean, available: number): string {
 		if (available <= 0) return "";
-		const dir = shortenPath(directory);
-		const dirWidth = dir ? Math.min(dir.length, Math.floor(available * 0.4)) : 0;
-		const showDir = dirWidth >= MIN_DIRECTORY_WIDTH;
-		const separator = showDir ? " · " : "";
-		const titleWidth = Math.max(0, available - (showDir ? dirWidth + visibleWidth(separator) : 0));
-		const styledTitle = truncateToWidth(title, titleWidth);
-		const text = selected ? theme.bold(styledTitle) : styledTitle;
-		if (!showDir) return text;
-		return `${text}${theme.fg("muted", separator)}${theme.fg("muted", truncateToWidth(dir, dirWidth))}`;
+		const text = truncateToWidth(title, available);
+		return focused ? theme.bold(text) : theme.fg("muted", text);
 	}
 }
