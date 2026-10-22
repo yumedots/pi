@@ -14,12 +14,12 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { basicAuthHeader } from "./auth.ts";
 import type { OpencodeModelInfo } from "./routes/opencode-shapes.ts";
-import type { PiServerInfo, SessionStateSnapshot } from "./types.ts";
+import type { PiServerInfo, RenderRequest, RenderResponse, SessionStateSnapshot } from "./types.ts";
 
 export { basicAuthHeader } from "./auth.ts";
 export type { ServerRegistration } from "./registration.ts";
 export type { OpencodeModelInfo } from "./routes/opencode-shapes.ts";
-export type { SessionStateSnapshot } from "./types.ts";
+export type { RenderRequest, RenderResponse, RenderToolResult, SessionStateSnapshot } from "./types.ts";
 
 /** How long the client waits before it reconnects to the event stream. */
 const RECONNECT_DELAY_MS = 1000;
@@ -174,6 +174,22 @@ export class PiServerClient {
 			`/pi/session/${encodeURIComponent(sessionId)}/resources`,
 		);
 		return body.data;
+	}
+
+	/**
+	 * Render a piece of the transcript on the server.
+	 *
+	 * The extension renderers live in the server's process, so the server is the only place
+	 * that can draw what they draw. The server answers with the lines it produced; an empty
+	 * answer means that nothing could render the piece.
+	 */
+	async render(sessionId: string, request: RenderRequest): Promise<RenderResponse> {
+		const body = await this.request<{ lines?: string[]; data?: { lines?: string[] } }>(
+			"POST",
+			`/pi/session/${encodeURIComponent(sessionId)}/render`,
+			request,
+		);
+		return { lines: body.lines ?? body.data?.lines ?? [] };
 	}
 
 	/**

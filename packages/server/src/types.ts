@@ -75,6 +75,62 @@ export interface SessionResourcesSnapshot {
 	tools: Array<{ name: string; description?: string; parameters?: unknown }>;
 }
 
+/** The result of a tool call, as the server renders it. */
+export interface RenderToolResult {
+	/** The content blocks of the result. */
+	content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
+	/** The details the tool reported. */
+	details?: unknown;
+	/** Whether the tool failed. */
+	isError?: boolean;
+	/** How long the tool ran. */
+	durationMs?: number;
+}
+
+/**
+ * A piece of the transcript the server renders.
+ *
+ * The client cannot render what only the server can: an extension that lives in the
+ * server's process registers its renderers there. The client sends the piece it wants
+ * drawn and the server answers with the lines.
+ */
+export type RenderRequest =
+	| {
+			kind: "tool";
+			/** The name of the tool, as the model called it. */
+			toolName: string;
+			/** The arguments of the call. */
+			args: unknown;
+			/** The id of the tool call. */
+			toolCallId?: string;
+			/** The result of the call, when it already ran. */
+			result?: RenderToolResult;
+			/** Whether the result is still streaming. */
+			isPartial?: boolean;
+			/** Whether the result is expanded. */
+			expanded?: boolean;
+	  }
+	| {
+			kind: "message";
+			/** The custom type of the message. */
+			customType: string;
+			/** The message to draw. */
+			message: unknown;
+	  }
+	| {
+			kind: "entry";
+			/** The custom type of the entry. */
+			customType: string;
+			/** The entry to draw. */
+			entry: unknown;
+	  };
+
+/** The rendered lines of a piece of the transcript. */
+export interface RenderResponse {
+	/** The rendered lines, with the ANSI colors the server's theme produced. */
+	lines: string[];
+}
+
 /** The server information reported by `/api/info`. */
 export interface PiServerInfo {
 	/** The server version. */

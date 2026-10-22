@@ -24,11 +24,29 @@ import {
 	formatToolCallWithArgs,
 	getTextOutput as getRenderedTextOutput,
 } from "@earendil-works/pi-coding-agent/core/tools/render-utils";
+import { createAllToolRenderers } from "@earendil-works/pi-coding-agent/core/tools/renderers/index";
 import { keyHint } from "@earendil-works/pi-coding-agent/core/ui/keybinding-hints";
 import { ensurePngTranscoder } from "@earendil-works/pi-coding-agent/utils/image-convert";
+import { getServerRenderProvider, type RenderRequest, type RenderToolResult } from "../session-facade.ts";
 import { SignedRow } from "./spinner-sign.ts";
 
 const FALLBACK_PREVIEW_LINES = 10;
+
+/**
+ * The sources of the built-in renderer functions.
+ *
+ * The client resolves the renderers of a tool itself: the client-side extensions first,
+ * the built-in ones as the fallback. The component cannot tell the two apart by identity,
+ * because the built-in renderers are created per call, so it compares the source of the
+ * functions instead.
+ */
+const BUILT_IN_RENDERER_SOURCES = new Set(
+	Object.values(createAllToolRenderers()).flatMap((renderers) =>
+		[renderers.renderCall?.toString(), renderers.renderResult?.toString()].filter(
+			(source): source is string => source !== undefined,
+		),
+	),
+);
 
 export interface ToolExecutionOptions {
 	showImages?: boolean;
@@ -69,6 +87,16 @@ export class ToolExecutionComponent extends Container {
 		durationMs?: number;
 	};
 	private hideComponent = false;
+	/** The lines the server rendered for this tool call. */
+	private serverLines?: string[];
+	/** The key the cached server lines belong to. */
+	private serverLinesKey?: string;
+	/** The key of the last request the component sent to the server. */
+	private serverRequestKey?: string;
+	/** How often the arguments changed, so a changed call is asked for again. */
+	private argsVersion = 0;
+	/** How often the result changed, so a changed result is asked for again. */
+	private resultVersion = 0;
 
 	constructor(
 		toolName: string,
@@ -188,6 +216,7 @@ export class ToolExecutionComponent extends Container {
 
 	updateArgs(args: any): void {
 		this.args = args;
+		this.argsVersion++;
 		this.updateDisplay();
 	}
 
@@ -215,6 +244,7 @@ export class ToolExecutionComponent extends Container {
 	): void {
 		this.result = result;
 		this.isPartial = isPartial;
+		this.resultVersion++;
 		this.updateDisplay();
 	}
 
@@ -295,7 +325,12 @@ export class ToolExecutionComponent extends Container {
 
 		let hasContent = false;
 		this.hideComponent = false;
-		if (this.hasRendererDefinition()) {
+		const serverLines = this.serverRenderedLines();
+		if (serverLines) {
+			// The server drew the row: its renderer knows what the client cannot know.
+			this.renderServerLines(serverLines, bgFn);
+			hasContent = true;
+		} else if (this.hasRendererDefinition()) {
 			const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
 			if (renderContainer instanceof Box) {
 				renderContainer.setBgFn(bgFn);
@@ -410,6 +445,122 @@ export class ToolExecutionComponent extends Container {
 
 	private getTextOutput(): string {
 		return getRenderedTextOutput(this.result, this.showImages);
+	}
+
+	/**
+	 * Whether the client draws this tool itself.
+	 *
+	 * The client resolves the renderers of a tool itself: the client-side extensions
+	 * first, the built-in ones as the fallback. A renderer that is not a built-in one
+	 * comes from a client-side extension, and that one wins over the server's.
+	 */
+	private hasClientRenderer(): boolean {
+		const renderCall = this.getCallRenderer();
+		if (!renderCall) return false;
+		return !BUILT_IN_RENDERER_SOURCES.has(renderCall.toString());
+	}
+
+	/** The phase the row is in: the call alone, a streaming result or the final result. */
+	private renderPhase(): "call" | "partial" | "result" {
+		if (!this.result) return "call";
+		return this.isPartial ? "partial" : "result";
+	}
+
+	/**
+	 * The key the server rendering of this row belongs to.
+	 *
+	 * The key covers everything the server draws differently: the tool call, the expansion
+	 * state and the result. A changed key means the cached lines are stale.
+	 */
+	private serverRenderKey(): string {
+		const expansion = this.expanded ? "expanded" : "collapsed";
+		return `${this.toolCallId}|${expansion}|${this.renderPhase()}|${this.argsVersion}|${this.resultVersion}`;
+	}
+
+	/**
+	 * The lines the server rendered for this row, when it rendered them.
+	 *
+	 * The request runs in the background: the row shows the client's own rendering until
+	 * the answer arrives, so the transcript never waits for the network.
+	 */
+	private serverRenderedLines(): string[] | undefined {
+		this.requestServerRender();
+		if (this.serverLinesKey !== this.serverRenderKey()) return undefined;
+		return this.serverLines;
+	}
+
+	/**
+	 * Ask the server to draw the row.
+	 *
+	 * The answer is cached per tool call, expansion state and result, so a redraw does not
+	 * ask again.
+	 */
+	private requestServerRender(): void {
+		if (this.hasClientRenderer()) return;
+		const provider = getServerRenderProvider();
+		if (!provider) return;
+		const phase = this.renderPhase();
+		if (phase === "partial") return;
+		const key = this.serverRenderKey();
+		if (key === this.serverRequestKey) return;
+		this.serverRequestKey = key;
+		const request: RenderRequest = {
+			kind: "tool",
+			toolName: this.toolName,
+			args: this.args,
+			toolCallId: this.toolCallId,
+			result: this.serverResult(),
+			isPartial: this.isPartial,
+			expanded: this.expanded,
+		};
+		void provider
+			.render(request)
+			.then((response) => {
+				if (response.lines.length === 0) return;
+				this.serverLines = response.lines;
+				this.serverLinesKey = key;
+				this.invalidate();
+				this.ui.requestRender();
+			})
+			.catch(() => {
+				// The server cannot draw the row: the client keeps drawing it itself.
+			});
+	}
+
+	/**
+	 * The result the server draws.
+	 *
+	 * The images of a result are the client's own business: the client draws them as
+	 * images, so the server gets the text of the result only.
+	 */
+	private serverResult(): RenderToolResult | undefined {
+		if (!this.result) return undefined;
+		return {
+			content: this.result.content.filter((block) => block.type === "text"),
+			details: this.result.details,
+			isError: this.result.isError,
+			durationMs: this.result.durationMs,
+		};
+	}
+
+	/** Draw the lines the server produced, in the shell the tool uses. */
+	private renderServerLines(lines: string[], bgFn: (text: string) => string): void {
+		const text = lines.join("\n");
+		if (!this.hasRendererDefinition()) {
+			this.contentText.setCustomBgFn(bgFn);
+			this.contentText.setPaddingX(this.outputPad);
+			this.contentText.setText(text);
+			return;
+		}
+		if (this.getRenderShell() === "self") {
+			this.selfRenderContainer.clear();
+			this.selfRenderContainer.addChild(this.createCallRegion(new Text(text, 0, 0)));
+			return;
+		}
+		this.contentBox.setBgFn(bgFn);
+		this.contentBox.setPaddingX(this.outputPad);
+		this.contentBox.clear();
+		this.contentBox.addChild(this.createCallRegion(new Text(text, 0, 0)));
 	}
 
 	private formatToolExecution(): string {

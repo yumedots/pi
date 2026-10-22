@@ -52,9 +52,13 @@ import type { ModelRuntime, ModelRuntimeAuthOverrides } from "@earendil-works/pi
 import type { AuthStatus } from "@earendil-works/pi-coding-agent/core/provider-composer";
 import type {
 	RemoteSessionInfo,
+	RenderRequest,
+	RenderResponse,
 	SessionStateSnapshot,
 } from "@earendil-works/pi-server/client";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
+
+export type { RenderRequest, RenderResponse, RenderToolResult } from "@earendil-works/pi-server/client";
 
 /**
  * The model surface the terminal UI reads.
@@ -99,6 +103,35 @@ export interface SessionModelRuntime {
 	refresh(options?: ModelsRefreshOptions): Promise<ModelsRefreshResult>;
 	/** The error of the last load, if there was one. */
 	getError(): string | undefined;
+}
+
+/**
+ * The provider the components ask when only the server can draw a piece of the transcript.
+ *
+ * The components cannot hold a facade, so the facade publishes a provider when it is
+ * created. The client drives one session at a time, so one provider is enough.
+ */
+export interface ServerRenderProvider {
+	/** Render a piece of the transcript on the server. */
+	render(request: RenderRequest): Promise<RenderResponse>;
+}
+
+let activeRenderProvider: ServerRenderProvider | undefined;
+
+/**
+ * Publish the provider the components ask for a rendering.
+ *
+ * The client draws the transcript with its own renderers and asks the server for the
+ * pieces only the server can draw: the renderers of the extensions that live in the
+ * server's process.
+ */
+export function setServerRenderProvider(provider: ServerRenderProvider | undefined): void {
+	activeRenderProvider = provider;
+}
+
+/** The provider the components ask for a rendering, when there is one. */
+export function getServerRenderProvider(): ServerRenderProvider | undefined {
+	return activeRenderProvider;
 }
 
 /** How a queued user input was handled. */
@@ -479,6 +512,14 @@ export interface SessionFacade {
 	getAvailableThinkingLevels(): Promise<ThinkingLevel[]>;
 	/** The definition of a tool. */
 	getToolDefinition(name: string): Promise<ToolDefinition | undefined>;
+	/**
+	 * Render a piece of the transcript on the server.
+	 *
+	 * The renderers of the extensions that live in the server's process run there, so the
+	 * server is the only place that can draw what they draw. An empty answer means that
+	 * nothing could render the piece.
+	 */
+	render(request: RenderRequest): Promise<RenderResponse>;
 	/**
 	 * Ask the session model to describe what went wrong, for a bug report.
 	 *

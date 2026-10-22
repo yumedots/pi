@@ -63,8 +63,12 @@ import type {
 import { RemoteSessionConnection } from "./remote-session.ts";
 import { STATE_REFRESHING_EVENTS } from "./session-connection.ts";
 import {
+	getServerRenderProvider,
 	type PromptDisposition,
 	type QueuedInputDisposition,
+	type RenderRequest,
+	type RenderResponse,
+	type ServerRenderProvider,
 	type SessionAgentView,
 	type SessionCommand,
 	type SessionExecuteBashOptions,
@@ -85,6 +89,7 @@ import {
 	type SessionSkill,
 	type SessionStateView,
 	type SessionTool,
+	setServerRenderProvider,
 } from "./session-facade.ts";
 
 /** How long {@link RemoteSessionFacade.waitForIdle} waits before it gives up. */
@@ -323,6 +328,7 @@ export class RemoteSessionFacade implements SessionFacade {
 	private readonly resourceLoaderView: SessionResourceLoader;
 	private readonly sessionManagerView: SessionManagerView;
 	private readonly agentView: SessionAgentView;
+	private readonly renderProvider: ServerRenderProvider;
 	private readonly modelSurface: ClientModelRuntime;
 	private serverModels: Model<any>[] = [];
 	private modelRuntimeInstance: ModelRuntime | undefined;
@@ -387,6 +393,9 @@ export class RemoteSessionFacade implements SessionFacade {
 				this.settings?.setTransport(transport);
 			},
 		);
+		// The components cannot hold a facade, so they ask the server through this provider.
+		this.renderProvider = { render: (request) => this.render(request) };
+		setServerRenderProvider(this.renderProvider);
 		this.modelSurface = new ClientModelRuntime(
 			() => this.serverModels,
 			() => this.modelRuntimeOption ?? this.modelRuntimeInstance,
@@ -432,6 +441,9 @@ export class RemoteSessionFacade implements SessionFacade {
 		this.disposed = true;
 		this.listeners.clear();
 		this.connection.dispose();
+		if (getServerRenderProvider() === this.renderProvider) {
+			setServerRenderProvider(undefined);
+		}
 	}
 
 	/**
@@ -707,6 +719,16 @@ export class RemoteSessionFacade implements SessionFacade {
 	async getToolDefinition(name: string): Promise<ToolDefinition | undefined> {
 		const response = await this.send({ type: "get_tool_definition", name });
 		return response.command === "get_tool_definition" ? (response.data ?? undefined) : undefined;
+	}
+
+	/**
+	 * Render a piece of the transcript on the server.
+	 *
+	 * The renderers of the extensions that live in the server's process run there, so the
+	 * server draws what the client cannot draw.
+	 */
+	async render(request: RenderRequest): Promise<RenderResponse> {
+		return this.client.render(this.sessionId, request);
 	}
 
 	async summarizeForBugReport(hint?: string): Promise<string> {

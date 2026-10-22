@@ -3994,14 +3994,12 @@ export class InteractiveMode {
 	 * Render a custom entry of the session.
 	 *
 	 * The entry is drawn by the renderer of the client-side extension that registered it.
-	 * Without such a renderer the entry is not drawn: the server's extensions cannot render
-	 * in the client's process.
+	 * A server-only extension has no renderer in the client, so the component asks the
+	 * server for the rendering and repaints the row when the answer arrives.
 	 */
 	private addCustomEntryToChat(entry: Extract<SessionEntry, { type: "custom" }>): void {
 		const renderer = this.clientExtensions?.getEntryRenderer(entry.customType);
-		if (!renderer) return;
-		const component = new CustomEntryComponent(entry, renderer, this.outputPad);
-		if (!component.hasContent()) return;
+		const component = new CustomEntryComponent(entry, renderer, this.outputPad, () => this.ui.requestRender());
 		component.setExpanded(this.toolOutputExpanded);
 		this.chatContainer.addChild(component);
 	}
@@ -4034,6 +4032,7 @@ export class InteractiveMode {
 						this.clientExtensions?.getMessageRenderer(message.customType),
 						this.getMarkdownThemeWithSettings(),
 						this.outputPad,
+						() => this.ui.requestRender(),
 					);
 					component.setExpanded(this.toolOutputExpanded);
 					this.chatContainer.addChild(component);
