@@ -23,7 +23,6 @@ import type {
 	TranscriptContext,
 	Usage,
 } from "@earendil-works/pi-ai/compat";
-import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { convertToLlm } from "../messages.ts";
 import {
 	buildSessionProjection,
@@ -630,10 +629,13 @@ export async function completeSummarization(
 		cacheRetention: "none",
 		sessionId: options.sessionId ?? uuidv7(),
 	};
-	const produce = async (): Promise<AssistantMessage> =>
-		streamFn
-			? (await streamFn(model, context, requestOptions)).result()
-			: completeSimple(model, context, requestOptions);
+	const produce = async (): Promise<AssistantMessage> => {
+		if (streamFn) return (await streamFn(model, context, requestOptions)).result();
+		// The provider registry is loaded only when a summary is really produced, so that
+		// importing this module does not pull the whole provider set.
+		const { completeSimple } = await import("@earendil-works/pi-ai/compat");
+		return completeSimple(model, context, requestOptions);
+	};
 	return retryAssistantCall(produce, retry, requestOptions.signal, callbacks);
 }
 

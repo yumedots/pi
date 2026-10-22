@@ -29,8 +29,7 @@ import {
 	getDocsPath,
 	VERSION,
 } from "@earendil-works/pi-coding-agent/config";
-import { type AgentSessionEvent, parseSkillMessage } from "@earendil-works/pi-coding-agent/core/agent-session";
-import { SessionImportFileNotFoundError } from "@earendil-works/pi-coding-agent/core/agent-session-runtime";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent/core/agent-session";
 import type { AgentSessionRuntimeDiagnostic } from "@earendil-works/pi-coding-agent/core/agent-session-services";
 import {
 	CACHE_TTL_MS,
@@ -45,6 +44,7 @@ import {
 	recordCrash,
 	takeUnnotifiedCrash,
 } from "@earendil-works/pi-coding-agent/core/crash-log";
+import { CredentialSynchronizationError } from "@earendil-works/pi-coding-agent/core/credential-sync-error";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "@earendil-works/pi-coding-agent/core/defaults";
 import type {
 	AutocompleteProviderFactory,
@@ -68,7 +68,6 @@ import {
 	findExactModelReferenceMatch,
 	resolveModelScopeFromModels,
 } from "@earendil-works/pi-coding-agent/core/model-resolver";
-import { CredentialSynchronizationError } from "@earendil-works/pi-coding-agent/core/model-runtime";
 import { DefaultPackageManager } from "@earendil-works/pi-coding-agent/core/package-manager";
 import { RADIUS_MCP_URL, RADIUS_PROVIDER_ID } from "@earendil-works/pi-coding-agent/core/radius";
 import type { ResourceDiagnostic } from "@earendil-works/pi-coding-agent/core/resource-loader";
@@ -76,6 +75,7 @@ import {
 	formatMissingSessionCwdPrompt,
 	MissingSessionCwdError,
 } from "@earendil-works/pi-coding-agent/core/session-cwd";
+import { SessionImportFileNotFoundError } from "@earendil-works/pi-coding-agent/core/session-import-error";
 import {
 	type SessionEntry,
 	SessionManager,
@@ -87,6 +87,7 @@ import {
 	formatServerIdleTimeout,
 	type TuiMode,
 } from "@earendil-works/pi-coding-agent/core/settings-manager";
+import { parseSkillMessage } from "@earendil-works/pi-coding-agent/core/skill-message";
 import { BUILTIN_SLASH_COMMANDS, resolveBuiltinSlashAlias } from "@earendil-works/pi-coding-agent/core/slash-commands";
 import type { SourceInfo } from "@earendil-works/pi-coding-agent/core/source-info";
 import {

@@ -12,6 +12,10 @@ import type {
 import { emitSessionShutdownEvent } from "./extensions/runner.ts";
 import type { CreateAgentSessionResult } from "./sdk.ts";
 import { assertSessionCwdExists } from "./session-cwd.ts";
+import { SessionImportFileNotFoundError } from "./session-import-error.ts";
+
+export { SessionImportFileNotFoundError } from "./session-import-error.ts";
+
 import { SessionManager } from "./session-manager.ts";
 
 /**
@@ -43,16 +47,6 @@ export type CreateAgentSessionRuntimeFactory = (options: {
 /**
  * Thrown when /import references a JSONL file path that does not exist.
  */
-export class SessionImportFileNotFoundError extends Error {
-	readonly filePath: string;
-
-	constructor(filePath: string) {
-		super(`File not found: ${filePath}`);
-		this.name = "SessionImportFileNotFoundError";
-		this.filePath = filePath;
-	}
-}
-
 function extractUserMessageText(content: string | Array<{ type: string; text?: string }>): string {
 	if (typeof content === "string") {
 		return content;

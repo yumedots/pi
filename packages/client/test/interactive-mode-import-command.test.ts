@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SessionImportFileNotFoundError } from "../../coding-agent/src/core/agent-session-runtime.ts";
+import { SessionImportFileNotFoundError } from "../../coding-agent/src/core/session-import-error.ts";
 import { InteractiveMode } from "../src/interactive-mode.ts";
 import { createInteractiveContext } from "./interactive-mode-context.ts";
 

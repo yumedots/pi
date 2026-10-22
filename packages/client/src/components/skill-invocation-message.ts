@@ -1,5 +1,5 @@
-import type { ParsedSkillMessage } from "@earendil-works/pi-coding-agent/core/agent-session";
 import type { MarkdownTransformer } from "@earendil-works/pi-coding-agent/core/extensions/types";
+import type { ParsedSkillMessage } from "@earendil-works/pi-coding-agent/core/skill-message";
 import { getMarkdownTheme, theme } from "@earendil-works/pi-coding-agent/core/theme/theme";
 import {
 	Box,

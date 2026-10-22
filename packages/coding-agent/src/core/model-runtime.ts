@@ -1,4 +1,8 @@
 import { dirname, join } from "node:path";
+import { CredentialSynchronizationError, type CredentialSynchronizationOperation } from "./credential-sync-error.ts";
+
+export { CredentialSynchronizationError, type CredentialSynchronizationOperation } from "./credential-sync-error.ts";
+
 import {
 	type AnyModel,
 	type Api,
@@ -134,28 +138,6 @@ export interface ModelRuntimeAuthOverrides extends AuthOperationOptions {
 	env?: Record<string, string>;
 	/** Require this much remaining OAuth-token validity; defaults to five minutes. */
 	minOAuthValidityMs?: number;
-}
-
-export type CredentialSynchronizationOperation = "login" | "logout" | "setRuntimeApiKey" | "removeRuntimeApiKey";
-
-/** Credentials changed successfully, but the local model/auth snapshot could not be synchronized. */
-export class CredentialSynchronizationError extends Error {
-	readonly providerId: string;
-	readonly operation: CredentialSynchronizationOperation;
-	readonly credential: Credential | undefined;
-
-	constructor(
-		providerId: string,
-		operation: CredentialSynchronizationOperation,
-		credential: Credential | undefined,
-		options: ErrorOptions,
-	) {
-		super(`Credential ${operation} committed for ${providerId}, but local synchronization failed`, options);
-		this.name = "CredentialSynchronizationError";
-		this.providerId = providerId;
-		this.operation = operation;
-		this.credential = credential;
-	}
 }
 
 function mergeHeaders(

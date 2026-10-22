@@ -138,6 +138,9 @@ import {
 import { findSkillMentions, parseSkillCommand, removeSkillMentions, type Skill } from "./skills.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { BUILTIN_PATH_PREFIX, createSyntheticSourceInfo, isSyntheticPath, type SourceInfo } from "./source-info.ts";
+
+export { type ParsedSkillBlock, type ParsedSkillMessage, parseSkillMessage } from "./skill-message.ts";
+
 import {
 	buildSystemPrompt,
 	buildSystemPromptSections,
@@ -162,43 +165,6 @@ import {
 // ============================================================================
 // Skill Block Parsing
 // ============================================================================
-
-/** Parsed skill block from a user message */
-export interface ParsedSkillBlock {
-	name: string;
-	location: string;
-	content: string;
-}
-
-/** A user message that invoked one or more skills */
-export interface ParsedSkillMessage {
-	/** The skill blocks that were expanded into the message. */
-	blocks: ParsedSkillBlock[];
-	/** The request that came with the skills, undefined when the message only invoked skills. */
-	userMessage: string | undefined;
-}
-
-const SKILL_BLOCK_REGEX = /^<skill name="([^"]+)" location="([^"]+)">\n([\s\S]*?)\n<\/skill>/;
-
-/**
- * Parse the skill blocks from message text.
- * Returns null if the text doesn't start with a skill block.
- */
-export function parseSkillMessage(text: string): ParsedSkillMessage | null {
-	const blocks: ParsedSkillBlock[] = [];
-	let rest = text;
-	while (true) {
-		const match = rest.match(SKILL_BLOCK_REGEX);
-		if (!match) break;
-		blocks.push({ name: match[1]!, location: match[2]!, content: match[3]! });
-		rest = rest.slice(match[0].length);
-		if (!rest.startsWith("\n\n")) break;
-		rest = rest.slice(2);
-	}
-	if (blocks.length === 0) return null;
-	const userMessage = rest.trim();
-	return { blocks, userMessage: userMessage || undefined };
-}
 
 /** Tool execution events of calls a tool made through `ctx.executeTool()` carry `parentToolCallId`. */
 type WithParentToolCallId<E> = E extends {

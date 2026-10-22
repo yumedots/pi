@@ -50,6 +50,10 @@ export {
 	serializeConversation,
 	shouldCompact,
 } from "./core/compaction/index.ts";
+export {
+	CredentialSynchronizationError,
+	type CredentialSynchronizationOperation,
+} from "./core/credential-sync-error.ts";
 export { createEventBus, type EventBus, type EventBusController } from "./core/event-bus.ts";
 // Extension system
 export type {
@@ -233,8 +237,6 @@ export {
 } from "./core/model-resolver.ts";
 export {
 	type CreateModelRuntimeOptions,
-	CredentialSynchronizationError,
-	type CredentialSynchronizationOperation,
 	ModelRuntime,
 	type ModelRuntimeAuthOverrides,
 } from "./core/model-runtime.ts";

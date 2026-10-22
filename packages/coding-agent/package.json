@@ -13,6 +13,10 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./main": {
+			"types": "./dist/main.d.ts",
+			"import": "./dist/main.js"
+		},
 		"./core/*": {
 			"types": "./dist/core/*.d.ts",
 			"import": "./dist/core/*.js"
