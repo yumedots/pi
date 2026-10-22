@@ -53,7 +53,7 @@ export class ModelRuntime { static create() {} }
 }
 
 test("accepts a valid coding-agent package", (t) => {
-	smokeTestCodingAgent(createFixture(t));
+	smokeTestCodingAgent(createFixture(t), undefined, { expectNoPiBinary: false });
 });
 
 // #9132: smoke-test the public SDK, not just a bundled CLI that hides missing imports.
@@ -63,7 +63,7 @@ test("accepts a valid coding-agent package", (t) => {
 test("fails when the SDK imports an undeclared package despite a working CLI", (t) => {
 	const directory = createFixture(t, { importUndeclared: true });
 	assert.throws(
-		() => smokeTestCodingAgent(directory),
+		() => smokeTestCodingAgent(directory, undefined, { expectNoPiBinary: false }),
 		/Cannot find (?:package|module) '@earendil-works\/undeclared'/,
 	);
 });
