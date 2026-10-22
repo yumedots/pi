@@ -10,7 +10,8 @@
  *
  * The client loads the extensions from its own directories (the project `.pi/extensions` and
  * the agent directory), the same way the server does, and keeps the ones it can use. The
- * server-only extensions are skipped, and the loader reports why.
+ * server-only extensions are skipped: that is the expected outcome, not a problem, so the
+ * client does not report them.
  *
  * The client never runs the event handlers or the tools of an extension: those belong to the
  * server. The client only uses what an extension contributes to the rendering.
@@ -52,7 +53,7 @@ export interface ClientExtensionLoadResult {
 	readonly skipped: ClientExtensionInfo[];
 	/** The errors of the load. */
 	readonly errors: ReadonlyArray<{ path: string; error: string }>;
-	/** The warnings of the load, including the skipped extensions. */
+	/** The warnings of the load. The skipped server-side extensions are not among them. */
 	readonly warnings: ReadonlyArray<{ path: string; warning: string }>;
 	/** The themes the extensions ship. */
 	readonly themes: Theme[];
@@ -98,10 +99,32 @@ function discoverExtensionThemes(extension: Extension): { themes: Theme[]; diagn
 }
 
 /**
+ * The warning the resource loader emits for an extension it skipped on this side.
+ *
+ * The client skips the extensions that declare the server side, and that is the expected
+ * outcome: they run on the server. The warning is not a problem, so the client drops it.
+ */
+const SKIPPED_EXTENSION_WARNING = /^Extension declares side ".*" and was skipped on the .* side/;
+
+/**
+ * Whether a warning of the load is about an extension the client skipped.
+ *
+ * Such an extension declares the server side and runs on the server. The client has nothing
+ * to render with it, which is the expected outcome and not a problem.
+ */
+function isSkippedExtensionWarning(
+	warning: { path: string; warning: string },
+	skippedPaths: ReadonlySet<string>,
+): boolean {
+	if (SKIPPED_EXTENSION_WARNING.test(warning.warning)) return true;
+	return skippedPaths.has(warning.path) && /skipped/i.test(warning.warning);
+}
+
+/**
  * Load the extensions the client can use.
  *
- * The loader skips the extensions that declare the server side and reports each of them as a
- * warning, so an extension that did nothing says why.
+ * The loader skips the extensions that declare the server side. Those extensions run on the
+ * server, so the client does not report them as an issue.
  */
 export async function loadClientExtensions(options: ClientExtensionLoadOptions): Promise<ClientExtensionLoadResult> {
 	const settingsManager = options.settingsManager ?? SettingsManager.create(options.cwd, options.agentDir);
@@ -133,11 +156,12 @@ export async function loadClientExtensions(options: ClientExtensionLoadOptions):
 		diagnostics.push(...found.diagnostics);
 	}
 
+	const skippedPaths = new Set(skipped.map((extension) => extension.path));
 	return {
 		extensions,
 		skipped,
 		errors: loaded.errors,
-		warnings: loaded.warnings ?? [],
+		warnings: (loaded.warnings ?? []).filter((warning) => !isSkippedExtensionWarning(warning, skippedPaths)),
 		themes,
 		diagnostics,
 	};

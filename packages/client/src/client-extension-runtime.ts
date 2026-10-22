@@ -200,7 +200,7 @@ export class ClientExtensionRuntime {
 	readonly skipped: ClientExtensionInfo[];
 	/** The themes the extensions ship. */
 	readonly themes: Theme[];
-	/** The diagnostics of the load. */
+	/** The diagnostics of the load: its diagnostics, its errors and its warnings. */
 	readonly diagnostics: ClientExtensionLoadResult["diagnostics"];
 
 	constructor(load: ClientExtensionLoadResult) {
@@ -209,16 +209,22 @@ export class ClientExtensionRuntime {
 		this.themes = load.themes;
 		const diagnostics = [
 			...load.diagnostics,
-			// The load reports the extensions it skipped (a server-side extension on the
-			// client, for example) as warnings; they belong in the diagnostics the TUI shows.
+			// An extension that does not load is a real problem: the client shows it.
+			...load.errors.map((error) => ({
+				type: "error" as const,
+				message: error.error,
+				path: error.path,
+			})),
+			// The load reports what it could not use as warnings; they belong in the
+			// diagnostics the TUI shows. The extensions the client skipped because they
+			// declare the server side are not among them: they run on the server.
 			...load.warnings.map((warning) => ({
 				type: "warning" as const,
 				message: warning.warning,
 				path: warning.path,
 			})),
 		];
-		// The loader reports a skipped extension as a warning and as a diagnostic; the TUI
-		// shows one line per problem.
+		// The loader can report the same problem twice; the TUI shows one line per problem.
 		const seen = new Set<string>();
 		this.diagnostics = diagnostics.filter((diagnostic) => {
 			const key = `${diagnostic.path ?? ""}\n${diagnostic.message}`;
@@ -341,22 +347,23 @@ export class ClientExtensionRuntime {
 	}
 
 	/**
-	 * The diagnostics of the client extensions.
+	 * The issues the load itself did not report.
 	 *
-	 * Besides the diagnostics of the load, it reports the extensions that declare the "both"
-	 * side but that the server does not have: their server part does not work.
+	 * These are the extensions that declare the "both" side but that the server does not
+	 * have: their server part does not work. The diagnostics of the load are in
+	 * {@link ClientExtensionRuntime.diagnostics}; the TUI shows both lists.
 	 */
 	getDiagnostics(
 		serverExtensions?: ReadonlyArray<ClientExtensionServerInfo>,
 	): ClientExtensionLoadResult["diagnostics"] {
-		const diagnostics = [...this.diagnostics];
+		const diagnostics: ClientExtensionLoadResult["diagnostics"] = [];
 		for (const extension of this.extensions) {
 			if (extension.side !== "both") continue;
 			if (!serverExtensions) continue;
 			if (serverExtensions.some((server) => sameExtension(server.path, extension.path))) continue;
 			diagnostics.push({
 				type: "warning",
-				message: `Extension "${extension.path}" needs the server side too. Install it on the server, otherwise the parts that need the server do not work.`,
+				message: `Extension "${extension.path}" declares the "both" side. It has to be installed on the server too, otherwise the parts that need the server do not work.`,
 				path: extension.path,
 			});
 		}

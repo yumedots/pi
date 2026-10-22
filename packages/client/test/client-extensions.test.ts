@@ -122,4 +122,61 @@ describe("client extensions", () => {
 		const withServer = runtime.getDiagnostics([{ path: both?.path ?? "", side: "both" }]);
 		expect(withServer.some((diagnostic) => diagnostic.path === both?.path)).toBe(false);
 	});
+
+	it("does not report the server-side extensions as issues", async () => {
+		writeExtension(
+			"server-extension",
+			`export default function (pi) {
+	pi.setSide("server");
+}`,
+		);
+		writeExtension(
+			"another-server-extension",
+			`export default function (pi) {
+	pi.setSide("server");
+}`,
+		);
+
+		const runtime = await loadRuntime();
+		expect(runtime.skipped.map((extension) => extension.side)).toEqual(["server", "server"]);
+
+		const diagnostics = [...runtime.diagnostics, ...runtime.getDiagnostics([])];
+		expect(diagnostics.filter((diagnostic) => (diagnostic.path ?? "").includes("server-extension"))).toEqual([]);
+		expect(diagnostics.filter((diagnostic) => diagnostic.message.includes("skipped"))).toEqual([]);
+	});
+
+	it("reports a both extension the server does not have exactly once", async () => {
+		writeExtension(
+			"both-extension",
+			`export default function (pi) {
+	pi.setSide("both");
+}`,
+		);
+
+		const runtime = await loadRuntime();
+		const both = runtime.extensions.find((extension) => extension.side === "both");
+		expect(both).toBeDefined();
+
+		const diagnostics = [...runtime.diagnostics, ...runtime.getDiagnostics([])];
+		const reported = diagnostics.filter((diagnostic) => diagnostic.path === both?.path);
+		expect(reported).toHaveLength(1);
+		expect(reported[0]?.message).toContain("server");
+		expect(reported[0]?.message).toContain("installed on the server");
+	});
+
+	it("reports an extension that does not load", async () => {
+		writeExtension(
+			"broken-extension",
+			`export default function (pi) {
+	pi.setSide("client");
+`,
+		);
+
+		const runtime = await loadRuntime();
+
+		const diagnostics = [...runtime.diagnostics, ...runtime.getDiagnostics([])];
+		const reported = diagnostics.filter((diagnostic) => (diagnostic.path ?? "").includes("broken-extension"));
+		expect(reported.length).toBeGreaterThan(0);
+		expect(reported.some((diagnostic) => diagnostic.type === "error")).toBe(true);
+	});
 });
