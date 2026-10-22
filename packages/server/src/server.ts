@@ -18,7 +18,7 @@ import type {
 	RpcExtensionUIResponse,
 } from "@earendil-works/pi-coding-agent";
 import { getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
-import { createPairingCode, createSessionToken, verifyBasicAuth, verifyCredential } from "./auth.ts";
+import { createPairingCode, issueSessionToken, verifyBasicAuth, verifyCredential } from "./auth.ts";
 import { EventFeed } from "./events.ts";
 import { Router, sendError, sendJson } from "./http/router.ts";
 import { openSse, SSE_HEARTBEAT, type SseConnection, sseFrame } from "./http/sse.ts";
@@ -226,7 +226,9 @@ export async function startServer(options: PiServerOptions = {}): Promise<PiServ
 			return;
 		}
 		pairingCodes.delete(code);
-		sendJson(res, 200, { token: createSessionToken(password, expiresAt) });
+		// The code lives five minutes; the token it hands out is the password of the
+		// client, so it lives as long as an opencode session.
+		sendJson(res, 200, { token: issueSessionToken(password) });
 	});
 
 	router.add("GET", "/api/event", ({ res }) => {

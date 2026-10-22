@@ -15,6 +15,15 @@ export const BASIC_AUTH_USERNAME = "opencode";
 /** How long a pairing code stays valid. */
 export const PAIRING_CODE_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * How long a session token stays valid.
+ *
+ * The pairing code lives five minutes, but the token it hands out is stored by the
+ * client as the server password, so it has to live as long as opencode's session:
+ * thirty days.
+ */
+export const SESSION_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 /** The key derivation salt for session tokens. */
 const SESSION_TOKEN_KEY = "pi-session-v1";
 
@@ -64,6 +73,16 @@ export function createPairingCode(now: number = Date.now()): PairingCode {
 export function createSessionToken(password: string, expiresAt: number): string {
 	const signature = createHmac("sha256", password).update(`${SESSION_TOKEN_KEY}:${expiresAt}`).digest("base64url");
 	return `${expiresAt}.${signature}`;
+}
+
+/**
+ * Issue a session token that lives for the session lifetime.
+ *
+ * The token outlives the pairing code that produced it: the client stores it as the
+ * server password and comes back with it for weeks.
+ */
+export function issueSessionToken(password: string, now: number = Date.now()): string {
+	return createSessionToken(password, now + SESSION_TOKEN_TTL_MS);
 }
 
 /**
