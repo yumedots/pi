@@ -188,6 +188,10 @@ async function runPrint(parsed: Args): Promise<number> {
 			resume: await resolveResumeTarget(client, parsed, cwd, agentDir),
 		});
 
+		if (!(await checkManifest(client, snapshot.sessionId, agentDir, handshake.trust.trusted))) {
+			return 1;
+		}
+
 		const { initialMessage, initialImages } = await buildInitialMessageFor(parsed);
 		const messages = initialMessage === undefined ? [...parsed.messages] : [initialMessage, ...parsed.messages];
 		if (messages.length === 0) {
@@ -943,6 +947,9 @@ async function runInteractive(parsed: Args, agentDir: string, url: string, passw
 	});
 	await facade.load();
 
+	if (!(await checkManifest(client, snapshot.sessionId, agentDir, handshake.trust.trusted))) {
+		return;
+	}
 	const manifest = await client.manifest(snapshot.sessionId);
 	installServerThemes(manifest);
 
@@ -957,6 +964,39 @@ async function runInteractive(parsed: Args, agentDir: string, url: string, passw
 		initialThemeSetting: parsed.useTheme,
 	});
 	await mode.run();
+}
+
+/**
+ * Check the extensions of the client against the server's manifest.
+ *
+ * The server loads the extensions; the client has the files on its own disk. When the two
+ * do not agree, the client does not start the terminal UI: a client that draws half of a
+ * session is worse than a client that says what is missing.
+ *
+ * @returns whether the two sides match.
+ */
+async function checkManifest(
+	client: PiServerClient,
+	sessionId: string,
+	agentDir: string,
+	projectTrusted: boolean,
+): Promise<boolean> {
+	const { ClientState } = await import("./client-state.ts");
+	const { ManifestMismatchError } = await import("./manifest-check.ts");
+	try {
+		const manifest = await client.manifest(sessionId);
+		const state = new ClientState({ manifest, agentDir, projectTrusted });
+		state.assertExtensionsMatch();
+		return true;
+	} catch (error) {
+		if (error instanceof ManifestMismatchError) {
+			process.stderr.write(`${error.message}\n`);
+			process.exitCode = 1;
+			return false;
+		}
+		// A server that cannot describe itself is not a mismatch the client can report.
+		return true;
+	}
 }
 
 /**

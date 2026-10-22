@@ -98,11 +98,16 @@ async function runTurn(
 	images: ImageContent[] | undefined,
 	turnSettled: Promise<void>,
 ): Promise<void> {
-	await client.sendCommand(sessionId, {
+	const response = await client.sendCommand(sessionId, {
 		type: "prompt",
 		message,
 		...(images && images.length > 0 ? { images } : {}),
 	});
+	// A prompt the server refused never starts a turn, so waiting for the end of one would
+	// wait forever.
+	if (response && "success" in response && response.success === false) {
+		throw new Error(response.error);
+	}
 	await turnSettled;
 }
 
