@@ -169,7 +169,7 @@ async function runService(args: string[]): Promise<void> {
 export async function startInteractive(context: InteractiveStartContext): Promise<void> {
 	await ensureProjectTrust(context);
 
-	const server = await ensureServer({ agentDir: context.agentDir, command: SERVER_COMMAND, args: [] });
+	const server = await ensureServer({ agentDir: context.agentDir });
 	const client = new PiServerClient({ url: server.url, password: server.password });
 	const resume = await resolveResumeTarget(context);
 	const snapshot = await openRemoteSession({
