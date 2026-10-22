@@ -223,7 +223,8 @@ function reportLive(options) {
 			(row) =>
 				!row.command.startsWith("tmux") &&
 				row.pid !== client?.pid &&
-				(row.command.includes("pi-server") || /server\/(src|dist)\/cli\.ts/.test(row.command)),
+				row.rss > 20 * 1024 &&
+				/(^|\/)pi-server( |$)|server\/(src|dist)\/cli\.[jt]s/.test(row.command),
 		);
 		const clientMb = client ? client.rss / 1024 : 0;
 		const serverMb = server ? server.rss / 1024 : 0;
