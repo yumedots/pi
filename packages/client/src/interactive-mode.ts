@@ -135,6 +135,7 @@ import { killTrackedDetachedChildren } from "@earendil-works/pi-coding-agent/uti
 import { loadAllHighlightLanguages } from "@earendil-works/pi-coding-agent/utils/syntax-highlight";
 import { ensureTool, type ToolStatus } from "@earendil-works/pi-coding-agent/utils/tools-manager";
 import { checkForNewPiVersion, type LatestPiRelease } from "@earendil-works/pi-coding-agent/utils/version-check";
+import type { ServerRegistration } from "@earendil-works/pi-server";
 import { PiServerClient, type RemoteSessionInfo } from "@earendil-works/pi-server/client";
 import type {
 	AutocompleteItem,
@@ -251,6 +252,31 @@ interface ActiveEditor extends EditorComponent {
 
 function isExpandable(obj: unknown): obj is Expandable {
 	return typeof obj === "object" && obj !== null && "setExpanded" in obj && typeof obj.setExpanded === "function";
+}
+
+
+/** The server the client is connected to. */
+interface ClientServerInfo {
+	/** The url of the server. */
+	url: string;
+	/** The process id of the server. */
+	pid: number;
+	/** The addresses the server answers on. */
+	urls: string[];
+	/** The version of the server. */
+	version: string;
+	/** Whether the server runs in its own process or inside the client. */
+	mode: "server-backed" | "embedded";
+}
+
+/** The host and the port of a url, for the footer. */
+function hostPortOf(url: string): string {
+	try {
+		const parsed = new URL(url);
+		return parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
+	} catch {
+		return url;
+	}
 }
 
 class ExpandableText extends ThemedText implements Expandable {
@@ -515,8 +541,14 @@ export class InteractiveMode {
 	private fullscreenLayoutRoot: Component | undefined;
 	/** The session list beside the conversation, when the sidebar is enabled. */
 	private sessionSidebar: SessionSidebar | undefined;
-	/** The client that asks the server for the sessions it knows. */
-	private sessionListClient: PiServerClient | undefined;
+	/** The client that asks the server about itself. */
+	private serverClient: PiServerClient | undefined;
+	/** The registration of the server, read once. */
+	private serverRegistration: ServerRegistration | undefined;
+	/** Whether the registration was already read. */
+	private serverRegistrationRead = false;
+	/** What the server told the client about itself. */
+	private serverInfo: ClientServerInfo | undefined;
 	/** The timer that refreshes the session list while a turn runs. */
 	private sessionListTimer: ReturnType<typeof setInterval> | undefined;
 	/** The session files of the listed sessions, by session id. */
@@ -1323,6 +1355,17 @@ export class InteractiveMode {
 	async run(): Promise<void> {
 		await this.init();
 
+		// The client drives a server in another process, so the footer says which one.
+		void this.updateServerStatus().catch(() => {});
+
+		// The credentials live in the server's agent directory, so a server without a model
+		// leaves the user with a TUI that cannot run a turn.
+		if (!this.facade.model) {
+			this.showWarning(
+				"No model is configured on the server. Run /login in the server's agent directory, or set a default model, to run a turn.",
+			);
+		}
+
 		if (!process.env.PI_OFFLINE) {
 			const controller = new AbortController();
 			const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -1897,24 +1940,74 @@ export class InteractiveMode {
 		}
 	}
 
-	/** The client that asks the server for the sessions it knows about. */
-	private getSessionListClient(): PiServerClient | undefined {
-		if (this.sessionListClient) return this.sessionListClient;
-		const registration = readServerRegistration(this.facade.agentDir);
+	/** The registration of the server the client talks to. */
+	private getServerRegistration(): ServerRegistration | undefined {
+		if (!this.serverRegistrationRead) {
+			this.serverRegistrationRead = true;
+			this.serverRegistration = readServerRegistration(this.facade.agentDir);
+		}
+		return this.serverRegistration;
+	}
+
+	/** The client that asks the server about itself. */
+	private getServerClient(): PiServerClient | undefined {
+		if (this.serverClient) return this.serverClient;
+		const registration = this.getServerRegistration();
 		if (!registration) return undefined;
-		this.sessionListClient = new PiServerClient({ url: registration.url, password: registration.password });
-		return this.sessionListClient;
+		this.serverClient = new PiServerClient({ url: registration.url, password: registration.password });
+		return this.serverClient;
+	}
+
+	/** What the server tells the client about itself. */
+	private async loadServerInfo(): Promise<ClientServerInfo | undefined> {
+		const client = this.getServerClient();
+		if (!client) return undefined;
+		try {
+			const info = await client.info();
+			return {
+				url: client.serverUrl,
+				pid: info.pid,
+				urls: info.urls,
+				version: info.version,
+				mode: info.pid === process.pid ? "embedded" : "server-backed",
+			};
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * Show the server the client is connected to in the footer.
+	 *
+	 * The client drives a server in another process, so the user needs to see which one.
+	 */
+	private async updateServerStatus(): Promise<void> {
+		this.serverInfo = await this.loadServerInfo();
+		this.applyServerStatus();
+	}
+
+	/** Put the server of the client into the footer. */
+	private applyServerStatus(): void {
+		try {
+			if (this.serverInfo) {
+				this.footerDataProvider.setExtensionStatus("server", `server ${hostPortOf(this.serverInfo.url)}`);
+			} else {
+				this.footerDataProvider.setExtensionStatus("server", undefined);
+			}
+			this.footer.invalidate();
+			this.ui.requestRender();
+		} catch {
+			// The footer is not ready yet; the status shows up with the next render.
+		}
 	}
 
 	/** Reads the sessions the server knows about and shows them in the sidebar. */
 	private async refreshSessionList(): Promise<void> {
 		const sidebar = this.sessionSidebar;
 		if (!sidebar) return;
-		const client = this.getSessionListClient();
-		if (!client) return;
 		let sessions: RemoteSessionInfo[];
 		try {
-			sessions = await client.listSessions();
+			sessions = await this.facade.listSessions();
 		} catch {
 			// The server may be unreachable; the sidebar keeps the list it has.
 			return;
@@ -2418,6 +2511,8 @@ export class InteractiveMode {
 		this.setExtensionHeader(undefined);
 		this.clearExtensionWidgets();
 		this.footerDataProvider.clearExtensionStatuses();
+		// The reset clears the footer statuses of the extensions, so the server goes back in.
+		this.applyServerStatus();
 		this.footer.invalidate();
 		this.autocompleteProviderWrappers = [];
 		this.setCustomEditorComponent(undefined);
@@ -3188,6 +3283,11 @@ export class InteractiveMode {
 			if (text === "/hotkeys") {
 				this.handleHotkeysCommand();
 				this.editor.setText("");
+				return;
+			}
+			if (text === "/server") {
+				this.editor.setText("");
+				await this.handleServerCommand();
 				return;
 			}
 			if (text === "/fork") {
@@ -6896,6 +6996,37 @@ export class InteractiveMode {
 				}
 			}
 			return info;
+		};
+
+		this.chatContainer.addChild(new Spacer(1));
+		this.chatContainer.addChild(new ThemedText(renderInfo, 1, 0));
+		this.ui.requestRender();
+	}
+
+	/** Show the server the client is connected to. */
+	private async handleServerCommand(): Promise<void> {
+		const info = (await this.loadServerInfo()) ?? this.serverInfo;
+		this.serverInfo = info;
+		const sessionFile = this.sessionManager.getSessionFile();
+		const renderInfo = (): string => {
+			let text = `${theme.bold("Server")}\n\n`;
+			if (!info) {
+				text += `${theme.fg("dim", "Url:")} unknown\n`;
+				text += `${theme.fg("dim", "The client could not reach a registered pi server.")}\n`;
+			} else {
+				text += `${theme.fg("dim", "Url:")} ${info.url}\n`;
+				text += `${theme.fg("dim", "Pid:")} ${info.pid}\n`;
+				text += `${theme.fg("dim", "Version:")} ${info.version}\n`;
+				text += `${theme.fg("dim", "Mode:")} ${info.mode}\n`;
+				for (const url of info.urls) {
+					text += `${theme.fg("dim", "Address:")} ${url}\n`;
+				}
+			}
+			text += `\n${theme.bold("Session")}\n`;
+			text += `${theme.fg("dim", "Id:")} ${this.facade.sessionId}\n`;
+			text += `${theme.fg("dim", "File:")} ${sessionFile ?? "In-memory"}\n`;
+			text += `${theme.fg("dim", "Cwd:")} ${this.facade.cwd}\n`;
+			return text;
 		};
 
 		this.chatContainer.addChild(new Spacer(1));
