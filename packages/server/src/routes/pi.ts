@@ -186,7 +186,7 @@ export function registerPiRoutes(router: Router, ctx: ServerContext): void {
 					? await ctx.registry.continueRecent(cwd)
 					: body.resume
 						? await ctx.registry.open(body.resume)
-						: await ctx.registry.create(cwd);
+						: await ctx.registry.create(cwd, body.sessionDir);
 			if (body.title) session.runtime.session.setSessionName(body.title);
 			sendJson(route.res, 200, { data: toSessionStateSnapshot(session) });
 		} catch (error) {

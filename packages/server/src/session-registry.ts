@@ -95,9 +95,9 @@ export class SessionRegistry {
 	/**
 	 * Create a new session for a directory.
 	 */
-	async create(cwd: string): Promise<ServerSession> {
+	async create(cwd: string, sessionDir?: string): Promise<ServerSession> {
 		this.assertTrusted(cwd);
-		return this.attach(cwd, SessionManager.create(cwd));
+		return this.attach(cwd, SessionManager.create(cwd, sessionDir));
 	}
 
 	/**
