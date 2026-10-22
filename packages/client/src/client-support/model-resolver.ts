@@ -3,15 +3,10 @@
  */
 
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import {
-	type Api,
-	type AuthOperationOptions,
-	type KnownProvider,
-	type Model,
-	modelsAreEqual,
-} from "@earendil-works/pi-ai";
+import type { Api, AuthOperationOptions, KnownProvider, Model } from "@earendil-works/pi-ai";
 import { isValidThinkingLevel } from "./args.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
+import { modelsAreEqual } from "./models.ts";
 
 /**
  * The part of the model runtime the resolver uses.

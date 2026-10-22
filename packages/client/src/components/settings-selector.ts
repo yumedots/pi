@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { getSupportedThinkingLevels, type Model, type Transport } from "@earendil-works/pi-ai";
+import type { Model, Transport } from "@earendil-works/pi-ai";
 import type { CacheWarmingMode, WarningSettings } from "@earendil-works/pi-coding-agent/core/settings-manager";
 import {
 	type Component,
@@ -24,6 +24,7 @@ import type {
 import { DynamicBorder } from "../client-support/dynamic-border.ts";
 import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../client-support/http-dispatcher.ts";
 import { keyDisplayText } from "../client-support/keybinding-hints.ts";
+import { getSupportedThinkingLevels } from "../client-support/models.ts";
 import { SETTINGS_DEFAULTS } from "../client-support/settings-defaults.ts";
 import {
 	getSettingsListTheme,

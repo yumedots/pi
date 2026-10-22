@@ -10,11 +10,12 @@
  * the summary: the model runs in the server's process, so the server writes the summary.
  */
 
+import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import { crc32, deflateRawSync } from "node:zlib";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { type Model, type Provider, uuidv7 } from "@earendil-works/pi-ai";
+import type { Model, Provider } from "@earendil-works/pi-ai";
 import type { ServerSettings } from "../client-settings.ts";
 import { VERSION } from "./config.ts";
 import type { CrashRecord } from "./crash-log.ts";
@@ -189,7 +190,7 @@ export function collectBugReportMetadata(options: CollectBugReportMetadataOption
 	const provider = options.model ? options.modelRuntime.getProvider(options.model.provider) : undefined;
 	return {
 		schemaVersion: BUG_REPORT_SCHEMA_VERSION,
-		id: options.id ?? uuidv7(),
+		id: options.id ?? randomUUID(),
 		createdAt: new Date().toISOString(),
 		hint,
 		environment: collectEnvironment(),

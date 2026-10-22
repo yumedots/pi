@@ -9,7 +9,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
-import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import type { AssistantMessage, ImageContent, Message, Model, Usage } from "@earendil-works/pi-ai/compat";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent/core/agent-session";
@@ -104,6 +103,7 @@ import {
 	findExactModelReferenceMatch,
 	resolveModelScopeFromModels,
 } from "./client-support/model-resolver.ts";
+import { isRetryableAssistantError } from "./client-support/models.ts";
 import { RADIUS_MCP_URL, RADIUS_PROVIDER_ID } from "./client-support/radius.ts";
 import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "./client-support/session-cwd.ts";
 import { SessionImportFileNotFoundError } from "./client-support/session-import-error.ts";

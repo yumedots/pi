@@ -1,15 +1,15 @@
-import {
-	type Api,
-	type AssistantMessage,
-	type AssistantMessageEventStream,
-	type Context,
-	calculateCost,
-	type Model,
-	type ModelsSimpleStreamOptions,
-	type SimpleStreamOptions,
-	type Usage,
+import type {
+	Api,
+	AssistantMessage,
+	AssistantMessageEventStream,
+	Context,
+	Model,
+	ModelsSimpleStreamOptions,
+	SimpleStreamOptions,
+	Usage,
 } from "@earendil-works/pi-ai";
 import { getProviderEnvValue } from "@earendil-works/pi-ai/utils/provider-env";
+import { calculateCost } from "./models.ts";
 import type { SessionEntry, UsageEntry } from "./session-manager.ts";
 
 /** When the cache warmer refreshes the prompt cache. */

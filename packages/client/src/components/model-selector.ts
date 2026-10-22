@@ -1,6 +1,7 @@
-import { type Model, modelsAreEqual } from "@earendil-works/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import { getKeybindings, type Input, type TUI } from "@earendil-works/pi-tui";
 import { keyDisplayText } from "../client-support/keybinding-hints.ts";
+import { modelsAreEqual } from "../client-support/models.ts";
 import { theme } from "../client-theme.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
